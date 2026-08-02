@@ -1,0 +1,20 @@
+server:
+  port: 8080
+  address: 0.0.0.0
+
+spring:
+  application:
+    name: portfolio-os-core
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    static-path-pattern: /**
+  resources:
+    static-locations: classpath:/static/
+
+logging:
+  level:
+    root: INFO
+    com.portfolioos.core: DEBUG
+    org.springframework.web: INFO

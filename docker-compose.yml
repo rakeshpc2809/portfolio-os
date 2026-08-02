@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  core-node:
+    build:
+      context: ./core-node
+      dockerfile: Dockerfile
+    container_name: portfolio-os-core
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - API_AUTH_TOKEN=fintracker-cachyos-default-key-2026
+      - LEDGER_HMAC_SECRET=fintracker-cachyos-default-key-2026
+      - SQLITE_PATH=/app/data/tax_ledger.db
+      - DUCKDB_PATH=/app/data/tax_ledger.duckdb
+      - SIDECAR_HTTP_URL=http://quant-sidecar:8000
+      - SIDECAR_FLIGHT_URL=grpc+tcp://quant-sidecar:8001
+    volumes:
+      - ./data:/app/data
+      - ./rules:/app/rules
+    depends_on:
+      quant-sidecar:
+        condition: service_healthy
+    restart: unless-stopped
+
+  quant-sidecar:
+    build:
+      context: ./quant-sidecar
+      dockerfile: Dockerfile
+    container_name: portfolio-os-quant
+    ports:
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8001"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  data:
