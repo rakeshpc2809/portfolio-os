@@ -1,9 +1,8 @@
 import pyarrow as pa
 import pyarrow.flight as flight
 import polars as pl
-import numpy as np
 import logging
-from quant.quant_engine import calculate_hmm_regimes, calculate_hurst_vectorized, calculate_ou_params_vectorized
+from quant.analytics_engine import compute_fund_analytics
 
 logger = logging.getLogger(__name__)
 
@@ -17,53 +16,34 @@ class QuantFlightServer(flight.FlightServerBase):
 
     def do_exchange(self, context, descriptor, reader, writer):
         try:
-            # Read input table containing amfi_code and nav_value
             table = reader.read_all()
             if table.num_rows == 0:
                 self._write_empty_response(writer)
                 return
-                
+
             df = pl.from_arrow(table)
-            
             results = []
             unique_codes = df["amfi_code"].unique().to_list()
-            
+
             for code in unique_codes:
                 fund_df = df.filter(pl.col("amfi_code") == code)
                 nav_values = fund_df["nav_value"].to_list()
-                
-                if len(nav_values) < 2:
-                    continue
-                
-                # Compute returns
-                returns = []
-                for i in range(len(nav_values) - 1):
-                    prev = nav_values[i]
-                    curr = nav_values[i+1]
-                    returns.append(np.log(curr / prev) if prev > 0 else 0.0)
-                
-                # Calculate metrics
-                hurst = calculate_hurst_vectorized(returns)
-                h_regime = "MEAN_REVERTING" if hurst < 0.47 else ("TRENDING" if hurst > 0.53 else "RANDOM_WALK")
-                
-                ou = calculate_ou_params_vectorized(nav_values)
-                
-                states, bull, bear, trans = calculate_hmm_regimes(returns)
-                state_map = {0: "CALM_BULL", 1: "STRESSED_NEUTRAL", 2: "VOLATILE_BEAR"}
-                hmm_state_str = state_map.get(states[-1], "UNKNOWN") if states else "UNKNOWN"
-                
+
+                analytics = compute_fund_analytics(nav_values)
+
                 results.append({
-                    "amfi_code": code,
-                    "hurst": float(hurst),
-                    "hurst_regime": h_regime,
-                    "ou_half_life": float(ou["half_life"]),
-                    "ou_valid": bool(ou["valid"]),
-                    "hmm_state": hmm_state_str,
-                    "hmm_bull_prob": float(bull),
-                    "hmm_bear_prob": float(bear),
-                    "hmm_transition_bear": float(trans)
+                    "amfi_code": str(code),
+                    "status": str(analytics.get("status", "OK")),
+                    "sharpe": float(analytics.get("sharpe", 0.0)),
+                    "sortino": float(analytics.get("sortino", 0.0)),
+                    "calmar": float(analytics.get("calmar", 0.0)),
+                    "max_drawdown": float(analytics.get("max_drawdown", 0.0)),
+                    "volatility_annual": float(analytics.get("volatility_annual", 0.0)),
+                    "var_95": float(analytics.get("var_95", 0.0)),
+                    "cvar_95": float(analytics.get("cvar_95", 0.0)),
+                    "beta": float(analytics.get("beta", 0.0))
                 })
-            
+
             if results:
                 out_df = pl.DataFrame(results)
                 out_table = out_df.to_arrow()
@@ -81,14 +61,15 @@ class QuantFlightServer(flight.FlightServerBase):
     def _write_empty_response(self, writer):
         schema = pa.schema([
             ("amfi_code", pa.string()),
-            ("hurst", pa.float64()),
-            ("hurst_regime", pa.string()),
-            ("ou_half_life", pa.float64()),
-            ("ou_valid", pa.bool_()),
-            ("hmm_state", pa.string()),
-            ("hmm_bull_prob", pa.float64()),
-            ("hmm_bear_prob", pa.float64()),
-            ("hmm_transition_bear", pa.float64())
+            ("status", pa.string()),
+            ("sharpe", pa.float64()),
+            ("sortino", pa.float64()),
+            ("calmar", pa.float64()),
+            ("max_drawdown", pa.float64()),
+            ("volatility_annual", pa.float64()),
+            ("var_95", pa.float64()),
+            ("cvar_95", pa.float64()),
+            ("beta", pa.float64())
         ])
         out_table = pa.Table.from_batches([], schema)
         writer.begin(schema)

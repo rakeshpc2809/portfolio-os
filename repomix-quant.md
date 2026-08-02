@@ -43,6 +43,7 @@ parsers/
   cas_parser.py
   models.py
 quant/
+  analytics_engine.py
   quant_engine.py
 app.py
 Dockerfile
@@ -214,6 +215,47 @@ populate_by_name = True
 def unit_delta(self) -> Decimal
 ```
 
+## File: quant/analytics_engine.py
+```python
+qs = None
+⋮----
+def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None)
+⋮----
+idx = pd.to_datetime(dates)
+s = pd.Series(nav_series, index=idx)
+⋮----
+s = pd.Series(nav_series)
+⋮----
+returns = s.pct_change().dropna()
+⋮----
+sharpe = float(qs.stats.sharpe(returns))
+sortino = float(qs.stats.sortino(returns))
+calmar = float(qs.stats.calmar(returns))
+max_dd = float(qs.stats.max_drawdown(returns))
+vol = float(qs.stats.volatility(returns))
+var95 = float(qs.stats.value_at_risk(returns))
+cvar95 = float(qs.stats.conditional_value_at_risk(returns))
+⋮----
+beta = 0.0
+⋮----
+beta_val = qs.stats.greeks(returns, benchmark_returns).get("beta", 0.0)
+beta = float(beta_val) if not np.isnan(beta_val) else 0.0
+⋮----
+# Fallback vectorized pandas/numpy calculation if quantstats is loading
+mean_ret = returns.mean()
+std_ret = returns.std()
+sharpe = float((mean_ret / std_ret) * np.sqrt(252)) if std_ret > 0 else 0.0
+sortino = sharpe
+cum_returns = (1 + returns).cumprod()
+peak = cum_returns.cummax()
+dd = (cum_returns - peak) / peak
+max_dd = float(dd.min())
+calmar = float(mean_ret * 252 / abs(max_dd)) if abs(max_dd) > 0 else 0.0
+vol = float(std_ret * np.sqrt(252))
+var95 = float(returns.quantile(0.05))
+cvar95 = float(returns[returns <= var95].mean()) if not returns[returns <= var95].empty else var95
+```
+
 ## File: quant/quant_engine.py
 ```python
 logger = logging.getLogger(__name__)
@@ -347,31 +389,16 @@ location = flight.Location.for_grpc_tcp(host, port)
 ⋮----
 def do_exchange(self, context, descriptor, reader, writer)
 ⋮----
-# Read input table containing amfi_code and nav_value
 table = reader.read_all()
 ⋮----
 df = pl.from_arrow(table)
-⋮----
 results = []
 unique_codes = df["amfi_code"].unique().to_list()
 ⋮----
 fund_df = df.filter(pl.col("amfi_code") == code)
 nav_values = fund_df["nav_value"].to_list()
 ⋮----
-# Compute returns
-returns = []
-⋮----
-prev = nav_values[i]
-curr = nav_values[i+1]
-⋮----
-# Calculate metrics
-hurst = calculate_hurst_vectorized(returns)
-h_regime = "MEAN_REVERTING" if hurst < 0.47 else ("TRENDING" if hurst > 0.53 else "RANDOM_WALK")
-⋮----
-ou = calculate_ou_params_vectorized(nav_values)
-⋮----
-state_map = {0: "CALM_BULL", 1: "STRESSED_NEUTRAL", 2: "VOLATILE_BEAR"}
-hmm_state_str = state_map.get(states[-1], "UNKNOWN") if states else "UNKNOWN"
+analytics = compute_fund_analytics(nav_values)
 ⋮----
 out_df = pl.DataFrame(results)
 out_table = out_df.to_arrow()
@@ -401,6 +428,8 @@ hmmlearn>=0.3.2
 numpy>=1.26.0
 scipy>=1.12.0
 yfinance>=0.2.37
+pandas>=2.2.0
+quantstats>=0.0.62
 pydantic>=2.6.0
 python-multipart>=0.0.9
 ```

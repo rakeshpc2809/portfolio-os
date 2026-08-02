@@ -224,32 +224,36 @@ public class SyncController {
                     Map<String, Object> metrics = entry.getValue();
                     if (metrics == null) continue;
 
+                    String status = String.valueOf(metrics.getOrDefault("status", "INSUFFICIENT_HISTORY"));
+                    if (!"OK".equalsIgnoreCase(status)) {
+                        continue;
+                    }
+
                     String schemeName = isinToNameMap.getOrDefault(isin, isin);
 
-                    Object hurstObj = metrics.get("hurst");
-                    Object regimeObj = metrics.get("hurst_regime");
-                    Object halfLifeObj = metrics.get("ou_half_life");
+                    Object sharpeObj = metrics.get("sharpe");
+                    Object maxDdObj = metrics.get("max_drawdown");
 
-                    if (hurstObj instanceof Number hurst && regimeObj != null) {
-                        String regimeStr = String.valueOf(regimeObj);
+                    if (sharpeObj instanceof Number sharpe && sharpe.doubleValue() >= 1.2) {
                         radarSignals.add(new RadarSignalDto(
-                            "QUANT_HURST",
+                            "QUANT_ANALYTICS",
                             schemeName,
-                            "QUANT SIDE-CAR: " + regimeStr,
-                            schemeName + " displays Hurst Exponent H = " + String.format("%.2f", hurst.doubleValue()) + " (" + regimeStr + ").",
+                            "QUANT STATS: HIGH SHARPE (" + String.format("%.2f", sharpe.doubleValue()) + ")",
+                            schemeName + " displays a risk-adjusted Sharpe ratio of " + String.format("%.2f", sharpe.doubleValue()) + " over tracked NAV history.",
                             "INFO",
-                            "H = " + String.format("%.2f", hurst.doubleValue())
+                            "Sharpe " + String.format("%.2f", sharpe.doubleValue())
                         ));
                     }
 
-                    if (halfLifeObj instanceof Number halfLife && halfLife.doubleValue() > 0) {
+                    if (maxDdObj instanceof Number maxDd && Math.abs(maxDd.doubleValue()) >= 0.20) {
+                        double maxDdPct = Math.abs(maxDd.doubleValue()) * 100.0;
                         radarSignals.add(new RadarSignalDto(
-                            "QUANT_OU",
+                            "QUANT_ANALYTICS",
                             schemeName,
-                            "QUANT SIDE-CAR: OU MEAN REVERSION",
-                            schemeName + " valuation drift half-life τ = " + String.format("%.1f", halfLife.doubleValue()) + " days.",
-                            "INFO",
-                            "τ = " + String.format("%.1f", halfLife.doubleValue()) + "d"
+                            "QUANT STATS: DEEP DRAWDOWN (" + String.format("%.1f", maxDdPct) + "%)",
+                            schemeName + " max drawdown (" + String.format("%.1f", maxDdPct) + "%) exceeds 20% threshold — historical corrections deeper than buffer sizing.",
+                            "WARNING",
+                            "Max DD -" + String.format("%.1f", maxDdPct) + "%"
                         ));
                     }
                 }

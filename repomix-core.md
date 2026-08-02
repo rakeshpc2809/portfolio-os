@@ -436,24 +436,29 @@ for (Map.Entry<String, Map<String, Object>> entry : quantMetrics.entrySet()) {
 String isin = entry.getKey();
 Map<String, Object> metrics = entry.getValue();
 ⋮----
+String status = String.valueOf(metrics.getOrDefault("status", "INSUFFICIENT_HISTORY"));
+if (!"OK".equalsIgnoreCase(status)) {
+⋮----
 String schemeName = isinToNameMap.getOrDefault(isin, isin);
 ⋮----
-Object hurstObj = metrics.get("hurst");
-Object regimeObj = metrics.get("hurst_regime");
-Object halfLifeObj = metrics.get("ou_half_life");
+Object sharpeObj = metrics.get("sharpe");
+Object maxDdObj = metrics.get("max_drawdown");
 ⋮----
-String regimeStr = String.valueOf(regimeObj);
+if (sharpeObj instanceof Number sharpe && sharpe.doubleValue() >= 1.2) {
 radarSignals.add(new RadarSignalDto(
 ⋮----
-schemeName + " displays Hurst Exponent H = " + String.format("%.2f", hurst.doubleValue()) + " (" + regimeStr + ").",
+"QUANT STATS: HIGH SHARPE (" + String.format("%.2f", sharpe.doubleValue()) + ")",
+schemeName + " displays a risk-adjusted Sharpe ratio of " + String.format("%.2f", sharpe.doubleValue()) + " over tracked NAV history.",
 ⋮----
-"H = " + String.format("%.2f", hurst.doubleValue())
+"Sharpe " + String.format("%.2f", sharpe.doubleValue())
 ⋮----
-if (halfLifeObj instanceof Number halfLife && halfLife.doubleValue() > 0) {
+if (maxDdObj instanceof Number maxDd && Math.abs(maxDd.doubleValue()) >= 0.20) {
+double maxDdPct = Math.abs(maxDd.doubleValue()) * 100.0;
 ⋮----
-schemeName + " valuation drift half-life τ = " + String.format("%.1f", halfLife.doubleValue()) + " days.",
+"QUANT STATS: DEEP DRAWDOWN (" + String.format("%.1f", maxDdPct) + "%)",
+schemeName + " max drawdown (" + String.format("%.1f", maxDdPct) + "%) exceeds 20% threshold — historical corrections deeper than buffer sizing.",
 ⋮----
-"τ = " + String.format("%.1f", halfLife.doubleValue()) + "d"
+"Max DD -" + String.format("%.1f", maxDdPct) + "%"
 ⋮----
 System.err.println("Non-critical Quant Flight RPC signal extraction warning: " + ex.getMessage());
 ⋮----
