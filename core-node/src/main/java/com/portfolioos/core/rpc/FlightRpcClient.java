@@ -1,5 +1,6 @@
 package com.portfolioos.core.rpc;
 
+import com.portfolioos.core.persistence.DuckDbProjector.NavHistorySeriesEntry;
 import org.apache.arrow.flight.*;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
@@ -43,6 +44,16 @@ public class FlightRpcClient {
     }
 
     public Map<String, Map<String, Object>> computeQuantMetrics(Map<String, List<Double>> fundNavSeries) {
+        Map<String, NavHistorySeriesEntry> adapterMap = new HashMap<>();
+        if (fundNavSeries != null) {
+            for (Map.Entry<String, List<Double>> entry : fundNavSeries.entrySet()) {
+                adapterMap.put(entry.getKey(), new NavHistorySeriesEntry(entry.getValue(), Collections.emptyList()));
+            }
+        }
+        return computeQuantMetricsWithDates(adapterMap);
+    }
+
+    public Map<String, Map<String, Object>> computeQuantMetricsWithDates(Map<String, NavHistorySeriesEntry> fundNavSeries) {
         Map<String, Map<String, Object>> out = new HashMap<>();
         if (fundNavSeries == null || fundNavSeries.isEmpty()) {
             return out;
@@ -54,22 +65,33 @@ public class FlightRpcClient {
 
                 Schema inSchema = new Schema(List.of(
                     new Field("amfi_code", FieldType.nullable(new ArrowType.Utf8()), null),
+                    new Field("nav_date", FieldType.nullable(new ArrowType.Utf8()), null),
                     new Field("nav_value", FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)), null)
                 ));
 
                 try (VectorSchemaRoot inRoot = VectorSchemaRoot.create(inSchema, allocator)) {
-                    int totalRows = fundNavSeries.values().stream().mapToInt(List::size).sum();
+                    int totalRows = fundNavSeries.values().stream().mapToInt(e -> e.navs().size()).sum();
                     VarCharVector codeVec = (VarCharVector) inRoot.getVector("amfi_code");
+                    VarCharVector dateVec = (VarCharVector) inRoot.getVector("nav_date");
                     Float8Vector navVec = (Float8Vector) inRoot.getVector("nav_value");
                     codeVec.allocateNew(totalRows);
+                    dateVec.allocateNew(totalRows);
                     navVec.allocateNew(totalRows);
 
                     int row = 0;
-                    for (Map.Entry<String, List<Double>> entry : fundNavSeries.entrySet()) {
+                    for (Map.Entry<String, NavHistorySeriesEntry> entry : fundNavSeries.entrySet()) {
                         byte[] codeBytes = entry.getKey().getBytes(StandardCharsets.UTF_8);
-                        for (double nav : entry.getValue()) {
+                        List<Double> navs = entry.getValue().navs();
+                        List<String> dates = entry.getValue().dates();
+
+                        for (int i = 0; i < navs.size(); i++) {
                             codeVec.setSafe(row, codeBytes);
-                            navVec.setSafe(row, nav);
+                            if (i < dates.size() && dates.get(i) != null) {
+                                dateVec.setSafe(row, dates.get(i).getBytes(StandardCharsets.UTF_8));
+                            } else {
+                                dateVec.setSafe(row, "".getBytes(StandardCharsets.UTF_8));
+                            }
+                            navVec.setSafe(row, navs.get(i));
                             row++;
                         }
                     }

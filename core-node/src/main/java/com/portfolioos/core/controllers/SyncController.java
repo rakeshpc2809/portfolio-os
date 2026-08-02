@@ -11,6 +11,7 @@ import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.DuckDbProjector.NavHistorySeriesEntry;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.reporting.ExemptionTracker;
 import com.portfolioos.core.rpc.FlightRpcClient;
@@ -212,11 +213,11 @@ public class SyncController {
         harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
         radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 
-        // 2. PyArrow Flight RPC Quant Intelligence (from real DuckDB NAV time-series)
+        // 2. PyArrow Flight RPC Quant Intelligence (from real DuckDB NAV time-series with dates)
         try {
-            Map<String, List<Double>> navHistorySeries = duckDbProjector.getNavHistorySeries(heldIsins);
+            Map<String, NavHistorySeriesEntry> navHistorySeries = duckDbProjector.getNavHistorySeriesWithDates(heldIsins);
             if (!navHistorySeries.isEmpty()) {
-                Map<String, Map<String, Object>> quantMetrics = flightRpcClient.computeQuantMetrics(navHistorySeries);
+                Map<String, Map<String, Object>> quantMetrics = flightRpcClient.computeQuantMetricsWithDates(navHistorySeries);
                 Map<String, String> isinToNameMap = holdings.stream().collect(Collectors.toMap(FlatHoldingDto::isin, FlatHoldingDto::fundName, (a, b) -> a));
 
                 for (Map.Entry<String, Map<String, Object>> entry : quantMetrics.entrySet()) {

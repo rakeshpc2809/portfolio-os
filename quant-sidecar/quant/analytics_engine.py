@@ -21,9 +21,14 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
         }
 
     try:
-        if dates is not None and len(dates) == len(nav_series):
-            idx = pd.to_datetime(dates)
-            s = pd.Series(nav_series, index=idx)
+        if dates is not None and len(dates) == len(nav_series) and any(d for d in dates if d):
+            valid_pairs = [(nav, d) for nav, d in zip(nav_series, dates) if d]
+            if len(valid_pairs) >= 10:
+                vals, d_str = zip(*valid_pairs)
+                idx = pd.to_datetime(d_str)
+                s = pd.Series(vals, index=idx)
+            else:
+                s = pd.Series(nav_series)
         else:
             s = pd.Series(nav_series)
 
@@ -60,11 +65,15 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
                 except Exception:
                     beta = 0.0
         else:
-            # Fallback vectorized pandas/numpy calculation if quantstats is loading
+            # Vectorized fallback calculation with true Downside Deviation Sortino ratio
             mean_ret = returns.mean()
             std_ret = returns.std()
             sharpe = float((mean_ret / std_ret) * np.sqrt(252)) if std_ret > 0 else 0.0
-            sortino = sharpe
+            
+            downside_returns = returns[returns < 0]
+            downside_std = downside_returns.std() if not downside_returns.empty else 0.0
+            sortino = float((mean_ret / downside_std) * np.sqrt(252)) if downside_std > 0 else sharpe
+
             cum_returns = (1 + returns).cumprod()
             peak = cum_returns.cummax()
             dd = (cum_returns - peak) / peak

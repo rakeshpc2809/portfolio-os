@@ -425,11 +425,11 @@ harvestSignals.add(new RadarSignalDto(
 harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
 radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 ⋮----
-// 2. PyArrow Flight RPC Quant Intelligence (from real DuckDB NAV time-series)
+// 2. PyArrow Flight RPC Quant Intelligence (from real DuckDB NAV time-series with dates)
 ⋮----
-Map<String, List<Double>> navHistorySeries = duckDbProjector.getNavHistorySeries(heldIsins);
+Map<String, NavHistorySeriesEntry> navHistorySeries = duckDbProjector.getNavHistorySeriesWithDates(heldIsins);
 if (!navHistorySeries.isEmpty()) {
-Map<String, Map<String, Object>> quantMetrics = flightRpcClient.computeQuantMetrics(navHistorySeries);
+Map<String, Map<String, Object>> quantMetrics = flightRpcClient.computeQuantMetricsWithDates(navHistorySeries);
 Map<String, String> isinToNameMap = holdings.stream().collect(Collectors.toMap(FlatHoldingDto::isin, FlatHoldingDto::fundName, (a, b) -> a));
 ⋮----
 for (Map.Entry<String, Map<String, Object>> entry : quantMetrics.entrySet()) {
@@ -963,6 +963,12 @@ stmt.executeUpdate();
 System.err.println("DuckDB nav_history save failure: " + e.getMessage());
 ⋮----
 public Map<String, List<Double>> getNavHistorySeries(Set<String> assetIds) {
+Map<String, NavHistorySeriesEntry> full = getNavHistorySeriesWithDates(assetIds);
+⋮----
+for (Map.Entry<String, NavHistorySeriesEntry> entry : full.entrySet()) {
+result.put(entry.getKey(), entry.getValue().navs());
+⋮----
+public Map<String, NavHistorySeriesEntry> getNavHistorySeriesWithDates(Set<String> assetIds) {
 ⋮----
 if (assetIds == null || assetIds.isEmpty()) return result;
 ⋮----
@@ -970,12 +976,13 @@ stmt.setString(1, assetId);
 ⋮----
 try (ResultSet rs = stmt.executeQuery()) {
 while (rs.next()) {
-series.add(rs.getDouble("nav"));
+dates.add(rs.getString("nav_date"));
+navs.add(rs.getDouble("nav"));
 ⋮----
-if (!series.isEmpty()) {
-result.put(assetId, series);
+if (!navs.isEmpty()) {
+result.put(assetId, new NavHistorySeriesEntry(navs, dates));
 ⋮----
-System.err.println("Failed to fetch NAV history series from DuckDB: " + e.getMessage());
+System.err.println("Failed to fetch NAV history series with dates from DuckDB: " + e.getMessage());
 ```
 
 ## File: src/main/java/com/portfolioos/core/persistence/SqliteEventStore.java
@@ -1444,6 +1451,13 @@ this.port = uri.getPort() > 0 ? uri.getPort() : 8001;
 ⋮----
 public Map<String, Map<String, Object>> computeQuantMetrics(Map<String, List<Double>> fundNavSeries) {
 ⋮----
+for (Map.Entry<String, List<Double>> entry : fundNavSeries.entrySet()) {
+adapterMap.put(entry.getKey(), new NavHistorySeriesEntry(entry.getValue(), Collections.emptyList()));
+⋮----
+return computeQuantMetricsWithDates(adapterMap);
+⋮----
+public Map<String, Map<String, Object>> computeQuantMetricsWithDates(Map<String, NavHistorySeriesEntry> fundNavSeries) {
+⋮----
 if (fundNavSeries == null || fundNavSeries.isEmpty()) {
 ⋮----
 Location location = Location.forGrpcInsecure(host, port);
@@ -1451,20 +1465,31 @@ try (FlightClient client = FlightClient.builder(allocator, location).build()) {
 ⋮----
 Schema inSchema = new Schema(List.of(
 new Field("amfi_code", FieldType.nullable(new ArrowType.Utf8()), null),
+new Field("nav_date", FieldType.nullable(new ArrowType.Utf8()), null),
 new Field("nav_value", FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)), null)
 ⋮----
 try (VectorSchemaRoot inRoot = VectorSchemaRoot.create(inSchema, allocator)) {
-int totalRows = fundNavSeries.values().stream().mapToInt(List::size).sum();
+int totalRows = fundNavSeries.values().stream().mapToInt(e -> e.navs().size()).sum();
 VarCharVector codeVec = (VarCharVector) inRoot.getVector("amfi_code");
+VarCharVector dateVec = (VarCharVector) inRoot.getVector("nav_date");
 Float8Vector navVec = (Float8Vector) inRoot.getVector("nav_value");
 codeVec.allocateNew(totalRows);
+dateVec.allocateNew(totalRows);
 navVec.allocateNew(totalRows);
 ⋮----
-for (Map.Entry<String, List<Double>> entry : fundNavSeries.entrySet()) {
+for (Map.Entry<String, NavHistorySeriesEntry> entry : fundNavSeries.entrySet()) {
 byte[] codeBytes = entry.getKey().getBytes(StandardCharsets.UTF_8);
-for (double nav : entry.getValue()) {
+List<Double> navs = entry.getValue().navs();
+List<String> dates = entry.getValue().dates();
+⋮----
+for (int i = 0; i < navs.size(); i++) {
 codeVec.setSafe(row, codeBytes);
-navVec.setSafe(row, nav);
+if (i < dates.size() && dates.get(i) != null) {
+dateVec.setSafe(row, dates.get(i).getBytes(StandardCharsets.UTF_8));
+⋮----
+dateVec.setSafe(row, "".getBytes(StandardCharsets.UTF_8));
+⋮----
+navVec.setSafe(row, navs.get(i));
 ⋮----
 inRoot.setRowCount(totalRows);
 ⋮----

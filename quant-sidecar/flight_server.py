@@ -28,8 +28,9 @@ class QuantFlightServer(flight.FlightServerBase):
             for code in unique_codes:
                 fund_df = df.filter(pl.col("amfi_code") == code)
                 nav_values = fund_df["nav_value"].to_list()
+                dates_list = fund_df["nav_date"].to_list() if "nav_date" in fund_df.columns else None
 
-                analytics = compute_fund_analytics(nav_values)
+                analytics = compute_fund_analytics(nav_values, dates=dates_list)
 
                 results.append({
                     "amfi_code": str(code),

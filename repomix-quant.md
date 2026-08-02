@@ -44,7 +44,6 @@ parsers/
   models.py
 quant/
   analytics_engine.py
-  quant_engine.py
 app.py
 Dockerfile
 flight_server.py
@@ -221,8 +220,10 @@ qs = None
 ⋮----
 def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None)
 ⋮----
-idx = pd.to_datetime(dates)
-s = pd.Series(nav_series, index=idx)
+valid_pairs = [(nav, d) for nav, d in zip(nav_series, dates) if d]
+⋮----
+idx = pd.to_datetime(d_str)
+s = pd.Series(vals, index=idx)
 ⋮----
 s = pd.Series(nav_series)
 ⋮----
@@ -241,11 +242,15 @@ beta = 0.0
 beta_val = qs.stats.greeks(returns, benchmark_returns).get("beta", 0.0)
 beta = float(beta_val) if not np.isnan(beta_val) else 0.0
 ⋮----
-# Fallback vectorized pandas/numpy calculation if quantstats is loading
+# Vectorized fallback calculation with true Downside Deviation Sortino ratio
 mean_ret = returns.mean()
 std_ret = returns.std()
 sharpe = float((mean_ret / std_ret) * np.sqrt(252)) if std_ret > 0 else 0.0
-sortino = sharpe
+⋮----
+downside_returns = returns[returns < 0]
+downside_std = downside_returns.std() if not downside_returns.empty else 0.0
+sortino = float((mean_ret / downside_std) * np.sqrt(252)) if downside_std > 0 else sharpe
+⋮----
 cum_returns = (1 + returns).cumprod()
 peak = cum_returns.cummax()
 dd = (cum_returns - peak) / peak
@@ -254,64 +259,6 @@ calmar = float(mean_ret * 252 / abs(max_dd)) if abs(max_dd) > 0 else 0.0
 vol = float(std_ret * np.sqrt(252))
 var95 = float(returns.quantile(0.05))
 cvar95 = float(returns[returns <= var95].mean()) if not returns[returns <= var95].empty else var95
-```
-
-## File: quant/quant_engine.py
-```python
-logger = logging.getLogger(__name__)
-⋮----
-def calculate_hurst_vectorized(ts: List[float]) -> float
-⋮----
-"""Vectorized Hurst Exponent calculation using Rescaled Range."""
-arr = np.array(ts)
-⋮----
-lags = range(2, 20)
-tau = [np.sqrt(np.std(np.subtract(arr[lag:], arr[:-lag]))) for lag in lags]
-poly = np.polyfit(np.log(lags), np.log(tau), 1)
-⋮----
-def calculate_ou_params_vectorized(navs: List[float]) -> dict
-⋮----
-"""Vectorized Ornstein-Uhlenbeck parameter estimation."""
-arr = np.array(navs)
-⋮----
-y = np.log(arr)
-x = y[:-1]
-dy = np.diff(y)
-⋮----
-# Regression: dy = (a + b*x)
-poly = np.polyfit(x, dy, 1)
-⋮----
-if b >= 0: # Non-stationary / diverging process
-⋮----
-theta = -b
-mu = -a / b
-half_life = np.log(2) / theta
-⋮----
-def calculate_hmm_regimes(returns_list: List[float], n_states: int = 3) -> Tuple[List[int], float, float, float]
-⋮----
-"""Fits HMM and returns states, bull probability, bear probability, and transit prob to bear."""
-⋮----
-data = np.array(returns_list).reshape(-1, 1)
-model = hmm.GaussianHMM(n_components=n_states, covariance_type="diag", n_iter=1000, random_state=42)
-⋮----
-means = model.means_.flatten()
-# Sort indices by mean returns descending: [Bull, Neutral, Bear]
-sorted_indices = np.argsort(means)[::-1]
-rank_map = {orig_idx: rank for rank, orig_idx in enumerate(sorted_indices)}
-⋮----
-# Predictions
-states_raw = model.predict(data)
-states_mapped = [rank_map[s] for s in states_raw]
-curr_state_raw = states_raw[-1]
-⋮----
-# Probabilities
-probs_raw = model.predict_proba(data)[-1]
-bull_p = float(probs_raw[sorted_indices[0]])
-bear_p = float(probs_raw[sorted_indices[2]])
-⋮----
-# Transition matrix
-trans_mat_raw = model.transmat_
-to_bear_p = float(trans_mat_raw[curr_state_raw][sorted_indices[2]])
 ```
 
 ## File: app.py
@@ -397,8 +344,9 @@ unique_codes = df["amfi_code"].unique().to_list()
 ⋮----
 fund_df = df.filter(pl.col("amfi_code") == code)
 nav_values = fund_df["nav_value"].to_list()
+dates_list = fund_df["nav_date"].to_list() if "nav_date" in fund_df.columns else None
 ⋮----
-analytics = compute_fund_analytics(nav_values)
+analytics = compute_fund_analytics(nav_values, dates=dates_list)
 ⋮----
 out_df = pl.DataFrame(results)
 out_table = out_df.to_arrow()
@@ -423,8 +371,6 @@ pyarrow>=15.0.0
 pdfplumber>=0.11.0
 casparser>=0.7.0
 casparser-isin>=0.3.0
-scikit-learn>=1.4.0
-hmmlearn>=0.3.2
 numpy>=1.26.0
 scipy>=1.12.0
 yfinance>=0.2.37

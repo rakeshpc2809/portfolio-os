@@ -19,6 +19,11 @@ public class DuckDbProjector {
     private final String jdbcUrl;
     private Connection connection;
 
+    public static record NavHistorySeriesEntry(
+        List<Double> navs,
+        List<String> dates
+    ) {}
+
     public DuckDbProjector() {
         this(System.getenv("DUCKDB_PATH") != null && !System.getenv("DUCKDB_PATH").isBlank()
              ? System.getenv("DUCKDB_PATH") : "data/tax_ledger.duckdb");
@@ -168,28 +173,39 @@ public class DuckDbProjector {
     }
 
     public Map<String, List<Double>> getNavHistorySeries(Set<String> assetIds) {
+        Map<String, NavHistorySeriesEntry> full = getNavHistorySeriesWithDates(assetIds);
         Map<String, List<Double>> result = new HashMap<>();
+        for (Map.Entry<String, NavHistorySeriesEntry> entry : full.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().navs());
+        }
+        return result;
+    }
+
+    public Map<String, NavHistorySeriesEntry> getNavHistorySeriesWithDates(Set<String> assetIds) {
+        Map<String, NavHistorySeriesEntry> result = new HashMap<>();
         if (assetIds == null || assetIds.isEmpty()) return result;
 
         try {
             Connection conn = getConnection();
-            String sql = "SELECT asset_id, nav FROM nav_history WHERE asset_id = ? ORDER BY nav_date ASC";
+            String sql = "SELECT asset_id, nav_date, nav FROM nav_history WHERE asset_id = ? ORDER BY nav_date ASC";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 for (String assetId : assetIds) {
                     stmt.setString(1, assetId);
-                    List<Double> series = new ArrayList<>();
+                    List<Double> navs = new ArrayList<>();
+                    List<String> dates = new ArrayList<>();
                     try (ResultSet rs = stmt.executeQuery()) {
                         while (rs.next()) {
-                            series.add(rs.getDouble("nav"));
+                            dates.add(rs.getString("nav_date"));
+                            navs.add(rs.getDouble("nav"));
                         }
                     }
-                    if (!series.isEmpty()) {
-                        result.put(assetId, series);
+                    if (!navs.isEmpty()) {
+                        result.put(assetId, new NavHistorySeriesEntry(navs, dates));
                     }
                 }
             }
         } catch (SQLException e) {
-            System.err.println("Failed to fetch NAV history series from DuckDB: " + e.getMessage());
+            System.err.println("Failed to fetch NAV history series with dates from DuckDB: " + e.getMessage());
         }
         return result;
     }
