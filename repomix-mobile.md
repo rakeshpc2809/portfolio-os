@@ -192,7 +192,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -213,7 +213,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -223,8 +222,8 @@ import com.portfolioos.mobile.model.FlatTaxLotDto
 import com.portfolioos.mobile.model.RadarSignalDto
 import com.portfolioos.mobile.model.SyncSnapshot
 import com.portfolioos.mobile.util.formatInr
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.absoluteValue
 // Bleeding-Edge Material 3 Expressive Vibrant Obsidian Palette
 val M3ObsidianDark = Color(0xFF030712)
 val M3SurfaceCard = Color(0xFF0D1424)
@@ -339,30 +338,18 @@ fun DashboardScreen(
                     val holdings = snapshot.holdings ?: emptyList()
                     val radarSignals = snapshot.radarSignals ?: emptyList()
                     val taxLots = snapshot.taxLots ?: emptyList()
-                    // Fluid Horizontal Swipe Pager with Edge-to-Edge Parallax Scale Transitions
+                    // High-performance 120fps Horizontal Pager with zero per-frame transform overhead
                     HorizontalPager(
                         state = pagerState,
+                        beyondBoundsPageCount = 1,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
                     ) { page ->
-                        val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue
-                        val scale = lerp(0.92f, 1.0f, 1f - pageOffset.coerceIn(0f, 1f))
-                        val alpha = lerp(0.5f, 1.0f, 1f - pageOffset.coerceIn(0f, 1f))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    scaleX = scale
-                                    scaleY = scale
-                                    this.alpha = alpha
-                                }
-                        ) {
-                            when (page) {
-                                0 -> HoldingsView(syncInfo, holdings)
-                                1 -> RadarSignalsView(radarSignals)
-                                2 -> GroupedTaxLotsView(taxLots, holdings)
-                            }
+                        when (page) {
+                            0 -> HoldingsView(syncInfo, holdings)
+                            1 -> RadarSignalsView(radarSignals)
+                            2 -> GroupedTaxLotsView(taxLots, holdings)
                         }
                     }
                 }
@@ -448,9 +435,6 @@ fun DashboardScreen(
         }
     }
 }
-fun lerp(start: Float, stop: Float, fraction: Float): Float {
-    return start + fraction * (stop - start)
-}
 @Composable
 fun ExpressiveNavPill(
     selected: Boolean,
@@ -495,6 +479,26 @@ fun ExpressiveNavPill(
     }
 }
 @Composable
+fun SlideInEntrance(
+    index: Int,
+    content: @Composable () -> Unit
+) {
+    var isVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(index * 60L)
+        isVisible = true
+    }
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = slideInHorizontally(
+            initialOffsetX = { -it / 2 },
+            animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing)
+        ) + fadeIn(animationSpec = tween(durationMillis = 600))
+    ) {
+        content()
+    }
+}
+@Composable
 fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: List<FlatHoldingDto>) {
     LazyColumn(
         modifier = Modifier
@@ -505,104 +509,106 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
     ) {
         item {
             Spacer(modifier = Modifier.height(4.dp))
-            // Expressive M3 Hero Net Worth Card (en-IN Currency Format)
-            Card(
-                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 10.dp, bottomEnd = 32.dp, bottomStart = 10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.5.dp,
-                        brush = Brush.linearGradient(listOf(M3ElectricLime.copy(alpha = 0.7f), M3NeonCyan.copy(alpha = 0.35f))),
-                        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 10.dp, bottomEnd = 32.dp, bottomStart = 10.dp)
-                    )
-            ) {
-                Box(
+            SlideInEntrance(index = 0) {
+                // Expressive M3 Hero Net Worth Card (en-IN Currency Format)
+                Card(
+                    shape = RoundedCornerShape(topStart = 32.dp, topEnd = 10.dp, bottomEnd = 32.dp, bottomStart = 10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(Color(0xFF142600), Color(0xFF062C33), Color(0xFF0D1424))
-                            )
+                        .border(
+                            width = 1.5.dp,
+                            brush = Brush.linearGradient(listOf(M3ElectricLime.copy(alpha = 0.7f), M3NeonCyan.copy(alpha = 0.35f))),
+                            shape = RoundedCornerShape(topStart = 32.dp, topEnd = 10.dp, bottomEnd = 32.dp, bottomStart = 10.dp)
                         )
-                        .padding(22.dp)
                 ) {
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                color = M3ElectricLime.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(100.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(Color(0xFF142600), Color(0xFF062C33), Color(0xFF0D1424))
+                                )
+                            )
+                            .padding(22.dp)
+                    ) {
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "NET WORTH VALUATION",
-                                    color = M3ElectricLime,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 1.5.sp,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
+                                Surface(
+                                    color = M3ElectricLime.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(100.dp)
+                                ) {
+                                    Text(
+                                        text = "NET WORTH VALUATION",
+                                        color = M3ElectricLime,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 1.5.sp,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                                Surface(
+                                    color = M3GreenPositive.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(100.dp)
+                                ) {
+                                    Text(
+                                        text = syncInfo?.xirrPercentage ?: "0.00% XIRR",
+                                        color = M3GreenPositive,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
                             }
-                            Surface(
-                                color = M3GreenPositive.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(100.dp)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = formatInr(syncInfo?.currentValue ?: 0.0),
+                                color = Color.White,
+                                fontSize = 36.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Divider(color = Color.White.copy(alpha = 0.1f))
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(
-                                    text = syncInfo?.xirrPercentage ?: "0.00% XIRR",
-                                    color = M3GreenPositive,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = formatInr(syncInfo?.currentValue ?: 0.0),
-                            color = Color.White,
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Divider(color = Color.White.copy(alpha = 0.1f))
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Total Invested",
-                                    color = M3TextMuted,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = formatInr(syncInfo?.totalInvested ?: 0.0),
-                                    color = Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "Unrealized Gain",
-                                    color = M3TextMuted,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                val gain = syncInfo?.unrealizedGain ?: 0.0
-                                Text(
-                                    text = "${if (gain >= 0) "+" else ""}${formatInr(gain)}",
-                                    color = if (gain >= 0) M3GreenPositive else Color.Red,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
+                                Column {
+                                    Text(
+                                        text = "Total Invested",
+                                        color = M3TextMuted,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = formatInr(syncInfo?.totalInvested ?: 0.0),
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = "Unrealized Gain",
+                                        color = M3TextMuted,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    val gain = syncInfo?.unrealizedGain ?: 0.0
+                                    Text(
+                                        text = "${if (gain >= 0) "+" else ""}${formatInr(gain)}",
+                                        color = if (gain >= 0) M3GreenPositive else Color.Red,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
                             }
                         }
                     }
@@ -610,10 +616,14 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
             }
         }
         item {
-            DonutAllocationChart(holdings = holdings)
+            SlideInEntrance(index = 1) {
+                DonutAllocationChart(holdings = holdings)
+            }
         }
         item {
-            PerformanceBarChart(holdings = holdings)
+            SlideInEntrance(index = 2) {
+                PerformanceBarChart(holdings = holdings)
+            }
         }
         item {
             Row(
@@ -658,8 +668,10 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
                 }
             }
         } else {
-            items(holdings) { holding ->
-                M3HoldingCard(holding)
+            itemsIndexed(holdings, key = { _, h -> h.isin.ifEmpty { h.fundName } }) { idx, holding ->
+                SlideInEntrance(index = idx + 3) {
+                    M3HoldingCard(holding)
+                }
             }
         }
     }
@@ -771,8 +783,10 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
                 }
             }
         } else {
-            items(radarSignals) { signal ->
-                M3RadarCard(signal)
+            itemsIndexed(radarSignals, key = { idx, s -> "${s.title}-$idx" }) { idx, signal ->
+                SlideInEntrance(index = idx) {
+                    M3RadarCard(signal)
+                }
             }
         }
     }
@@ -865,9 +879,11 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
                 }
             }
         } else {
-            items(groupedLots.entries.toList()) { (isin, lots) ->
+            itemsIndexed(groupedLots.entries.toList(), key = { _, entry -> entry.key }) { idx, (isin, lots) ->
                 val schemeName = nameMap[isin] ?: isin
-                GroupedSchemeTaxLotCard(schemeName = schemeName, isin = isin, lots = lots)
+                SlideInEntrance(index = idx) {
+                    GroupedSchemeTaxLotCard(schemeName = schemeName, isin = isin, lots = lots)
+                }
             }
         }
     }
@@ -875,9 +891,9 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
 @Composable
 fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTaxLotDto>) {
     var expanded by remember { mutableStateOf(false) }
-    val ltcgCount = lots.count { it.isLongTerm }
-    val stcgCount = lots.size - ltcgCount
-    val totalUnits = lots.sumOf { it.units }
+    val ltcgCount = remember(lots) { lots.count { it.isLongTerm } }
+    val stcgCount = remember(lots) { lots.size - ltcgCount }
+    val totalUnits = remember(lots) { lots.sumOf { it.units } }
     Card(
         colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
         shape = RoundedCornerShape(20.dp),
