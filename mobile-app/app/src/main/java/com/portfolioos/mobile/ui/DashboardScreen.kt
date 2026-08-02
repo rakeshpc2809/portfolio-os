@@ -1,28 +1,45 @@
 package com.portfolioos.mobile.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.portfolioos.mobile.model.FlatHoldingDto
+import com.portfolioos.mobile.model.FlatTaxLotDto
 import com.portfolioos.mobile.model.RadarSignalDto
 import com.portfolioos.mobile.model.SyncSnapshot
 
-val ObsidianBg = Color(0xFF050811)
-val CardBg = Color(0xFF0C101C)
-val CyanBright = Color(0xFF06B6D4)
-val PurpleAccent = Color(0xFFA855F7)
-val GreenPositive = Color(0xFF10B981)
-val TextMuted = Color(0xFF64748B)
+// Material 3 Expressive Obsidian Dark Color Palette
+val M3ObsidianDark = Color(0xFF050811)
+val M3SurfaceCard = Color(0xFF0F1424)
+val M3SurfaceVariant = Color(0xFF181F33)
+val M3CyanPrimary = Color(0xFF06B6D4)
+val M3CyanContainer = Color(0xFF0A3440)
+val M3PurpleSecondary = Color(0xFFA855F7)
+val M3PurpleContainer = Color(0xFF321950)
+val M3GreenPositive = Color(0xFF10B981)
+val M3AmberWarning = Color(0xFFF59E0B)
+val M3TextMuted = Color(0xFF94A3B8)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,203 +48,310 @@ fun DashboardScreen(
     isLoading: Boolean,
     onRefresh: () -> Unit
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Portfolio OS",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 20.sp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            color = PurpleAccent.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
+    var selectedTab by remember { mutableStateOf(0) }
+
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            background = M3ObsidianDark,
+            surface = M3SurfaceCard,
+            surfaceVariant = M3SurfaceVariant,
+            primary = M3CyanPrimary,
+            primaryContainer = M3CyanContainer,
+            secondary = M3PurpleSecondary,
+            secondaryContainer = M3PurpleContainer
+        )
+    ) {
+        Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = "v3.0 Mobile",
-                                color = PurpleAccent,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                text = "PORTFOLIO OS",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 18.sp,
+                                letterSpacing = 1.sp,
+                                color = Color.White
+                            )
+                            Text(
+                                text = snapshot?.syncInfo?.fiscalYear?.let { "Fiscal Year $it" } ?: "Sync Active",
+                                fontSize = 11.sp,
+                                color = M3CyanPrimary,
+                                fontWeight = FontWeight.Bold
                             )
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = ObsidianBg
-                ),
-                actions = {
-                    IconButton(onClick = onRefresh) {
-                        Text(text = "🔄", fontSize = 16.sp)
-                    }
-                }
-            )
-        },
-        containerColor = ObsidianBg
-    ) { padding ->
-        if (isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = CyanBright)
-            }
-        } else if (snapshot == null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Core Node Offline",
-                        color = TextMuted,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = M3ObsidianDark
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = onRefresh,
-                        colors = ButtonDefaults.buttonColors(containerColor = CyanBright)
-                    ) {
-                        Text(text = "Connect to Core Node", color = Color.Black)
-                    }
+                )
+            },
+            bottomBar = {
+                NavigationBar(
+                    containerColor = M3SurfaceCard,
+                    contentColor = M3CyanPrimary
+                ) {
+                    NavigationBarItem(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        icon = { Icon(Icons.Default.Star, contentDescription = "Holdings") },
+                        label = { Text("Holdings", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = M3CyanPrimary,
+                            indicatorColor = M3CyanContainer
+                        )
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        icon = { Icon(Icons.Default.Notifications, contentDescription = "Radar") },
+                        label = { Text("AI Radar", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = M3PurpleSecondary,
+                            indicatorColor = M3PurpleContainer
+                        )
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        icon = { Icon(Icons.Default.List, contentDescription = "Tax Lots") },
+                        label = { Text("Tax Lots", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = M3CyanPrimary,
+                            indicatorColor = M3CyanContainer
+                        )
+                    )
                 }
-            }
-        } else {
-            val radarSignals = snapshot.radarSignals ?: emptyList()
-            val holdings = snapshot.holdings ?: emptyList()
-            val syncInfo = snapshot.syncInfo
-
-            LazyColumn(
+            },
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = onRefresh,
+                    containerColor = M3CyanPrimary,
+                    contentColor = Color.Black,
+                    shape = CircleShape
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Sync Refresh")
+                }
+            },
+            containerColor = M3ObsidianDark
+        ) { padding ->
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                item {
-                    // Net Worth & XIRR Overview Card
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = CardBg),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth()
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "PORTFOLIO XIRR",
-                                color = TextMuted,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = syncInfo?.xirrFormatted ?: "0.00%",
-                                color = CyanBright,
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                        CircularProgressIndicator(color = M3CyanPrimary)
+                    }
+                } else if (snapshot == null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.padding(24.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = "Ledger Hash: ${(syncInfo?.ledgerHash ?: "00000000").take(8)}...",
-                                    color = TextMuted,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = "FY ${syncInfo?.fiscalYear ?: "2026-27"}",
-                                    color = GreenPositive,
-                                    fontSize = 11.sp,
+                                    text = "Core Node Disconnected",
+                                    color = Color.White,
+                                    fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Ensure Core Node container is running on port 8080.",
+                                    color = M3TextMuted,
+                                    fontSize = 12.sp
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = onRefresh,
+                                    colors = ButtonDefaults.buttonColors(containerColor = M3CyanPrimary)
+                                ) {
+                                    Text("Retry Connection", color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
-                }
+                } else {
+                    val syncInfo = snapshot.syncInfo
+                    val holdings = snapshot.holdings ?: emptyList()
+                    val radarSignals = snapshot.radarSignals ?: emptyList()
+                    val taxLots = snapshot.taxLots ?: emptyList()
 
-                // AI Radar Signals Section
-                if (radarSignals.isNotEmpty()) {
-                    item {
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        when (selectedTab) {
+                            0 -> HoldingsView(syncInfo, holdings)
+                            1 -> RadarSignalsView(radarSignals)
+                            2 -> TaxLotsView(taxLots)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: List<FlatHoldingDto>) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            // Expressive M3 Hero Metric Card
+            ElevatedCard(
+                colors = CardDefaults.elevatedCardColors(containerColor = M3CyanContainer),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        text = "MONEY-WEIGHTED XIRR",
+                        color = M3CyanPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = syncInfo?.xirrPercentage ?: "0.00%",
+                        color = Color.White,
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Divider(color = M3CyanPrimary.copy(alpha = 0.2f))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Text(
-                            text = "⚡ AI Decision Radar Signals",
-                            color = Color.White,
-                            fontSize = 16.sp,
+                            text = "Ledger: ${(syncInfo?.ledgerHash ?: "00000000").take(8)}...",
+                            color = M3TextMuted,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = "${holdings.size} Active Holdings",
+                            color = M3GreenPositive,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    items(radarSignals) { signal ->
-                        RadarSignalCard(signal)
-                    }
                 }
+            }
+        }
 
-                // Holdings List
-                item {
+        item {
+            Text(
+                text = "ACTIVE PORTFOLIO SCHEMES",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                color = M3TextMuted,
+                letterSpacing = 1.sp
+            )
+        }
+
+        if (holdings.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text(
-                        text = "📊 Open Holdings (${holdings.size})",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "No open holdings recorded in ledger.",
+                        color = M3TextMuted,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(20.dp)
                     )
                 }
-                items(holdings) { holding ->
-                    HoldingCard(holding)
-                }
-
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
             }
+        } else {
+            items(holdings) { holding ->
+                M3HoldingCard(holding)
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
 
 @Composable
-fun RadarSignalCard(signal: RadarSignalDto) {
+fun M3HoldingCard(holding: FlatHoldingDto) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = CardBg),
-        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "🚀", fontSize = 20.sp)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = signal.title ?: "Signal",
-                    color = CyanBright,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = signal.description ?: "",
-                    color = TextMuted,
-                    fontSize = 11.sp
-                )
-            }
-            Surface(
-                color = CyanBright.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(6.dp)
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = signal.actionText ?: "Review",
-                    color = CyanBright,
-                    fontSize = 10.sp,
+                    text = holding.fundName.ifEmpty { holding.isin },
+                    color = Color.White,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    color = if (holding.xirr >= 0) M3GreenPositive.copy(alpha = 0.15f) else Color.Red.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "${if (holding.xirr >= 0) "+" else ""}${holding.xirr}% XIRR",
+                        color = if (holding.xirr >= 0) M3GreenPositive else Color.Red,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Units: ${holding.totalUnits} · Avg: ₹${holding.avgCost}",
+                    color = M3TextMuted,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+                AssistChip(
+                    onClick = {},
+                    label = { Text(holding.assetBucket, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = M3SurfaceVariant,
+                        labelColor = M3CyanPrimary
+                    )
                 )
             }
         }
@@ -235,47 +359,180 @@ fun RadarSignalCard(signal: RadarSignalDto) {
 }
 
 @Composable
-fun HoldingCard(holding: FlatHoldingDto) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = CardBg),
-        shape = RoundedCornerShape(10.dp),
+fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "TAX & REBALANCE RADAR SIGNALS",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                color = M3TextMuted,
+                letterSpacing = 1.sp
+            )
+        }
+
+        if (radarSignals.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "✓ Portfolio tax status optimal. No immediate tax-loss harvesting recommendations.",
+                        color = M3GreenPositive,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(20.dp)
+                    )
+                }
+            }
+        } else {
+            items(radarSignals) { signal ->
+                M3RadarCard(signal)
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(80.dp))
+        }
+    }
+}
+
+@Composable
+fun M3RadarCard(signal: RadarSignalDto) {
+    val isWarning = signal.severity.equals("WARNING", ignoreCase = true)
+    val borderColor = if (isWarning) M3AmberWarning else M3CyanPrimary
+
+    OutlinedCard(
+        colors = CardDefaults.outlinedCardColors(containerColor = M3SurfaceCard),
+        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(borderColor)),
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = holding.assetName ?: "Asset",
+                    text = signal.title.ifEmpty { "Recommendation" },
                     color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "${holding.units} Units · Avg ₹${holding.costPrice}",
-                    color = TextMuted,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = "${if (holding.xirrPercentage >= 0) "+" else ""}${holding.xirrPercentage}%",
-                    color = if (holding.xirrPercentage >= 0) GreenPositive else Color.Red,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
+                    modifier = Modifier.weight(1f)
                 )
-                Text(
-                    text = holding.assetBucket ?: "",
-                    color = TextMuted,
-                    fontSize = 10.sp
-                )
+                Surface(
+                    color = borderColor.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = signal.badgeText.ifEmpty { "Action Required" },
+                        color = borderColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = signal.description,
+                color = M3TextMuted,
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun TaxLotsView(taxLots: List<FlatTaxLotDto>) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "OPEN FIFO TAX LOTS (${taxLots.size})",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                color = M3TextMuted,
+                letterSpacing = 1.sp
+            )
+        }
+
+        if (taxLots.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "No tax lots recorded.",
+                        color = M3TextMuted,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(20.dp)
+                    )
+                }
+            }
+        } else {
+            items(taxLots) { lot ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = lot.isin,
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "Acq: ${lot.buyDate} · ${lot.units} Units @ ₹${lot.costPerUnit}",
+                                color = M3TextMuted,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Surface(
+                            color = if (lot.isLongTerm) M3GreenPositive.copy(alpha = 0.15f) else M3AmberWarning.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = if (lot.isLongTerm) "LTCG" else "STCG (${lot.daysToLtcg}d)",
+                                color = if (lot.isLongTerm) M3GreenPositive else M3AmberWarning,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
