@@ -150,7 +150,7 @@ public class SqliteEventStore implements EventStorePort {
         if (events.isEmpty()) return List.of();
 
         List<String> hashes = new ArrayList<>();
-        String checkSql = "SELECT event_hash FROM tax_events WHERE asset_id = ? AND event_type = ? AND event_date = ? AND units = ? AND gross_amount = ? AND source_document_id = ? LIMIT 1";
+        String checkSql = "SELECT event_hash FROM tax_events WHERE asset_id = ? AND event_type = ? AND event_date = ? AND units = ? AND gross_amount = ? LIMIT 1";
         String insertSql = "INSERT INTO tax_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at, previous_hash, event_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = getConnection()) {
@@ -168,7 +168,6 @@ public class SqliteEventStore implements EventStorePort {
                     checkStmt.setString(3, event.eventDate().toString());
                     checkStmt.setString(4, event.units().toPlainString());
                     checkStmt.setString(5, event.grossAmount().toPlainString());
-                    checkStmt.setString(6, event.sourceDocumentId());
 
                     try (ResultSet rs = checkStmt.executeQuery()) {
                         if (rs.next()) {

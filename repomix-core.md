@@ -1087,7 +1087,6 @@ checkStmt.setString(2, event.eventType().name());
 checkStmt.setString(3, event.eventDate().toString());
 checkStmt.setString(4, event.units().toPlainString());
 checkStmt.setString(5, event.grossAmount().toPlainString());
-checkStmt.setString(6, event.sourceDocumentId());
 ⋮----
 try (ResultSet rs = checkStmt.executeQuery()) {
 ⋮----
