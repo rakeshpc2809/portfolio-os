@@ -7,23 +7,39 @@ import {
   fetchDecisionRadar
 } from './js/modules/tax.js';
 import {
-  fetchInsuranceChecklist
-} from './js/modules/insurance.js';
-import {
   updatePortfolioSummary,
   renderHoldingsTable,
-  renderPerformanceChart,
   renderAllocationChart,
   renderCategoryChart,
   fetchConsolidationPreviewData,
   fetchRebalancePreview,
   fetchGoalSummary,
   fetchFireSummary,
-  fetchBucketRebalance,
-  initConfigurator
+  fetchBucketRebalance
 } from './js/modules/portfolio.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Tab Switching Handler
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.getAttribute('data-tab');
+      tabBtns.forEach(b => b.classList.remove('active'));
+      tabContents.forEach(c => c.classList.remove('active'));
+
+      btn.classList.add('active');
+      const content = document.getElementById(`tab-${target}`);
+      if (content) content.classList.add('active');
+
+      setTimeout(() => {
+        if (state.charts.allocChart) state.charts.allocChart.resize();
+        if (state.charts.categoryChart) state.charts.categoryChart.resize();
+      }, 50);
+    });
+  });
+
   const fySelect = document.getElementById('fySelect');
   if (fySelect) {
     setCurrentFy(fySelect.value);
@@ -36,7 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   fetchLiveMetrics();
-  initConfigurator();
 
   // Export ZIP button listener
   const exportZipBtn = document.getElementById('exportZipBtn');
@@ -89,11 +104,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const result = await res.json().catch(() => null);
 
-        if (res.ok && result && (result.status === 'SUCCESS' || result.eventsIngested !== undefined)) {
-          showToast(`Statement ingested successfully (${result.eventsIngested || 0} events).`, 'success');
+        if (res.ok && result && (result.status === 'SUCCESS' || Array.isArray(result) || result.eventsIngested !== undefined)) {
+          const count = Array.isArray(result) ? result.length : (result.eventsIngested || 0);
+          showToast(`Statement ingested successfully (${count} events).`, 'success');
           fetchLiveMetrics();
         } else {
-          const msg = (result && result.message) ? result.message : 'Statement parsing failed or unauthorized. Check auth token.';
+          const msg = (result && result.message) ? result.message : 'Statement parsing failed or unauthorized.';
           showToast(msg, 'error');
         }
       } catch (err) {
@@ -132,7 +148,6 @@ async function fetchLiveMetrics() {
 
     fetchDecisionRadar();
     fetchRealizedLog();
-    fetchInsuranceChecklist();
     fetchGoalSummary();
     fetchFireSummary();
     fetchBucketRebalance();
@@ -146,12 +161,11 @@ async function fetchLiveMetrics() {
   }
 }
 
-// Global debounced resize listener for GPU-accelerated ECharts
+// Global debounced resize listener for ECharts
 let resizeTimer = null;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    if (state.charts.perfChart) state.charts.perfChart.resize();
     if (state.charts.allocChart) state.charts.allocChart.resize();
     if (state.charts.categoryChart) state.charts.categoryChart.resize();
   }, 150);

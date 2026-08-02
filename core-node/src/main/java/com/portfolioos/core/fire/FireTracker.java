@@ -23,7 +23,7 @@ public class FireTracker {
         private final int currentAge = 32;
         private final int targetRetirementAge = 45;
         private final BigDecimal swrPercent = new BigDecimal("3.0");
-        private final BigDecimal epfBalance = new BigDecimal("228000.00");
+        private final BigDecimal epfBalance = BigDecimal.ZERO;
         private final int epfUnlockAge = 58;
         private final BigDecimal realReturnRatePct = new BigDecimal("6.0");
         private final BigDecimal monthlyContribution = new BigDecimal("75000.00");
