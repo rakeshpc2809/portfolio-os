@@ -1,5 +1,5 @@
 This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
-The content has been processed where empty lines have been removed.
+The content has been processed where empty lines have been removed, content has been compressed (code blocks are separated by ⋮---- delimiter).
 
 # File Summary
 
@@ -33,6 +33,7 @@ The content is organized as follows:
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
 - Empty lines have been removed from all files
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
 - Files are sorted by Git change count (files with more changes are at the bottom)
 
 # Directory Structure
