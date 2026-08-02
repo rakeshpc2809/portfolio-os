@@ -1,18 +1,16 @@
-import { API_BASE } from '../api.js';
+import { API_BASE, fetchJson } from '../api.js';
 import { state } from '../state.js';
 import { formatINR } from '../utils.js';
 
 export async function fetchTaxMetrics() {
   try {
-    const exemptionRes = await fetch(`${API_BASE}/tax/exemption-status?fy=${state.currentFy}`);
-    if (exemptionRes.ok) {
-      const data = await exemptionRes.json();
+    const data = await fetchJson(`${API_BASE}/tax/exemption-status?fy=${state.currentFy}`).catch(() => null);
+    if (data) {
       updateExemptionMeter(data);
     }
 
-    const itr2Res = await fetch(`${API_BASE}/tax/reports/itr2?fy=${state.currentFy}`);
-    if (itr2Res.ok) {
-      const report = await itr2Res.json();
+    const report = await fetchJson(`${API_BASE}/tax/reports/itr2?fy=${state.currentFy}`).catch(() => null);
+    if (report) {
       updateReportMetrics(report);
     }
   } catch (e) {
@@ -49,14 +47,9 @@ export function updateReportMetrics(report) {
 
 export async function fetchDecisionRadar() {
   try {
-    const harvestRes = await fetch(`${API_BASE}/tax/harvest-opportunities`);
-    const opportunities = harvestRes.ok ? await harvestRes.json() : [];
-
-    const ladderRes = await fetch(`${API_BASE}/tax/maturation-ladder`);
-    const ladder = ladderRes.ok ? await ladderRes.json() : [];
-
-    const antiRes = await fetch(`${API_BASE}/portfolio/antigravity`);
-    const antigravityData = antiRes.ok ? await antiRes.json() : null;
+    const opportunities = await fetchJson(`${API_BASE}/tax/harvest-opportunities`).catch(() => []);
+    const ladder = await fetchJson(`${API_BASE}/tax/maturation-ladder`).catch(() => []);
+    const antigravityData = await fetchJson(`${API_BASE}/portfolio/antigravity`).catch(() => null);
 
     renderDecisionRadar(opportunities, ladder, antigravityData);
   } catch (e) {
@@ -134,11 +127,8 @@ export function renderDecisionRadar(opportunities, ladder, antigravityData) {
 
 export async function fetchRealizedLog() {
   try {
-    const logRes = await fetch(`${API_BASE}/tax/realized-log?fy=${state.currentFy}`);
-    if (logRes.ok) {
-      const logs = await logRes.json();
-      renderRealizedLogTable(logs);
-    }
+    const logs = await fetchJson(`${API_BASE}/tax/realized-log?fy=${state.currentFy}`).catch(() => []);
+    renderRealizedLogTable(logs);
   } catch (e) {
     console.error('Error fetching realized log:', e);
   }

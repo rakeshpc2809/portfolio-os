@@ -1,4 +1,4 @@
-import { API_BASE } from './js/api.js';
+import { API_BASE, fetchJson, getAuthHeaders, DEFAULT_AUTH_TOKEN } from './js/api.js';
 import { state, setCurrentFy } from './js/state.js';
 import { showToast, formatINR } from './js/utils.js';
 import {
@@ -42,7 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const exportZipBtn = document.getElementById('exportZipBtn');
   if (exportZipBtn) {
     exportZipBtn.addEventListener('click', () => {
-      window.location.href = `${API_BASE}/tax/export/itr2/zip?fy=${state.currentFy}`;
+      const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
+      window.location.href = `${API_BASE}/tax/export/itr2/zip?fy=${state.currentFy}&token=${encodeURIComponent(token)}`;
       showToast(`Generating ITR-2 CSV Bundle (.zip) for ${state.currentFy}...`, 'success');
     });
   }
@@ -82,16 +83,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const res = await fetch(`${API_BASE}/statements/upload`, {
           method: 'POST',
+          headers: getAuthHeaders(),
           body: formData
         });
 
         const result = await res.json().catch(() => null);
 
-        if (res.ok) {
-          showToast('Statement ingested successfully.', 'success');
+        if (res.ok && result && (result.status === 'SUCCESS' || result.eventsIngested !== undefined)) {
+          showToast(`Statement ingested successfully (${result.eventsIngested || 0} events).`, 'success');
           fetchLiveMetrics();
         } else {
-          const msg = (result && result.message) ? result.message : 'Statement parsing failed. Please check file format.';
+          const msg = (result && result.message) ? result.message : 'Statement parsing failed or unauthorized. Check auth token.';
           showToast(msg, 'error');
         }
       } catch (err) {
@@ -106,29 +108,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function fetchLiveMetrics() {
   try {
-    const summaryRes = await fetch(`${API_BASE}/portfolio/summary`);
-    if (summaryRes.ok) {
-      const summary = await summaryRes.json();
+    const summary = await fetchJson(`${API_BASE}/portfolio/summary`).catch(() => null);
+    if (summary) {
       updatePortfolioSummary(summary);
     }
 
     fetchTaxMetrics();
 
-    const allocRes = await fetch(`${API_BASE}/portfolio/allocation`);
-    if (allocRes.ok) {
-      const allocations = await allocRes.json();
+    const allocations = await fetchJson(`${API_BASE}/portfolio/allocation`).catch(() => null);
+    if (allocations) {
       renderAllocationChart(allocations);
     }
 
-    const catRes = await fetch(`${API_BASE}/portfolio/category-allocation`);
-    if (catRes.ok) {
-      const catAllocations = await catRes.json();
+    const catAllocations = await fetchJson(`${API_BASE}/portfolio/category-allocation`).catch(() => null);
+    if (catAllocations) {
       renderCategoryChart(catAllocations);
     }
 
-    const holdingsRes = await fetch(`${API_BASE}/portfolio/holdings`);
-    if (holdingsRes.ok) {
-      const holdings = await holdingsRes.json();
+    const holdings = await fetchJson(`${API_BASE}/portfolio/holdings`).catch(() => null);
+    if (holdings) {
       renderHoldingsTable(holdings);
     }
 

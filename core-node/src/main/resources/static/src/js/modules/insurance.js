@@ -1,11 +1,10 @@
-import { API_BASE } from '../api.js';
+import { API_BASE, fetchJson, getAuthHeaders } from '../api.js';
 import { showToast } from '../utils.js';
 
 export async function fetchInsuranceChecklist() {
   try {
-    const res = await fetch(`${API_BASE}/portfolio/insurance`);
-    if (res.ok) {
-      const data = await res.json();
+    const data = await fetchJson(`${API_BASE}/portfolio/insurance`).catch(() => null);
+    if (data) {
       renderInsuranceBanner(data);
     }
   } catch (e) {
@@ -57,7 +56,7 @@ export async function toggleInsuranceStatus(id, status) {
   try {
     const res = await fetch(`${API_BASE}/portfolio/insurance`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ id, status })
     });
     if (res.ok) {

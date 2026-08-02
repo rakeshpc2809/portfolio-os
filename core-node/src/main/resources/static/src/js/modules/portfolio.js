@@ -1,4 +1,4 @@
-import { API_BASE } from '../api.js';
+import { API_BASE, fetchJson } from '../api.js';
 import { state } from '../state.js';
 import { formatINR } from '../utils.js';
 
@@ -237,9 +237,8 @@ export function renderCategoryChart(catAllocations) {
 
 export async function fetchConsolidationPreviewData() {
   try {
-    const res = await fetch(`${API_BASE}/portfolio/consolidation-preview?fy=${state.currentFy}`);
-    if (res.ok) {
-      const data = await res.json();
+    const data = await fetchJson(`${API_BASE}/portfolio/consolidation-preview?fy=${state.currentFy}`).catch(() => null);
+    if (data) {
       renderConsolidationPlan(data);
     }
   } catch (e) {
@@ -293,9 +292,8 @@ export function renderConsolidationPlan(data) {
 
 export async function fetchRebalancePreview(amount = 100000) {
   try {
-    const res = await fetch(`${API_BASE}/portfolio/rebalance-preview?amount=${amount}&fy=${state.currentFy}`);
-    if (res.ok) {
-      const data = await res.json();
+    const data = await fetchJson(`${API_BASE}/portfolio/rebalance-preview?amount=${amount}&fy=${state.currentFy}`).catch(() => null);
+    if (data) {
       updateRebalanceSummary(data);
     }
   } catch (e) {
@@ -321,9 +319,8 @@ export function updateRebalanceSummary(data) {
 
 export async function fetchGoalSummary() {
   try {
-    const res = await fetch(`${API_BASE}/portfolio/goals`);
-    if (res.ok) {
-      const data = await res.json();
+    const data = await fetchJson(`${API_BASE}/portfolio/goals`).catch(() => null);
+    if (data) {
       renderGoalSummary(data);
     }
   } catch (e) {
@@ -368,9 +365,8 @@ export function renderGoalSummary(data) {
 
 export async function fetchFireSummary() {
   try {
-    const res = await fetch(`${API_BASE}/portfolio/fire`);
-    if (res.ok) {
-      const data = await res.json();
+    const data = await fetchJson(`${API_BASE}/portfolio/fire`).catch(() => null);
+    if (data) {
       renderFireSummary(data);
     }
   } catch (e) {
@@ -406,9 +402,8 @@ export function renderFireSummary(data) {
 
 export async function fetchBucketRebalance() {
   try {
-    const res = await fetch(`${API_BASE}/portfolio/buckets/rebalance`);
-    if (res.ok) {
-      const data = await res.json();
+    const data = await fetchJson(`${API_BASE}/portfolio/buckets/rebalance`).catch(() => null);
+    if (data) {
       renderBucketRebalance(data);
     }
   } catch (e) {
