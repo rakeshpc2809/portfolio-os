@@ -1,8 +1,7 @@
 package com.portfolioos.mobile.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -29,7 +29,7 @@ import com.portfolioos.mobile.model.FlatTaxLotDto
 import com.portfolioos.mobile.model.RadarSignalDto
 import com.portfolioos.mobile.model.SyncSnapshot
 
-// Material 3 Expressive Obsidian Dark Color Palette
+// Material 3 Expressive Vibrant Obsidian Palette
 val M3ObsidianDark = Color(0xFF050811)
 val M3SurfaceCard = Color(0xFF0F1424)
 val M3SurfaceVariant = Color(0xFF181F33)
@@ -70,7 +70,7 @@ fun DashboardScreen(
                                 text = "PORTFOLIO OS",
                                 fontWeight = FontWeight.Black,
                                 fontSize = 18.sp,
-                                letterSpacing = 1.sp,
+                                letterSpacing = 2.sp,
                                 color = Color.White
                             )
                             Text(
@@ -189,12 +189,14 @@ fun DashboardScreen(
                     val radarSignals = snapshot.radarSignals ?: emptyList()
                     val taxLots = snapshot.taxLots ?: emptyList()
 
-                    AnimatedVisibility(
-                        visible = true,
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
-                        when (selectedTab) {
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                        },
+                        label = "TabTransition"
+                    ) { targetTab ->
+                        when (targetTab) {
                             0 -> HoldingsView(syncInfo, holdings)
                             1 -> RadarSignalsView(radarSignals)
                             2 -> TaxLotsView(taxLots)
@@ -216,56 +218,76 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
     ) {
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            // Expressive M3 Hero Metric Card
-            ElevatedCard(
-                colors = CardDefaults.elevatedCardColors(containerColor = M3CyanContainer),
+            // Expressive M3 Ambient Gradient Hero Metric Card
+            Card(
                 shape = RoundedCornerShape(20.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(
-                        text = "MONEY-WEIGHTED XIRR",
-                        color = M3CyanPrimary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = syncInfo?.xirrPercentage ?: "0.00%",
-                        color = Color.White,
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Divider(color = M3CyanPrimary.copy(alpha = 0.2f))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(Color(0xFF0A3440), Color(0xFF1E1035), Color(0xFF0F1424))
+                            )
+                        )
+                        .padding(20.dp)
+                ) {
+                    Column {
                         Text(
-                            text = "Ledger: ${(syncInfo?.ledgerHash ?: "00000000").take(8)}...",
-                            color = M3TextMuted,
+                            text = "MONEY-WEIGHTED XIRR",
+                            color = M3CyanPrimary,
                             fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = syncInfo?.xirrPercentage ?: "0.00%",
+                            color = Color.White,
+                            fontSize = 38.sp,
+                            fontWeight = FontWeight.Black,
                             fontFamily = FontFamily.Monospace
                         )
-                        Text(
-                            text = "${holdings.size} Active Holdings",
-                            color = M3GreenPositive,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Divider(color = Color.White.copy(alpha = 0.1f))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Ledger: ${(syncInfo?.ledgerHash ?: "00000000").take(8)}...",
+                                color = M3TextMuted,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "${holdings.size} Active Schemes",
+                                color = M3GreenPositive,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
         }
 
+        // Native Donut Asset Allocation Chart Component
+        item {
+            DonutAllocationChart(holdings = holdings)
+        }
+
+        // Native Performance Bar Chart Component
+        item {
+            PerformanceBarChart(holdings = holdings)
+        }
+
         item {
             Text(
-                text = "ACTIVE PORTFOLIO SCHEMES",
-                fontSize = 12.sp,
+                text = "ACTIVE HOLDINGS LIST",
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = M3TextMuted,
                 letterSpacing = 1.sp
@@ -337,7 +359,8 @@ fun M3HoldingCard(holding: FlatHoldingDto) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "Units: ${holding.totalUnits} · Avg: ₹${holding.avgCost}",
@@ -370,7 +393,7 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "TAX & REBALANCE RADAR SIGNALS",
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = M3TextMuted,
                 letterSpacing = 1.sp
@@ -463,7 +486,7 @@ fun TaxLotsView(taxLots: List<FlatTaxLotDto>) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "OPEN FIFO TAX LOTS (${taxLots.size})",
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = M3TextMuted,
                 letterSpacing = 1.sp
