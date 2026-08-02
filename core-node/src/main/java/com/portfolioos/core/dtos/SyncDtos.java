@@ -1,73 +1,82 @@
 package com.portfolioos.core.dtos;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.util.List;
 
 public class SyncDtos {
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record SyncInfoDto(
         long timestamp,
-        String ledger_hash,
-        String generated_at,
-        String fiscal_year,
-        double portfolio_xirr,
-        String xirr_percentage,
-        double total_invested,
-        double current_value,
-        double unrealized_gain,
-        String formatted_current_value,
-        String formatted_total_invested,
-        String formatted_unrealized_gain
+        String ledgerHash,
+        String generatedAt,
+        String fiscalYear,
+        double portfolioXirr,
+        String xirrPercentage,
+        double totalInvested,
+        double currentValue,
+        double unrealizedGain,
+        String formattedCurrentValue,
+        String formattedTotalInvested,
+        String formattedUnrealizedGain
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record FlatHoldingDto(
         String isin,
-        String fund_name,
-        double total_units,
-        double avg_cost,
+        String fundName,
+        double totalUnits,
+        double avgCost,
         double xirr,
-        String asset_bucket,
-        double current_value,
-        double invested_value,
-        String formatted_current_value,
-        String formatted_invested_value
+        String assetBucket,
+        double currentValue,
+        double investedValue,
+        String formattedCurrentValue,
+        String formattedInvestedValue
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record FlatTaxLotDto(
         String isin,
-        String buy_date,
+        String buyDate,
         double units,
-        String tax_classification,
-        boolean is_long_term,
-        Double grandfathered_nav,
-        double cost_per_unit,
-        long holding_days,
-        long days_to_ltcg
+        String taxClassification,
+        boolean isLongTerm,
+        Double grandfatheredNav,
+        double costPerUnit,
+        long holdingDays,
+        long daysToLtcg
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RadarSignalDto(
-        String signal_type,
+        String signalType,
         String title,
         String subtitle,
         String description,
         String severity,
-        String badge_text
+        String badgeText
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record UnidirectionalSyncSnapshot(
-        SyncInfoDto sync_info,
+        SyncInfoDto syncInfo,
         List<FlatHoldingDto> holdings,
-        List<FlatTaxLotDto> tax_lots,
-        List<RadarSignalDto> radar_signals
+        List<FlatTaxLotDto> taxLots,
+        List<RadarSignalDto> radarSignals
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record PairRequestDto(
-        String device_id,
-        String device_name
+        String deviceId,
+        String deviceName
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record PairResponseDto(
         String status,
         String token,
-        String server_name
+        String serverName
     ) {}
 }

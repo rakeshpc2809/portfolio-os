@@ -79,39 +79,36 @@ public class DuckDbProjector {
     }
 
     public void projectEvents(List<TaxEvent> events) {
+        if (events == null || events.isEmpty()) return;
+
         try {
             Connection conn = getConnection();
             boolean wasAutoCommit = conn.getAutoCommit();
             try {
                 conn.setAutoCommit(false);
-                try (Statement stmt = conn.createStatement()) {
-                    stmt.execute("DROP TABLE IF EXISTS projected_events");
-                }
                 initReadSchema();
 
-                if (!events.isEmpty()) {
-                    String insertSql = "INSERT INTO projected_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                    try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
-                        Set<String> processedIds = new HashSet<>();
-                        for (TaxEvent event : events) {
-                            if (processedIds.contains(event.id())) {
-                                continue;
-                            }
-                            processedIds.add(event.id());
-
-                            insertStmt.setString(1, event.id());
-                            insertStmt.setString(2, event.assetId());
-                            insertStmt.setString(3, event.assetName());
-                            insertStmt.setString(4, event.isin());
-                            insertStmt.setString(5, event.eventType().name());
-                            insertStmt.setString(6, event.eventDate().toString());
-                            insertStmt.setString(7, event.units().toPlainString());
-                            insertStmt.setString(8, event.pricePerUnit().toPlainString());
-                            insertStmt.setString(9, event.grossAmount().toPlainString());
-                            insertStmt.setString(10, event.sourceDocumentId());
-                            insertStmt.setString(11, event.ingestedAt().toString());
-                            insertStmt.executeUpdate();
+                String insertSql = "INSERT OR REPLACE INTO projected_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
+                    Set<String> processedIds = new HashSet<>();
+                    for (TaxEvent event : events) {
+                        if (processedIds.contains(event.id())) {
+                            continue;
                         }
+                        processedIds.add(event.id());
+
+                        insertStmt.setString(1, event.id());
+                        insertStmt.setString(2, event.assetId());
+                        insertStmt.setString(3, event.assetName());
+                        insertStmt.setString(4, event.isin());
+                        insertStmt.setString(5, event.eventType().name());
+                        insertStmt.setString(6, event.eventDate().toString());
+                        insertStmt.setString(7, event.units().toPlainString());
+                        insertStmt.setString(8, event.pricePerUnit().toPlainString());
+                        insertStmt.setString(9, event.grossAmount().toPlainString());
+                        insertStmt.setString(10, event.sourceDocumentId());
+                        insertStmt.setString(11, event.ingestedAt().toString());
+                        insertStmt.executeUpdate();
                     }
                 }
                 conn.commit();

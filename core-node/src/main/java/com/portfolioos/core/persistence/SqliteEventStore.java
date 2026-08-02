@@ -38,11 +38,9 @@ public class SqliteEventStore implements EventStorePort {
         this.dbPath = dbPath;
         String envSecret = System.getenv("LEDGER_HMAC_SECRET");
         if (envSecret == null || envSecret.isBlank()) {
-            System.err.println("SECURITY WARNING: LEDGER_HMAC_SECRET environment variable is unset. Using default development secret.");
-            this.hmacSecret = "fintracker-cachyos-default-key-2026";
-        } else {
-            this.hmacSecret = envSecret;
+            throw new IllegalStateException("SECURITY CRITICAL: LEDGER_HMAC_SECRET environment variable is required and cannot be empty.");
         }
+        this.hmacSecret = envSecret;
 
         try {
             Class.forName("org.sqlite.JDBC");
@@ -284,7 +282,7 @@ public class SqliteEventStore implements EventStorePort {
                     TaxEvent mockEvent = new TaxEvent(
                         rs.getString("id"),
                         rs.getString("asset_id"),
-                        "", // assetName not needed for hash
+                        "",
                         null,
                         EventType.valueOf(rs.getString("event_type")),
                         LocalDate.parse(rs.getString("event_date")),

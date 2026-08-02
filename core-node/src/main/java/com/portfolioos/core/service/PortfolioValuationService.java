@@ -10,10 +10,7 @@ import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.model.EventType;
-import com.portfolioos.core.nav.AmfiNavSync;
-import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.reporting.ExemptionTracker;
-import com.portfolioos.core.util.Pair;
 import com.portfolioos.core.valuation.BucketEngine;
 import com.portfolioos.core.valuation.ConsolidationRebalanceEngine;
 import com.portfolioos.core.valuation.RebalanceEngine;
@@ -31,13 +28,11 @@ import java.util.stream.Collectors;
 @Service
 public class PortfolioValuationService {
 
-    private final EventStorePort eventStore;
-    private final AmfiNavSync amfiSync = new AmfiNavSync();
-    private final FifoMatcher fifoMatcher = new FifoMatcher();
+    private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
 
-    public PortfolioValuationService(EventStorePort eventStore) {
-        this.eventStore = eventStore;
+    public PortfolioValuationService(LedgerCacheService cacheService) {
+        this.cacheService = cacheService;
     }
 
     private String fmt(BigDecimal val) {
@@ -45,11 +40,10 @@ public class PortfolioValuationService {
     }
 
     public PortfolioSummaryResponse getPortfolioSummary(String fy) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        FifoMatcher.FifoResult matchResult = fifoMatcher.processEvents(allEvents);
-        List<Lot> openLots = matchResult.openLots();
-
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<TaxEvent> allEvents = state.events();
+        List<Lot> openLots = state.fifoResult().openLots();
+        Map<String, BigDecimal> navMap = state.navMap();
 
         BigDecimal totalInvested = BigDecimal.ZERO;
         BigDecimal totalCurrentValue = BigDecimal.ZERO;
@@ -86,11 +80,9 @@ public class PortfolioValuationService {
     }
 
     public List<HoldingDetailDto> getHoldings() {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        FifoMatcher.FifoResult matchResult = fifoMatcher.processEvents(allEvents);
-        List<Lot> openLots = matchResult.openLots();
-
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state.fifoResult().openLots();
+        Map<String, BigDecimal> navMap = state.navMap();
         LocalDate today = LocalDate.now();
 
         BigDecimal totalCurrentValAll = BigDecimal.ZERO;
@@ -227,12 +219,10 @@ public class PortfolioValuationService {
     }
 
     public RebalancePreviewDto getRebalancePreview(BigDecimal targetAmount, String fy) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        FifoMatcher.FifoResult matchResult = fifoMatcher.processEvents(allEvents);
-        List<Lot> openLots = matchResult.openLots();
-        List<MatchedLot> matchedLots = matchResult.matchedLots();
-
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state.fifoResult().openLots();
+        List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
+        Map<String, BigDecimal> navMap = state.navMap();
 
         ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
         BigDecimal remExemption = new BigDecimal(status.exemptionRemaining());
@@ -262,9 +252,9 @@ public class PortfolioValuationService {
     }
 
     public GoalSummaryResponse getGoalSummary() {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        List<Lot> openLots = fifoMatcher.processEvents(allEvents).openLots();
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state.fifoResult().openLots();
+        Map<String, BigDecimal> navMap = state.navMap();
 
         GoalTracker.GoalSummary summary = GoalTracker.calculateGoalSummary(openLots, navMap);
 
@@ -290,9 +280,9 @@ public class PortfolioValuationService {
     }
 
     public FireSummaryResponse getFireSummary() {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        List<Lot> openLots = fifoMatcher.processEvents(allEvents).openLots();
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state.fifoResult().openLots();
+        Map<String, BigDecimal> navMap = state.navMap();
 
         FireTracker.FireSummary fire = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now());
 
@@ -322,9 +312,9 @@ public class PortfolioValuationService {
     }
 
     public BucketRebalanceResponse getBucketRebalance(BigDecimal benchmarkCurrent, BigDecimal benchmarkRollingHigh, String fy) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        List<Lot> openLots = fifoMatcher.processEvents(allEvents).openLots();
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state.fifoResult().openLots();
+        Map<String, BigDecimal> navMap = state.navMap();
 
         BucketEngine.RebalanceEngineResult result = BucketEngine.evaluateRebalance(
             openLots, navMap, LocalDate.now(), benchmarkCurrent, benchmarkRollingHigh, BucketEngine.DEFAULT_TARGETS, fy
@@ -366,10 +356,10 @@ public class PortfolioValuationService {
     }
 
     public ConsolidationPreviewResponse getConsolidationPreview(String fy) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        List<Lot> openLots = fifoMatcher.processEvents(allEvents).openLots();
-        List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents).matchedLots();
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state.fifoResult().openLots();
+        List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
+        Map<String, BigDecimal> navMap = state.navMap();
 
         ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
         BigDecimal remExemption = new BigDecimal(status.exemptionRemaining());

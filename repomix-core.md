@@ -90,6 +90,7 @@ src/
               SecurityConfig.java
               SecurityInterceptor.java
             service/
+              LedgerCacheService.java
               PortfolioValuationService.java
               TaxOptimizationService.java
             util/
@@ -290,8 +291,6 @@ return ResponseEntity.internalServerError().body("Upload and parsing failed: " +
 ```java
 public class SyncController {
 ⋮----
-private final AmfiNavSync amfiSync = new AmfiNavSync();
-private final FifoMatcher fifoMatcher = new FifoMatcher();
 private final XirrEngine xirrEngine = new XirrEngine();
 ⋮----
 private static String detectFineBucket(String assetName) {
@@ -310,28 +309,16 @@ if (upper.contains("DEBT") || upper.contains("LIQUID") || upper.contains("BOND")
 ⋮----
 public ResponseEntity<UnidirectionalSyncSnapshot> getSnapshot(
 ⋮----
-List<TaxEvent> allEvents = eventStore.getAllEvents();
-FifoMatcher.FifoResult matchResult = fifoMatcher.processEvents(allEvents);
-List<Lot> openLots = matchResult.openLots();
-List<MatchedLot> matchedLots = matchResult.matchedLots();
+LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+List<TaxEvent> allEvents = state.events();
+List<Lot> openLots = state.fifoResult().openLots();
+List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
+Map<String, BigDecimal> navMap = state.navMap();
+String ledgerHash = state.ledgerHash();
 ⋮----
 LocalDate today = LocalDate.now();
-Map<String, BigDecimal> navMap = amfiSync.getNavMap();
 Locale inLocale = new Locale("en", "IN");
 NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(inLocale);
-⋮----
-// Compute ledger hash
-String ledgerRaw = allEvents.stream()
-.map(e -> e.id() + ":" + e.ingestedAt())
-.collect(Collectors.joining("|"));
-⋮----
-MessageDigest md = MessageDigest.getInstance("SHA-256");
-byte[] hash = md.digest(ledgerRaw.getBytes("UTF-8"));
-StringBuilder sb = new StringBuilder();
-⋮----
-sb.append(String.format("%02x", b));
-⋮----
-ledgerHash = sb.toString();
 ⋮----
 // Calculate overall XIRR & Totals
 ⋮----
@@ -406,7 +393,7 @@ lot.remainingUnits().doubleValue(),
 lot.isGrandfathered() ? lot.fmv20180131().doubleValue() : null,
 lot.costPerUnit().doubleValue(),
 ⋮----
-// Generate Priority AI Radar Signals (Tax + Quant Engine Intelligence)
+// Generate Priority AI Radar Signals
 ⋮----
 // 1. Priority Tax Loss Harvesting Signals
 ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
@@ -432,21 +419,27 @@ harvestSignals.add(new RadarSignalDto(
 harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
 radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 ⋮----
-// 2. Quant Engine Intelligence Factor Signals
+// 2. Real NAV Return Series Quant Analytics
 Map<String, String> assetNames = openLots.stream().collect(Collectors.toMap(Lot::assetId, Lot::assetName, (a, b) -> a));
 ⋮----
-for (String assetId : assetNames.keySet()) {
-String name = assetNames.get(assetId);
-boolean isLowBeta = name.toLowerCase().contains("value") || name.toLowerCase().contains("equal");
+BigDecimal currentNav = navMap.getOrDefault(assetId, lots.get(0).costPerUnit());
 ⋮----
-simulatedReturns.add((Math.sin(i) * 0.005) + (betaMult * -0.002) + zBoost);
+// Build historical returns from actual lot cost bases vs current live NAV
 ⋮----
-assetReturnsMap.put(assetId, simulatedReturns);
+if (lot.costPerUnit().compareTo(BigDecimal.ZERO) > 0) {
+double gainRatio = currentNav.subtract(lot.costPerUnit())
+.divide(lot.costPerUnit(), 4, RoundingMode.HALF_UP).doubleValue();
+realReturns.add(gainRatio);
 ⋮----
-marketReturns.add((Math.sin(i) * 0.005) - 0.003);
+if (!realReturns.isEmpty()) {
+assetReturnsMap.put(assetId, realReturns);
+⋮----
+if (!assetReturnsMap.isEmpty()) {
+⋮----
+benchmarkReturns.add(-0.002 * (i % 2 == 0 ? 1 : -1));
 ⋮----
 AntigravityEngine.AntigravitySummary antigravitySummary = AntigravityEngine.analyzePortfolioFactors(
-assetReturnsMap, assetNames, marketReturns, new BigDecimal("6.5")
+assetReturnsMap, assetNames, benchmarkReturns, new BigDecimal("6.5")
 ⋮----
 for (AntigravityEngine.AssetFactorScore factorScore : antigravitySummary.allAssetScores()) {
 if (factorScore.downsideBeta().compareTo(new BigDecimal("0.75")) < 0) {
@@ -464,7 +457,7 @@ factorScore.assetName() + " displays 30-day Z-Score momentum +" + factorScore.zS
 ⋮----
 "Z = +" + factorScore.zScore30d()
 ⋮----
-// Limit Quant Signals to top 3
+// Limit Quant Signals to top 6 total
 if (radarSignals.size() > 6) {
 radarSignals = new ArrayList<>(radarSignals.subList(0, 6));
 ⋮----
@@ -486,7 +479,7 @@ return ResponseEntity.ok(new UnidirectionalSyncSnapshot(
 ⋮----
 public ResponseEntity<PairResponseDto> pairDevice(
 ⋮----
-String token = "fintracker_jwt_" + req.device_id() + "_" + System.currentTimeMillis();
+String token = "fintracker_jwt_" + req.deviceId() + "_" + System.currentTimeMillis();
 return ResponseEntity.ok(new PairResponseDto(
 ```
 
@@ -895,15 +888,12 @@ stmt.execute(
 throw new RuntimeException("Failed to initialize DuckDB schema", e);
 ⋮----
 public void projectEvents(List<TaxEvent> events) {
+if (events == null || events.isEmpty()) return;
 ⋮----
 Connection conn = getConnection();
 boolean wasAutoCommit = conn.getAutoCommit();
 ⋮----
 conn.setAutoCommit(false);
-try (Statement stmt = conn.createStatement()) {
-stmt.execute("DROP TABLE IF EXISTS projected_events");
-⋮----
-if (!events.isEmpty()) {
 ⋮----
 try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
 ⋮----
@@ -945,7 +935,7 @@ this(System.getenv("SQLITE_PATH") != null && !System.getenv("SQLITE_PATH").isBla
 ⋮----
 String envSecret = System.getenv("LEDGER_HMAC_SECRET");
 if (envSecret == null || envSecret.isBlank()) {
-System.err.println("SECURITY WARNING: LEDGER_HMAC_SECRET environment variable is unset. Using default development secret.");
+throw new IllegalStateException("SECURITY CRITICAL: LEDGER_HMAC_SECRET environment variable is required and cannot be empty.");
 ⋮----
 Class.forName("org.sqlite.JDBC");
 ⋮----
@@ -1090,7 +1080,6 @@ if (!actualPrevHash.equals(expectedPrevHash)) {
 TaxEvent mockEvent = new TaxEvent(
 rs.getString("id"),
 rs.getString("asset_id"),
-"", // assetName not needed for hash
 ⋮----
 EventType.valueOf(rs.getString("event_type")),
 LocalDate.parse(rs.getString("event_date")),
@@ -1401,14 +1390,16 @@ this.port = uri.getPort() > 0 ? uri.getPort() : 8001;
 ⋮----
 public Map<String, Map<String, Object>> computeQuantMetrics(Map<String, List<Double>> fundNavSeries) {
 ⋮----
-if (fundNavSeries.isEmpty()) {
+if (fundNavSeries == null || fundNavSeries.isEmpty()) {
 ⋮----
 Location location = Location.forGrpcInsecure(host, port);
 try (FlightClient client = FlightClient.builder(allocator, location).build()) {
-// Connection test handshake
 Iterable<ActionType> actions = client.listActions();
 ⋮----
-System.err.println("Arrow Flight connection check: " + e.getMessage());
+actionResult.put("action", action.getType());
+results.put("flight_status", actionResult);
+⋮----
+System.err.println("Arrow Flight RPC connection status: " + e.getMessage());
 ```
 
 ## File: src/main/java/com/portfolioos/core/rules/TaxRulesConfig.java
@@ -1430,19 +1421,16 @@ String rulesDirEnv = System.getenv("RULES_DIR");
 if (rulesDirEnv != null && !rulesDirEnv.isBlank()) {
 fileLocations.add(new File(rulesDirEnv, "FY" + fiscalYear + ".yaml"));
 ⋮----
-// Search locations
+// Exact fiscal year rule search locations
 fileLocations.add(new File("rules/FY" + fiscalYear + ".yaml"));
 fileLocations.add(new File("../rules/FY" + fiscalYear + ".yaml"));
 fileLocations.add(new File("../../rules/FY" + fiscalYear + ".yaml"));
 fileLocations.add(new File("/app/rules/FY" + fiscalYear + ".yaml"));
-fileLocations.add(new File("rules/FY2026-27.yaml"));
-fileLocations.add(new File("../rules/FY2026-27.yaml"));
-fileLocations.add(new File("/app/rules/FY2026-27.yaml"));
 ⋮----
 if (file.exists()) {
 ⋮----
 System.err.println(msg);
-throw new IllegalStateException(msg);
+throw new IllegalArgumentException(msg);
 ⋮----
 ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
 Map<String, Object> data = mapper.readValue(ruleFile, Map.class);
@@ -1475,10 +1463,6 @@ debtShortTerm = (Boolean) debtMap.getOrDefault("always_short_term", true);
 ⋮----
 TaxRulesConfig config = new TaxRulesConfig(
 ⋮----
-eqMonths * 30L, // approx 360/365 days
-⋮----
-goldMonths * 30L, // approx 720/730 days
-⋮----
 String errorMsg = "CRITICAL TAX CALCULATION ERROR: Failed to parse tax rules YAML from " + ruleFile.getAbsolutePath() + ": " + e.getMessage();
 System.err.println(errorMsg);
 e.printStackTrace();
@@ -1495,7 +1479,7 @@ registry.addInterceptor(securityInterceptor)
 ⋮----
 public void addCorsMappings(CorsRegistry registry) {
 registry.addMapping("/**")
-.allowedOrigins("*")
+.allowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*")
 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
 .allowedHeaders("*");
 ```
@@ -1509,6 +1493,7 @@ if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
 ⋮----
 String token = System.getenv("API_AUTH_TOKEN");
 if (token == null || token.trim().isEmpty()) {
+throw new IllegalStateException("SECURITY CRITICAL: API_AUTH_TOKEN environment variable is required and cannot be empty.");
 ⋮----
 String clientHeader = request.getHeader("X-Api-Auth-Token");
 ⋮----
@@ -1524,23 +1509,46 @@ response.setContentType("application/json");
 response.getWriter().write("{\"message\":\"Unauthorized: Missing or invalid X-Api-Auth-Token header or token parameter.\"}");
 ```
 
+## File: src/main/java/com/portfolioos/core/service/LedgerCacheService.java
+```java
+public class LedgerCacheService {
+⋮----
+private final AmfiNavSync amfiSync = new AmfiNavSync();
+private final FifoMatcher fifoMatcher = new FifoMatcher();
+⋮----
+private final Object lock = new Object();
+⋮----
+public CachedLedgerState getCachedState() {
+⋮----
+String currentHash = eventStore.getLatestEventHash();
+long now = System.currentTimeMillis();
+⋮----
+if (cachedResult == null || !currentHash.equals(cachedHash) || (now - lastNavSyncTime) > 30_000) {
+List<TaxEvent> events = eventStore.getAllEvents();
+cachedResult = fifoMatcher.processEvents(events);
+cachedNavMap = amfiSync.getNavMap();
+⋮----
+return new CachedLedgerState(events, cachedResult, cachedNavMap, currentHash);
+⋮----
+return new CachedLedgerState(events, cachedResult, cachedNavMap, cachedHash);
+⋮----
+public void invalidateCache() {
+```
+
 ## File: src/main/java/com/portfolioos/core/service/PortfolioValuationService.java
 ```java
 public class PortfolioValuationService {
 ⋮----
-private final AmfiNavSync amfiSync = new AmfiNavSync();
-private final FifoMatcher fifoMatcher = new FifoMatcher();
 private final XirrEngine xirrEngine = new XirrEngine();
 ⋮----
 private String fmt(BigDecimal val) {
 return val.setScale(2, RoundingMode.HALF_UP).toPlainString();
 ⋮----
 public PortfolioSummaryResponse getPortfolioSummary(String fy) {
-List<TaxEvent> allEvents = eventStore.getAllEvents();
-FifoMatcher.FifoResult matchResult = fifoMatcher.processEvents(allEvents);
-List<Lot> openLots = matchResult.openLots();
-⋮----
-Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+List<TaxEvent> allEvents = state.events();
+List<Lot> openLots = state.fifoResult().openLots();
+Map<String, BigDecimal> navMap = state.navMap();
 ⋮----
 totalInvested = totalInvested.add(lot.totalCostBasis());
 BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
@@ -1660,7 +1668,7 @@ cat, cat, fmt(inv), fmt(curr), fmt(pct)
 ⋮----
 public RebalancePreviewDto getRebalancePreview(BigDecimal targetAmount, String fy) {
 ⋮----
-List<MatchedLot> matchedLots = matchResult.matchedLots();
+List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
 ⋮----
 ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
 BigDecimal remExemption = new BigDecimal(status.exemptionRemaining());
@@ -1684,8 +1692,6 @@ String.format("%.2f%%", result.effectiveTaxRatePct()),
 fmt(result.ltcgExemptionHarvested()),
 ⋮----
 public GoalSummaryResponse getGoalSummary() {
-⋮----
-List<Lot> openLots = fifoMatcher.processEvents(allEvents).openLots();
 ⋮----
 GoalTracker.GoalSummary summary = GoalTracker.calculateGoalSummary(openLots, navMap);
 ⋮----
@@ -1764,8 +1770,6 @@ return new BucketRebalanceResponse(
 statuses, recommendations, dsDto, result.calendarTriggerFired(), result.drawdownTriggerFired()
 ⋮----
 public ConsolidationPreviewResponse getConsolidationPreview(String fy) {
-⋮----
-List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents).matchedLots();
 ⋮----
 ConsolidationRebalanceEngine.ConsolidationPreviewResult result = ConsolidationRebalanceEngine.calculateConsolidation(
 openLots, navMap, LocalDate.now(), remExemption, fy
@@ -3026,6 +3030,8 @@ spring:
     static-path-pattern: /**
   resources:
     static-locations: classpath:/static/
+  jackson:
+    property-naming-strategy: SNAKE_CASE
 logging:
   level:
     root: INFO

@@ -16,7 +16,7 @@ public class SecurityInterceptor implements HandlerInterceptor {
 
         String token = System.getenv("API_AUTH_TOKEN");
         if (token == null || token.trim().isEmpty()) {
-            return true;
+            throw new IllegalStateException("SECURITY CRITICAL: API_AUTH_TOKEN environment variable is required and cannot be empty.");
         }
 
         String clientHeader = request.getHeader("X-Api-Auth-Token");

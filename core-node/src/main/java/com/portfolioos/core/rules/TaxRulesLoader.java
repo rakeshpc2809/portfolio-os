@@ -30,14 +30,11 @@ public class TaxRulesLoader {
             fileLocations.add(new File(rulesDirEnv, "FY" + fiscalYear + ".yaml"));
         }
         
-        // Search locations
+        // Exact fiscal year rule search locations
         fileLocations.add(new File("rules/FY" + fiscalYear + ".yaml"));
         fileLocations.add(new File("../rules/FY" + fiscalYear + ".yaml"));
         fileLocations.add(new File("../../rules/FY" + fiscalYear + ".yaml"));
         fileLocations.add(new File("/app/rules/FY" + fiscalYear + ".yaml"));
-        fileLocations.add(new File("rules/FY2026-27.yaml"));
-        fileLocations.add(new File("../rules/FY2026-27.yaml"));
-        fileLocations.add(new File("/app/rules/FY2026-27.yaml"));
 
         File ruleFile = null;
         for (File file : fileLocations) {
@@ -48,9 +45,9 @@ public class TaxRulesLoader {
         }
 
         if (ruleFile == null) {
-            String msg = "CRITICAL: Could not locate tax rules YAML file for FY " + fiscalYear;
+            String msg = "CRITICAL TAX COMPLIANCE ERROR: Could not locate required tax rules YAML file for FY " + fiscalYear;
             System.err.println(msg);
-            throw new IllegalStateException(msg);
+            throw new IllegalArgumentException(msg);
         }
 
         try {
@@ -92,11 +89,11 @@ public class TaxRulesLoader {
 
             TaxRulesConfig config = new TaxRulesConfig(
                 fiscalYear,
-                eqMonths * 30L, // approx 360/365 days
+                eqMonths * 30L,
                 eqLtcgRate,
                 eqStcgRate,
                 eqExemption,
-                goldMonths * 30L, // approx 720/730 days
+                goldMonths * 30L,
                 goldLtcgRate,
                 debtShortTerm
             );

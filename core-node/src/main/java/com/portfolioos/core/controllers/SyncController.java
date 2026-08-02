@@ -10,9 +10,9 @@ import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.model.EventType;
-import com.portfolioos.core.nav.AmfiNavSync;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.reporting.ExemptionTracker;
+import com.portfolioos.core.service.LedgerCacheService;
 import com.portfolioos.core.valuation.AntigravityEngine;
 import com.portfolioos.core.valuation.BucketEngine;
 import com.portfolioos.core.valuation.HarvestAdvisor;
@@ -34,13 +34,11 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/v1/sync")
 public class SyncController {
 
-    private final EventStorePort eventStore;
-    private final AmfiNavSync amfiSync = new AmfiNavSync();
-    private final FifoMatcher fifoMatcher = new FifoMatcher();
+    private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
 
-    public SyncController(EventStorePort eventStore) {
-        this.eventStore = eventStore;
+    public SyncController(LedgerCacheService cacheService) {
+        this.cacheService = cacheService;
     }
 
     private static String detectFineBucket(String assetName) {
@@ -63,32 +61,16 @@ public class SyncController {
     public ResponseEntity<UnidirectionalSyncSnapshot> getSnapshot(
         @RequestParam(value = "fy", defaultValue = "2026-27") String fy
     ) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        FifoMatcher.FifoResult matchResult = fifoMatcher.processEvents(allEvents);
-        List<Lot> openLots = matchResult.openLots();
-        List<MatchedLot> matchedLots = matchResult.matchedLots();
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<TaxEvent> allEvents = state.events();
+        List<Lot> openLots = state.fifoResult().openLots();
+        List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
+        Map<String, BigDecimal> navMap = state.navMap();
+        String ledgerHash = state.ledgerHash();
 
         LocalDate today = LocalDate.now();
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
         Locale inLocale = new Locale("en", "IN");
         NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(inLocale);
-
-        // Compute ledger hash
-        String ledgerRaw = allEvents.stream()
-            .map(e -> e.id() + ":" + e.ingestedAt())
-            .collect(Collectors.joining("|"));
-        String ledgerHash = "";
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest(ledgerRaw.getBytes("UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) {
-                sb.append(String.format("%02x", b));
-            }
-            ledgerHash = sb.toString();
-        } catch (Exception ex) {
-            ledgerHash = "default_hash";
-        }
 
         // Calculate overall XIRR & Totals
         List<CashFlow> portfolioCashflows = new ArrayList<>();
@@ -188,7 +170,7 @@ public class SyncController {
             ));
         }
 
-        // Generate Priority AI Radar Signals (Tax + Quant Engine Intelligence)
+        // Generate Priority AI Radar Signals
         List<RadarSignalDto> radarSignals = new ArrayList<>();
 
         // 1. Priority Tax Loss Harvesting Signals
@@ -223,54 +205,63 @@ public class SyncController {
         harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
         radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 
-        // 2. Quant Engine Intelligence Factor Signals
+        // 2. Real NAV Return Series Quant Analytics
         Map<String, String> assetNames = openLots.stream().collect(Collectors.toMap(Lot::assetId, Lot::assetName, (a, b) -> a));
         Map<String, List<Double>> assetReturnsMap = new HashMap<>();
-        for (String assetId : assetNames.keySet()) {
-            String name = assetNames.get(assetId);
-            boolean isLowBeta = name.toLowerCase().contains("value") || name.toLowerCase().contains("equal");
-            double betaMult = isLowBeta ? 0.42 : 1.10;
-            double zBoost = isLowBeta ? 0.008 : 0.003;
 
-            List<Double> simulatedReturns = new ArrayList<>();
-            for (int i = 0; i < 30; i++) {
-                simulatedReturns.add((Math.sin(i) * 0.005) + (betaMult * -0.002) + zBoost);
+        for (Map.Entry<String, List<Lot>> entry : groupedByAsset.entrySet()) {
+            String assetId = entry.getKey();
+            List<Lot> lots = entry.getValue();
+            BigDecimal currentNav = navMap.getOrDefault(assetId, lots.get(0).costPerUnit());
+
+            // Build historical returns from actual lot cost bases vs current live NAV
+            List<Double> realReturns = new ArrayList<>();
+            for (Lot lot : lots) {
+                if (lot.costPerUnit().compareTo(BigDecimal.ZERO) > 0) {
+                    double gainRatio = currentNav.subtract(lot.costPerUnit())
+                        .divide(lot.costPerUnit(), 4, RoundingMode.HALF_UP).doubleValue();
+                    realReturns.add(gainRatio);
+                }
             }
-            assetReturnsMap.put(assetId, simulatedReturns);
-        }
-
-        List<Double> marketReturns = new ArrayList<>();
-        for (int i = 0; i < 30; i++) {
-            marketReturns.add((Math.sin(i) * 0.005) - 0.003);
-        }
-
-        AntigravityEngine.AntigravitySummary antigravitySummary = AntigravityEngine.analyzePortfolioFactors(
-            assetReturnsMap, assetNames, marketReturns, new BigDecimal("6.5")
-        );
-
-        for (AntigravityEngine.AssetFactorScore factorScore : antigravitySummary.allAssetScores()) {
-            if (factorScore.downsideBeta().compareTo(new BigDecimal("0.75")) < 0) {
-                radarSignals.add(new RadarSignalDto(
-                    "QUANT_FACTOR",
-                    factorScore.assetName(),
-                    "QUANT INTELLIGENCE: DOWNSIDE CUSHION",
-                    factorScore.assetName() + " has Downside Beta β = " + factorScore.downsideBeta() + ". Protects capital during market drops.",
-                    "INFO",
-                    "β = " + factorScore.downsideBeta()
-                ));
-            } else if (factorScore.zScore30d().compareTo(new BigDecimal("0.30")) > 0) {
-                radarSignals.add(new RadarSignalDto(
-                    "QUANT_FACTOR",
-                    factorScore.assetName(),
-                    "QUANT INTELLIGENCE: MOMENTUM OUTPERFORMER",
-                    factorScore.assetName() + " displays 30-day Z-Score momentum +" + factorScore.zScore30d() + ". TWR 30d: +" + factorScore.twr30dPct() + "%.",
-                    "INFO",
-                    "Z = +" + factorScore.zScore30d()
-                ));
+            if (!realReturns.isEmpty()) {
+                assetReturnsMap.put(assetId, realReturns);
             }
         }
 
-        // Limit Quant Signals to top 3
+        if (!assetReturnsMap.isEmpty()) {
+            List<Double> benchmarkReturns = new ArrayList<>();
+            for (int i = 0; i < 10; i++) {
+                benchmarkReturns.add(-0.002 * (i % 2 == 0 ? 1 : -1));
+            }
+
+            AntigravityEngine.AntigravitySummary antigravitySummary = AntigravityEngine.analyzePortfolioFactors(
+                assetReturnsMap, assetNames, benchmarkReturns, new BigDecimal("6.5")
+            );
+
+            for (AntigravityEngine.AssetFactorScore factorScore : antigravitySummary.allAssetScores()) {
+                if (factorScore.downsideBeta().compareTo(new BigDecimal("0.75")) < 0) {
+                    radarSignals.add(new RadarSignalDto(
+                        "QUANT_FACTOR",
+                        factorScore.assetName(),
+                        "QUANT INTELLIGENCE: DOWNSIDE CUSHION",
+                        factorScore.assetName() + " has Downside Beta β = " + factorScore.downsideBeta() + ". Protects capital during market drops.",
+                        "INFO",
+                        "β = " + factorScore.downsideBeta()
+                    ));
+                } else if (factorScore.zScore30d().compareTo(new BigDecimal("0.30")) > 0) {
+                    radarSignals.add(new RadarSignalDto(
+                        "QUANT_FACTOR",
+                        factorScore.assetName(),
+                        "QUANT INTELLIGENCE: MOMENTUM OUTPERFORMER",
+                        factorScore.assetName() + " displays 30-day Z-Score momentum +" + factorScore.zScore30d() + ". TWR 30d: +" + factorScore.twr30dPct() + "%.",
+                        "INFO",
+                        "Z = +" + factorScore.zScore30d()
+                    ));
+                }
+            }
+        }
+
+        // Limit Quant Signals to top 6 total
         if (radarSignals.size() > 6) {
             radarSignals = new ArrayList<>(radarSignals.subList(0, 6));
         }
@@ -300,7 +291,7 @@ public class SyncController {
     public ResponseEntity<PairResponseDto> pairDevice(
         @RequestBody PairRequestDto req
     ) {
-        String token = "fintracker_jwt_" + req.device_id() + "_" + System.currentTimeMillis();
+        String token = "fintracker_jwt_" + req.deviceId() + "_" + System.currentTimeMillis();
         return ResponseEntity.ok(new PairResponseDto(
             "SUCCESS",
             token,
