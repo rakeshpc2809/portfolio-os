@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.PortfolioOS" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#050811</item>
+        <item name="android:windowBackground">#050811</item>
+    </style>
+</resources>
