@@ -90,6 +90,7 @@ interface SyncApiService {
 }
 object SyncApiClient {
     const val USB_BASE_URL = "http://127.0.0.1:8080/"
+    const val EMULATOR_BASE_URL = "http://10.0.2.2:8080/"
     const val WIFI_BASE_URL = "http://192.168.1.13:8080/"
     fun createService(baseUrl: String = USB_BASE_URL): SyncApiService {
         val logging = HttpLoggingInterceptor().apply {
@@ -111,7 +112,11 @@ object SyncApiClient {
         return try {
             createService(USB_BASE_URL).getSnapshot()
         } catch (e1: Exception) {
-            createService(WIFI_BASE_URL).getSnapshot()
+            try {
+                createService(EMULATOR_BASE_URL).getSnapshot()
+            } catch (e2: Exception) {
+                createService(WIFI_BASE_URL).getSnapshot()
+            }
         }
     }
 }
