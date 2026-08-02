@@ -17,8 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -36,34 +34,38 @@ data class BucketAllocation(
     val color: Color
 )
 
+val SEBIBucketColors = mapOf(
+    "Flexi Cap" to Color(0xFF06B6D4),                // Vibrant Cyan
+    "Large & Midcap" to Color(0xFFA855F7),           // Electric Violet
+    "Midcap" to Color(0xFF3B82F6),                   // Royal Blue
+    "Small Cap" to Color(0xFF10B981),                // Emerald Green
+    "Microcap" to Color(0xFFEC4899),                 // Coral Pink
+    "Factor Value Index" to Color(0xFFF59E0B),       // Amber Gold
+    "Factor Momentum Index" to Color(0xFF6366F1),    // Indigo
+    "Equal Weight Index" to Color(0xFF14B8A6),       // Teal
+    "Sectoral/Thematic" to Color(0xFFF43F5E),        // Rose
+    "Gold & Commodities" to Color(0xFFEAB308),       // Gold
+    "Debt & Liquid" to Color(0xFF64748B)             // Slate
+)
+
 @Composable
 fun DonutAllocationChart(
     holdings: List<FlatHoldingDto>,
     modifier: Modifier = Modifier
 ) {
-    val bucketColors = remember {
-        mapOf(
-            "EQUITY_CORE" to Color(0xFF06B6D4),       // Cyan
-            "EQUITY_SATELLITE" to Color(0xFFA855F7),  // Purple
-            "GOLD_COMMODITY" to Color(0xFFF59E0B),    // Amber
-            "DEBT_LIQUID" to Color(0xFF10B981),       // Emerald
-            "INTERNATIONAL" to Color(0xFF3B82F6)     // Blue
-        )
-    }
-
-    val defaultColor = Color(0xFF64748B)
+    val defaultColor = Color(0xFF94A3B8)
 
     val allocations = remember(holdings) {
-        val totalVal = holdings.sumOf { it.totalUnits * it.avgCost }.coerceAtLeast(1.0)
-        val grouped = holdings.groupBy { it.assetBucket.ifEmpty { "OTHERS" } }
+        val totalVal = holdings.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }.coerceAtLeast(1.0)
+        val grouped = holdings.groupBy { it.assetBucket.ifEmpty { "Others" } }
         grouped.map { (bucket, list) ->
-            val bucketVal = list.sumOf { it.totalUnits * it.avgCost }
+            val bucketVal = list.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }
             val pct = (bucketVal / totalVal * 100).toFloat()
             BucketAllocation(
                 bucketName = bucket,
                 totalAmount = bucketVal,
                 percentage = pct,
-                color = bucketColors[bucket] ?: defaultColor
+                color = SEBIBucketColors[bucket] ?: defaultColor
             )
         }.sortedByDescending { it.percentage }
     }
@@ -84,7 +86,7 @@ fun DonutAllocationChart(
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                text = "ASSET ALLOCATION BREAKDOWN",
+                text = "SEBI CATEGORY ALLOCATION",
                 color = Color(0xFF94A3B8),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
@@ -98,12 +100,11 @@ fun DonutAllocationChart(
             ) {
                 // Donut Canvas
                 Box(
-                    modifier = Modifier
-                        .size(140.dp),
+                    modifier = Modifier.size(130.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Canvas(modifier = Modifier.size(130.dp)) {
-                        val strokeWidth = 24.dp.toPx()
+                    Canvas(modifier = Modifier.size(120.dp)) {
+                        val strokeWidth = 22.dp.toPx()
                         var startAngle = -90f
 
                         allocations.forEach { alloc ->
@@ -123,12 +124,12 @@ fun DonutAllocationChart(
                         Text(
                             text = "${allocations.size}",
                             color = Color.White,
-                            fontSize = 22.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Black,
                             fontFamily = FontFamily.Monospace
                         )
                         Text(
-                            text = "Buckets",
+                            text = "Categories",
                             color = Color(0xFF94A3B8),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
@@ -136,22 +137,22 @@ fun DonutAllocationChart(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(20.dp))
+                Spacer(modifier = Modifier.width(16.dp))
 
                 // Legend List
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    allocations.take(4).forEach { alloc ->
+                    allocations.take(5).forEach { alloc ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(10.dp)
+                                    .size(8.dp)
                                     .clip(CircleShape)
                                     .background(alloc.color)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = alloc.bucketName,
                                 color = Color.White,

@@ -3,12 +3,15 @@ package com.portfolioos.mobile.ui
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
@@ -199,7 +202,7 @@ fun DashboardScreen(
                         when (targetTab) {
                             0 -> HoldingsView(syncInfo, holdings)
                             1 -> RadarSignalsView(radarSignals)
-                            2 -> TaxLotsView(taxLots)
+                            2 -> GroupedTaxLotsView(taxLots, holdings)
                         }
                     }
                 }
@@ -438,7 +441,7 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "TAX & REBALANCE RADAR SIGNALS",
+                text = "PRIORITY ACTIONABLE RADAR SIGNALS",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = M3TextMuted,
@@ -521,17 +524,25 @@ fun M3RadarCard(signal: RadarSignalDto) {
 }
 
 @Composable
-fun TaxLotsView(taxLots: List<FlatTaxLotDto>) {
+fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingDto>) {
+    val nameMap = remember(holdings) {
+        holdings.associate { it.isin to it.fundName }
+    }
+
+    val groupedLots = remember(taxLots) {
+        taxLots.groupBy { it.isin }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "OPEN FIFO TAX LOTS (${taxLots.size})",
+                text = "SCHEME-GROUPED TAX LOTS (${groupedLots.size} SCHEMES · ${taxLots.size} LOTS)",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = M3TextMuted,
@@ -539,7 +550,7 @@ fun TaxLotsView(taxLots: List<FlatTaxLotDto>) {
             )
         }
 
-        if (taxLots.isEmpty()) {
+        if (groupedLots.isEmpty()) {
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
@@ -555,53 +566,124 @@ fun TaxLotsView(taxLots: List<FlatTaxLotDto>) {
                 }
             }
         } else {
-            items(taxLots) { lot ->
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = lot.isin,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                text = "Acq: ${lot.buyDate} · ${lot.units} Units @ ₹${lot.costPerUnit}",
-                                color = M3TextMuted,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        Surface(
-                            color = if (lot.isLongTerm) M3GreenPositive.copy(alpha = 0.15f) else M3AmberWarning.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                text = if (lot.isLongTerm) "LTCG" else "STCG (${lot.daysToLtcg}d)",
-                                color = if (lot.isLongTerm) M3GreenPositive else M3AmberWarning,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                }
+            items(groupedLots.entries.toList()) { (isin, lots) ->
+                val schemeName = nameMap[isin] ?: isin
+                GroupedSchemeTaxLotCard(schemeName = schemeName, isin = isin, lots = lots)
             }
         }
 
         item {
             Spacer(modifier = Modifier.height(80.dp))
+        }
+    }
+}
+
+@Composable
+fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTaxLotDto>) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val ltcgCount = lots.count { it.isLongTerm }
+    val stcgCount = lots.size - ltcgCount
+    val totalUnits = lots.sumOf { it.units }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = schemeName,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${lots.size} Open Lots · Total %.2f Units".format(totalUnits),
+                        color = M3TextMuted,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (ltcgCount > 0) {
+                        Surface(
+                            color = M3GreenPositive.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "$ltcgCount LTCG",
+                                color = M3GreenPositive,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    if (stcgCount > 0) {
+                        Surface(
+                            color = M3AmberWarning.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "$stcgCount STCG",
+                                color = M3AmberWarning,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Expand",
+                        tint = M3CyanPrimary
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Divider(color = M3SurfaceVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    lots.forEach { lot ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${lot.buyDate} · ${lot.units} u @ ₹${lot.costPerUnit}",
+                                color = M3TextMuted,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = if (lot.isLongTerm) "LTCG" else "STCG (${lot.daysToLtcg}d)",
+                                color = if (lot.isLongTerm) M3GreenPositive else M3AmberWarning,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

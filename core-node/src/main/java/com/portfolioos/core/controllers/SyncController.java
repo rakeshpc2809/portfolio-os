@@ -43,6 +43,22 @@ public class SyncController {
         this.eventStore = eventStore;
     }
 
+    private static String detectFineBucket(String assetName) {
+        String upper = assetName.toUpperCase();
+        if (upper.contains("FLEXI")) return "Flexi Cap";
+        if (upper.contains("LARGE") && upper.contains("MID")) return "Large & Midcap";
+        if (upper.contains("MICROCAP") || upper.contains("MICRO")) return "Microcap";
+        if (upper.contains("SMALL")) return "Small Cap";
+        if (upper.contains("MIDCAP") || upper.contains("MID CAP")) return "Midcap";
+        if (upper.contains("VALUE")) return "Factor Value Index";
+        if (upper.contains("MOMENTUM") || upper.contains("QUALITY")) return "Factor Momentum Index";
+        if (upper.contains("EQUAL WEIGHT") || upper.contains("EQUAL")) return "Equal Weight Index";
+        if (upper.contains("HEALTHCARE") || upper.contains("TECH") || upper.contains("SECTOR")) return "Sectoral/Thematic";
+        if (upper.contains("GOLD") || upper.contains("SGB") || upper.contains("SILVER")) return "Gold & Commodities";
+        if (upper.contains("DEBT") || upper.contains("LIQUID") || upper.contains("BOND")) return "Debt & Liquid";
+        return "Core Equity";
+    }
+
     @GetMapping("/snapshot")
     public ResponseEntity<UnidirectionalSyncSnapshot> getSnapshot(
         @RequestParam(value = "fy", defaultValue = "2026-27") String fy
@@ -110,8 +126,7 @@ public class SyncController {
             BigDecimal avgCost = totalUnits.compareTo(BigDecimal.ZERO) > 0 
                 ? totalCost.divide(totalUnits, 4, RoundingMode.HALF_UP) : BigDecimal.ZERO;
 
-            AssetCategory category = TaxClassifier.detectCategory(assetId, assetName);
-            String bucket = category.name();
+            String bucket = detectFineBucket(assetName);
 
             // Holding XIRR calculation
             List<TaxEvent> assetEvents = allEvents.stream().filter(e -> e.assetId().equals(assetId)).toList();
@@ -173,24 +188,42 @@ public class SyncController {
             ));
         }
 
-        // Generate Radar Signals
+        // Generate Aggregated Priority AI Radar Signals (High Priority Only)
         List<RadarSignalDto> radarSignals = new ArrayList<>();
 
-        // 1. Tax Loss Harvesting Opportunities
+        // 1. Aggregated Tax Loss Harvesting Opportunities per scheme
         ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
         HarvestAdvisor.TaxHarvestResult harvestPlan = HarvestAdvisor.generateHarvestPlan(
             openLots, navMap, new BigDecimal(exStatus.exemptionUsed()), fy
         );
 
-        for (HarvestAdvisor.TaxHarvestRecommendation rec : harvestPlan.recommendations()) {
+        Map<String, List<HarvestAdvisor.TaxHarvestRecommendation>> harvestByScheme = harvestPlan.recommendations().stream()
+            .collect(Collectors.groupingBy(HarvestAdvisor.TaxHarvestRecommendation::assetName));
+
+        for (Map.Entry<String, List<HarvestAdvisor.TaxHarvestRecommendation>> entry : harvestByScheme.entrySet()) {
+            String schemeName = entry.getKey();
+            List<HarvestAdvisor.TaxHarvestRecommendation> recs = entry.getValue();
+            BigDecimal totalHarvestGain = recs.stream()
+                .map(HarvestAdvisor.TaxHarvestRecommendation::unrealizedLtcgGain)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal totalUnitsToSell = recs.stream()
+                .map(HarvestAdvisor.TaxHarvestRecommendation::unitsToHarvest)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
             radarSignals.add(new RadarSignalDto(
                 "HARVEST",
-                rec.assetName(),
-                "TAX-LOSS HARVEST",
-                rec.recommendationText(),
+                schemeName,
+                "TAX-LOSS HARVEST OPPORTUNITY",
+                "Harvest " + currencyFormat.format(totalHarvestGain) + " tax-free LTCG gain across " + recs.size() + " lots (" + totalUnitsToSell.setScale(2, RoundingMode.HALF_UP) + " units) before Mar 31.",
                 "WARNING",
-                "Before Mar 31"
+                "Priority Action"
             ));
+        }
+
+        // Sort harvesting signals by total gain descending & limit top priority
+        radarSignals.sort((a, b) -> b.description().compareTo(a.description()));
+        if (radarSignals.size() > 5) {
+            radarSignals = new ArrayList<>(radarSignals.subList(0, 5));
         }
 
         // 2. Maturation Ladder Signal
@@ -207,7 +240,7 @@ public class SyncController {
         }
 
         if (maturingLot != null) {
-            radarSignals.add(new RadarSignalDto(
+            radarSignals.add(0, new RadarSignalDto(
                 "MATURATION",
                 maturingLot.assetName(),
                 "LTCG MATURATION LADDER",

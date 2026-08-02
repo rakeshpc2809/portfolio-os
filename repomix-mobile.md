@@ -179,12 +179,15 @@ package com.portfolioos.mobile.ui
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
@@ -371,7 +374,7 @@ fun DashboardScreen(
                         when (targetTab) {
                             0 -> HoldingsView(syncInfo, holdings)
                             1 -> RadarSignalsView(radarSignals)
-                            2 -> TaxLotsView(taxLots)
+                            2 -> GroupedTaxLotsView(taxLots, holdings)
                         }
                     }
                 }
@@ -601,7 +604,7 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "TAX & REBALANCE RADAR SIGNALS",
+                text = "PRIORITY ACTIONABLE RADAR SIGNALS",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = M3TextMuted,
@@ -679,24 +682,30 @@ fun M3RadarCard(signal: RadarSignalDto) {
     }
 }
 @Composable
-fun TaxLotsView(taxLots: List<FlatTaxLotDto>) {
+fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingDto>) {
+    val nameMap = remember(holdings) {
+        holdings.associate { it.isin to it.fundName }
+    }
+    val groupedLots = remember(taxLots) {
+        taxLots.groupBy { it.isin }
+    }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "OPEN FIFO TAX LOTS (${taxLots.size})",
+                text = "SCHEME-GROUPED TAX LOTS (${groupedLots.size} SCHEMES · ${taxLots.size} LOTS)",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = M3TextMuted,
                 letterSpacing = 1.sp
             )
         }
-        if (taxLots.isEmpty()) {
+        if (groupedLots.isEmpty()) {
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
@@ -712,52 +721,117 @@ fun TaxLotsView(taxLots: List<FlatTaxLotDto>) {
                 }
             }
         } else {
-            items(taxLots) { lot ->
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
+            items(groupedLots.entries.toList()) { (isin, lots) ->
+                val schemeName = nameMap[isin] ?: isin
+                GroupedSchemeTaxLotCard(schemeName = schemeName, isin = isin, lots = lots)
+            }
+        }
+        item {
+            Spacer(modifier = Modifier.height(80.dp))
+        }
+    }
+}
+@Composable
+fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTaxLotDto>) {
+    var expanded by remember { mutableStateOf(false) }
+    val ltcgCount = lots.count { it.isLongTerm }
+    val stcgCount = lots.size - ltcgCount
+    val totalUnits = lots.sumOf { it.units }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = schemeName,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${lots.size} Open Lots · Total %.2f Units".format(totalUnits),
+                        color = M3TextMuted,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (ltcgCount > 0) {
+                        Surface(
+                            color = M3GreenPositive.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
                             Text(
-                                text = lot.isin,
-                                color = Color.White,
-                                fontSize = 13.sp,
+                                text = "$ltcgCount LTCG",
+                                color = M3GreenPositive,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    if (stcgCount > 0) {
+                        Surface(
+                            color = M3AmberWarning.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
                             Text(
-                                text = "Acq: ${lot.buyDate} · ${lot.units} Units @ ₹${lot.costPerUnit}",
+                                text = "$stcgCount STCG",
+                                color = M3AmberWarning,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Expand",
+                        tint = M3CyanPrimary
+                    )
+                }
+            }
+            AnimatedVisibility(visible = expanded) {
+                Column {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Divider(color = M3SurfaceVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    lots.forEach { lot ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${lot.buyDate} · ${lot.units} u @ ₹${lot.costPerUnit}",
                                 color = M3TextMuted,
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace
                             )
-                        }
-                        Surface(
-                            color = if (lot.isLongTerm) M3GreenPositive.copy(alpha = 0.15f) else M3AmberWarning.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
                             Text(
                                 text = if (lot.isLongTerm) "LTCG" else "STCG (${lot.daysToLtcg}d)",
                                 color = if (lot.isLongTerm) M3GreenPositive else M3AmberWarning,
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
                 }
             }
-        }
-        item {
-            Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
@@ -783,8 +857,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -800,32 +872,36 @@ data class BucketAllocation(
     val percentage: Float,
     val color: Color
 )
+val SEBIBucketColors = mapOf(
+    "Flexi Cap" to Color(0xFF06B6D4),                // Vibrant Cyan
+    "Large & Midcap" to Color(0xFFA855F7),           // Electric Violet
+    "Midcap" to Color(0xFF3B82F6),                   // Royal Blue
+    "Small Cap" to Color(0xFF10B981),                // Emerald Green
+    "Microcap" to Color(0xFFEC4899),                 // Coral Pink
+    "Factor Value Index" to Color(0xFFF59E0B),       // Amber Gold
+    "Factor Momentum Index" to Color(0xFF6366F1),    // Indigo
+    "Equal Weight Index" to Color(0xFF14B8A6),       // Teal
+    "Sectoral/Thematic" to Color(0xFFF43F5E),        // Rose
+    "Gold & Commodities" to Color(0xFFEAB308),       // Gold
+    "Debt & Liquid" to Color(0xFF64748B)             // Slate
+)
 @Composable
 fun DonutAllocationChart(
     holdings: List<FlatHoldingDto>,
     modifier: Modifier = Modifier
 ) {
-    val bucketColors = remember {
-        mapOf(
-            "EQUITY_CORE" to Color(0xFF06B6D4),       // Cyan
-            "EQUITY_SATELLITE" to Color(0xFFA855F7),  // Purple
-            "GOLD_COMMODITY" to Color(0xFFF59E0B),    // Amber
-            "DEBT_LIQUID" to Color(0xFF10B981),       // Emerald
-            "INTERNATIONAL" to Color(0xFF3B82F6)     // Blue
-        )
-    }
-    val defaultColor = Color(0xFF64748B)
+    val defaultColor = Color(0xFF94A3B8)
     val allocations = remember(holdings) {
-        val totalVal = holdings.sumOf { it.totalUnits * it.avgCost }.coerceAtLeast(1.0)
-        val grouped = holdings.groupBy { it.assetBucket.ifEmpty { "OTHERS" } }
+        val totalVal = holdings.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }.coerceAtLeast(1.0)
+        val grouped = holdings.groupBy { it.assetBucket.ifEmpty { "Others" } }
         grouped.map { (bucket, list) ->
-            val bucketVal = list.sumOf { it.totalUnits * it.avgCost }
+            val bucketVal = list.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }
             val pct = (bucketVal / totalVal * 100).toFloat()
             BucketAllocation(
                 bucketName = bucket,
                 totalAmount = bucketVal,
                 percentage = pct,
-                color = bucketColors[bucket] ?: defaultColor
+                color = SEBIBucketColors[bucket] ?: defaultColor
             )
         }.sortedByDescending { it.percentage }
     }
@@ -843,7 +919,7 @@ fun DonutAllocationChart(
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                text = "ASSET ALLOCATION BREAKDOWN",
+                text = "SEBI CATEGORY ALLOCATION",
                 color = Color(0xFF94A3B8),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
@@ -856,12 +932,11 @@ fun DonutAllocationChart(
             ) {
                 // Donut Canvas
                 Box(
-                    modifier = Modifier
-                        .size(140.dp),
+                    modifier = Modifier.size(130.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Canvas(modifier = Modifier.size(130.dp)) {
-                        val strokeWidth = 24.dp.toPx()
+                    Canvas(modifier = Modifier.size(120.dp)) {
+                        val strokeWidth = 22.dp.toPx()
                         var startAngle = -90f
                         allocations.forEach { alloc ->
                             val sweepAngle = (alloc.percentage / 100f) * 360f * animProgress.value
@@ -879,33 +954,33 @@ fun DonutAllocationChart(
                         Text(
                             text = "${allocations.size}",
                             color = Color.White,
-                            fontSize = 22.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Black,
                             fontFamily = FontFamily.Monospace
                         )
                         Text(
-                            text = "Buckets",
+                            text = "Categories",
                             color = Color(0xFF94A3B8),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
-                Spacer(modifier = Modifier.width(20.dp))
+                Spacer(modifier = Modifier.width(16.dp))
                 // Legend List
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    allocations.take(4).forEach { alloc ->
+                    allocations.take(5).forEach { alloc ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(10.dp)
+                                    .size(8.dp)
                                     .clip(CircleShape)
                                     .background(alloc.color)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = alloc.bucketName,
                                 color = Color.White,
