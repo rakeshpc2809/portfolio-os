@@ -1,6 +1,5 @@
 package com.portfolioos.mobile.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -103,6 +102,10 @@ fun DashboardScreen(
                 }
             }
         } else {
+            val radarSignals = snapshot.radarSignals ?: emptyList()
+            val holdings = snapshot.holdings ?: emptyList()
+            val syncInfo = snapshot.syncInfo
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -125,7 +128,7 @@ fun DashboardScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = snapshot.syncInfo.xirrFormatted,
+                                text = syncInfo?.xirrFormatted ?: "0.00%",
                                 color = CyanBright,
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.Bold,
@@ -137,13 +140,13 @@ fun DashboardScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    text = "Ledger Hash: ${snapshot.syncInfo.ledgerHash.take(8)}...",
+                                    text = "Ledger Hash: ${(syncInfo?.ledgerHash ?: "00000000").take(8)}...",
                                     color = TextMuted,
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
-                                    text = "FY ${snapshot.syncInfo.fiscalYear}",
+                                    text = "FY ${syncInfo?.fiscalYear ?: "2026-27"}",
                                     color = GreenPositive,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
@@ -154,7 +157,7 @@ fun DashboardScreen(
                 }
 
                 // AI Radar Signals Section
-                if (snapshot.radarSignals.isNotEmpty()) {
+                if (radarSignals.isNotEmpty()) {
                     item {
                         Text(
                             text = "⚡ AI Decision Radar Signals",
@@ -163,7 +166,7 @@ fun DashboardScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    items(snapshot.radarSignals) { signal ->
+                    items(radarSignals) { signal ->
                         RadarSignalCard(signal)
                     }
                 }
@@ -171,13 +174,13 @@ fun DashboardScreen(
                 // Holdings List
                 item {
                     Text(
-                        text = "📊 Open Holdings (${snapshot.holdings.size})",
+                        text = "📊 Open Holdings (${holdings.size})",
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                items(snapshot.holdings) { holding ->
+                items(holdings) { holding ->
                     HoldingCard(holding)
                 }
 
@@ -204,13 +207,13 @@ fun RadarSignalCard(signal: RadarSignalDto) {
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = signal.title,
+                    text = signal.title ?: "Signal",
                     color = CyanBright,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = signal.description,
+                    text = signal.description ?: "",
                     color = TextMuted,
                     fontSize = 11.sp
                 )
@@ -220,7 +223,7 @@ fun RadarSignalCard(signal: RadarSignalDto) {
                 shape = RoundedCornerShape(6.dp)
             ) {
                 Text(
-                    text = signal.actionText,
+                    text = signal.actionText ?: "Review",
                     color = CyanBright,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
@@ -247,7 +250,7 @@ fun HoldingCard(holding: FlatHoldingDto) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = holding.assetName,
+                    text = holding.assetName ?: "Asset",
                     color = Color.White,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
@@ -268,7 +271,7 @@ fun HoldingCard(holding: FlatHoldingDto) {
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = holding.assetBucket,
+                    text = holding.assetBucket ?: "",
                     color = TextMuted,
                     fontSize = 10.sp
                 )
