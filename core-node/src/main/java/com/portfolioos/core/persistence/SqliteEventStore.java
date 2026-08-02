@@ -3,6 +3,8 @@ package com.portfolioos.core.persistence;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.ports.EventStorePort;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -11,7 +13,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -26,8 +27,7 @@ public class SqliteEventStore implements EventStorePort {
     private final String dbPath;
     private final String jdbcUrl;
     private final String hmacSecret;
-    private final Object lock = new Object();
-    private Connection connection;
+    private final HikariDataSource dataSource;
 
     public SqliteEventStore() {
         this(System.getenv("SQLITE_PATH") != null && !System.getenv("SQLITE_PATH").isBlank() 
@@ -58,60 +58,59 @@ public class SqliteEventStore implements EventStorePort {
             jdbcUrl = "jdbc:sqlite:" + file.getAbsolutePath();
         }
 
-        try {
-            connection = DriverManager.getConnection(jdbcUrl);
-            initSchema();
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to connect to SQLite database", e);
-        }
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(jdbcUrl);
+        config.setDriverClassName("org.sqlite.JDBC");
+        config.setMaximumPoolSize(10);
+        config.setMinimumIdle(2);
+        config.setIdleTimeout(30000);
+        config.setPoolName("SqliteEventStorePool");
+
+        this.dataSource = new HikariDataSource(config);
+        initSchema();
     }
 
     private Connection getConnection() throws SQLException {
-        if (connection == null || connection.isClosed()) {
-            connection = DriverManager.getConnection(jdbcUrl);
-        }
-        return connection;
+        return dataSource.getConnection();
     }
 
     private void initSchema() {
-        synchronized (lock) {
-            try (Statement stmt = getConnection().createStatement()) {
-                stmt.execute(
-                    "CREATE TABLE IF NOT EXISTS tax_events (" +
-                    "  id TEXT PRIMARY KEY," +
-                    "  asset_id TEXT NOT NULL," +
-                    "  asset_name TEXT NOT NULL," +
-                    "  isin TEXT," +
-                    "  event_type TEXT NOT NULL," +
-                    "  event_date TEXT NOT NULL," +
-                    "  units TEXT NOT NULL," +
-                    "  price_per_unit TEXT NOT NULL," +
-                    "  gross_amount TEXT NOT NULL," +
-                    "  source_document_id TEXT NOT NULL," +
-                    "  ingested_at TEXT NOT NULL," +
-                    "  previous_hash TEXT NOT NULL," +
-                    "  event_hash TEXT NOT NULL" +
-                    ")"
-                );
-            } catch (SQLException e) {
-                throw new RuntimeException("Failed to initialize SQLite schema", e);
-            }
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS tax_events (" +
+                "  id TEXT PRIMARY KEY," +
+                "  asset_id TEXT NOT NULL," +
+                "  asset_name TEXT NOT NULL," +
+                "  isin TEXT," +
+                "  event_type TEXT NOT NULL," +
+                "  event_date TEXT NOT NULL," +
+                "  units TEXT NOT NULL," +
+                "  price_per_unit TEXT NOT NULL," +
+                "  gross_amount TEXT NOT NULL," +
+                "  source_document_id TEXT NOT NULL," +
+                "  ingested_at TEXT NOT NULL," +
+                "  previous_hash TEXT NOT NULL," +
+                "  event_hash TEXT NOT NULL" +
+                ")"
+            );
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to initialize SQLite schema", e);
         }
     }
 
     @Override
     public String getLatestEventHash() {
-        synchronized (lock) {
-            String sql = "SELECT event_hash FROM tax_events ORDER BY ingested_at DESC, id DESC LIMIT 1";
-            try (PreparedStatement stmt = getConnection().prepareStatement(sql);
-                 ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getString("event_hash");
-                }
-                return "GENESIS";
-            } catch (SQLException e) {
-                throw new RuntimeException("Failed to fetch latest event hash", e);
+        String sql = "SELECT event_hash FROM tax_events ORDER BY ingested_at DESC, id DESC LIMIT 1";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getString("event_hash");
             }
+            return "GENESIS";
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch latest event hash", e);
         }
     }
 
@@ -147,24 +146,16 @@ public class SqliteEventStore implements EventStorePort {
     }
 
     @Override
-    public List<String> appendEvents(List<TaxEvent> events) {
+    public synchronized List<String> appendEvents(List<TaxEvent> events) {
         if (events.isEmpty()) return List.of();
 
-        synchronized (lock) {
-            List<String> hashes = new ArrayList<>();
-            Connection conn;
-            boolean wasAutoCommit;
-            try {
-                conn = getConnection();
-                wasAutoCommit = conn.getAutoCommit();
-                conn.setAutoCommit(false);
-            } catch (SQLException e) {
-                throw new RuntimeException("Database error in transaction config", e);
-            }
+        List<String> hashes = new ArrayList<>();
+        String checkSql = "SELECT event_hash FROM tax_events WHERE asset_id = ? AND event_type = ? AND event_date = ? AND units = ? AND gross_amount = ? AND source_document_id = ? LIMIT 1";
+        String insertSql = "INSERT INTO tax_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at, previous_hash, event_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-            String checkSql = "SELECT event_hash FROM tax_events WHERE asset_id = ? AND event_type = ? AND event_date = ? AND units = ? AND gross_amount = ? AND source_document_id = ? LIMIT 1";
-            String insertSql = "INSERT INTO tax_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at, previous_hash, event_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
+        try (Connection conn = getConnection()) {
+            boolean wasAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
             try (PreparedStatement checkStmt = conn.prepareStatement(checkSql);
                  PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
 
@@ -210,110 +201,100 @@ public class SqliteEventStore implements EventStorePort {
 
                 conn.commit();
             } catch (Exception e) {
-                try {
-                    conn.rollback();
-                } catch (SQLException ex) {
-                    // ignore rollback errors
-                }
+                conn.rollback();
                 throw new RuntimeException("Failed to commit transaction ledger", e);
             } finally {
-                try {
-                    conn.setAutoCommit(wasAutoCommit);
-                } catch (SQLException e) {
-                    // ignore autocommit reset errors
-                }
+                conn.setAutoCommit(wasAutoCommit);
             }
-            return hashes;
+        } catch (SQLException e) {
+            throw new RuntimeException("Database error in transaction execution", e);
         }
+        return hashes;
     }
 
     @Override
     public List<TaxEvent> getEventsForAsset(String assetId) {
-        synchronized (lock) {
-            List<TaxEvent> events = new ArrayList<>();
-            String sql = "SELECT * FROM tax_events WHERE asset_id = ? ORDER BY event_date ASC, ingested_at ASC";
-            try (PreparedStatement stmt = getConnection().prepareStatement(sql)) {
-                stmt.setString(1, assetId);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    while (rs.next()) {
-                        events.add(mapResultSetToTaxEvent(rs));
-                    }
+        List<TaxEvent> events = new ArrayList<>();
+        String sql = "SELECT * FROM tax_events WHERE asset_id = ? ORDER BY event_date ASC, ingested_at ASC";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, assetId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    events.add(mapResultSetToTaxEvent(rs));
                 }
-            } catch (SQLException e) {
-                throw new RuntimeException("Failed to fetch events for asset " + assetId, e);
             }
-            return events;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch events for asset " + assetId, e);
         }
+        return events;
     }
 
     @Override
     public List<TaxEvent> getAllEvents() {
-        synchronized (lock) {
-            List<TaxEvent> events = new ArrayList<>();
-            String sql = "SELECT * FROM tax_events ORDER BY event_date ASC, ingested_at ASC";
-            try (PreparedStatement stmt = getConnection().prepareStatement(sql);
-                 ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    events.add(mapResultSetToTaxEvent(rs));
-                }
-            } catch (SQLException e) {
-                throw new RuntimeException("Failed to fetch all events", e);
+        List<TaxEvent> events = new ArrayList<>();
+        String sql = "SELECT * FROM tax_events ORDER BY event_date ASC, ingested_at ASC";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                events.add(mapResultSetToTaxEvent(rs));
             }
-            return events;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch all events", e);
         }
+        return events;
     }
 
     @Override
     public boolean verifyLedgerIntegrity() {
-        synchronized (lock) {
-            String sql = "SELECT previous_hash, event_hash, id, asset_id, event_type, event_date, units, gross_amount, source_document_id FROM tax_events ORDER BY ingested_at ASC, id ASC";
-            try (PreparedStatement stmt = getConnection().prepareStatement(sql);
-                 ResultSet rs = stmt.executeQuery()) {
+        String sql = "SELECT previous_hash, event_hash, id, asset_id, event_type, event_date, units, gross_amount, source_document_id FROM tax_events ORDER BY ingested_at ASC, id ASC";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
 
-                String expectedPrevHash = "GENESIS";
-                while (rs.next()) {
-                    String actualPrevHash = rs.getString("previous_hash");
-                    String actualEventHash = rs.getString("event_hash");
+            String expectedPrevHash = "GENESIS";
+            while (rs.next()) {
+                String actualPrevHash = rs.getString("previous_hash");
+                String actualEventHash = rs.getString("event_hash");
 
-                    if (!actualPrevHash.equals(expectedPrevHash)) {
-                        return false;
-                    }
-
-                    TaxEvent mockEvent = new TaxEvent(
-                        rs.getString("id"),
-                        rs.getString("asset_id"),
-                        "",
-                        null,
-                        EventType.valueOf(rs.getString("event_type")),
-                        LocalDate.parse(rs.getString("event_date")),
-                        rs.getBigDecimal("units"),
-                        BigDecimal.ZERO,
-                        rs.getBigDecimal("gross_amount"),
-                        rs.getString("source_document_id"),
-                        null
-                    );
-
-                    String recomputedHash = computeHash(expectedPrevHash, mockEvent);
-                    if (!recomputedHash.equals(actualEventHash)) {
-                        return false;
-                    }
-                    expectedPrevHash = actualEventHash;
+                if (!actualPrevHash.equals(expectedPrevHash)) {
+                    return false;
                 }
-                return true;
-            } catch (SQLException e) {
-                throw new RuntimeException("Ledger integrity verification failed", e);
+
+                TaxEvent mockEvent = new TaxEvent(
+                    rs.getString("id"),
+                    rs.getString("asset_id"),
+                    "",
+                    null,
+                    EventType.valueOf(rs.getString("event_type")),
+                    LocalDate.parse(rs.getString("event_date")),
+                    rs.getBigDecimal("units"),
+                    BigDecimal.ZERO,
+                    rs.getBigDecimal("gross_amount"),
+                    rs.getString("source_document_id"),
+                    null
+                );
+
+                String recomputedHash = computeHash(expectedPrevHash, mockEvent);
+                if (!recomputedHash.equals(actualEventHash)) {
+                    return false;
+                }
+                expectedPrevHash = actualEventHash;
             }
+            return true;
+        } catch (SQLException e) {
+            throw new RuntimeException("Ledger integrity verification failed", e);
         }
     }
 
     @Override
     public void clearAllEvents() {
-        synchronized (lock) {
-            try (Statement stmt = getConnection().createStatement()) {
-                stmt.execute("DELETE FROM tax_events");
-            } catch (SQLException e) {
-                throw new RuntimeException("Failed to clear ledger", e);
-            }
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("DELETE FROM tax_events");
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to clear ledger", e);
         }
     }
 

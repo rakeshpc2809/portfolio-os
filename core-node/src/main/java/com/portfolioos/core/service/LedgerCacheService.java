@@ -4,6 +4,9 @@ import com.portfolioos.core.matcher.FifoMatcher;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.nav.AmfiNavSync;
 import com.portfolioos.core.ports.EventStorePort;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -35,19 +38,32 @@ public class LedgerCacheService {
         String ledgerHash
     ) {}
 
+    @EventListener(ApplicationReadyEvent.class)
+    @Scheduled(fixedRate = 30000)
+    public void refreshCacheInBackground() {
+        synchronized (lock) {
+            try {
+                String currentHash = eventStore.getLatestEventHash();
+                long now = System.currentTimeMillis();
+
+                if (cachedResult == null || !currentHash.equals(cachedHash) || (now - lastNavSyncTime) >= 30_000) {
+                    cachedEvents = eventStore.getAllEvents();
+                    cachedResult = fifoMatcher.processEvents(cachedEvents);
+                    cachedNavMap = amfiSync.getNavMap();
+                    cachedHash = currentHash;
+                    lastNavSyncTime = now;
+                }
+            } catch (Exception e) {
+                System.err.println("Background cache refresh warning: " + e.getMessage());
+            }
+        }
+    }
+
     public CachedLedgerState getCachedState() {
         synchronized (lock) {
-            String currentHash = eventStore.getLatestEventHash();
-            long now = System.currentTimeMillis();
-
-            if (cachedResult == null || !currentHash.equals(cachedHash) || (now - lastNavSyncTime) > 30_000) {
-                cachedEvents = eventStore.getAllEvents();
-                cachedResult = fifoMatcher.processEvents(cachedEvents);
-                cachedNavMap = amfiSync.getNavMap();
-                cachedHash = currentHash;
-                lastNavSyncTime = now;
+            if (cachedResult == null) {
+                refreshCacheInBackground();
             }
-
             return new CachedLedgerState(cachedEvents, cachedResult, cachedNavMap, cachedHash);
         }
     }
@@ -58,6 +74,7 @@ public class LedgerCacheService {
             cachedEvents = null;
             cachedResult = null;
             cachedNavMap = null;
+            refreshCacheInBackground();
         }
     }
 }

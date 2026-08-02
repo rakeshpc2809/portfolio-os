@@ -896,24 +896,31 @@ file.getParentFile().mkdirs();
 ⋮----
 jdbcUrl = "jdbc:duckdb:" + file.getAbsolutePath();
 ⋮----
-connection = DriverManager.getConnection(jdbcUrl);
+HikariConfig config = new HikariConfig();
+config.setJdbcUrl(jdbcUrl);
+config.setDriverClassName("org.duckdb.DuckDBDriver");
+config.setMaximumPoolSize(10);
+config.setMinimumIdle(2);
+config.setIdleTimeout(30000);
+config.setPoolName("DuckDbProjectorPool");
+⋮----
+this.dataSource = new HikariDataSource(config);
 initReadSchema();
 ⋮----
-throw new RuntimeException("Failed to connect to DuckDB", e);
-⋮----
 private Connection getConnection() throws SQLException {
-if (connection == null || connection.isClosed()) {
+return dataSource.getConnection();
 ⋮----
 private void initReadSchema() {
-try (Statement stmt = getConnection().createStatement()) {
+try (Connection conn = getConnection();
+Statement stmt = conn.createStatement()) {
 stmt.execute(
 ⋮----
 throw new RuntimeException("Failed to initialize DuckDB schema", e);
 ⋮----
-public void projectEvents(List<TaxEvent> events) {
+public synchronized void projectEvents(List<TaxEvent> events) {
 if (events == null || events.isEmpty()) return;
 ⋮----
-Connection conn = getConnection();
+try (Connection conn = getConnection()) {
 boolean wasAutoCommit = conn.getAutoCommit();
 ⋮----
 conn.setAutoCommit(false);
@@ -946,7 +953,7 @@ conn.setAutoCommit(wasAutoCommit);
 ⋮----
 throw new RuntimeException("DuckDB transaction failure", e);
 ⋮----
-public void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, Set<String> heldIsins, LocalDate date) {
+public synchronized void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, Set<String> heldIsins, LocalDate date) {
 if (navMap == null || navMap.isEmpty() || heldIsins == null || heldIsins.isEmpty()) return;
 ⋮----
 String dateStr = date.toString();
@@ -989,8 +996,6 @@ System.err.println("Failed to fetch NAV history series with dates from DuckDB: "
 ```java
 public class SqliteEventStore implements EventStorePort {
 ⋮----
-private final Object lock = new Object();
-⋮----
 this(System.getenv("SQLITE_PATH") != null && !System.getenv("SQLITE_PATH").isBlank()
 ? System.getenv("SQLITE_PATH") : "data/tax_ledger.db");
 ⋮----
@@ -1010,24 +1015,30 @@ file.getParentFile().mkdirs();
 ⋮----
 jdbcUrl = "jdbc:sqlite:" + file.getAbsolutePath();
 ⋮----
-connection = DriverManager.getConnection(jdbcUrl);
+HikariConfig config = new HikariConfig();
+config.setJdbcUrl(jdbcUrl);
+config.setDriverClassName("org.sqlite.JDBC");
+config.setMaximumPoolSize(10);
+config.setMinimumIdle(2);
+config.setIdleTimeout(30000);
+config.setPoolName("SqliteEventStorePool");
+⋮----
+this.dataSource = new HikariDataSource(config);
 initSchema();
 ⋮----
-throw new RuntimeException("Failed to connect to SQLite database", e);
-⋮----
 private Connection getConnection() throws SQLException {
-if (connection == null || connection.isClosed()) {
+return dataSource.getConnection();
 ⋮----
 private void initSchema() {
-⋮----
-try (Statement stmt = getConnection().createStatement()) {
+try (Connection conn = getConnection();
+Statement stmt = conn.createStatement()) {
 stmt.execute(
 ⋮----
 throw new RuntimeException("Failed to initialize SQLite schema", e);
 ⋮----
 public String getLatestEventHash() {
 ⋮----
-try (PreparedStatement stmt = getConnection().prepareStatement(sql);
+PreparedStatement stmt = conn.prepareStatement(sql);
 ResultSet rs = stmt.executeQuery()) {
 if (rs.next()) {
 return rs.getString("event_hash");
@@ -1060,15 +1071,12 @@ public String appendEvent(TaxEvent event) {
 List<String> hashes = appendEvents(List.of(event));
 return hashes.isEmpty() ? null : hashes.get(0);
 ⋮----
-public List<String> appendEvents(List<TaxEvent> events) {
+public synchronized List<String> appendEvents(List<TaxEvent> events) {
 if (events.isEmpty()) return List.of();
 ⋮----
-conn = getConnection();
-wasAutoCommit = conn.getAutoCommit();
+try (Connection conn = getConnection()) {
+boolean wasAutoCommit = conn.getAutoCommit();
 conn.setAutoCommit(false);
-⋮----
-throw new RuntimeException("Database error in transaction config", e);
-⋮----
 try (PreparedStatement checkStmt = conn.prepareStatement(checkSql);
 PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
 ⋮----
@@ -1108,18 +1116,15 @@ hashes.add(eventHash);
 conn.commit();
 ⋮----
 conn.rollback();
-⋮----
-// ignore rollback errors
-⋮----
 throw new RuntimeException("Failed to commit transaction ledger", e);
 ⋮----
 conn.setAutoCommit(wasAutoCommit);
 ⋮----
-// ignore autocommit reset errors
+throw new RuntimeException("Database error in transaction execution", e);
 ⋮----
 public List<TaxEvent> getEventsForAsset(String assetId) {
 ⋮----
-try (PreparedStatement stmt = getConnection().prepareStatement(sql)) {
+PreparedStatement stmt = conn.prepareStatement(sql)) {
 stmt.setString(1, assetId);
 try (ResultSet rs = stmt.executeQuery()) {
 while (rs.next()) {
@@ -1633,15 +1638,21 @@ private final FifoMatcher fifoMatcher = new FifoMatcher();
 ⋮----
 private final Object lock = new Object();
 ⋮----
-public CachedLedgerState getCachedState() {
+public void refreshCacheInBackground() {
 ⋮----
 String currentHash = eventStore.getLatestEventHash();
 long now = System.currentTimeMillis();
 ⋮----
-if (cachedResult == null || !currentHash.equals(cachedHash) || (now - lastNavSyncTime) > 30_000) {
+if (cachedResult == null || !currentHash.equals(cachedHash) || (now - lastNavSyncTime) >= 30_000) {
 cachedEvents = eventStore.getAllEvents();
 cachedResult = fifoMatcher.processEvents(cachedEvents);
 cachedNavMap = amfiSync.getNavMap();
+⋮----
+System.err.println("Background cache refresh warning: " + e.getMessage());
+⋮----
+public CachedLedgerState getCachedState() {
+⋮----
+refreshCacheInBackground();
 ⋮----
 return new CachedLedgerState(cachedEvents, cachedResult, cachedNavMap, cachedHash);
 ⋮----
@@ -2115,6 +2126,8 @@ if (nameUpper.contains("SMALL") || nameUpper.contains("MICRO") || nameUpper.cont
 ⋮----
 public static RebalanceEngineResult evaluateRebalance(
 ⋮----
+return evaluateRebalance(openLots, List.of(), navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh, targets, fiscalYear);
+⋮----
 for (Bucket b : Bucket.values()) {
 bucketValues.put(b, BigDecimal.ZERO);
 bucketAssetLots.put(b, new HashMap<>());
@@ -2169,6 +2182,10 @@ DrawdownStatus drawdownStatus = new DrawdownStatus(
 ⋮----
 TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
 ⋮----
+// Deduct statutory Section 112A LTCG exemption
+ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots != null ? matchedLots : List.of(), fiscalYear);
+BigDecimal exemptionRemaining = new BigDecimal(exStatus.exemptionRemaining());
+⋮----
 BigDecimal liquidVal = bucketValues.get(Bucket.LIQUID_BUFFER);
 BigDecimal deployAmount = liquidVal.multiply(deployPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 ⋮----
@@ -2193,14 +2210,21 @@ String assetName = firstLots.get(0).assetName();
 BigDecimal nav = navMap.getOrDefault(firstAssetId, firstLots.get(0).costPerUnit());
 ⋮----
 AssetCategory category = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
-// Assume 365 holding threshold days to classify tax term for simple tax drag estimation
-boolean isLtcg = TaxClassifier.classifyTaxTerm(category, 365, fiscalYear, true) == TaxTerm.LONG_TERM;
+long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), currentDate);
+boolean isLtcg = TaxClassifier.classifyTaxTerm(category, holdingDays, fiscalYear, true) == TaxTerm.LONG_TERM;
 BigDecimal gain = nav.subtract(lot.costPerUnit()).multiply(lot.remainingUnits()).max(BigDecimal.ZERO);
 ⋮----
 if (gain.compareTo(BigDecimal.ZERO) > 0) {
 BigDecimal rate = isLtcg ? rules.equityLtcgRate() : rules.equityStcgRate();
-estTaxDrag = estTaxDrag.add(gain.multiply(rate));
-taxTerms.add(isLtcg ? "LTCG @ " + rules.equityLtcgRate().multiply(new BigDecimal("100")) + "%"
+⋮----
+if (isLtcg && exemptionRemaining.compareTo(BigDecimal.ZERO) > 0) {
+if (taxableGain.compareTo(exemptionRemaining) <= 0) {
+exemptionRemaining = exemptionRemaining.subtract(taxableGain);
+⋮----
+taxableGain = taxableGain.subtract(exemptionRemaining);
+⋮----
+estTaxDrag = estTaxDrag.add(taxableGain.multiply(rate));
+taxTerms.add(isLtcg ? "LTCG @ " + rules.equityLtcgRate().multiply(new BigDecimal("100")) + "% (Sec 112A exemption applied)"
 : "STCG @ " + rules.equityStcgRate().multiply(new BigDecimal("100")) + "%");
 ⋮----
 status.bucket(),
@@ -2477,7 +2501,7 @@ return absReturn.doubleValue();
 dates.add((double) ChronoUnit.DAYS.between(startDate, cf.date()) / 365.25);
 amounts.add(cf.amount().doubleValue());
 ⋮----
-// Newton-Raphson guess
+// Newton-Raphson solver
 ⋮----
 double f = npv(rate, dates, amounts);
 double df = dNpv(rate, dates, amounts);
@@ -2487,7 +2511,7 @@ if (Math.abs(df) > 1e-10) {
 if (Math.abs(nextRate - rate) < 1e-7) {
 ⋮----
 if (Double.isNaN(result) || Double.isInfinite(result)) return 0.0;
-return Math.max(-99.0, Math.min(300.0, result));
+return Math.max(-99.0, result);
 ⋮----
 // Bracketed Bisection Fallback
 ⋮----
@@ -2496,12 +2520,12 @@ double fhigh = npv(high, dates, amounts);
 ⋮----
 double fmid = npv(mid, dates, amounts);
 if (Math.abs(fmid) < 1e-7 || (high - low) < 1e-7) {
-return Math.max(-99.0, Math.min(300.0, mid * 100.0));
+return Math.max(-99.0, mid * 100.0);
 ⋮----
-return Math.max(-99.0, Math.min(300.0, ((low + high) / 2.0) * 100.0));
+return Math.max(-99.0, ((low + high) / 2.0) * 100.0);
 ⋮----
 if (Double.isNaN(rawResult) || Double.isInfinite(rawResult)) return 0.0;
-return Math.max(-99.0, Math.min(300.0, rawResult));
+return Math.max(-99.0, rawResult);
 ⋮----
 private double npv(double r, List<Double> dates, List<Double> amounts) {
 ⋮----
@@ -3238,6 +3262,11 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jdbc</artifactId>
+        </dependency>
+        <!-- HikariCP Connection Pooling -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
         </dependency>
         <!-- Databases -->
         <dependency>

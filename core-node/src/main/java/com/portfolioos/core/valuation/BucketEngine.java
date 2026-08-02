@@ -3,13 +3,16 @@ package com.portfolioos.core.valuation;
 import com.portfolioos.core.model.AssetCategory;
 import com.portfolioos.core.matcher.TaxClassifier;
 import com.portfolioos.core.model.Lot;
+import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.model.TaxTerm;
+import com.portfolioos.core.reporting.ExemptionTracker;
 import com.portfolioos.core.rules.TaxRulesConfig;
 import com.portfolioos.core.rules.TaxRulesLoader;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -106,6 +109,19 @@ public class BucketEngine {
         List<BucketTarget> targets,
         String fiscalYear
     ) {
+        return evaluateRebalance(openLots, List.of(), navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh, targets, fiscalYear);
+    }
+
+    public static RebalanceEngineResult evaluateRebalance(
+        List<Lot> openLots,
+        List<MatchedLot> matchedLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate currentDate,
+        BigDecimal benchmarkCurrent,
+        BigDecimal benchmarkRollingHigh,
+        List<BucketTarget> targets,
+        String fiscalYear
+    ) {
         BigDecimal totalPortfolioValue = BigDecimal.ZERO;
         Map<Bucket, BigDecimal> bucketValues = new HashMap<>();
         Map<Bucket, Map<String, List<Lot>>> bucketAssetLots = new HashMap<>();
@@ -189,6 +205,10 @@ public class BucketEngine {
         List<RebalanceRecommendation> recommendations = new ArrayList<>();
         TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
 
+        // Deduct statutory Section 112A LTCG exemption
+        ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots != null ? matchedLots : List.of(), fiscalYear);
+        BigDecimal exemptionRemaining = new BigDecimal(exStatus.exemptionRemaining());
+
         if (drawdownTriggerFired) {
             BigDecimal liquidVal = bucketValues.get(Bucket.LIQUID_BUFFER);
             BigDecimal deployAmount = liquidVal.multiply(deployPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
@@ -229,15 +249,25 @@ public class BucketEngine {
 
                     for (Lot lot : firstLots) {
                         AssetCategory category = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
-                        // Assume 365 holding threshold days to classify tax term for simple tax drag estimation
-                        boolean isLtcg = TaxClassifier.classifyTaxTerm(category, 365, fiscalYear, true) == TaxTerm.LONG_TERM;
+                        long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), currentDate);
+                        boolean isLtcg = TaxClassifier.classifyTaxTerm(category, holdingDays, fiscalYear, true) == TaxTerm.LONG_TERM;
                         BigDecimal gain = nav.subtract(lot.costPerUnit()).multiply(lot.remainingUnits()).max(BigDecimal.ZERO);
 
                         if (gain.compareTo(BigDecimal.ZERO) > 0) {
                             BigDecimal rate = isLtcg ? rules.equityLtcgRate() : rules.equityStcgRate();
-                            estTaxDrag = estTaxDrag.add(gain.multiply(rate));
-                            taxTerms.add(isLtcg ? "LTCG @ " + rules.equityLtcgRate().multiply(new BigDecimal("100")) + "%" 
-                                                 : "STCG @ " + rules.equityStcgRate().multiply(new BigDecimal("100")) + "%");
+                            BigDecimal taxableGain = gain;
+                            if (isLtcg && exemptionRemaining.compareTo(BigDecimal.ZERO) > 0) {
+                                if (taxableGain.compareTo(exemptionRemaining) <= 0) {
+                                    exemptionRemaining = exemptionRemaining.subtract(taxableGain);
+                                    taxableGain = BigDecimal.ZERO;
+                                } else {
+                                    taxableGain = taxableGain.subtract(exemptionRemaining);
+                                    exemptionRemaining = BigDecimal.ZERO;
+                                }
+                            }
+                            estTaxDrag = estTaxDrag.add(taxableGain.multiply(rate));
+                            taxTerms.add(isLtcg ? "LTCG @ " + rules.equityLtcgRate().multiply(new BigDecimal("100")) + "% (Sec 112A exemption applied)" 
+                                                  : "STCG @ " + rules.equityStcgRate().multiply(new BigDecimal("100")) + "%");
                         }
                     }
 

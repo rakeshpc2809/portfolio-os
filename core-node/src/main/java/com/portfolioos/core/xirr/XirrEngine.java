@@ -47,7 +47,7 @@ public class XirrEngine {
             amounts.add(cf.amount().doubleValue());
         }
 
-        // Newton-Raphson guess
+        // Newton-Raphson solver
         double rate = 0.10;
         for (int iter = 0; iter < 100; iter++) {
             double f = npv(rate, dates, amounts);
@@ -58,7 +58,7 @@ public class XirrEngine {
                 if (Math.abs(nextRate - rate) < 1e-7) {
                     double result = nextRate * 100.0;
                     if (Double.isNaN(result) || Double.isInfinite(result)) return 0.0;
-                    return Math.max(-99.0, Math.min(300.0, result));
+                    return Math.max(-99.0, result);
                 }
                 rate = nextRate;
             }
@@ -67,7 +67,7 @@ public class XirrEngine {
 
         // Bracketed Bisection Fallback
         double low = -0.50;
-        double high = 3.0;
+        double high = 10.0;
         double flow = npv(low, dates, amounts);
         double fhigh = npv(high, dates, amounts);
 
@@ -76,7 +76,7 @@ public class XirrEngine {
                 double mid = (low + high) / 2.0;
                 double fmid = npv(mid, dates, amounts);
                 if (Math.abs(fmid) < 1e-7 || (high - low) < 1e-7) {
-                    return Math.max(-99.0, Math.min(300.0, mid * 100.0));
+                    return Math.max(-99.0, mid * 100.0);
                 }
                 if (flow * fmid < 0) {
                     high = mid;
@@ -86,12 +86,12 @@ public class XirrEngine {
                     flow = fmid;
                 }
             }
-            return Math.max(-99.0, Math.min(300.0, ((low + high) / 2.0) * 100.0));
+            return Math.max(-99.0, ((low + high) / 2.0) * 100.0);
         }
 
         double rawResult = rate * 100.0;
         if (Double.isNaN(rawResult) || Double.isInfinite(rawResult)) return 0.0;
-        return Math.max(-99.0, Math.min(300.0, rawResult));
+        return Math.max(-99.0, rawResult);
     }
 
     private double npv(double r, List<Double> dates, List<Double> amounts) {

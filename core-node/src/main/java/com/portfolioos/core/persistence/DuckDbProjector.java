@@ -1,11 +1,12 @@
 package com.portfolioos.core.persistence;
 
 import com.portfolioos.core.model.TaxEvent;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 
 import java.io.File;
 import java.math.BigDecimal;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -17,7 +18,7 @@ public class DuckDbProjector {
 
     private final String dbPath;
     private final String jdbcUrl;
-    private Connection connection;
+    private final HikariDataSource dataSource;
 
     public static record NavHistorySeriesEntry(
         List<Double> navs,
@@ -47,23 +48,25 @@ public class DuckDbProjector {
             jdbcUrl = "jdbc:duckdb:" + file.getAbsolutePath();
         }
 
-        try {
-            connection = DriverManager.getConnection(jdbcUrl);
-            initReadSchema();
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to connect to DuckDB", e);
-        }
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(jdbcUrl);
+        config.setDriverClassName("org.duckdb.DuckDBDriver");
+        config.setMaximumPoolSize(10);
+        config.setMinimumIdle(2);
+        config.setIdleTimeout(30000);
+        config.setPoolName("DuckDbProjectorPool");
+
+        this.dataSource = new HikariDataSource(config);
+        initReadSchema();
     }
 
     private Connection getConnection() throws SQLException {
-        if (connection == null || connection.isClosed()) {
-            connection = DriverManager.getConnection(jdbcUrl);
-        }
-        return connection;
+        return dataSource.getConnection();
     }
 
     private void initReadSchema() {
-        try (Statement stmt = getConnection().createStatement()) {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
             stmt.execute(
                 "CREATE TABLE IF NOT EXISTS projected_events (" +
                 "  id VARCHAR PRIMARY KEY," +
@@ -93,11 +96,10 @@ public class DuckDbProjector {
         }
     }
 
-    public void projectEvents(List<TaxEvent> events) {
+    public synchronized void projectEvents(List<TaxEvent> events) {
         if (events == null || events.isEmpty()) return;
 
-        try {
-            Connection conn = getConnection();
+        try (Connection conn = getConnection()) {
             boolean wasAutoCommit = conn.getAutoCommit();
             try {
                 conn.setAutoCommit(false);
@@ -138,11 +140,10 @@ public class DuckDbProjector {
         }
     }
 
-    public void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, Set<String> heldIsins, LocalDate date) {
+    public synchronized void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, Set<String> heldIsins, LocalDate date) {
         if (navMap == null || navMap.isEmpty() || heldIsins == null || heldIsins.isEmpty()) return;
 
-        try {
-            Connection conn = getConnection();
+        try (Connection conn = getConnection()) {
             boolean wasAutoCommit = conn.getAutoCommit();
             try {
                 conn.setAutoCommit(false);
@@ -185,8 +186,7 @@ public class DuckDbProjector {
         Map<String, NavHistorySeriesEntry> result = new HashMap<>();
         if (assetIds == null || assetIds.isEmpty()) return result;
 
-        try {
-            Connection conn = getConnection();
+        try (Connection conn = getConnection()) {
             String sql = "SELECT asset_id, nav_date, nav FROM nav_history WHERE asset_id = ? ORDER BY nav_date ASC";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 for (String assetId : assetIds) {

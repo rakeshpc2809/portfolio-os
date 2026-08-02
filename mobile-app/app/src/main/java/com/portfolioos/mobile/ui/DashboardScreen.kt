@@ -1,8 +1,11 @@
 package com.portfolioos.mobile.ui
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,13 +36,12 @@ import com.portfolioos.mobile.model.RadarSignalDto
 import com.portfolioos.mobile.model.SyncSnapshot
 
 // Material 3 Expressive Vibrant Obsidian Palette
-val M3ObsidianDark = Color(0xFF050811)
-val M3SurfaceCard = Color(0xFF0F1424)
-val M3SurfaceVariant = Color(0xFF181F33)
-val M3CyanPrimary = Color(0xFF06B6D4)
-val M3CyanContainer = Color(0xFF0A3440)
-val M3PurpleSecondary = Color(0xFFA855F7)
-val M3PurpleContainer = Color(0xFF321950)
+val M3ObsidianDark = Color(0xFF04060E)
+val M3SurfaceCard = Color(0xFF0B101D)
+val M3SurfaceVariant = Color(0xFF141C30)
+val M3ElectricLime = Color(0xFFD0FF00)
+val M3NeonCyan = Color(0xFF00F0FF)
+val M3VibrantViolet = Color(0xFFD946EF)
 val M3GreenPositive = Color(0xFF10B981)
 val M3AmberWarning = Color(0xFFF59E0B)
 val M3TextMuted = Color(0xFF94A3B8)
@@ -58,10 +60,9 @@ fun DashboardScreen(
             background = M3ObsidianDark,
             surface = M3SurfaceCard,
             surfaceVariant = M3SurfaceVariant,
-            primary = M3CyanPrimary,
-            primaryContainer = M3CyanContainer,
-            secondary = M3PurpleSecondary,
-            secondaryContainer = M3PurpleContainer
+            primary = M3ElectricLime,
+            secondary = M3NeonCyan,
+            tertiary = M3VibrantViolet
         )
     ) {
         Scaffold(
@@ -73,13 +74,13 @@ fun DashboardScreen(
                                 text = "PORTFOLIO OS",
                                 fontWeight = FontWeight.Black,
                                 fontSize = 18.sp,
-                                letterSpacing = 2.sp,
+                                letterSpacing = 2.5.sp,
                                 color = Color.White
                             )
                             Text(
-                                text = snapshot?.syncInfo?.fiscalYear?.let { "Fiscal Year $it" } ?: "Sync Active",
+                                text = snapshot?.syncInfo?.fiscalYear?.let { "Fiscal Year $it · Expressive M3" } ?: "Sync Active",
                                 fontSize = 11.sp,
-                                color = M3CyanPrimary,
+                                color = M3ElectricLime,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -92,7 +93,7 @@ fun DashboardScreen(
             bottomBar = {
                 NavigationBar(
                     containerColor = M3SurfaceCard,
-                    contentColor = M3CyanPrimary
+                    contentColor = M3ElectricLime
                 ) {
                     NavigationBarItem(
                         selected = selectedTab == 0,
@@ -100,8 +101,8 @@ fun DashboardScreen(
                         icon = { Icon(Icons.Default.Star, contentDescription = "Holdings") },
                         label = { Text("Holdings", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = M3CyanPrimary,
-                            indicatorColor = M3CyanContainer
+                            selectedIconColor = M3ElectricLime,
+                            indicatorColor = Color(0xFF263500)
                         )
                     )
                     NavigationBarItem(
@@ -110,8 +111,8 @@ fun DashboardScreen(
                         icon = { Icon(Icons.Default.Notifications, contentDescription = "Radar") },
                         label = { Text("AI Radar", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = M3PurpleSecondary,
-                            indicatorColor = M3PurpleContainer
+                            selectedIconColor = M3VibrantViolet,
+                            indicatorColor = Color(0xFF380842)
                         )
                     )
                     NavigationBarItem(
@@ -120,8 +121,8 @@ fun DashboardScreen(
                         icon = { Icon(Icons.Default.List, contentDescription = "Tax Lots") },
                         label = { Text("Tax Lots", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = M3CyanPrimary,
-                            indicatorColor = M3CyanContainer
+                            selectedIconColor = M3NeonCyan,
+                            indicatorColor = Color(0xFF00363A)
                         )
                     )
                 }
@@ -129,7 +130,7 @@ fun DashboardScreen(
             floatingActionButton = {
                 FloatingActionButton(
                     onClick = onRefresh,
-                    containerColor = M3CyanPrimary,
+                    containerColor = M3ElectricLime,
                     contentColor = Color.Black,
                     shape = CircleShape
                 ) {
@@ -148,7 +149,7 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = M3CyanPrimary)
+                        CircularProgressIndicator(color = M3ElectricLime)
                     }
                 } else if (snapshot == null) {
                     Box(
@@ -157,7 +158,7 @@ fun DashboardScreen(
                     ) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(24.dp),
                             modifier = Modifier.padding(24.dp)
                         ) {
                             Column(
@@ -179,7 +180,7 @@ fun DashboardScreen(
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Button(
                                     onClick = onRefresh,
-                                    colors = ButtonDefaults.buttonColors(containerColor = M3CyanPrimary)
+                                    colors = ButtonDefaults.buttonColors(containerColor = M3ElectricLime)
                                 ) {
                                     Text("Retry Connection", color = Color.Black, fontWeight = FontWeight.Bold)
                                 }
@@ -195,7 +196,8 @@ fun DashboardScreen(
                     AnimatedContent(
                         targetState = selectedTab,
                         transitionSpec = {
-                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                            fadeIn(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)) togetherWith
+                            fadeOut(animationSpec = tween(200))
                         },
                         label = "TabTransition"
                     ) { targetTab ->
@@ -221,17 +223,23 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
     ) {
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            // Expressive M3 Ambient Gradient Hero Net Worth Card
+            // Asymmetrical Expressive Hero Net Worth Card
             Card(
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 8.dp, bottomEnd = 28.dp, bottomStart = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.linearGradient(listOf(M3ElectricLime.copy(alpha = 0.5f), M3NeonCyan.copy(alpha = 0.2f))),
+                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 8.dp, bottomEnd = 28.dp, bottomStart = 8.dp)
+                    )
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
                             Brush.linearGradient(
-                                colors = listOf(Color(0xFF0A3440), Color(0xFF1E1035), Color(0xFF0F1424))
+                                colors = listOf(Color(0xFF142400), Color(0xFF072A30), Color(0xFF0B101D))
                             )
                         )
                         .padding(20.dp)
@@ -244,35 +252,35 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
                         ) {
                             Text(
                                 text = "NET WORTH VALUATION",
-                                color = M3CyanPrimary,
+                                color = M3ElectricLime,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 1.5.sp
                             )
                             Surface(
-                                color = M3GreenPositive.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(6.dp)
+                                color = M3ElectricLime.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
                                     text = syncInfo?.xirrPercentage ?: "0.00% XIRR",
-                                    color = M3GreenPositive,
+                                    color = M3ElectricLime,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = syncInfo?.formattedCurrentValue ?: "₹0.00",
                             color = Color.White,
-                            fontSize = 34.sp,
+                            fontSize = 36.sp,
                             fontWeight = FontWeight.Black,
                             fontFamily = FontFamily.Monospace
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
                         Divider(color = Color.White.copy(alpha = 0.1f))
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -314,12 +322,10 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
             }
         }
 
-        // Native Donut Asset Allocation Chart Component
         item {
             DonutAllocationChart(holdings = holdings)
         }
 
-        // Native Performance Bar Chart Component
         item {
             PerformanceBarChart(holdings = holdings)
         }
@@ -338,7 +344,7 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -365,7 +371,7 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
 fun M3HoldingCard(holding: FlatHoldingDto) {
     Card(
         colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -422,7 +428,7 @@ fun M3HoldingCard(holding: FlatHoldingDto) {
                     label = { Text(holding.assetBucket, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
                     colors = AssistChipDefaults.assistChipColors(
                         containerColor = M3SurfaceVariant,
-                        labelColor = M3CyanPrimary
+                        labelColor = M3NeonCyan
                     )
                 )
             }
@@ -453,7 +459,7 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -480,13 +486,13 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
 fun M3RadarCard(signal: RadarSignalDto) {
     val isQuant = signal.signalType.contains("QUANT", ignoreCase = true)
     val isWarning = signal.severity.equals("WARNING", ignoreCase = true)
-    val borderColor = if (isQuant) M3PurpleSecondary else if (isWarning) M3AmberWarning else M3CyanPrimary
-    val containerColor = if (isQuant) Color(0xFF1A132B) else M3SurfaceCard
+    val borderColor = if (isQuant) M3VibrantViolet else if (isWarning) M3AmberWarning else M3NeonCyan
+    val containerColor = if (isQuant) Color(0xFF1E0A24) else M3SurfaceCard
 
     OutlinedCard(
         colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
         border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(borderColor)),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 6.dp, bottomEnd = 20.dp, bottomStart = 6.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -556,7 +562,7 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -590,7 +596,7 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
 
     Card(
         colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -651,7 +657,7 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = "Expand",
-                        tint = M3CyanPrimary
+                        tint = M3NeonCyan
                     )
                 }
             }
