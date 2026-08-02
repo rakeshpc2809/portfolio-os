@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.security.MessageDigest;
+import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -53,6 +54,8 @@ public class SyncController {
 
         LocalDate today = LocalDate.now();
         Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        Locale inLocale = new Locale("en", "IN");
+        NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(inLocale);
 
         // Compute ledger hash
         String ledgerRaw = allEvents.stream()
@@ -71,12 +74,15 @@ public class SyncController {
             ledgerHash = "default_hash";
         }
 
-        // Calculate overall XIRR
+        // Calculate overall XIRR & Totals
         List<CashFlow> portfolioCashflows = new ArrayList<>();
         BigDecimal totalPortfolioCurrentVal = BigDecimal.ZERO;
+        BigDecimal totalPortfolioInvested = BigDecimal.ZERO;
+
         for (Lot lot : openLots) {
             BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
             totalPortfolioCurrentVal = totalPortfolioCurrentVal.add(lot.remainingUnits().multiply(nav));
+            totalPortfolioInvested = totalPortfolioInvested.add(lot.totalCostBasis());
         }
 
         for (TaxEvent event : allEvents) {
@@ -88,6 +94,7 @@ public class SyncController {
         }
         portfolioCashflows.add(new CashFlow(today, totalPortfolioCurrentVal));
         double overallXirr = portfolioCashflows.size() >= 2 ? xirrEngine.calculateXirr(portfolioCashflows) : 0.0;
+        BigDecimal unrealizedGain = totalPortfolioCurrentVal.subtract(totalPortfolioInvested);
 
         // Group open lots by asset for FlatHoldingDto
         Map<String, List<Lot>> groupedByAsset = openLots.stream().collect(Collectors.groupingBy(Lot::assetId));
@@ -128,7 +135,11 @@ public class SyncController {
                 totalUnits.doubleValue(),
                 avgCost.doubleValue(),
                 BigDecimal.valueOf(holdingXirr).setScale(2, RoundingMode.HALF_UP).doubleValue(),
-                bucket
+                bucket,
+                holdingCurVal.doubleValue(),
+                totalCost.doubleValue(),
+                currencyFormat.format(holdingCurVal),
+                currencyFormat.format(totalCost)
             ));
         }
 
@@ -182,43 +193,7 @@ public class SyncController {
             ));
         }
 
-        // 2. Antigravity Signals
-        Map<String, String> assetNames = openLots.stream().collect(Collectors.toMap(Lot::assetId, Lot::assetName, (a, b) -> a));
-        Map<String, List<Double>> assetReturnsMap = new HashMap<>();
-        for (String assetId : assetNames.keySet()) {
-            String name = assetNames.get(assetId);
-            boolean isLowBeta = name.toLowerCase().contains("value") || name.toLowerCase().contains("equal");
-            double betaMult = isLowBeta ? 0.42 : 1.10;
-            double zBoost = isLowBeta ? 0.008 : -0.001;
-
-            List<Double> simulatedReturns = new ArrayList<>();
-            for (int i = 0; i < 30; i++) {
-                simulatedReturns.add((Math.sin(i) * 0.005) + (betaMult * -0.002) + zBoost);
-            }
-            assetReturnsMap.put(assetId, simulatedReturns);
-        }
-
-        List<Double> marketReturns = new ArrayList<>();
-        for (int i = 0; i < 30; i++) {
-            marketReturns.add((Math.sin(i) * 0.005) - 0.003);
-        }
-
-        AntigravityEngine.AntigravitySummary antigravitySummary = AntigravityEngine.analyzePortfolioFactors(
-            assetReturnsMap, assetNames, marketReturns, new BigDecimal("6.5")
-        );
-
-        for (AntigravityEngine.AssetFactorScore asset : antigravitySummary.antigravityAssets()) {
-            radarSignals.add(new RadarSignalDto(
-                "ANTIGRAVITY",
-                asset.assetName(),
-                "🚀 ANTIGRAVITY DETECTED",
-                asset.recommendation(),
-                "INFO",
-                "β = " + asset.downsideBeta()
-            ));
-        }
-
-        // 3. Maturation Ladder Signal
+        // 2. Maturation Ladder Signal
         Lot maturingLot = null;
         long minDaysToLtcg = 9999L;
 
@@ -242,7 +217,7 @@ public class SyncController {
             ));
         }
 
-        // 4. Bucket Rebalance Signal
+        // 3. Bucket Rebalance Signal
         BucketEngine.RebalanceEngineResult bucketStatus = BucketEngine.evaluateRebalance(
             openLots, navMap, today, new BigDecimal("24000.00"), new BigDecimal("25000.00"), BucketEngine.DEFAULT_TARGETS, fy
         );
@@ -270,7 +245,13 @@ public class SyncController {
             LocalDate.now().atStartOfDay().toString(),
             fy,
             BigDecimal.valueOf(overallXirr).setScale(2, RoundingMode.HALF_UP).doubleValue(),
-            String.format("%.2f%%", overallXirr)
+            String.format("%.2f%%", overallXirr),
+            totalPortfolioInvested.doubleValue(),
+            totalPortfolioCurrentVal.doubleValue(),
+            unrealizedGain.doubleValue(),
+            currencyFormat.format(totalPortfolioCurrentVal),
+            currencyFormat.format(totalPortfolioInvested),
+            (unrealizedGain.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + currencyFormat.format(unrealizedGain)
         );
 
         return ResponseEntity.ok(new UnidirectionalSyncSnapshot(

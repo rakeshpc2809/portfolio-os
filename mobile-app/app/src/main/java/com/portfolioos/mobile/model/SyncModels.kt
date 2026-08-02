@@ -15,7 +15,13 @@ data class SyncInfoDto(
     @SerializedName("generated_at") val generatedAt: String = "",
     @SerializedName("fiscal_year") val fiscalYear: String = "2026-27",
     @SerializedName("portfolio_xirr") val portfolioXirr: Double = 0.0,
-    @SerializedName("xirr_percentage") val xirrPercentage: String = "0.00%"
+    @SerializedName("xirr_percentage") val xirrPercentage: String = "0.00%",
+    @SerializedName("total_invested") val totalInvested: Double = 0.0,
+    @SerializedName("current_value") val currentValue: Double = 0.0,
+    @SerializedName("unrealized_gain") val unrealizedGain: Double = 0.0,
+    @SerializedName("formatted_current_value") val formattedCurrentValue: String = "₹0.00",
+    @SerializedName("formatted_total_invested") val formattedTotalInvested: String = "₹0.00",
+    @SerializedName("formatted_unrealized_gain") val formattedUnrealizedGain: String = "₹0.00"
 )
 
 data class FlatHoldingDto(
@@ -24,7 +30,11 @@ data class FlatHoldingDto(
     @SerializedName("total_units") val totalUnits: Double = 0.0,
     @SerializedName("avg_cost") val avgCost: Double = 0.0,
     @SerializedName("xirr") val xirr: Double = 0.0,
-    @SerializedName("asset_bucket") val assetBucket: String = ""
+    @SerializedName("asset_bucket") val assetBucket: String = "",
+    @SerializedName("current_value") val currentValue: Double = 0.0,
+    @SerializedName("invested_value") val investedValue: Double = 0.0,
+    @SerializedName("formatted_current_value") val formattedCurrentValue: String = "₹0.00",
+    @SerializedName("formatted_invested_value") val formattedInvestedValue: String = "₹0.00"
 )
 
 data class FlatTaxLotDto(

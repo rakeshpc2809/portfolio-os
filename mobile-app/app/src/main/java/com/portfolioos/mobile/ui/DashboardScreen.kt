@@ -218,7 +218,7 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
     ) {
         item {
             Spacer(modifier = Modifier.height(8.dp))
-            // Expressive M3 Ambient Gradient Hero Metric Card
+            // Expressive M3 Ambient Gradient Hero Net Worth Card
             Card(
                 shape = RoundedCornerShape(20.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -234,40 +234,77 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
                         .padding(20.dp)
                 ) {
                     Column {
-                        Text(
-                            text = "MONEY-WEIGHTED XIRR",
-                            color = M3CyanPrimary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 1.5.sp
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "NET WORTH VALUATION",
+                                color = M3CyanPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.5.sp
+                            )
+                            Surface(
+                                color = M3GreenPositive.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = syncInfo?.xirrPercentage ?: "0.00% XIRR",
+                                    color = M3GreenPositive,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = syncInfo?.xirrPercentage ?: "0.00%",
+                            text = syncInfo?.formattedCurrentValue ?: "₹0.00",
                             color = Color.White,
-                            fontSize = 38.sp,
+                            fontSize = 34.sp,
                             fontWeight = FontWeight.Black,
                             fontFamily = FontFamily.Monospace
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Divider(color = Color.White.copy(alpha = 0.1f))
                         Spacer(modifier = Modifier.height(12.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = "Ledger: ${(syncInfo?.ledgerHash ?: "00000000").take(8)}...",
-                                color = M3TextMuted,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                text = "${holdings.size} Active Schemes",
-                                color = M3GreenPositive,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Column {
+                                Text(
+                                    text = "Total Invested",
+                                    color = M3TextMuted,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = syncInfo?.formattedTotalInvested ?: "₹0.00",
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "Unrealized Gain",
+                                    color = M3TextMuted,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = syncInfo?.formattedUnrealizedGain ?: "+₹0.00",
+                                    color = if ((syncInfo?.unrealizedGain ?: 0.0) >= 0) M3GreenPositive else Color.Red,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
                         }
                     }
                 }
@@ -286,7 +323,7 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
 
         item {
             Text(
-                text = "ACTIVE HOLDINGS LIST",
+                text = "ACTIVE HOLDINGS (${holdings.size} SCHEMES)",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = M3TextMuted,
@@ -362,12 +399,21 @@ fun M3HoldingCard(holding: FlatHoldingDto) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Units: ${holding.totalUnits} · Avg: ₹${holding.avgCost}",
-                    color = M3TextMuted,
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace
-                )
+                Column {
+                    Text(
+                        text = "Valuation: ${holding.formattedCurrentValue}",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "${holding.totalUnits} Units · Cost: ${holding.formattedInvestedValue}",
+                        color = M3TextMuted,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
                 AssistChip(
                     onClick = {},
                     label = { Text(holding.assetBucket, fontSize = 10.sp, fontWeight = FontWeight.Bold) },

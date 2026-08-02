@@ -10,7 +10,13 @@ public class SyncDtos {
         String generated_at,
         String fiscal_year,
         double portfolio_xirr,
-        String xirr_percentage
+        String xirr_percentage,
+        double total_invested,
+        double current_value,
+        double unrealized_gain,
+        String formatted_current_value,
+        String formatted_total_invested,
+        String formatted_unrealized_gain
     ) {}
 
     public record FlatHoldingDto(
@@ -19,7 +25,11 @@ public class SyncDtos {
         double total_units,
         double avg_cost,
         double xirr,
-        String asset_bucket
+        String asset_bucket,
+        double current_value,
+        double invested_value,
+        String formatted_current_value,
+        String formatted_invested_value
     ) {}
 
     public record FlatTaxLotDto(
