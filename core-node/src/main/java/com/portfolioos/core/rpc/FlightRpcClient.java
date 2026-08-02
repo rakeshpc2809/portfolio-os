@@ -59,6 +59,11 @@ public class FlightRpcClient {
             return out;
         }
 
+        int totalRows = fundNavSeries.values().stream().mapToInt(e -> e.navs().size()).sum();
+        if (totalRows == 0) {
+            return out;
+        }
+
         try {
             Location location = Location.forGrpcInsecure(host, port);
             try (FlightClient client = FlightClient.builder(allocator, location).build()) {
@@ -70,12 +75,11 @@ public class FlightRpcClient {
                 ));
 
                 try (VectorSchemaRoot inRoot = VectorSchemaRoot.create(inSchema, allocator)) {
-                    int totalRows = fundNavSeries.values().stream().mapToInt(e -> e.navs().size()).sum();
                     VarCharVector codeVec = (VarCharVector) inRoot.getVector("amfi_code");
                     VarCharVector dateVec = (VarCharVector) inRoot.getVector("nav_date");
                     Float8Vector navVec = (Float8Vector) inRoot.getVector("nav_value");
-                    codeVec.allocateNew(totalRows);
-                    dateVec.allocateNew(totalRows);
+                    codeVec.allocateNew(totalRows * 32L, totalRows);
+                    dateVec.allocateNew(totalRows * 16L, totalRows);
                     navVec.allocateNew(totalRows);
 
                     int row = 0;

@@ -24,9 +24,12 @@ export function updateExemptionMeter(data) {
   const pctText = document.querySelector('.meter-meta .pct-used');
   const remainingText = document.querySelector('.meter-meta .remaining');
 
+  const usedVal = data.exemption_used || data.exemptionUsed;
+  const limitVal = data.exemption_limit || data.exemptionLimit;
+
   if (meterVal && fill && remainingText) {
-    const used = Math.round(parseFloat(data.exemptionUsed) || 0);
-    const limit = Math.round(parseFloat(data.exemptionLimit) || 125000);
+    const used = Math.round(parseFloat(usedVal) || 0);
+    const limit = Math.round(parseFloat(limitVal) || 125000);
     const pct = Math.min(100, Math.round((used / limit) * 100));
 
     meterVal.innerHTML = `${formatINR(used)} <span class="sub-limit">/ 1.25L</span>`;
@@ -39,8 +42,10 @@ export function updateExemptionMeter(data) {
 
 export function updateReportMetrics(report) {
   const stcgVal = document.querySelector('.stcg-val');
-  if (stcgVal && report.totalRealizedStcg) {
-    stcgVal.textContent = formatINR(report.totalRealizedStcg);
+  const realizedStcg = report.total_realized_stcg || report.totalRealizedStcg;
+
+  if (stcgVal && realizedStcg) {
+    stcgVal.textContent = formatINR(realizedStcg);
     stcgVal.classList.remove('skeleton');
   }
 }
@@ -63,14 +68,19 @@ export function renderDecisionRadar(opportunities, ladder, antigravityData) {
 
   let html = '';
 
-  if (antigravityData && antigravityData.antigravityAssets && antigravityData.antigravityAssets.length > 0) {
-    for (const ag of antigravityData.antigravityAssets) {
+  const agAssets = antigravityData ? (antigravityData.antigravity_assets || antigravityData.antigravityAssets) : null;
+  const mktDd = antigravityData ? (antigravityData.market_drawdown_pct || antigravityData.marketDrawdownPct) : null;
+
+  if (agAssets && agAssets.length > 0) {
+    for (const ag of agAssets) {
+      const assetName = ag.asset_name || ag.assetName;
+      const twr = ag.twr_30d_pct || ag.twr30dPct;
       html += `
         <div class="radar-card info-border" style="border-left: 3px solid #06b6d4; background: rgba(6, 182, 212, 0.08);">
           <div class="radar-icon info">🚀</div>
           <div class="radar-content">
-            <div class="radar-title" style="color:#06b6d4;">ANTIGRAVITY DETECTED (${ag.assetName})</div>
-            <div class="radar-desc">Beta: <strong>${ag.beta}</strong> | 30d TWR: <strong>+${ag.twr30dPct}%</strong> during market drawdown (${antigravityData.marketDrawdownPct}%). ${ag.recommendation}</div>
+            <div class="radar-title" style="color:#06b6d4;">ANTIGRAVITY DETECTED (${assetName})</div>
+            <div class="radar-desc">Beta: <strong>${ag.beta}</strong> | 30d TWR: <strong>+${twr}%</strong> during market drawdown (${mktDd}%). ${ag.recommendation}</div>
           </div>
           <span class="antigravity-badge">🚀 Low Beta + Alpha</span>
         </div>
@@ -80,13 +90,16 @@ export function renderDecisionRadar(opportunities, ladder, antigravityData) {
 
   if (opportunities && opportunities.length > 0) {
     for (const opp of opportunities.slice(0, 2)) {
-      const loss = Math.round(parseFloat(opp.potentialHarvestableLoss) || 0);
+      const assetName = opp.asset_name || opp.assetName;
+      const lossVal = opp.potential_harvestable_loss || opp.potentialHarvestableLoss;
+      const loss = Math.round(parseFloat(lossVal) || 0);
+
       html += `
         <div class="radar-card warning-border">
           <div class="radar-icon warning">⚡</div>
           <div class="radar-content">
             <div class="radar-title">Tax-Loss Harvesting Opportunity</div>
-            <div class="radar-desc">Harvest <strong>${formatINR(loss)}</strong> loss in <em>${opp.assetName}</em> before March 31.</div>
+            <div class="radar-desc">Harvest <strong>${formatINR(loss)}</strong> loss in <em>${assetName}</em> before March 31.</div>
           </div>
           <span class="days-badge">Harvest Now</span>
         </div>
@@ -96,14 +109,19 @@ export function renderDecisionRadar(opportunities, ladder, antigravityData) {
 
   if (ladder && ladder.length > 0) {
     for (const mat of ladder.slice(0, 2)) {
+      const assetName = mat.asset_name || mat.assetName;
+      const units = mat.remaining_units || mat.remainingUnits;
+      const targetDate = mat.target_ltcg_date || mat.targetLtcgDate;
+      const daysRem = mat.days_remaining_to_ltcg !== undefined ? mat.days_remaining_to_ltcg : mat.daysRemainingToLtcg;
+
       html += `
         <div class="radar-card maturation-border">
           <div class="radar-icon maturation">⏳</div>
           <div class="radar-content">
             <div class="radar-title">LTCG Tax Maturation Coming Up</div>
-            <div class="radar-desc">Lot of <em>${mat.assetName}</em> (${mat.remainingUnits} units) becomes <strong>LTCG</strong> on ${mat.targetLtcgDate}.</div>
+            <div class="radar-desc">Lot of <em>${assetName}</em> (${units} units) becomes <strong>LTCG</strong> on ${targetDate}.</div>
           </div>
-          <span class="days-badge">Wait ${mat.daysRemainingToLtcg} Days</span>
+          <span class="days-badge">Wait ${daysRem} Days</span>
         </div>
       `;
     }
@@ -148,20 +166,29 @@ export function renderRealizedLogTable(logs) {
 
   let html = '';
   logs.forEach(l => {
-    const gain = Math.round(parseFloat(l.realizedGain) || 0);
+    const dispDate = l.disposal_date || l.disposalDate;
+    const acqDate = l.acquisition_date || l.acquisitionDate;
+    const assetName = l.asset_name || l.assetName;
+    const matched = l.units_matched || l.unitsMatched;
+    const proceeds = l.sale_proceeds || l.saleProceeds;
+    const cost = l.cost_basis || l.costBasis;
+    const gainVal = l.realized_gain || l.realizedGain;
+    const taxTerm = l.tax_term || l.taxTerm;
+
+    const gain = Math.round(parseFloat(gainVal) || 0);
     const gainSign = gain >= 0 ? '+' : '';
     const gainColor = gain >= 0 ? 'color: #10b981;' : 'color: #ef4444;';
 
     html += `
       <tr>
-        <td>${l.disposalDate}</td>
-        <td>${l.acquisitionDate}</td>
-        <td style="font-weight:600;">${l.assetName}</td>
-        <td class="font-mono">${l.unitsMatched}</td>
-        <td class="font-mono">${formatINR(l.saleProceeds)}</td>
-        <td class="font-mono">${formatINR(l.costBasis)}</td>
+        <td>${dispDate}</td>
+        <td>${acqDate}</td>
+        <td style="font-weight:600;">${assetName}</td>
+        <td class="font-mono">${matched}</td>
+        <td class="font-mono">${formatINR(proceeds)}</td>
+        <td class="font-mono">${formatINR(cost)}</td>
         <td class="font-mono" style="${gainColor}">${gainSign}${formatINR(gain)}</td>
-        <td><span class="cat-badge ${l.taxTerm === 'LONG_TERM' ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}">${l.taxTerm}</span></td>
+        <td><span class="cat-badge ${taxTerm === 'LONG_TERM' ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}">${taxTerm}</span></td>
       </tr>
     `;
   });

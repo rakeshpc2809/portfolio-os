@@ -8,21 +8,26 @@ export function updatePortfolioSummary(summary) {
   const subText = document.querySelector('.net-worth-sub');
   const xirrVal = document.querySelector('.xirr-val');
 
-  if (netWorthVal && summary.totalCurrentValue) {
-    netWorthVal.textContent = formatINR(summary.totalCurrentValue);
+  const curVal = summary.total_current_value || summary.totalCurrentValue;
+  const gainVal = summary.total_unrealized_gain || summary.totalUnrealizedGain;
+  const countVal = summary.active_holding_count !== undefined ? summary.active_holding_count : summary.activeHoldingCount;
+  const xirr = summary.xirr_percentage || summary.xirrPercentage;
+
+  if (netWorthVal && curVal) {
+    netWorthVal.textContent = formatINR(curVal);
     netWorthVal.classList.remove('skeleton');
   }
-  if (gainText && summary.totalUnrealizedGain) {
-    const gain = Math.round(parseFloat(summary.totalUnrealizedGain) || 0);
+  if (gainText && gainVal) {
+    const gain = Math.round(parseFloat(gainVal) || 0);
     const sign = gain >= 0 ? '+' : '';
     gainText.textContent = `Unrealized gain: ${sign}${formatINR(gain)}`;
     gainText.className = `metric-delta ${gain >= 0 ? 'positive' : 'negative'}`;
   }
-  if (subText && summary.activeHoldingCount !== undefined) {
-    subText.innerHTML = `Active Holdings: <strong>${summary.activeHoldingCount} Schemes</strong>`;
+  if (subText && countVal !== undefined) {
+    subText.innerHTML = `Active Holdings: <strong>${countVal} Schemes</strong>`;
   }
-  if (xirrVal && summary.xirrPercentage) {
-    xirrVal.textContent = summary.xirrPercentage;
+  if (xirrVal && xirr) {
+    xirrVal.textContent = xirr;
     xirrVal.classList.remove('skeleton');
   }
 }
@@ -41,21 +46,27 @@ export function renderHoldingsTable(holdings) {
 
   let html = '';
   holdings.forEach((h, idx) => {
-    const inv = Math.round(parseFloat(h.investedValue) || 0);
-    const cur = Math.round(parseFloat(h.currentValue) || 0);
-    const gain = Math.round(parseFloat(h.unrealizedGain) || 0);
+    const assetName = h.asset_name || h.assetName || '';
+    const category = h.category || '';
+    const inv = Math.round(parseFloat(h.invested_value || h.investedValue) || 0);
+    const cur = Math.round(parseFloat(h.current_value || h.currentValue) || 0);
+    const gain = Math.round(parseFloat(h.unrealized_gain || h.unrealizedGain) || 0);
+    const gainPct = h.unrealized_gain_pct || h.unrealizedGainPct || '0.00';
+    const allocPct = h.allocation_pct || h.allocationPct || '0.00';
+    const lots = h.lots || [];
+
     const gainSign = gain >= 0 ? '+' : '';
     const gainColor = gain >= 0 ? 'color: #10b981;' : 'color: #ef4444;';
 
     html += `
       <tr class="holding-row" onclick="toggleLotDetails('${idx}')">
-        <td style="font-weight:600;">${h.assetName}</td>
-        <td><span class="cat-badge cat-${h.category}">${h.category.replace('_SPECIFIED_50AA', '')}</span></td>
+        <td style="font-weight:600;">${assetName}</td>
+        <td><span class="cat-badge cat-${category}">${category.replace('_SPECIFIED_50AA', '')}</span></td>
         <td class="font-mono">${formatINR(inv)}</td>
         <td class="font-mono" style="font-weight:600;">${formatINR(cur)}</td>
-        <td class="font-mono" style="${gainColor}">${gainSign}${formatINR(gain)} (${h.unrealizedGainPct}%)</td>
-        <td class="font-mono">${h.allocationPct}%</td>
-        <td><button class="pill-btn">${h.lots.length} Lots ▼</button></td>
+        <td class="font-mono" style="${gainColor}">${gainSign}${formatINR(gain)} (${gainPct}%)</td>
+        <td class="font-mono">${allocPct}%</td>
+        <td><button class="pill-btn">${lots.length} Lots ▼</button></td>
       </tr>
       <tr id="lotRow-${idx}" style="display: none;">
         <td colspan="7" class="lot-expansion-td">
@@ -71,18 +82,27 @@ export function renderHoldingsTable(holdings) {
               </tr>
             </thead>
             <tbody>
-              ${h.lots.map(l => `
+              ${lots.map(l => {
+                const acqDate = l.acquisition_date || l.acquisitionDate;
+                const units = l.remaining_units || l.remainingUnits;
+                const costPerUnit = parseFloat(l.cost_per_unit || l.costPerUnit || '0');
+                const lotGain = parseFloat(l.unrealized_gain || l.unrealizedGain || '0');
+                const daysHeld = l.holding_days !== undefined ? l.holding_days : l.holdingDays;
+                const daysLeft = l.days_to_ltcg !== undefined ? l.days_to_ltcg : l.daysToLtcg;
+                const isLtcg = l.is_ltcg !== undefined ? l.is_ltcg : l.isLtcg;
+
+                return `
                 <tr>
-                  <td>${l.acquisitionDate}</td>
-                  <td class="font-mono">${l.remainingUnits}</td>
-                  <td class="font-mono">${formatINR(parseFloat(l.costPerUnit) * parseFloat(l.remainingUnits))}</td>
-                  <td class="font-mono" style="${parseFloat(l.unrealizedGain) >= 0 ? 'color: #10b981;' : 'color: #ef4444;'}">
-                    ${parseFloat(l.unrealizedGain) >= 0 ? '+' : ''}${formatINR(l.unrealizedGain)}
+                  <td>${acqDate}</td>
+                  <td class="font-mono">${units}</td>
+                  <td class="font-mono">${formatINR(costPerUnit * parseFloat(units || '0'))}</td>
+                  <td class="font-mono" style="${lotGain >= 0 ? 'color: #10b981;' : 'color: #ef4444;'}">
+                    ${lotGain >= 0 ? '+' : ''}${formatINR(lotGain)}
                   </td>
-                  <td>${l.holdingDays}d</td>
-                  <td><span class="cat-badge ${l.isLtcg ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}">${l.isLtcg ? 'LTCG' : 'STCG (' + (l.daysToLtcg > 0 ? l.daysToLtcg + 'd left' : 'Always') + ')'}</span></td>
+                  <td>${daysHeld}d</td>
+                  <td><span class="cat-badge ${isLtcg ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}">${isLtcg ? 'LTCG' : 'STCG (' + (daysLeft > 0 ? daysLeft + 'd left' : 'Always') + ')'}</span></td>
                 </tr>
-              `).join('')}
+              `;}).join('')}
             </tbody>
           </table>
         </td>
@@ -134,21 +154,22 @@ export function renderAllocationChart(allocations) {
   if (state.charts.allocChart) state.charts.allocChart.dispose();
   if (!allocations || allocations.length === 0) return;
 
-  const total = allocations.reduce((sum, a) => sum + (parseFloat(a.currentValue) || 0), 0);
+  const total = allocations.reduce((sum, a) => sum + (parseFloat(a.current_value || a.currentValue) || 0), 0);
   
   const main = [];
   let othersVal = 0;
   let othersCount = 0;
 
   allocations.forEach(a => {
-    const val = parseFloat(a.currentValue) || 0;
+    const val = parseFloat(a.current_value || a.currentValue) || 0;
+    const assetName = a.asset_name || a.assetName || '';
     const pct = total > 0 ? (val / total) * 100 : 0;
     if (pct < 3.0 && allocations.length > 6) {
       othersVal += val;
       othersCount++;
     } else {
       main.push({
-        name: a.assetName.length > 25 ? a.assetName.substring(0, 23) + '...' : a.assetName,
+        name: assetName.length > 25 ? assetName.substring(0, 23) + '...' : assetName,
         value: val
       });
     }
@@ -168,8 +189,8 @@ export function renderCategoryChart(catAllocations) {
   if (state.charts.categoryChart) state.charts.categoryChart.dispose();
 
   const data = catAllocations.map(c => ({
-    name: c.categoryName,
-    value: parseFloat(c.currentValue) || 0
+    name: c.category_name || c.categoryName,
+    value: parseFloat(c.current_value || c.currentValue) || 0
   }));
 
   state.charts.categoryChart = renderPieChart('categoryChart', data);
@@ -191,13 +212,19 @@ export function renderConsolidationPlan(data) {
   const badge = document.getElementById('consolidationWindowBadge');
   if (!container) return;
 
+  const isWindowOpen = data.is_rebalance_window_open !== undefined ? data.is_rebalance_window_open : data.isRebalanceWindowOpen;
+  const nextWindow = data.next_scheduled_window || data.nextScheduledWindow;
+  const totalProceeds = data.total_proceeds || data.totalProceeds;
+  const totalTaxDrag = data.total_tax_drag || data.totalTaxDrag;
+  const proRata = data.pro_rata_allocations || data.proRataAllocations || [];
+
   if (badge) {
-    badge.textContent = data.isRebalanceWindowOpen ? 'WINDOW OPEN: EXECUTE REBALANCE' : `SCHEDULED WINDOW: ${data.nextScheduledWindow}`;
-    badge.style.color = data.isRebalanceWindowOpen ? '#10b981' : '#06b6d4';
+    badge.textContent = isWindowOpen ? 'WINDOW OPEN: EXECUTE REBALANCE' : `SCHEDULED WINDOW: ${nextWindow}`;
+    badge.style.color = isWindowOpen ? '#10b981' : '#06b6d4';
   }
 
-  const proceeds = Math.round(parseFloat(data.totalProceeds) || 256200);
-  const taxDrag = Math.round(parseFloat(data.totalTaxDrag) || 0);
+  const proceeds = Math.round(parseFloat(totalProceeds) || 256200);
+  const taxDrag = Math.round(parseFloat(totalTaxDrag) || 0);
 
   let html = `
     <div style="margin-bottom:12px; font-size:13px;" class="font-mono">
@@ -215,12 +242,16 @@ export function renderConsolidationPlan(data) {
       <tbody>
   `;
 
-  for (const alloc of data.proRataAllocations) {
-    const amt = Math.round(parseFloat(alloc.deploymentAmount) || 0);
+  for (const alloc of proRata) {
+    const assetName = alloc.asset_name || alloc.assetName;
+    const weightPct = alloc.sip_weight_pct || alloc.sipWeightPct;
+    const deployAmt = alloc.deployment_amount || alloc.deploymentAmount;
+
+    const amt = Math.round(parseFloat(deployAmt) || 0);
     html += `
       <tr>
-        <td style="font-weight:600;">${alloc.assetName}</td>
-        <td><span class="days-badge">${alloc.sipWeightPct}%</span></td>
+        <td style="font-weight:600;">${assetName}</td>
+        <td><span class="days-badge">${weightPct}%</span></td>
         <td class="font-mono" style="font-weight:600; color:#10b981;">${formatINR(amt)}</td>
       </tr>
     `;
@@ -246,14 +277,18 @@ export function updateRebalanceSummary(data) {
   const rebEffRate = document.getElementById('rebEffRate');
   const rebLtcgHarvested = document.getElementById('rebLtcgHarvested');
 
-  if (rebTaxDrag && data.totalTaxDrag) {
-    rebTaxDrag.textContent = formatINR(data.totalTaxDrag);
+  const taxDrag = data.total_tax_drag || data.totalTaxDrag;
+  const effRate = data.effective_tax_rate_pct || data.effectiveTaxRatePct;
+  const ltcgHarv = data.ltcg_exemption_harvested || data.ltcgExemptionHarvested;
+
+  if (rebTaxDrag && taxDrag) {
+    rebTaxDrag.textContent = formatINR(taxDrag);
   }
-  if (rebEffRate && data.effectiveTaxRatePct) {
-    rebEffRate.textContent = data.effectiveTaxRatePct;
+  if (rebEffRate && effRate) {
+    rebEffRate.textContent = effRate;
   }
-  if (rebLtcgHarvested && data.ltcgExemptionHarvested) {
-    rebLtcgHarvested.textContent = formatINR(data.ltcgExemptionHarvested);
+  if (rebLtcgHarvested && ltcgHarv) {
+    rebLtcgHarvested.textContent = formatINR(ltcgHarv);
   }
 }
 
@@ -270,8 +305,9 @@ export async function fetchGoalSummary() {
 
 export function renderGoalSummary(data) {
   const idleVal = document.querySelector('.idle-cash-val');
-  if (idleVal && data.unallocatedCash) {
-    idleVal.textContent = formatINR(data.unallocatedCash);
+  const unallocCash = data.unallocated_cash || data.unallocatedCash;
+  if (idleVal && unallocCash) {
+    idleVal.textContent = formatINR(unallocCash);
     idleVal.classList.remove('skeleton');
   }
 }
@@ -294,16 +330,23 @@ export function renderFireSummary(data) {
   const reqCorpus = document.getElementById('fireRequiredCorpus');
   const projCorpus = document.getElementById('fireProjectedCorpus');
 
+  const status = data.status;
+  const shortage = data.shortage_or_surplus_amount || data.shortageOrSurplusAmount;
+  const activeLabel = data.active_scenario_label || data.activeScenarioLabel;
+  const fireInvestable = data.fire_investable_net_worth || data.fireInvestableNetWorth;
+  const requiredCorpus = data.required_corpus || data.requiredCorpus;
+  const projectedCorpus = data.projected_corpus_at_target_age || data.projectedCorpusAtTargetAge;
+
   if (statusPill) {
-    statusPill.textContent = data.status === 'ON_TRACK' ? 'ON TRACK' : `SHORT BY ${formatINR(data.shortageOrSurplusAmount)}`;
-    statusPill.className = `fire-status-pill ${data.status === 'ON_TRACK' ? 'on-track' : 'short'}`;
+    statusPill.textContent = status === 'ON_TRACK' ? 'ON TRACK' : `SHORT BY ${formatINR(shortage)}`;
+    statusPill.className = `fire-status-pill ${status === 'ON_TRACK' ? 'on-track' : 'short'}`;
   }
 
-  if (scenarioLabel) scenarioLabel.textContent = `Scenario: ${data.activeScenarioLabel}`;
+  if (scenarioLabel) scenarioLabel.textContent = `Scenario: ${activeLabel}`;
 
-  if (investableNw) investableNw.textContent = formatINR(data.fireInvestableNetWorth);
-  if (reqCorpus) reqCorpus.textContent = `₹ ${(parseFloat(data.requiredCorpus) / 10000000).toFixed(2)} Cr`;
-  if (projCorpus) projCorpus.textContent = `₹ ${(parseFloat(data.projectedCorpusAtTargetAge) / 10000000).toFixed(2)} Cr`;
+  if (investableNw) investableNw.textContent = formatINR(fireInvestable);
+  if (reqCorpus) reqCorpus.textContent = `₹ ${(parseFloat(requiredCorpus) / 10000000).toFixed(2)} Cr`;
+  if (projCorpus) projCorpus.textContent = `₹ ${(parseFloat(projectedCorpus) / 10000000).toFixed(2)} Cr`;
 }
 
 export async function fetchBucketRebalance() {
@@ -321,23 +364,33 @@ export function renderBucketRebalance(data) {
   const drawdownTag = document.getElementById('drawdownTag');
   const bucketGrid = document.getElementById('bucketGrid');
 
-  if (drawdownTag && data.drawdownStatus) {
-    const dd = data.drawdownStatus;
-    drawdownTag.textContent = `${dd.benchmarkName}: ${dd.drawdownPct}% Drawdown`;
+  const dd = data.drawdown_status || data.drawdownStatus;
+  const statuses = data.bucket_statuses || data.bucketStatuses;
+
+  if (drawdownTag && dd) {
+    const bmName = dd.benchmark_name || dd.benchmarkName;
+    const ddPct = dd.drawdown_pct || dd.drawdownPct;
+    drawdownTag.textContent = `${bmName}: ${ddPct}% Drawdown`;
   }
 
-  if (bucketGrid && data.bucketStatuses) {
+  if (bucketGrid && statuses) {
     let html = '';
-    data.bucketStatuses.forEach(b => {
+    statuses.forEach(b => {
+      const isDrifted = b.is_drifted !== undefined ? b.is_drifted : b.isDrifted;
+      const driftPct = b.drift_pct || b.driftPct;
+      const curVal = b.current_value || b.currentValue;
+      const curPct = b.current_pct || b.currentPct;
+      const targetPct = b.target_pct || b.targetPct;
+
       const nameFmt = b.bucket.replace('_', ' ');
       html += `
-        <div class="bucket-card ${b.isDrifted ? 'drifted' : ''}">
+        <div class="bucket-card ${isDrifted ? 'drifted' : ''}">
           <div class="bucket-card-header">
             <span class="bucket-name">${nameFmt}</span>
-            <span class="drift-badge ${b.isDrifted ? 'warn' : 'ok'}">${b.isDrifted ? 'Drift: ' + b.driftPct + '%' : 'Target OK'}</span>
+            <span class="drift-badge ${isDrifted ? 'warn' : 'ok'}">${isDrifted ? 'Drift: ' + driftPct + '%' : 'Target OK'}</span>
           </div>
-          <div class="font-mono" style="font-size:16px; font-weight:700;">${formatINR(b.currentValue)}</div>
-          <div class="text-muted" style="font-size:11px; margin-top:4px;">Current: ${b.currentPct}% · Target: ${b.targetPct}%</div>
+          <div class="font-mono" style="font-size:16px; font-weight:700;">${formatINR(curVal)}</div>
+          <div class="text-muted" style="font-size:11px; margin-top:4px;">Current: ${curPct}% · Target: ${targetPct}%</div>
         </div>
       `;
     });

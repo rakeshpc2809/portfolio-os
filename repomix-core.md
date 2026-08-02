@@ -1465,6 +1465,8 @@ public Map<String, Map<String, Object>> computeQuantMetricsWithDates(Map<String,
 ⋮----
 if (fundNavSeries == null || fundNavSeries.isEmpty()) {
 ⋮----
+int totalRows = fundNavSeries.values().stream().mapToInt(e -> e.navs().size()).sum();
+⋮----
 Location location = Location.forGrpcInsecure(host, port);
 try (FlightClient client = FlightClient.builder(allocator, location).build()) {
 ⋮----
@@ -1474,12 +1476,11 @@ new Field("nav_date", FieldType.nullable(new ArrowType.Utf8()), null),
 new Field("nav_value", FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)), null)
 ⋮----
 try (VectorSchemaRoot inRoot = VectorSchemaRoot.create(inSchema, allocator)) {
-int totalRows = fundNavSeries.values().stream().mapToInt(e -> e.navs().size()).sum();
 VarCharVector codeVec = (VarCharVector) inRoot.getVector("amfi_code");
 VarCharVector dateVec = (VarCharVector) inRoot.getVector("nav_date");
 Float8Vector navVec = (Float8Vector) inRoot.getVector("nav_value");
-codeVec.allocateNew(totalRows);
-dateVec.allocateNew(totalRows);
+codeVec.allocateNew(totalRows * 32L, totalRows);
+dateVec.allocateNew(totalRows * 16L, totalRows);
 navVec.allocateNew(totalRows);
 ⋮----
 for (Map.Entry<String, NavHistorySeriesEntry> entry : fundNavSeries.entrySet()) {
@@ -3229,7 +3230,7 @@ COPY --from=build /app/target/*.jar app.jar
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "--add-opens=java.base/java.nio=ALL-UNNAMED", "-jar", "app.jar"]
 ```
 
 ## File: pom.xml
