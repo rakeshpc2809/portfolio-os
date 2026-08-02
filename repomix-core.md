@@ -426,6 +426,7 @@ harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
 radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 ⋮----
 // 2. PyArrow Flight RPC Quant Intelligence (from real DuckDB NAV time-series)
+⋮----
 Map<String, List<Double>> navHistorySeries = duckDbProjector.getNavHistorySeries(heldIsins);
 if (!navHistorySeries.isEmpty()) {
 Map<String, Map<String, Object>> quantMetrics = flightRpcClient.computeQuantMetrics(navHistorySeries);
@@ -434,16 +435,17 @@ Map<String, String> isinToNameMap = holdings.stream().collect(Collectors.toMap(F
 for (Map.Entry<String, Map<String, Object>> entry : quantMetrics.entrySet()) {
 String isin = entry.getKey();
 Map<String, Object> metrics = entry.getValue();
+⋮----
 String schemeName = isinToNameMap.getOrDefault(isin, isin);
 ⋮----
 Object hurstObj = metrics.get("hurst");
 Object regimeObj = metrics.get("hurst_regime");
 Object halfLifeObj = metrics.get("ou_half_life");
 ⋮----
+String regimeStr = String.valueOf(regimeObj);
 radarSignals.add(new RadarSignalDto(
 ⋮----
-"QUANT SIDE-CAR: " + regimeObj.toString(),
-schemeName + " displays Hurst Exponent H = " + String.format("%.2f", hurst.doubleValue()) + " (" + regimeObj.toString() + ").",
+schemeName + " displays Hurst Exponent H = " + String.format("%.2f", hurst.doubleValue()) + " (" + regimeStr + ").",
 ⋮----
 "H = " + String.format("%.2f", hurst.doubleValue())
 ⋮----
@@ -452,6 +454,8 @@ if (halfLifeObj instanceof Number halfLife && halfLife.doubleValue() > 0) {
 schemeName + " valuation drift half-life τ = " + String.format("%.1f", halfLife.doubleValue()) + " days.",
 ⋮----
 "τ = " + String.format("%.1f", halfLife.doubleValue()) + "d"
+⋮----
+System.err.println("Non-critical Quant Flight RPC signal extraction warning: " + ex.getMessage());
 ⋮----
 // 3. LTCG Maturation Ladder Signal
 ⋮----

@@ -213,42 +213,49 @@ public class SyncController {
         radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 
         // 2. PyArrow Flight RPC Quant Intelligence (from real DuckDB NAV time-series)
-        Map<String, List<Double>> navHistorySeries = duckDbProjector.getNavHistorySeries(heldIsins);
-        if (!navHistorySeries.isEmpty()) {
-            Map<String, Map<String, Object>> quantMetrics = flightRpcClient.computeQuantMetrics(navHistorySeries);
-            Map<String, String> isinToNameMap = holdings.stream().collect(Collectors.toMap(FlatHoldingDto::isin, FlatHoldingDto::fundName, (a, b) -> a));
+        try {
+            Map<String, List<Double>> navHistorySeries = duckDbProjector.getNavHistorySeries(heldIsins);
+            if (!navHistorySeries.isEmpty()) {
+                Map<String, Map<String, Object>> quantMetrics = flightRpcClient.computeQuantMetrics(navHistorySeries);
+                Map<String, String> isinToNameMap = holdings.stream().collect(Collectors.toMap(FlatHoldingDto::isin, FlatHoldingDto::fundName, (a, b) -> a));
 
-            for (Map.Entry<String, Map<String, Object>> entry : quantMetrics.entrySet()) {
-                String isin = entry.getKey();
-                Map<String, Object> metrics = entry.getValue();
-                String schemeName = isinToNameMap.getOrDefault(isin, isin);
+                for (Map.Entry<String, Map<String, Object>> entry : quantMetrics.entrySet()) {
+                    String isin = entry.getKey();
+                    Map<String, Object> metrics = entry.getValue();
+                    if (metrics == null) continue;
 
-                Object hurstObj = metrics.get("hurst");
-                Object regimeObj = metrics.get("hurst_regime");
-                Object halfLifeObj = metrics.get("ou_half_life");
+                    String schemeName = isinToNameMap.getOrDefault(isin, isin);
 
-                if (hurstObj instanceof Number hurst && regimeObj != null) {
-                    radarSignals.add(new RadarSignalDto(
-                        "QUANT_HURST",
-                        schemeName,
-                        "QUANT SIDE-CAR: " + regimeObj.toString(),
-                        schemeName + " displays Hurst Exponent H = " + String.format("%.2f", hurst.doubleValue()) + " (" + regimeObj.toString() + ").",
-                        "INFO",
-                        "H = " + String.format("%.2f", hurst.doubleValue())
-                    ));
-                }
+                    Object hurstObj = metrics.get("hurst");
+                    Object regimeObj = metrics.get("hurst_regime");
+                    Object halfLifeObj = metrics.get("ou_half_life");
 
-                if (halfLifeObj instanceof Number halfLife && halfLife.doubleValue() > 0) {
-                    radarSignals.add(new RadarSignalDto(
-                        "QUANT_OU",
-                        schemeName,
-                        "QUANT SIDE-CAR: OU MEAN REVERSION",
-                        schemeName + " valuation drift half-life τ = " + String.format("%.1f", halfLife.doubleValue()) + " days.",
-                        "INFO",
-                        "τ = " + String.format("%.1f", halfLife.doubleValue()) + "d"
-                    ));
+                    if (hurstObj instanceof Number hurst && regimeObj != null) {
+                        String regimeStr = String.valueOf(regimeObj);
+                        radarSignals.add(new RadarSignalDto(
+                            "QUANT_HURST",
+                            schemeName,
+                            "QUANT SIDE-CAR: " + regimeStr,
+                            schemeName + " displays Hurst Exponent H = " + String.format("%.2f", hurst.doubleValue()) + " (" + regimeStr + ").",
+                            "INFO",
+                            "H = " + String.format("%.2f", hurst.doubleValue())
+                        ));
+                    }
+
+                    if (halfLifeObj instanceof Number halfLife && halfLife.doubleValue() > 0) {
+                        radarSignals.add(new RadarSignalDto(
+                            "QUANT_OU",
+                            schemeName,
+                            "QUANT SIDE-CAR: OU MEAN REVERSION",
+                            schemeName + " valuation drift half-life τ = " + String.format("%.1f", halfLife.doubleValue()) + " days.",
+                            "INFO",
+                            "τ = " + String.format("%.1f", halfLife.doubleValue()) + "d"
+                        ));
+                    }
                 }
             }
+        } catch (Exception ex) {
+            System.err.println("Non-critical Quant Flight RPC signal extraction warning: " + ex.getMessage());
         }
 
         // 3. LTCG Maturation Ladder Signal
