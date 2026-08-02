@@ -86,7 +86,7 @@ fun DashboardScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterAlignment) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "Core Node Offline",
                         color = TextMuted,

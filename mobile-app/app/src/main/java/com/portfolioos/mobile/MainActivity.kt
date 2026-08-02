@@ -21,8 +21,7 @@ class MainActivity : ComponentActivity() {
                 scope.launch {
                     isLoading = true
                     try {
-                        val client = SyncApiClient.createService()
-                        snapshot = client.getSnapshot()
+                        snapshot = SyncApiClient.fetchSnapshotWithFallback()
                     } catch (e: Exception) {
                         e.printStackTrace()
                     } finally {

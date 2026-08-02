@@ -19,16 +19,17 @@ interface SyncApiService {
 }
 
 object SyncApiClient {
-    private const val DEFAULT_BASE_URL = "http://10.0.2.2:8080/"
+    const val USB_BASE_URL = "http://127.0.0.1:8080/"
+    const val WIFI_BASE_URL = "http://192.168.1.13:8080/"
 
-    fun createService(baseUrl: String = DEFAULT_BASE_URL): SyncApiService {
+    fun createService(baseUrl: String = USB_BASE_URL): SyncApiService {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
 
         val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
             .addInterceptor(logging)
             .build()
 
@@ -39,5 +40,13 @@ object SyncApiClient {
             .build()
 
         return retrofit.create(SyncApiService::class.java)
+    }
+
+    suspend fun fetchSnapshotWithFallback(): SyncSnapshot {
+        return try {
+            createService(USB_BASE_URL).getSnapshot()
+        } catch (e1: Exception) {
+            createService(WIFI_BASE_URL).getSnapshot()
+        }
     }
 }
