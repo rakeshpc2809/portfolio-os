@@ -1,0 +1,25 @@
+{
+  "name": "portfolio-os",
+  "description": "Portfolio OS v3.0 Unified Investment Architecture",
+  "version": "3.0.0",
+  "components": [
+    {
+      "name": "core-node",
+      "path": "core-node",
+      "language": "Java 21 / Spring Boot 3.2.5",
+      "repomix": "repomix-core.md"
+    },
+    {
+      "name": "quant-sidecar",
+      "path": "quant-sidecar",
+      "language": "Python 3.12 / FastAPI + PyArrow Flight",
+      "repomix": "repomix-quant.md"
+    },
+    {
+      "name": "mobile-app",
+      "path": "mobile-app",
+      "language": "Kotlin / Jetpack Compose",
+      "repomix": "repomix-mobile.md"
+    }
+  ]
+}
