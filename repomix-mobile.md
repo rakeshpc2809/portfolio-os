@@ -604,7 +604,7 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "PRIORITY ACTIONABLE RADAR SIGNALS",
+                text = "PRIORITY AI RADAR & QUANT INTELLIGENCE",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = M3TextMuted,
@@ -619,7 +619,7 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "✓ Portfolio tax status optimal. No immediate tax-loss harvesting recommendations.",
+                        text = "✓ Portfolio status optimal. No immediate tax or rebalance recommendations.",
                         color = M3GreenPositive,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(20.dp)
@@ -638,10 +638,12 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
 }
 @Composable
 fun M3RadarCard(signal: RadarSignalDto) {
+    val isQuant = signal.signalType.contains("QUANT", ignoreCase = true)
     val isWarning = signal.severity.equals("WARNING", ignoreCase = true)
-    val borderColor = if (isWarning) M3AmberWarning else M3CyanPrimary
+    val borderColor = if (isQuant) M3PurpleSecondary else if (isWarning) M3AmberWarning else M3CyanPrimary
+    val containerColor = if (isQuant) Color(0xFF1A132B) else M3SurfaceCard
     OutlinedCard(
-        colors = CardDefaults.outlinedCardColors(containerColor = M3SurfaceCard),
+        colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
         border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(borderColor)),
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth()
