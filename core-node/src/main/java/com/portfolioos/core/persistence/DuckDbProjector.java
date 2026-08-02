@@ -3,14 +3,15 @@ package com.portfolioos.core.persistence;
 import com.portfolioos.core.model.TaxEvent;
 
 import java.io.File;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.time.LocalDate;
+import java.util.*;
 
 public class DuckDbProjector {
 
@@ -73,6 +74,15 @@ public class DuckDbProjector {
                 "  ingested_at VARCHAR NOT NULL" +
                 ")"
             );
+
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS nav_history (" +
+                "  asset_id VARCHAR NOT NULL," +
+                "  nav_date VARCHAR NOT NULL," +
+                "  nav DOUBLE NOT NULL," +
+                "  PRIMARY KEY (asset_id, nav_date)" +
+                ")"
+            );
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize DuckDB schema", e);
         }
@@ -121,5 +131,63 @@ public class DuckDbProjector {
         } catch (SQLException e) {
             throw new RuntimeException("DuckDB transaction failure", e);
         }
+    }
+
+    public void saveNavHistoryBatch(Map<String, BigDecimal> navMap, LocalDate date) {
+        if (navMap == null || navMap.isEmpty()) return;
+
+        try {
+            Connection conn = getConnection();
+            boolean wasAutoCommit = conn.getAutoCommit();
+            try {
+                conn.setAutoCommit(false);
+                initReadSchema();
+
+                String dateStr = date.toString();
+                String sql = "INSERT INTO nav_history (asset_id, nav_date, nav) VALUES (?, ?, ?) ON CONFLICT (asset_id, nav_date) DO NOTHING";
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    for (Map.Entry<String, BigDecimal> entry : navMap.entrySet()) {
+                        stmt.setString(1, entry.getKey());
+                        stmt.setString(2, dateStr);
+                        stmt.setDouble(3, entry.getValue().doubleValue());
+                        stmt.executeUpdate();
+                    }
+                }
+                conn.commit();
+            } catch (Exception e) {
+                conn.rollback();
+            } finally {
+                conn.setAutoCommit(wasAutoCommit);
+            }
+        } catch (SQLException e) {
+            System.err.println("DuckDB nav_history save failure: " + e.getMessage());
+        }
+    }
+
+    public Map<String, List<Double>> getNavHistorySeries(Set<String> assetIds) {
+        Map<String, List<Double>> result = new HashMap<>();
+        if (assetIds == null || assetIds.isEmpty()) return result;
+
+        try {
+            Connection conn = getConnection();
+            String sql = "SELECT asset_id, nav FROM nav_history WHERE asset_id = ? ORDER BY nav_date ASC";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                for (String assetId : assetIds) {
+                    stmt.setString(1, assetId);
+                    List<Double> series = new ArrayList<>();
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        while (rs.next()) {
+                            series.add(rs.getDouble("nav"));
+                        }
+                    }
+                    if (!series.isEmpty()) {
+                        result.put(assetId, series);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to fetch NAV history series from DuckDB: " + e.getMessage());
+        }
+        return result;
     }
 }

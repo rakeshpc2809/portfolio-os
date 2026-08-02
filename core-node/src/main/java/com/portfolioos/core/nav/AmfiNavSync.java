@@ -1,5 +1,7 @@
 package com.portfolioos.core.nav;
 
+import com.portfolioos.core.persistence.DuckDbProjector;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
@@ -21,10 +23,11 @@ public class AmfiNavSync {
         LocalDate date
     ) {}
 
-    private static final long CACHE_TTL_MS = 6 * 3600 * 1000L; // 6 Hours cache TTL
+    private static final long CACHE_TTL_MS = 6 * 3600 * 1000L;
     private static final Object lock = new Object();
     private static List<NavEntry> cachedNavs = null;
     private static long lastFetchTimeMs = 0L;
+    private static final DuckDbProjector duckDbProjector = new DuckDbProjector();
 
     public List<NavEntry> parseAmfiFeed(String feedContent) {
         List<NavEntry> entries = new ArrayList<>();
@@ -101,6 +104,10 @@ public class AmfiNavSync {
                 navMap.put(entry.isin(), entry.nav());
             }
         }
+        
+        // Persist daily NAV history to DuckDB nav_history
+        duckDbProjector.saveNavHistoryBatch(navMap, LocalDate.now());
+        
         return navMap;
     }
 }

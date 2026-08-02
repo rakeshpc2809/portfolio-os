@@ -786,8 +786,9 @@ case DISPOSAL, SGB_MATURITY -> units.negate();
 ```java
 public class AmfiNavSync {
 ⋮----
-private static final long CACHE_TTL_MS = 6 * 3600 * 1000L; // 6 Hours cache TTL
 private static final Object lock = new Object();
+⋮----
+private static final DuckDbProjector duckDbProjector = new DuckDbProjector();
 ⋮----
 public List<NavEntry> parseAmfiFeed(String feedContent) {
 ⋮----
@@ -835,6 +836,9 @@ List<NavEntry> entries = fetchLatestNavsFromAmfi();
 ⋮----
 if (entry.isin() != null) {
 navMap.put(entry.isin(), entry.nav());
+⋮----
+// Persist daily NAV history to DuckDB nav_history
+duckDbProjector.saveNavHistoryBatch(navMap, LocalDate.now());
 ```
 
 ## File: src/main/java/com/portfolioos/core/persistence/DuckDbProjector.java
@@ -905,6 +909,35 @@ throw new RuntimeException("Failed to project events in DuckDB", e);
 conn.setAutoCommit(wasAutoCommit);
 ⋮----
 throw new RuntimeException("DuckDB transaction failure", e);
+⋮----
+public void saveNavHistoryBatch(Map<String, BigDecimal> navMap, LocalDate date) {
+if (navMap == null || navMap.isEmpty()) return;
+⋮----
+String dateStr = date.toString();
+⋮----
+try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+for (Map.Entry<String, BigDecimal> entry : navMap.entrySet()) {
+stmt.setString(1, entry.getKey());
+stmt.setString(2, dateStr);
+stmt.setDouble(3, entry.getValue().doubleValue());
+stmt.executeUpdate();
+⋮----
+System.err.println("DuckDB nav_history save failure: " + e.getMessage());
+⋮----
+public Map<String, List<Double>> getNavHistorySeries(Set<String> assetIds) {
+⋮----
+if (assetIds == null || assetIds.isEmpty()) return result;
+⋮----
+stmt.setString(1, assetId);
+⋮----
+try (ResultSet rs = stmt.executeQuery()) {
+while (rs.next()) {
+series.add(rs.getDouble("nav"));
+⋮----
+if (!series.isEmpty()) {
+result.put(assetId, series);
+⋮----
+System.err.println("Failed to fetch NAV history series from DuckDB: " + e.getMessage());
 ```
 
 ## File: src/main/java/com/portfolioos/core/persistence/SqliteEventStore.java
@@ -1377,12 +1410,48 @@ if (fundNavSeries == null || fundNavSeries.isEmpty()) {
 ⋮----
 Location location = Location.forGrpcInsecure(host, port);
 try (FlightClient client = FlightClient.builder(allocator, location).build()) {
-Iterable<ActionType> actions = client.listActions();
 ⋮----
-actionResult.put("action", action.getType());
-results.put("flight_status", actionResult);
+Schema inSchema = new Schema(List.of(
+new Field("amfi_code", FieldType.nullable(new ArrowType.Utf8()), null),
+new Field("nav_value", FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)), null)
 ⋮----
-System.err.println("Arrow Flight RPC connection status: " + e.getMessage());
+try (VectorSchemaRoot inRoot = VectorSchemaRoot.create(inSchema, allocator)) {
+int totalRows = fundNavSeries.values().stream().mapToInt(List::size).sum();
+VarCharVector codeVec = (VarCharVector) inRoot.getVector("amfi_code");
+Float8Vector navVec = (Float8Vector) inRoot.getVector("nav_value");
+codeVec.allocateNew(totalRows);
+navVec.allocateNew(totalRows);
+⋮----
+for (Map.Entry<String, List<Double>> entry : fundNavSeries.entrySet()) {
+byte[] codeBytes = entry.getKey().getBytes(StandardCharsets.UTF_8);
+for (double nav : entry.getValue()) {
+codeVec.setSafe(row, codeBytes);
+navVec.setSafe(row, nav);
+⋮----
+inRoot.setRowCount(totalRows);
+⋮----
+FlightDescriptor descriptor = FlightDescriptor.path("quant_metrics");
+FlightClient.ExchangeReaderWriter exchange = client.doExchange(descriptor);
+⋮----
+FlightClient.ClientStreamListener writer = exchange.getWriter();
+writer.start(inRoot);
+writer.putNext();
+writer.completed();
+⋮----
+try (FlightStream reader = exchange.getReader()) {
+while (reader.next()) {
+VectorSchemaRoot outRoot = reader.getRoot();
+VarCharVector outCode = (VarCharVector) outRoot.getVector("amfi_code");
+for (int i = 0; i < outRoot.getRowCount(); i++) {
+String code = new String(outCode.get(i), StandardCharsets.UTF_8);
+⋮----
+for (Field f : outRoot.getSchema().getFields()) {
+if (f.getName().equals("amfi_code")) continue;
+metrics.put(f.getName(), outRoot.getVector(f.getName()).getObject(i));
+⋮----
+out.put(code, metrics);
+⋮----
+System.err.println("Arrow Flight quant metrics call error: " + e.getMessage());
 ```
 
 ## File: src/main/java/com/portfolioos/core/rules/TaxRulesConfig.java
