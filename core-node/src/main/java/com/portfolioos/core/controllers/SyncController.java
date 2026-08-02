@@ -10,8 +10,10 @@ import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.model.EventType;
+import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.reporting.ExemptionTracker;
+import com.portfolioos.core.rpc.FlightRpcClient;
 import com.portfolioos.core.service.LedgerCacheService;
 import com.portfolioos.core.valuation.BucketEngine;
 import com.portfolioos.core.valuation.HarvestAdvisor;
@@ -35,6 +37,8 @@ public class SyncController {
 
     private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
+    private final DuckDbProjector duckDbProjector = new DuckDbProjector();
+    private final FlightRpcClient flightRpcClient = new FlightRpcClient();
 
     public SyncController(LedgerCacheService cacheService) {
         this.cacheService = cacheService;
@@ -70,6 +74,10 @@ public class SyncController {
         LocalDate today = LocalDate.now();
         Locale inLocale = new Locale("en", "IN");
         NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(inLocale);
+
+        // Collect held ISINs and persist daily NAV history strictly for held assets
+        Set<String> heldIsins = openLots.stream().map(Lot::assetId).collect(Collectors.toSet());
+        duckDbProjector.saveNavHistoryBatchForHeldAssets(navMap, heldIsins, today);
 
         // Calculate overall XIRR & Totals
         List<CashFlow> portfolioCashflows = new ArrayList<>();
@@ -169,7 +177,7 @@ public class SyncController {
             ));
         }
 
-        // Generate Verified Priority AI Radar Signals (Tax Harvest + Maturation Ladder + Rebalance Drift)
+        // Generate Verified Priority AI Radar Signals
         List<RadarSignalDto> radarSignals = new ArrayList<>();
 
         // 1. Priority Tax Loss Harvesting Signals
@@ -202,9 +210,48 @@ public class SyncController {
             ));
         }
         harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
-        radarSignals.addAll(harvestSignals.stream().limit(4).toList());
+        radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 
-        // 2. LTCG Maturation Ladder Signal
+        // 2. PyArrow Flight RPC Quant Intelligence (from real DuckDB NAV time-series)
+        Map<String, List<Double>> navHistorySeries = duckDbProjector.getNavHistorySeries(heldIsins);
+        if (!navHistorySeries.isEmpty()) {
+            Map<String, Map<String, Object>> quantMetrics = flightRpcClient.computeQuantMetrics(navHistorySeries);
+            Map<String, String> isinToNameMap = holdings.stream().collect(Collectors.toMap(FlatHoldingDto::isin, FlatHoldingDto::fundName, (a, b) -> a));
+
+            for (Map.Entry<String, Map<String, Object>> entry : quantMetrics.entrySet()) {
+                String isin = entry.getKey();
+                Map<String, Object> metrics = entry.getValue();
+                String schemeName = isinToNameMap.getOrDefault(isin, isin);
+
+                Object hurstObj = metrics.get("hurst");
+                Object regimeObj = metrics.get("hurst_regime");
+                Object halfLifeObj = metrics.get("ou_half_life");
+
+                if (hurstObj instanceof Number hurst && regimeObj != null) {
+                    radarSignals.add(new RadarSignalDto(
+                        "QUANT_HURST",
+                        schemeName,
+                        "QUANT SIDE-CAR: " + regimeObj.toString(),
+                        schemeName + " displays Hurst Exponent H = " + String.format("%.2f", hurst.doubleValue()) + " (" + regimeObj.toString() + ").",
+                        "INFO",
+                        "H = " + String.format("%.2f", hurst.doubleValue())
+                    ));
+                }
+
+                if (halfLifeObj instanceof Number halfLife && halfLife.doubleValue() > 0) {
+                    radarSignals.add(new RadarSignalDto(
+                        "QUANT_OU",
+                        schemeName,
+                        "QUANT SIDE-CAR: OU MEAN REVERSION",
+                        schemeName + " valuation drift half-life τ = " + String.format("%.1f", halfLife.doubleValue()) + " days.",
+                        "INFO",
+                        "τ = " + String.format("%.1f", halfLife.doubleValue()) + "d"
+                    ));
+                }
+            }
+        }
+
+        // 3. LTCG Maturation Ladder Signal
         Lot maturingLot = null;
         long minDaysToLtcg = 9999L;
 
@@ -228,7 +275,7 @@ public class SyncController {
             ));
         }
 
-        // 3. Asset Allocation Drift Signal
+        // 4. Asset Allocation Drift Signal
         BucketEngine.RebalanceEngineResult bucketStatus = BucketEngine.evaluateRebalance(
             openLots, navMap, today, new BigDecimal("24000.00"), new BigDecimal("25000.00"), BucketEngine.DEFAULT_TARGETS, fy
         );

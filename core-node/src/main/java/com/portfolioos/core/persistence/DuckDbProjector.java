@@ -133,8 +133,8 @@ public class DuckDbProjector {
         }
     }
 
-    public void saveNavHistoryBatch(Map<String, BigDecimal> navMap, LocalDate date) {
-        if (navMap == null || navMap.isEmpty()) return;
+    public void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, Set<String> heldIsins, LocalDate date) {
+        if (navMap == null || navMap.isEmpty() || heldIsins == null || heldIsins.isEmpty()) return;
 
         try {
             Connection conn = getConnection();
@@ -146,11 +146,14 @@ public class DuckDbProjector {
                 String dateStr = date.toString();
                 String sql = "INSERT INTO nav_history (asset_id, nav_date, nav) VALUES (?, ?, ?) ON CONFLICT (asset_id, nav_date) DO NOTHING";
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                    for (Map.Entry<String, BigDecimal> entry : navMap.entrySet()) {
-                        stmt.setString(1, entry.getKey());
-                        stmt.setString(2, dateStr);
-                        stmt.setDouble(3, entry.getValue().doubleValue());
-                        stmt.executeUpdate();
+                    for (String isin : heldIsins) {
+                        BigDecimal nav = navMap.get(isin);
+                        if (nav != null) {
+                            stmt.setString(1, isin);
+                            stmt.setString(2, dateStr);
+                            stmt.setDouble(3, nav.doubleValue());
+                            stmt.executeUpdate();
+                        }
                     }
                 }
                 conn.commit();

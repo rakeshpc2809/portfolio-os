@@ -292,6 +292,8 @@ return ResponseEntity.internalServerError().body("Upload and parsing failed: " +
 public class SyncController {
 ⋮----
 private final XirrEngine xirrEngine = new XirrEngine();
+private final DuckDbProjector duckDbProjector = new DuckDbProjector();
+private final FlightRpcClient flightRpcClient = new FlightRpcClient();
 ⋮----
 private static String detectFineBucket(String assetName) {
 String upper = assetName.toUpperCase();
@@ -319,6 +321,10 @@ String ledgerHash = state.ledgerHash();
 LocalDate today = LocalDate.now();
 Locale inLocale = new Locale("en", "IN");
 NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(inLocale);
+⋮----
+// Collect held ISINs and persist daily NAV history strictly for held assets
+Set<String> heldIsins = openLots.stream().map(Lot::assetId).collect(Collectors.toSet());
+duckDbProjector.saveNavHistoryBatchForHeldAssets(navMap, heldIsins, today);
 ⋮----
 // Calculate overall XIRR & Totals
 ⋮----
@@ -393,7 +399,7 @@ lot.remainingUnits().doubleValue(),
 lot.isGrandfathered() ? lot.fmv20180131().doubleValue() : null,
 lot.costPerUnit().doubleValue(),
 ⋮----
-// Generate Verified Priority AI Radar Signals (Tax Harvest + Maturation Ladder + Rebalance Drift)
+// Generate Verified Priority AI Radar Signals
 ⋮----
 // 1. Priority Tax Loss Harvesting Signals
 ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
@@ -417,9 +423,37 @@ harvestSignals.add(new RadarSignalDto(
 "Harvest " + currencyFormat.format(totalHarvestGain) + " tax-free LTCG gain across " + recs.size() + " lots (" + totalUnitsToSell.setScale(2, RoundingMode.HALF_UP) + " units) before Mar 31.",
 ⋮----
 harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
-radarSignals.addAll(harvestSignals.stream().limit(4).toList());
+radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 ⋮----
-// 2. LTCG Maturation Ladder Signal
+// 2. PyArrow Flight RPC Quant Intelligence (from real DuckDB NAV time-series)
+Map<String, List<Double>> navHistorySeries = duckDbProjector.getNavHistorySeries(heldIsins);
+if (!navHistorySeries.isEmpty()) {
+Map<String, Map<String, Object>> quantMetrics = flightRpcClient.computeQuantMetrics(navHistorySeries);
+Map<String, String> isinToNameMap = holdings.stream().collect(Collectors.toMap(FlatHoldingDto::isin, FlatHoldingDto::fundName, (a, b) -> a));
+⋮----
+for (Map.Entry<String, Map<String, Object>> entry : quantMetrics.entrySet()) {
+String isin = entry.getKey();
+Map<String, Object> metrics = entry.getValue();
+String schemeName = isinToNameMap.getOrDefault(isin, isin);
+⋮----
+Object hurstObj = metrics.get("hurst");
+Object regimeObj = metrics.get("hurst_regime");
+Object halfLifeObj = metrics.get("ou_half_life");
+⋮----
+radarSignals.add(new RadarSignalDto(
+⋮----
+"QUANT SIDE-CAR: " + regimeObj.toString(),
+schemeName + " displays Hurst Exponent H = " + String.format("%.2f", hurst.doubleValue()) + " (" + regimeObj.toString() + ").",
+⋮----
+"H = " + String.format("%.2f", hurst.doubleValue())
+⋮----
+if (halfLifeObj instanceof Number halfLife && halfLife.doubleValue() > 0) {
+⋮----
+schemeName + " valuation drift half-life τ = " + String.format("%.1f", halfLife.doubleValue()) + " days.",
+⋮----
+"τ = " + String.format("%.1f", halfLife.doubleValue()) + "d"
+⋮----
+// 3. LTCG Maturation Ladder Signal
 ⋮----
 long daysToLtcg = Math.max(0L, 365L - holdingDays);
 ⋮----
@@ -429,7 +463,7 @@ maturingLot.assetName(),
 ⋮----
 maturingLot.assetName() + " (Lot " + maturingLot.lotId() + ") matures under Sec 112A in " + minDaysToLtcg + " days.",
 ⋮----
-// 3. Asset Allocation Drift Signal
+// 4. Asset Allocation Drift Signal
 BucketEngine.RebalanceEngineResult bucketStatus = BucketEngine.evaluateRebalance(
 openLots, navMap, today, new BigDecimal("24000.00"), new BigDecimal("25000.00"), BucketEngine.DEFAULT_TARGETS, fy
 ⋮----
@@ -437,8 +471,6 @@ BucketEngine.BucketStatus driftedBucket = bucketStatus.bucketStatuses().stream()
 .filter(BucketEngine.BucketStatus::isDrifted)
 .findFirst()
 .orElse(null);
-⋮----
-radarSignals.add(new RadarSignalDto(
 ⋮----
 "Bucket " + driftedBucket.bucket().name(),
 ⋮----
@@ -788,8 +820,6 @@ public class AmfiNavSync {
 ⋮----
 private static final Object lock = new Object();
 ⋮----
-private static final DuckDbProjector duckDbProjector = new DuckDbProjector();
-⋮----
 public List<NavEntry> parseAmfiFeed(String feedContent) {
 ⋮----
 LocalDate today = LocalDate.now();
@@ -836,9 +866,6 @@ List<NavEntry> entries = fetchLatestNavsFromAmfi();
 ⋮----
 if (entry.isin() != null) {
 navMap.put(entry.isin(), entry.nav());
-⋮----
-// Persist daily NAV history to DuckDB nav_history
-duckDbProjector.saveNavHistoryBatch(navMap, LocalDate.now());
 ```
 
 ## File: src/main/java/com/portfolioos/core/persistence/DuckDbProjector.java
@@ -910,16 +937,18 @@ conn.setAutoCommit(wasAutoCommit);
 ⋮----
 throw new RuntimeException("DuckDB transaction failure", e);
 ⋮----
-public void saveNavHistoryBatch(Map<String, BigDecimal> navMap, LocalDate date) {
-if (navMap == null || navMap.isEmpty()) return;
+public void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, Set<String> heldIsins, LocalDate date) {
+if (navMap == null || navMap.isEmpty() || heldIsins == null || heldIsins.isEmpty()) return;
 ⋮----
 String dateStr = date.toString();
 ⋮----
 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-for (Map.Entry<String, BigDecimal> entry : navMap.entrySet()) {
-stmt.setString(1, entry.getKey());
+⋮----
+BigDecimal nav = navMap.get(isin);
+⋮----
+stmt.setString(1, isin);
 stmt.setString(2, dateStr);
-stmt.setDouble(3, entry.getValue().doubleValue());
+stmt.setDouble(3, nav.doubleValue());
 stmt.executeUpdate();
 ⋮----
 System.err.println("DuckDB nav_history save failure: " + e.getMessage());
