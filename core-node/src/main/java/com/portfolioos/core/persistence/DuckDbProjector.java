@@ -88,7 +88,7 @@ public class DuckDbProjector {
                 conn.setAutoCommit(false);
                 initReadSchema();
 
-                String insertSql = "INSERT OR REPLACE INTO projected_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                String insertSql = "INSERT INTO projected_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING";
                 try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
                     Set<String> processedIds = new HashSet<>();
                     for (TaxEvent event : events) {

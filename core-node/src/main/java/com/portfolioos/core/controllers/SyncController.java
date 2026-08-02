@@ -13,7 +13,6 @@ import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.reporting.ExemptionTracker;
 import com.portfolioos.core.service.LedgerCacheService;
-import com.portfolioos.core.valuation.AntigravityEngine;
 import com.portfolioos.core.valuation.BucketEngine;
 import com.portfolioos.core.valuation.HarvestAdvisor;
 import com.portfolioos.core.xirr.CashFlow;
@@ -170,7 +169,7 @@ public class SyncController {
             ));
         }
 
-        // Generate Priority AI Radar Signals
+        // Generate Verified Priority AI Radar Signals (Tax Harvest + Maturation Ladder + Rebalance Drift)
         List<RadarSignalDto> radarSignals = new ArrayList<>();
 
         // 1. Priority Tax Loss Harvesting Signals
@@ -203,67 +202,51 @@ public class SyncController {
             ));
         }
         harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
-        radarSignals.addAll(harvestSignals.stream().limit(3).toList());
+        radarSignals.addAll(harvestSignals.stream().limit(4).toList());
 
-        // 2. Real NAV Return Series Quant Analytics
-        Map<String, String> assetNames = openLots.stream().collect(Collectors.toMap(Lot::assetId, Lot::assetName, (a, b) -> a));
-        Map<String, List<Double>> assetReturnsMap = new HashMap<>();
+        // 2. LTCG Maturation Ladder Signal
+        Lot maturingLot = null;
+        long minDaysToLtcg = 9999L;
 
-        for (Map.Entry<String, List<Lot>> entry : groupedByAsset.entrySet()) {
-            String assetId = entry.getKey();
-            List<Lot> lots = entry.getValue();
-            BigDecimal currentNav = navMap.getOrDefault(assetId, lots.get(0).costPerUnit());
-
-            // Build historical returns from actual lot cost bases vs current live NAV
-            List<Double> realReturns = new ArrayList<>();
-            for (Lot lot : lots) {
-                if (lot.costPerUnit().compareTo(BigDecimal.ZERO) > 0) {
-                    double gainRatio = currentNav.subtract(lot.costPerUnit())
-                        .divide(lot.costPerUnit(), 4, RoundingMode.HALF_UP).doubleValue();
-                    realReturns.add(gainRatio);
-                }
-            }
-            if (!realReturns.isEmpty()) {
-                assetReturnsMap.put(assetId, realReturns);
+        for (Lot lot : openLots) {
+            long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
+            long daysToLtcg = Math.max(0L, 365L - holdingDays);
+            if (daysToLtcg > 0 && daysToLtcg <= 120 && daysToLtcg < minDaysToLtcg) {
+                minDaysToLtcg = daysToLtcg;
+                maturingLot = lot;
             }
         }
 
-        if (!assetReturnsMap.isEmpty()) {
-            List<Double> benchmarkReturns = new ArrayList<>();
-            for (int i = 0; i < 10; i++) {
-                benchmarkReturns.add(-0.002 * (i % 2 == 0 ? 1 : -1));
-            }
-
-            AntigravityEngine.AntigravitySummary antigravitySummary = AntigravityEngine.analyzePortfolioFactors(
-                assetReturnsMap, assetNames, benchmarkReturns, new BigDecimal("6.5")
-            );
-
-            for (AntigravityEngine.AssetFactorScore factorScore : antigravitySummary.allAssetScores()) {
-                if (factorScore.downsideBeta().compareTo(new BigDecimal("0.75")) < 0) {
-                    radarSignals.add(new RadarSignalDto(
-                        "QUANT_FACTOR",
-                        factorScore.assetName(),
-                        "QUANT INTELLIGENCE: DOWNSIDE CUSHION",
-                        factorScore.assetName() + " has Downside Beta β = " + factorScore.downsideBeta() + ". Protects capital during market drops.",
-                        "INFO",
-                        "β = " + factorScore.downsideBeta()
-                    ));
-                } else if (factorScore.zScore30d().compareTo(new BigDecimal("0.30")) > 0) {
-                    radarSignals.add(new RadarSignalDto(
-                        "QUANT_FACTOR",
-                        factorScore.assetName(),
-                        "QUANT INTELLIGENCE: MOMENTUM OUTPERFORMER",
-                        factorScore.assetName() + " displays 30-day Z-Score momentum +" + factorScore.zScore30d() + ". TWR 30d: +" + factorScore.twr30dPct() + "%.",
-                        "INFO",
-                        "Z = +" + factorScore.zScore30d()
-                    ));
-                }
-            }
+        if (maturingLot != null) {
+            radarSignals.add(0, new RadarSignalDto(
+                "MATURATION",
+                maturingLot.assetName(),
+                "LTCG MATURATION LADDER",
+                maturingLot.assetName() + " (Lot " + maturingLot.lotId() + ") matures under Sec 112A in " + minDaysToLtcg + " days.",
+                "INFO",
+                minDaysToLtcg + " Days"
+            ));
         }
 
-        // Limit Quant Signals to top 6 total
-        if (radarSignals.size() > 6) {
-            radarSignals = new ArrayList<>(radarSignals.subList(0, 6));
+        // 3. Asset Allocation Drift Signal
+        BucketEngine.RebalanceEngineResult bucketStatus = BucketEngine.evaluateRebalance(
+            openLots, navMap, today, new BigDecimal("24000.00"), new BigDecimal("25000.00"), BucketEngine.DEFAULT_TARGETS, fy
+        );
+
+        BucketEngine.BucketStatus driftedBucket = bucketStatus.bucketStatuses().stream()
+            .filter(BucketEngine.BucketStatus::isDrifted)
+            .findFirst()
+            .orElse(null);
+
+        if (driftedBucket != null) {
+            radarSignals.add(new RadarSignalDto(
+                "REBALANCE",
+                "Bucket " + driftedBucket.bucket().name(),
+                "ALLOCATION DRIFT ALERT",
+                "Current allocation is " + driftedBucket.currentPct() + "% vs target " + driftedBucket.targetPct() + "%. Rebalance recommended.",
+                "WARNING",
+                "Rebalance"
+            ));
         }
 
         long now = System.currentTimeMillis();

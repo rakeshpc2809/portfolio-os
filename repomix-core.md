@@ -393,7 +393,7 @@ lot.remainingUnits().doubleValue(),
 lot.isGrandfathered() ? lot.fmv20180131().doubleValue() : null,
 lot.costPerUnit().doubleValue(),
 ⋮----
-// Generate Priority AI Radar Signals
+// Generate Verified Priority AI Radar Signals (Tax Harvest + Maturation Ladder + Rebalance Drift)
 ⋮----
 // 1. Priority Tax Loss Harvesting Signals
 ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
@@ -417,49 +417,32 @@ harvestSignals.add(new RadarSignalDto(
 "Harvest " + currencyFormat.format(totalHarvestGain) + " tax-free LTCG gain across " + recs.size() + " lots (" + totalUnitsToSell.setScale(2, RoundingMode.HALF_UP) + " units) before Mar 31.",
 ⋮----
 harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
-radarSignals.addAll(harvestSignals.stream().limit(3).toList());
+radarSignals.addAll(harvestSignals.stream().limit(4).toList());
 ⋮----
-// 2. Real NAV Return Series Quant Analytics
-Map<String, String> assetNames = openLots.stream().collect(Collectors.toMap(Lot::assetId, Lot::assetName, (a, b) -> a));
+// 2. LTCG Maturation Ladder Signal
 ⋮----
-BigDecimal currentNav = navMap.getOrDefault(assetId, lots.get(0).costPerUnit());
+long daysToLtcg = Math.max(0L, 365L - holdingDays);
 ⋮----
-// Build historical returns from actual lot cost bases vs current live NAV
+radarSignals.add(0, new RadarSignalDto(
 ⋮----
-if (lot.costPerUnit().compareTo(BigDecimal.ZERO) > 0) {
-double gainRatio = currentNav.subtract(lot.costPerUnit())
-.divide(lot.costPerUnit(), 4, RoundingMode.HALF_UP).doubleValue();
-realReturns.add(gainRatio);
+maturingLot.assetName(),
 ⋮----
-if (!realReturns.isEmpty()) {
-assetReturnsMap.put(assetId, realReturns);
+maturingLot.assetName() + " (Lot " + maturingLot.lotId() + ") matures under Sec 112A in " + minDaysToLtcg + " days.",
 ⋮----
-if (!assetReturnsMap.isEmpty()) {
+// 3. Asset Allocation Drift Signal
+BucketEngine.RebalanceEngineResult bucketStatus = BucketEngine.evaluateRebalance(
+openLots, navMap, today, new BigDecimal("24000.00"), new BigDecimal("25000.00"), BucketEngine.DEFAULT_TARGETS, fy
 ⋮----
-benchmarkReturns.add(-0.002 * (i % 2 == 0 ? 1 : -1));
+BucketEngine.BucketStatus driftedBucket = bucketStatus.bucketStatuses().stream()
+.filter(BucketEngine.BucketStatus::isDrifted)
+.findFirst()
+.orElse(null);
 ⋮----
-AntigravityEngine.AntigravitySummary antigravitySummary = AntigravityEngine.analyzePortfolioFactors(
-assetReturnsMap, assetNames, benchmarkReturns, new BigDecimal("6.5")
-⋮----
-for (AntigravityEngine.AssetFactorScore factorScore : antigravitySummary.allAssetScores()) {
-if (factorScore.downsideBeta().compareTo(new BigDecimal("0.75")) < 0) {
 radarSignals.add(new RadarSignalDto(
 ⋮----
-factorScore.assetName(),
+"Bucket " + driftedBucket.bucket().name(),
 ⋮----
-factorScore.assetName() + " has Downside Beta β = " + factorScore.downsideBeta() + ". Protects capital during market drops.",
-⋮----
-"β = " + factorScore.downsideBeta()
-⋮----
-} else if (factorScore.zScore30d().compareTo(new BigDecimal("0.30")) > 0) {
-⋮----
-factorScore.assetName() + " displays 30-day Z-Score momentum +" + factorScore.zScore30d() + ". TWR 30d: +" + factorScore.twr30dPct() + "%.",
-⋮----
-"Z = +" + factorScore.zScore30d()
-⋮----
-// Limit Quant Signals to top 6 total
-if (radarSignals.size() > 6) {
-radarSignals = new ArrayList<>(radarSignals.subList(0, 6));
+"Current allocation is " + driftedBucket.currentPct() + "% vs target " + driftedBucket.targetPct() + "%. Rebalance recommended.",
 ⋮----
 long now = System.currentTimeMillis();
 SyncInfoDto syncInfo = new SyncInfoDto(
@@ -1524,13 +1507,11 @@ String currentHash = eventStore.getLatestEventHash();
 long now = System.currentTimeMillis();
 ⋮----
 if (cachedResult == null || !currentHash.equals(cachedHash) || (now - lastNavSyncTime) > 30_000) {
-List<TaxEvent> events = eventStore.getAllEvents();
-cachedResult = fifoMatcher.processEvents(events);
+cachedEvents = eventStore.getAllEvents();
+cachedResult = fifoMatcher.processEvents(cachedEvents);
 cachedNavMap = amfiSync.getNavMap();
 ⋮----
-return new CachedLedgerState(events, cachedResult, cachedNavMap, currentHash);
-⋮----
-return new CachedLedgerState(events, cachedResult, cachedNavMap, cachedHash);
+return new CachedLedgerState(cachedEvents, cachedResult, cachedNavMap, cachedHash);
 ⋮----
 public void invalidateCache() {
 ```

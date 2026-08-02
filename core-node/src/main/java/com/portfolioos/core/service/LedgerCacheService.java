@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class LedgerCacheService {
@@ -20,6 +19,7 @@ public class LedgerCacheService {
 
     private String cachedHash = null;
     private long lastNavSyncTime = 0L;
+    private List<TaxEvent> cachedEvents = null;
     private FifoMatcher.FifoResult cachedResult = null;
     private Map<String, BigDecimal> cachedNavMap = null;
     private final Object lock = new Object();
@@ -41,22 +41,21 @@ public class LedgerCacheService {
             long now = System.currentTimeMillis();
 
             if (cachedResult == null || !currentHash.equals(cachedHash) || (now - lastNavSyncTime) > 30_000) {
-                List<TaxEvent> events = eventStore.getAllEvents();
-                cachedResult = fifoMatcher.processEvents(events);
+                cachedEvents = eventStore.getAllEvents();
+                cachedResult = fifoMatcher.processEvents(cachedEvents);
                 cachedNavMap = amfiSync.getNavMap();
                 cachedHash = currentHash;
                 lastNavSyncTime = now;
-                return new CachedLedgerState(events, cachedResult, cachedNavMap, currentHash);
             }
 
-            List<TaxEvent> events = eventStore.getAllEvents();
-            return new CachedLedgerState(events, cachedResult, cachedNavMap, cachedHash);
+            return new CachedLedgerState(cachedEvents, cachedResult, cachedNavMap, cachedHash);
         }
     }
 
     public void invalidateCache() {
         synchronized (lock) {
             cachedHash = null;
+            cachedEvents = null;
             cachedResult = null;
             cachedNavMap = null;
         }
