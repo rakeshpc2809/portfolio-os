@@ -59,6 +59,12 @@ app/
                 PortfolioGlanceWidget.kt
               MainActivity.kt
       res/
+        drawable/
+          ic_launcher_background.xml
+          ic_launcher_foreground.xml
+        mipmap-anydpi-v26/
+          ic_launcher_round.xml
+          ic_launcher.xml
         values/
           styles.xml
         xml/
@@ -1527,7 +1533,6 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.portfolioos.mobile.MainActivity
 import com.portfolioos.mobile.data.SnapshotCacheManager
-import com.portfolioos.mobile.util.formatInr
 class PortfolioGlanceWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val snapshot = SnapshotCacheManager.loadSnapshot(context)
@@ -1535,6 +1540,11 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
         val holdings = snapshot?.holdings ?: emptyList()
         val bestFund = holdings.maxByOrNull { it.xirr }
         val worstFund = holdings.minByOrNull { it.xirr }
+        // Calculate portfolio gain percentage for privacy-first display
+        val totalInvested = info?.totalInvested ?: 1.0
+        val unrealizedGain = info?.unrealizedGain ?: 0.0
+        val gainPct = if (totalInvested > 0) (unrealizedGain / totalInvested) * 100.0 else 0.0
+        val formattedGainPct = String.format("%s%.2f%%", if (gainPct >= 0) "+" else "", gainPct)
         provideContent {
             GlanceTheme {
                 Column(
@@ -1568,14 +1578,26 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
                         )
                     }
                     Spacer(modifier = GlanceModifier.height(6.dp))
-                    Text(
-                        text = formatInr(info?.currentValue ?: 0.0),
-                        style = TextStyle(
-                            color = ColorProvider(Color(0xFFFFFFFF)),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold
+                    // Privacy-First Valuation & Return Header
+                    Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
+                        Text(
+                            text = "₹ • • • • • •",
+                            style = TextStyle(
+                                color = ColorProvider(Color(0xFF94A3B8)),
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         )
-                    )
+                        Spacer(modifier = GlanceModifier.width(8.dp))
+                        Text(
+                            text = formattedGainPct,
+                            style = TextStyle(
+                                color = ColorProvider(if (gainPct >= 0) Color(0xFF10B981) else Color(0xFFEF4444)),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
                     Spacer(modifier = GlanceModifier.height(8.dp))
                     Row(modifier = GlanceModifier.fillMaxWidth()) {
                         Column(modifier = GlanceModifier.defaultWeight()) {
@@ -1602,7 +1624,7 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
                     }
                     Spacer(modifier = GlanceModifier.height(6.dp))
                     Text(
-                        text = "${holdings.size} Active Schemes · Tap to Open App",
+                        text = "Valuation Hidden for Privacy · Tap to Open App",
                         style = TextStyle(color = ColorProvider(Color(0xFF00F0FF)), fontSize = 9.sp)
                     )
                 }
@@ -1663,6 +1685,75 @@ class MainActivity : ComponentActivity() {
 }
 ```
 
+## File: app/src/main/res/drawable/ic_launcher_background.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#030712"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#0D1424"
+        android:pathData="M0,0 L108,108 L0,108 Z" />
+</vector>
+```
+
+## File: app/src/main/res/drawable/ic_launcher_foreground.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Glowing Cyber Grid Accent -->
+    <path
+        android:strokeColor="#1E293B"
+        android:strokeWidth="1"
+        android:pathData="M24,36 H84 M24,54 H84 M24,72 H84" />
+    <!-- Upward Trend Line -->
+    <path
+        android:strokeColor="#00F0FF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M28,68 L44,52 L56,60 L80,36" />
+    <!-- Trend Line Sparkle Dots -->
+    <path
+        android:fillColor="#D0FF00"
+        android:pathData="M80,36 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+    <!-- Portfolio OS Monogram "P" Emblem -->
+    <path
+        android:fillColor="#D0FF00"
+        android:pathData="M34,34 h16 a12,12 0 0,1 0,24 h-8 v16 h-8 z" />
+    <path
+        android:fillColor="#030712"
+        android:pathData="M42,42 h8 a4,4 0 0,1 0,8 h-8 z" />
+</vector>
+```
+
+## File: app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+```
+
+## File: app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+```
+
 ## File: app/src/main/res/values/styles.xml
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -1715,7 +1806,8 @@ class MainActivity : ComponentActivity() {
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@android:drawable/ic_dialog_info"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Portfolio OS"
         android:supportsRtl="true"
         android:theme="@style/Theme.PortfolioOS"

@@ -28,7 +28,6 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.portfolioos.mobile.MainActivity
 import com.portfolioos.mobile.data.SnapshotCacheManager
-import com.portfolioos.mobile.util.formatInr
 
 class PortfolioGlanceWidget : GlanceAppWidget() {
 
@@ -39,6 +38,12 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
 
         val bestFund = holdings.maxByOrNull { it.xirr }
         val worstFund = holdings.minByOrNull { it.xirr }
+
+        // Calculate portfolio gain percentage for privacy-first display
+        val totalInvested = info?.totalInvested ?: 1.0
+        val unrealizedGain = info?.unrealizedGain ?: 0.0
+        val gainPct = if (totalInvested > 0) (unrealizedGain / totalInvested) * 100.0 else 0.0
+        val formattedGainPct = String.format("%s%.2f%%", if (gainPct >= 0) "+" else "", gainPct)
 
         provideContent {
             GlanceTheme {
@@ -75,14 +80,26 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
 
                     Spacer(modifier = GlanceModifier.height(6.dp))
 
-                    Text(
-                        text = formatInr(info?.currentValue ?: 0.0),
-                        style = TextStyle(
-                            color = ColorProvider(Color(0xFFFFFFFF)),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold
+                    // Privacy-First Valuation & Return Header
+                    Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
+                        Text(
+                            text = "₹ • • • • • •",
+                            style = TextStyle(
+                                color = ColorProvider(Color(0xFF94A3B8)),
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         )
-                    )
+                        Spacer(modifier = GlanceModifier.width(8.dp))
+                        Text(
+                            text = formattedGainPct,
+                            style = TextStyle(
+                                color = ColorProvider(if (gainPct >= 0) Color(0xFF10B981) else Color(0xFFEF4444)),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
 
                     Spacer(modifier = GlanceModifier.height(8.dp))
 
@@ -115,7 +132,7 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
                     Spacer(modifier = GlanceModifier.height(6.dp))
 
                     Text(
-                        text = "${holdings.size} Active Schemes · Tap to Open App",
+                        text = "Valuation Hidden for Privacy · Tap to Open App",
                         style = TextStyle(color = ColorProvider(Color(0xFF00F0FF)), fontSize = 9.sp)
                     )
                 }
