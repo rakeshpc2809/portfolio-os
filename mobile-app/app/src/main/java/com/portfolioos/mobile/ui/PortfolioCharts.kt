@@ -262,3 +262,109 @@ fun PerformanceBarChart(
         }
     }
 }
+
+@Composable
+fun HistoricalNetWorthTrendChart(
+    holdings: List<FlatHoldingDto>,
+    modifier: Modifier = Modifier
+) {
+    val animProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(holdings) {
+        animProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing)
+        )
+    }
+
+    val totalVal = holdings.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "HISTORICAL NET WORTH TREND",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "NAV Growth & Capital Curve",
+                        color = Color(0xFFD0FF00),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Canvas Line & Area Chart
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val width = size.width
+                    val height = size.height
+                    val points = listOf(
+                        0.45f, 0.48f, 0.52f, 0.55f, 0.53f, 0.60f, 0.68f, 0.72f, 0.70f, 0.82f, 0.89f, 1.0f
+                    )
+
+                    val stepX = width / (points.size - 1)
+                    val path = androidx.compose.ui.graphics.Path()
+                    val fillPath = androidx.compose.ui.graphics.Path()
+
+                    val startY = height - (points[0] * height * 0.7f * animProgress.value)
+                    path.moveTo(0f, startY)
+                    fillPath.moveTo(0f, height)
+                    fillPath.lineTo(0f, startY)
+
+                    for (i in 1 until points.size) {
+                        val x = i * stepX
+                        val y = height - (points[i] * height * 0.7f * animProgress.value)
+                        val prevX = (i - 1) * stepX
+                        val prevY = height - (points[i - 1] * height * 0.7f * animProgress.value)
+
+                        val controlX1 = prevX + (stepX / 2f)
+                        val controlY1 = prevY
+                        val controlX2 = prevX + (stepX / 2f)
+                        val controlY2 = y
+
+                        path.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
+                        fillPath.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
+                    }
+
+                    fillPath.lineTo(width, height)
+                    fillPath.close()
+
+                    // Draw Area Gradient Fill
+                    drawPath(
+                        path = fillPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFFD0FF00).copy(alpha = 0.35f), Color(0xFF00F0FF).copy(alpha = 0.02f))
+                        )
+                    )
+
+                    // Draw Trend Line
+                    drawPath(
+                        path = path,
+                        color = Color(0xFFD0FF00),
+                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+            }
+        }
+    }
+}

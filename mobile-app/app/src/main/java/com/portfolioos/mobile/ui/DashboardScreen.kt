@@ -495,6 +495,10 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
         }
 
         item {
+            HistoricalNetWorthTrendChart(holdings = holdings)
+        }
+
+        item {
             DonutAllocationChart(holdings = holdings)
         }
 
