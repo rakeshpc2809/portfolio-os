@@ -106,4 +106,19 @@ public class ReportController {
             .contentLength(zipBytes.length)
             .body(zipBytes);
     }
+
+    @GetMapping("/tax/schedule-cg/export")
+    public ResponseEntity<String> downloadScheduleCgCsv(
+        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+    ) {
+        String csv = com.portfolioos.core.tax.ScheduleCgExporter.generateCsvReport(
+            valuationService.getCachedState().fifoResult().matchedLots(),
+            fy
+        );
+
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Schedule-CG-FY" + fy + ".csv\"")
+            .contentType(MediaType.parseMediaType("text/csv"))
+            .body(csv);
+    }
 }

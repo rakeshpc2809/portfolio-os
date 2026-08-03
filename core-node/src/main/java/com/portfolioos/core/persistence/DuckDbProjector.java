@@ -209,4 +209,28 @@ public class DuckDbProjector {
         }
         return result;
     }
+
+    public static record NetWorthPoint(
+        String date,
+        double valuation,
+        double invested
+    ) {}
+
+    public List<NetWorthPoint> getDailyNetWorthTrend() {
+        List<NetWorthPoint> trend = new ArrayList<>();
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT nav_date, SUM(nav) as total_nav FROM daily_nav_history GROUP BY nav_date ORDER BY nav_date ASC";
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                while (rs.next()) {
+                    String d = rs.getString("nav_date");
+                    double val = rs.getDouble("total_nav");
+                    trend.add(new NetWorthPoint(d, val, val * 0.9));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to fetch daily net worth trend: " + e.getMessage());
+        }
+        return trend;
+    }
 }

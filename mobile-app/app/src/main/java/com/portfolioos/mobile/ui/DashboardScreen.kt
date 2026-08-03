@@ -181,7 +181,7 @@ fun DashboardScreen(
                     // High-performance 120fps Horizontal Pager with zero per-frame transform overhead
                     HorizontalPager(
                         state = pagerState,
-                        beyondBoundsPageCount = 2,
+                        beyondBoundsPageCount = 1,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
@@ -204,10 +204,10 @@ fun DashboardScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Surface(
-                    color = Color(0xFF090F1E).copy(alpha = 0.92f),
+                    color = Color(0xFF090F1E).copy(alpha = 0.94f),
                     shape = RoundedCornerShape(100.dp),
                     modifier = Modifier
-                        .shadow(elevation = 24.dp, shape = RoundedCornerShape(100.dp), spotColor = M3ElectricLime)
+                        .shadow(elevation = 4.dp, shape = RoundedCornerShape(100.dp))
                         .border(
                             width = 1.5.dp,
                             brush = Brush.horizontalGradient(
