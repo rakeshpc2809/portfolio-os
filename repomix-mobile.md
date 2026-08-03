@@ -75,6 +75,7 @@ settings.gradle.kts
 ```kotlin
 package com.portfolioos.mobile.api
 import android.content.Context
+import com.portfolioos.mobile.BuildConfig
 import com.portfolioos.mobile.data.SnapshotCacheManager
 import com.portfolioos.mobile.model.SyncSnapshot
 import okhttp3.OkHttpClient
@@ -88,7 +89,7 @@ import java.util.concurrent.TimeUnit
 interface SyncApiService {
     @GET("api/v1/sync/snapshot")
     suspend fun getSnapshot(
-        @Header("X-Api-Auth-Token") token: String = "fintracker-cachyos-default-key-2026",
+        @Header("X-Api-Auth-Token") token: String,
         @Query("fy") fiscalYear: String = "2026-27"
     ): SyncSnapshot
 }
@@ -98,7 +99,7 @@ object SyncApiClient {
     const val WIFI_BASE_URL = "http://192.168.1.13:8080/"
     fun createService(baseUrl: String = USB_BASE_URL): SyncApiService {
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
         }
         val okHttpClient = OkHttpClient.Builder()
             .connectTimeout(3, TimeUnit.SECONDS)
@@ -114,11 +115,12 @@ object SyncApiClient {
     }
     suspend fun fetchSnapshotWithFallback(context: Context): SyncSnapshot {
         val customUrl = SnapshotCacheManager.getCustomUrl(context)
+        val authToken = SnapshotCacheManager.getAuthToken(context)
         // 1. Try Custom Remote/Tunnel URL if configured
         if (!customUrl.isNullOrBlank()) {
             try {
                 val formatted = if (customUrl.endsWith("/")) customUrl else "$customUrl/"
-                val remoteSnapshot = createService(formatted).getSnapshot()
+                val remoteSnapshot = createService(formatted).getSnapshot(token = authToken)
                 SnapshotCacheManager.saveSnapshot(context, remoteSnapshot)
                 return remoteSnapshot
             } catch (e: Exception) {
@@ -127,19 +129,19 @@ object SyncApiClient {
         }
         // 2. Try USB Loopback (adb reverse)
         try {
-            val snapshot = createService(USB_BASE_URL).getSnapshot()
+            val snapshot = createService(USB_BASE_URL).getSnapshot(token = authToken)
             SnapshotCacheManager.saveSnapshot(context, snapshot)
             return snapshot
         } catch (e1: Exception) {
             // 3. Try Android Emulator loopback
             try {
-                val snapshot = createService(EMULATOR_BASE_URL).getSnapshot()
+                val snapshot = createService(EMULATOR_BASE_URL).getSnapshot(token = authToken)
                 SnapshotCacheManager.saveSnapshot(context, snapshot)
                 return snapshot
             } catch (e2: Exception) {
                 // 4. Try Wi-Fi LAN IP
                 try {
-                    val snapshot = createService(WIFI_BASE_URL).getSnapshot()
+                    val snapshot = createService(WIFI_BASE_URL).getSnapshot(token = authToken)
                     SnapshotCacheManager.saveSnapshot(context, snapshot)
                     return snapshot
                 } catch (e3: Exception) {
@@ -1476,6 +1478,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"

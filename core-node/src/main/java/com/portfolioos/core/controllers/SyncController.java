@@ -235,24 +235,33 @@ public class SyncController {
                     Object sharpeObj = metrics.get("sharpe");
                     Object maxDdObj = metrics.get("max_drawdown");
 
+                    String bucket = detectFineBucket(schemeName);
+
                     if (sharpeObj instanceof Number sharpe && sharpe.doubleValue() >= 1.2) {
                         radarSignals.add(new RadarSignalDto(
                             "QUANT_ANALYTICS",
                             schemeName,
                             "QUANT STATS: HIGH SHARPE (" + String.format("%.2f", sharpe.doubleValue()) + ")",
-                            schemeName + " displays a risk-adjusted Sharpe ratio of " + String.format("%.2f", sharpe.doubleValue()) + " over tracked NAV history.",
+                            "[" + bucket + "] " + schemeName + " displays a risk-adjusted Sharpe ratio of " + String.format("%.2f", sharpe.doubleValue()) + " over tracked NAV history.",
                             "INFO",
                             "Sharpe " + String.format("%.2f", sharpe.doubleValue())
                         ));
                     }
 
-                    if (maxDdObj instanceof Number maxDd && Math.abs(maxDd.doubleValue()) >= 0.20) {
+                    double ddThreshold = switch (bucket) {
+                        case "Debt & Liquid" -> 0.05;
+                        case "Core Equity", "Flexi Cap", "Large & Midcap", "Equal Weight Index", "Gold & Commodities" -> 0.15;
+                        default -> 0.25; // Small Cap, Microcap, Sectoral, Midcap, Factor Value/Momentum
+                    };
+
+                    if (maxDdObj instanceof Number maxDd && Math.abs(maxDd.doubleValue()) >= ddThreshold) {
                         double maxDdPct = Math.abs(maxDd.doubleValue()) * 100.0;
+                        double thresholdPct = ddThreshold * 100.0;
                         radarSignals.add(new RadarSignalDto(
                             "QUANT_ANALYTICS",
                             schemeName,
                             "QUANT STATS: DEEP DRAWDOWN (" + String.format("%.1f", maxDdPct) + "%)",
-                            schemeName + " max drawdown (" + String.format("%.1f", maxDdPct) + "%) exceeds 20% threshold — historical corrections deeper than buffer sizing.",
+                            "[" + bucket + "] " + schemeName + " max drawdown (" + String.format("%.1f", maxDdPct) + "%) exceeds " + String.format("%.0f", thresholdPct) + "% " + bucket + " category threshold.",
                             "WARNING",
                             "Max DD -" + String.format("%.1f", maxDdPct) + "%"
                         ));
