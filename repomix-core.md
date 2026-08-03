@@ -29,7 +29,7 @@ The content is organized as follows:
 ## Notes
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
-- Files matching these patterns are excluded: target/**, .mvn/**, **/*.class, **/*.jar
+- Files matching these patterns are excluded: target/**, **/*.class, **/*.jar
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
 - Empty lines have been removed from all files
