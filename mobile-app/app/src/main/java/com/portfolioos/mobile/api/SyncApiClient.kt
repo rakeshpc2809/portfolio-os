@@ -1,5 +1,7 @@
 package com.portfolioos.mobile.api
 
+import android.content.Context
+import com.portfolioos.mobile.data.SnapshotCacheManager
 import com.portfolioos.mobile.model.SyncSnapshot
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -29,8 +31,8 @@ object SyncApiClient {
         }
 
         val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(3, TimeUnit.SECONDS)
             .addInterceptor(logging)
             .build()
 
@@ -43,14 +45,47 @@ object SyncApiClient {
         return retrofit.create(SyncApiService::class.java)
     }
 
-    suspend fun fetchSnapshotWithFallback(): SyncSnapshot {
-        return try {
-            createService(USB_BASE_URL).getSnapshot()
-        } catch (e1: Exception) {
+    suspend fun fetchSnapshotWithFallback(context: Context): SyncSnapshot {
+        val customUrl = SnapshotCacheManager.getCustomUrl(context)
+        
+        // 1. Try Custom Remote/Tunnel URL if configured
+        if (!customUrl.isNullOrBlank()) {
             try {
-                createService(EMULATOR_BASE_URL).getSnapshot()
+                val formatted = if (customUrl.endsWith("/")) customUrl else "$customUrl/"
+                val remoteSnapshot = createService(formatted).getSnapshot()
+                SnapshotCacheManager.saveSnapshot(context, remoteSnapshot)
+                return remoteSnapshot
+            } catch (e: Exception) {
+                // fallthrough to local networks
+            }
+        }
+
+        // 2. Try USB Loopback (adb reverse)
+        try {
+            val snapshot = createService(USB_BASE_URL).getSnapshot()
+            SnapshotCacheManager.saveSnapshot(context, snapshot)
+            return snapshot
+        } catch (e1: Exception) {
+            // 3. Try Android Emulator loopback
+            try {
+                val snapshot = createService(EMULATOR_BASE_URL).getSnapshot()
+                SnapshotCacheManager.saveSnapshot(context, snapshot)
+                return snapshot
             } catch (e2: Exception) {
-                createService(WIFI_BASE_URL).getSnapshot()
+                // 4. Try Wi-Fi LAN IP
+                try {
+                    val snapshot = createService(WIFI_BASE_URL).getSnapshot()
+                    SnapshotCacheManager.saveSnapshot(context, snapshot)
+                    return snapshot
+                } catch (e3: Exception) {
+                    // 5. Offline Fallback: Load cached snapshot & fetch direct AMFI NAVs over cellular!
+                    val cached = SnapshotCacheManager.loadSnapshot(context)
+                    if (cached != null) {
+                        return SnapshotCacheManager.updateOfflineSnapshotWithLiveAmfi(cached)
+                    } else {
+                        throw e3
+                    }
+                }
             }
         }
     }

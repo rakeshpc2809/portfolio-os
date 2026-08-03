@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -55,10 +56,13 @@ val M3TextMuted = Color(0xFF94A3B8)
 fun DashboardScreen(
     snapshot: SyncSnapshot?,
     isLoading: Boolean,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onUpdateCustomUrl: (String) -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
     val coroutineScope = rememberCoroutineScope()
+    var showUrlDialog by remember { mutableStateOf(false) }
+    var inputUrl by remember { mutableStateOf("") }
 
     MaterialTheme(
         colorScheme = darkColorScheme(
@@ -102,6 +106,15 @@ fun DashboardScreen(
                             }
                         }
                     },
+                    actions = {
+                        IconButton(onClick = { showUrlDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Server Settings",
+                                tint = M3ElectricLime
+                            )
+                        }
+                    },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = M3ObsidianDark
                     )
@@ -129,24 +142,32 @@ fun DashboardScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = "Core Node Disconnected",
+                                    text = "Core Node Offline / Not Synced",
                                     color = Color.White,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Ensure Core Node container is running on port 8080.",
+                                    text = "Connect over Wi-Fi, USB, or set a custom server URL.",
                                     color = M3TextMuted,
                                     fontSize = 12.sp
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
-                                Button(
-                                    onClick = onRefresh,
-                                    colors = ButtonDefaults.buttonColors(containerColor = M3ElectricLime),
-                                    shape = RoundedCornerShape(100.dp)
-                                ) {
-                                    Text("Retry Connection", color = Color.Black, fontWeight = FontWeight.Bold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = onRefresh,
+                                        colors = ButtonDefaults.buttonColors(containerColor = M3ElectricLime),
+                                        shape = RoundedCornerShape(100.dp)
+                                    ) {
+                                        Text("Retry", color = Color.Black, fontWeight = FontWeight.Bold)
+                                    }
+                                    OutlinedButton(
+                                        onClick = { showUrlDialog = true },
+                                        shape = RoundedCornerShape(100.dp)
+                                    ) {
+                                        Text("Set Server URL", color = M3NeonCyan, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -251,6 +272,49 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+
+            // Dialog for setting Custom Core Node Remote Server URL (Tailscale / Ngrok / LAN IP)
+            if (showUrlDialog) {
+                AlertDialog(
+                    onDismissRequest = { showUrlDialog = false },
+                    title = { Text("Core Node Server URL", color = Color.White, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column {
+                            Text(
+                                text = "Enter custom Core Node IP or Tunnel URL (e.g. http://192.168.1.13:8080 or https://xyz.ngrok-free.app):",
+                                color = M3TextMuted,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = inputUrl,
+                                onValueChange = { inputUrl = it },
+                                placeholder = { Text("http://192.168.1.13:8080", color = M3TextMuted) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                onUpdateCustomUrl(inputUrl.trim())
+                                showUrlDialog = false
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = M3ElectricLime)
+                        ) {
+                            Text("Save & Sync", color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showUrlDialog = false }) {
+                            Text("Cancel", color = M3TextMuted)
+                        }
+                    },
+                    containerColor = M3SurfaceCard,
+                    shape = RoundedCornerShape(24.dp)
+                )
             }
         }
     }

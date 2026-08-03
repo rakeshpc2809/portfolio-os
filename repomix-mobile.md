@@ -74,6 +74,8 @@ settings.gradle.kts
 ## File: app/src/main/java/com/portfolioos/mobile/api/SyncApiClient.kt
 ```kotlin
 package com.portfolioos.mobile.api
+import android.content.Context
+import com.portfolioos.mobile.data.SnapshotCacheManager
 import com.portfolioos.mobile.model.SyncSnapshot
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -99,8 +101,8 @@ object SyncApiClient {
             level = HttpLoggingInterceptor.Level.BODY
         }
         val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(3, TimeUnit.SECONDS)
             .addInterceptor(logging)
             .build()
         val retrofit = Retrofit.Builder()
@@ -110,14 +112,45 @@ object SyncApiClient {
             .build()
         return retrofit.create(SyncApiService::class.java)
     }
-    suspend fun fetchSnapshotWithFallback(): SyncSnapshot {
-        return try {
-            createService(USB_BASE_URL).getSnapshot()
-        } catch (e1: Exception) {
+    suspend fun fetchSnapshotWithFallback(context: Context): SyncSnapshot {
+        val customUrl = SnapshotCacheManager.getCustomUrl(context)
+        // 1. Try Custom Remote/Tunnel URL if configured
+        if (!customUrl.isNullOrBlank()) {
             try {
-                createService(EMULATOR_BASE_URL).getSnapshot()
+                val formatted = if (customUrl.endsWith("/")) customUrl else "$customUrl/"
+                val remoteSnapshot = createService(formatted).getSnapshot()
+                SnapshotCacheManager.saveSnapshot(context, remoteSnapshot)
+                return remoteSnapshot
+            } catch (e: Exception) {
+                // fallthrough to local networks
+            }
+        }
+        // 2. Try USB Loopback (adb reverse)
+        try {
+            val snapshot = createService(USB_BASE_URL).getSnapshot()
+            SnapshotCacheManager.saveSnapshot(context, snapshot)
+            return snapshot
+        } catch (e1: Exception) {
+            // 3. Try Android Emulator loopback
+            try {
+                val snapshot = createService(EMULATOR_BASE_URL).getSnapshot()
+                SnapshotCacheManager.saveSnapshot(context, snapshot)
+                return snapshot
             } catch (e2: Exception) {
-                createService(WIFI_BASE_URL).getSnapshot()
+                // 4. Try Wi-Fi LAN IP
+                try {
+                    val snapshot = createService(WIFI_BASE_URL).getSnapshot()
+                    SnapshotCacheManager.saveSnapshot(context, snapshot)
+                    return snapshot
+                } catch (e3: Exception) {
+                    // 5. Offline Fallback: Load cached snapshot & fetch direct AMFI NAVs over cellular!
+                    val cached = SnapshotCacheManager.loadSnapshot(context)
+                    if (cached != null) {
+                        return SnapshotCacheManager.updateOfflineSnapshotWithLiveAmfi(cached)
+                    } else {
+                        throw e3
+                    }
+                }
             }
         }
     }
@@ -203,6 +236,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -237,10 +271,13 @@ val M3TextMuted = Color(0xFF94A3B8)
 fun DashboardScreen(
     snapshot: SyncSnapshot?,
     isLoading: Boolean,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onUpdateCustomUrl: (String) -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
     val coroutineScope = rememberCoroutineScope()
+    var showUrlDialog by remember { mutableStateOf(false) }
+    var inputUrl by remember { mutableStateOf("") }
     MaterialTheme(
         colorScheme = darkColorScheme(
             background = M3ObsidianDark,
@@ -283,6 +320,15 @@ fun DashboardScreen(
                             }
                         }
                     },
+                    actions = {
+                        IconButton(onClick = { showUrlDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Server Settings",
+                                tint = M3ElectricLime
+                            )
+                        }
+                    },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = M3ObsidianDark
                     )
@@ -309,24 +355,32 @@ fun DashboardScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = "Core Node Disconnected",
+                                    text = "Core Node Offline / Not Synced",
                                     color = Color.White,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Ensure Core Node container is running on port 8080.",
+                                    text = "Connect over Wi-Fi, USB, or set a custom server URL.",
                                     color = M3TextMuted,
                                     fontSize = 12.sp
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
-                                Button(
-                                    onClick = onRefresh,
-                                    colors = ButtonDefaults.buttonColors(containerColor = M3ElectricLime),
-                                    shape = RoundedCornerShape(100.dp)
-                                ) {
-                                    Text("Retry Connection", color = Color.Black, fontWeight = FontWeight.Bold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = onRefresh,
+                                        colors = ButtonDefaults.buttonColors(containerColor = M3ElectricLime),
+                                        shape = RoundedCornerShape(100.dp)
+                                    ) {
+                                        Text("Retry", color = Color.Black, fontWeight = FontWeight.Bold)
+                                    }
+                                    OutlinedButton(
+                                        onClick = { showUrlDialog = true },
+                                        shape = RoundedCornerShape(100.dp)
+                                    ) {
+                                        Text("Set Server URL", color = M3NeonCyan, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -429,6 +483,48 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+            // Dialog for setting Custom Core Node Remote Server URL (Tailscale / Ngrok / LAN IP)
+            if (showUrlDialog) {
+                AlertDialog(
+                    onDismissRequest = { showUrlDialog = false },
+                    title = { Text("Core Node Server URL", color = Color.White, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column {
+                            Text(
+                                text = "Enter custom Core Node IP or Tunnel URL (e.g. http://192.168.1.13:8080 or https://xyz.ngrok-free.app):",
+                                color = M3TextMuted,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = inputUrl,
+                                onValueChange = { inputUrl = it },
+                                placeholder = { Text("http://192.168.1.13:8080", color = M3TextMuted) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                onUpdateCustomUrl(inputUrl.trim())
+                                showUrlDialog = false
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = M3ElectricLime)
+                        ) {
+                            Text("Save & Sync", color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showUrlDialog = false }) {
+                            Text("Cancel", color = M3TextMuted)
+                        }
+                    },
+                    containerColor = M3SurfaceCard,
+                    shape = RoundedCornerShape(24.dp)
+                )
             }
         }
     }
@@ -1242,6 +1338,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import com.portfolioos.mobile.api.SyncApiClient
+import com.portfolioos.mobile.data.SnapshotCacheManager
 import com.portfolioos.mobile.model.SyncSnapshot
 import com.portfolioos.mobile.ui.DashboardScreen
 import kotlinx.coroutines.launch
@@ -1256,7 +1353,7 @@ class MainActivity : ComponentActivity() {
                 scope.launch {
                     isLoading = true
                     try {
-                        snapshot = SyncApiClient.fetchSnapshotWithFallback()
+                        snapshot = SyncApiClient.fetchSnapshotWithFallback(applicationContext)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     } finally {
@@ -1270,7 +1367,11 @@ class MainActivity : ComponentActivity() {
             DashboardScreen(
                 snapshot = snapshot,
                 isLoading = isLoading,
-                onRefresh = { fetchSyncSnapshot() }
+                onRefresh = { fetchSyncSnapshot() },
+                onUpdateCustomUrl = { newUrl ->
+                    SnapshotCacheManager.setCustomUrl(applicationContext, newUrl)
+                    fetchSyncSnapshot()
+                }
             )
         }
     }

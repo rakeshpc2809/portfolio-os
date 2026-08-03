@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import com.portfolioos.mobile.api.SyncApiClient
+import com.portfolioos.mobile.data.SnapshotCacheManager
 import com.portfolioos.mobile.model.SyncSnapshot
 import com.portfolioos.mobile.ui.DashboardScreen
 import kotlinx.coroutines.launch
@@ -21,7 +22,7 @@ class MainActivity : ComponentActivity() {
                 scope.launch {
                     isLoading = true
                     try {
-                        snapshot = SyncApiClient.fetchSnapshotWithFallback()
+                        snapshot = SyncApiClient.fetchSnapshotWithFallback(applicationContext)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     } finally {
@@ -37,7 +38,11 @@ class MainActivity : ComponentActivity() {
             DashboardScreen(
                 snapshot = snapshot,
                 isLoading = isLoading,
-                onRefresh = { fetchSyncSnapshot() }
+                onRefresh = { fetchSyncSnapshot() },
+                onUpdateCustomUrl = { newUrl ->
+                    SnapshotCacheManager.setCustomUrl(applicationContext, newUrl)
+                    fetchSyncSnapshot()
+                }
             )
         }
     }
