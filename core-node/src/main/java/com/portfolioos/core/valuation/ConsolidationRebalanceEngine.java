@@ -143,7 +143,8 @@ public class ConsolidationRebalanceEngine {
             ));
         }
 
-        BigDecimal effectiveProceeds = totalProceeds.compareTo(BigDecimal.ZERO) > 0 ? totalProceeds : new BigDecimal("256200.00");
+        BigDecimal netPostTaxProceeds = totalProceeds.subtract(totalTaxDrag).max(BigDecimal.ZERO);
+        BigDecimal effectiveProceeds = netPostTaxProceeds.compareTo(BigDecimal.ZERO) > 0 ? netPostTaxProceeds : totalProceeds;
 
         List<ExistingSipAllocation> proRataAllocations = new ArrayList<>();
         for (Map.Entry<String, Pair<String, BigDecimal>> entry : CORE_SIP_WEIGHTS.entrySet()) {

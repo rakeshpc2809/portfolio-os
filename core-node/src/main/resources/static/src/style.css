@@ -728,3 +728,98 @@ body.bg-obsidian {
   font-size: 11px;
   color: var(--text-muted);
 }
+
+/* Glassmorphism & Bento Box Enhancements */
+.glass-card {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(12, 16, 28, 0.75);
+}
+
+.cmd-k-btn {
+  background: rgba(208, 255, 0, 0.15) !important;
+  color: #d0ff00 !important;
+  border: 1px solid rgba(208, 255, 0, 0.3) !important;
+}
+
+.cmd-k-btn kbd {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.command-palette-dialog {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: auto;
+  max-width: 600px;
+  width: 90%;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.command-palette-dialog::backdrop {
+  background: rgba(3, 7, 18, 0.75);
+  backdrop-filter: blur(8px);
+}
+
+.command-palette-box {
+  background: #090f1e;
+  border: 1px solid rgba(208, 255, 0, 0.4);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.command-palette-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.command-palette-header input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+}
+
+.cmd-k-badge {
+  background: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.command-palette-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cmd-item {
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  color: #f8fafc;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cmd-item:hover {
+  background: rgba(208, 255, 0, 0.12);
+  border-color: rgba(208, 255, 0, 0.4);
+  color: #d0ff00;
+  transform: translateX(4px);
+}

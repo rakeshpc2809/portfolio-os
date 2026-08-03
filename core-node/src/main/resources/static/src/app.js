@@ -53,6 +53,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
   fetchLiveMetrics();
 
+  // Command Palette Handler (Cmd + K / Ctrl + K)
+  const cmdPaletteModal = document.getElementById('commandPaletteModal');
+  const cmdKTriggerBtn = document.getElementById('cmdKTriggerBtn');
+  const cmdInput = document.getElementById('commandPaletteInput');
+  const cmdResults = document.getElementById('commandPaletteResults');
+
+  function openCmdPalette() {
+    if (cmdPaletteModal) {
+      cmdPaletteModal.showModal();
+      if (cmdInput) cmdInput.focus();
+    }
+  }
+
+  function closeCmdPalette() {
+    if (cmdPaletteModal) cmdPaletteModal.close();
+  }
+
+  if (cmdKTriggerBtn) cmdKTriggerBtn.addEventListener('click', openCmdPalette);
+
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      openCmdPalette();
+    }
+  });
+
+  if (cmdResults) {
+    cmdResults.addEventListener('click', (e) => {
+      const item = e.target.closest('.cmd-item');
+      if (!item) return;
+      const action = item.getAttribute('data-action');
+      closeCmdPalette();
+
+      if (action === 'schedule-cg') {
+        window.open('/api/v1/tax/schedule-cg/export', '_blank');
+        showToast('Downloading Schedule CG Tax Report CSV...', 'success');
+      } else if (action === 'rebalance') {
+        fetchBucketRebalance();
+        showToast('Evaluating Portfolio Rebalance Rungs...', 'info');
+      } else if (action === 'whatif' || action === 'holdings') {
+        const hTab = document.querySelector('[data-tab="holdings"]');
+        if (hTab) hTab.click();
+      } else if (action === 'radar') {
+        fetchDecisionRadar();
+      }
+    });
+  }
+
   // Export ZIP button listener
   const exportZipBtn = document.getElementById('exportZipBtn');
   if (exportZipBtn) {

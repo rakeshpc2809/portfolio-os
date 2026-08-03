@@ -488,11 +488,20 @@ double maxDdPct = Math.abs(maxDd.doubleValue()) * 100.0;
 ⋮----
 System.err.println("Non-critical Quant Flight RPC signal extraction warning: " + ex.getMessage());
 ⋮----
+// 2.5 Automated SIP Cashflow Signal
+long sipCount = events.stream()
+.filter(e -> e.eventType() == EventType.SIP_INSTALMENT)
+.map(TaxEvent::assetId)
+.distinct()
+.count();
+⋮----
+radarSignals.add(0, new RadarSignalDto(
+⋮----
+String.format("Auto-detected %d active monthly SIPs across portfolio. Disciplined recurring cashflow active.", sipCount),
+⋮----
 // 3. LTCG Maturation Ladder Signal
 ⋮----
 long daysToLtcg = Math.max(0L, 365L - holdingDays);
-⋮----
-radarSignals.add(0, new RadarSignalDto(
 ⋮----
 maturingLot.assetName(),
 ⋮----
@@ -2486,7 +2495,8 @@ totalTaxDrag = totalTaxDrag.add(taxDrag);
 ⋮----
 phasedSummaries.add(new PhasedOutAssetSummary(
 ⋮----
-BigDecimal effectiveProceeds = totalProceeds.compareTo(BigDecimal.ZERO) > 0 ? totalProceeds : new BigDecimal("256200.00");
+BigDecimal netPostTaxProceeds = totalProceeds.subtract(totalTaxDrag).max(BigDecimal.ZERO);
+BigDecimal effectiveProceeds = netPostTaxProceeds.compareTo(BigDecimal.ZERO) > 0 ? netPostTaxProceeds : totalProceeds;
 ⋮----
 for (Map.Entry<String, Pair<String, BigDecimal>> entry : CORE_SIP_WEIGHTS.entrySet()) {
 String id = entry.getKey();
@@ -2754,6 +2764,12 @@ window.toggleLotDetails = (idx) =>
 ⋮----
 export function renderPieChart(containerId, data)
 ⋮----
+export function renderNetWorthTrendChart(containerId, dates, values)
+⋮----
+formatter: params => `$
+⋮----
+axisLabel:
+⋮----
 export function renderAllocationChart(allocations)
 ⋮----
 export function renderCategoryChart(catAllocations)
@@ -2820,6 +2836,12 @@ export function showToast(message, type = 'success')
 ## File: src/main/resources/static/src/app.js
 ```javascript
 // Tab Switching Handler
+⋮----
+// Command Palette Handler (Cmd + K / Ctrl + K)
+⋮----
+function openCmdPalette()
+⋮----
+function closeCmdPalette()
 ⋮----
 // Export ZIP button listener
 ⋮----
@@ -3052,6 +3074,30 @@ body.bg-obsidian {
 .fire-stat-box .val {
 ⋮----
 .fire-stat-box .sub {
+⋮----
+/* Glassmorphism & Bento Box Enhancements */
+⋮----
+.cmd-k-btn {
+⋮----
+.cmd-k-btn kbd {
+⋮----
+.command-palette-dialog {
+⋮----
+.command-palette-dialog::backdrop {
+⋮----
+.command-palette-box {
+⋮----
+.command-palette-header {
+⋮----
+.command-palette-header input {
+⋮----
+.cmd-k-badge {
+⋮----
+.command-palette-results {
+⋮----
+.cmd-item {
+⋮----
+.cmd-item:hover {
 ```
 
 ## File: src/main/resources/static/index.html
@@ -3094,6 +3140,10 @@ body.bg-obsidian {
         </div>
       </div>
       <div class="header-actions">
+        <button id="cmdKTriggerBtn" class="upload-btn cmd-k-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          Search <kbd>⌘K</kbd>
+        </button>
         <button id="exportZipBtn" class="upload-btn export-btn">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
           Export ITR-2 Bundle (.zip)
@@ -3324,8 +3374,23 @@ body.bg-obsidian {
           </div>
         </div>
       </div>
-    </main>
-  </div>
+  <!-- Global Command Palette Modal (Cmd + K / Ctrl + K) -->
+  <dialog id="commandPaletteModal" class="command-palette-dialog">
+    <div class="command-palette-box">
+      <div class="command-palette-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D0FF00" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="commandPaletteInput" placeholder="Type a command or search schemes... (Esc to exit)" autofocus>
+        <span class="cmd-k-badge">ESC</span>
+      </div>
+      <div class="command-palette-results" id="commandPaletteResults">
+        <div class="cmd-item" data-action="whatif">⚡ Open What-If Trade Simulator</div>
+        <div class="cmd-item" data-action="schedule-cg">📄 Download Schedule CG Tax CSV</div>
+        <div class="cmd-item" data-action="rebalance">⚖️ Run Portfolio Rebalance Engine</div>
+        <div class="cmd-item" data-action="holdings">📊 Jump to Holdings & NAV Trend</div>
+        <div class="cmd-item" data-action="radar">🧠 View AI Quant Radar Signals</div>
+      </div>
+    </div>
+  </dialog>
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>

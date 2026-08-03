@@ -292,6 +292,29 @@ calmar = float(mean_ret * 252 / abs(max_dd)) if abs(max_dd) > 0 else 0.0
 vol = float(std_ret * np.sqrt(252))
 var95 = float(returns.quantile(0.05))
 cvar95 = float(returns[returns <= var95].mean()) if not returns[returns <= var95].empty else var95
+⋮----
+returns = np.array(daily_returns_list)
+mean_daily = np.mean(returns)
+std_daily = np.std(returns)
+⋮----
+trading_days = years * 252
+daily_expense = annual_expense / 252.0
+⋮----
+simulated_daily_returns = np.random.normal(loc=mean_daily, scale=std_daily, size=(num_simulations, trading_days))
+⋮----
+surviving_sims = 0
+final_corpuses = []
+⋮----
+corpus = current_corpus
+failed = False
+⋮----
+corpus = corpus * (1.0 + simulated_daily_returns[sim_idx, day]) - daily_expense
+⋮----
+failed = True
+⋮----
+success_rate = (surviving_sims / num_simulations) * 100.0
+median_corpus = float(np.median(final_corpuses))
+p10_corpus = float(np.percentile(final_corpuses, 10))
 ```
 
 ## File: app.py

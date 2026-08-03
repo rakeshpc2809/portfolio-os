@@ -108,3 +108,57 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
             "cvar_95": 0.0,
             "beta": 0.0
         }
+
+def run_monte_carlo_fire_simulation(
+    daily_returns_list,
+    current_corpus=1754783.21,
+    annual_expense=600000.0,
+    years=15,
+    num_simulations=10000
+):
+    if daily_returns_list is None or len(daily_returns_list) < 10:
+        return {
+            "status": "INSUFFICIENT_DATA",
+            "success_rate_pct": 95.0,
+            "median_ending_corpus": current_corpus * 1.5,
+            "tenth_percentile_corpus": current_corpus * 0.9
+        }
+
+    returns = np.array(daily_returns_list)
+    mean_daily = np.mean(returns)
+    std_daily = np.std(returns)
+
+    trading_days = years * 252
+    daily_expense = annual_expense / 252.0
+
+    simulated_daily_returns = np.random.normal(loc=mean_daily, scale=std_daily, size=(num_simulations, trading_days))
+
+    surviving_sims = 0
+    final_corpuses = []
+
+    for sim_idx in range(num_simulations):
+        corpus = current_corpus
+        failed = False
+        for day in range(trading_days):
+            corpus = corpus * (1.0 + simulated_daily_returns[sim_idx, day]) - daily_expense
+            if corpus <= 0:
+                failed = True
+                break
+        if not failed:
+            surviving_sims += 1
+            final_corpuses.append(corpus)
+        else:
+            final_corpuses.append(0.0)
+
+    success_rate = (surviving_sims / num_simulations) * 100.0
+    median_corpus = float(np.median(final_corpuses))
+    p10_corpus = float(np.percentile(final_corpuses, 10))
+
+    return {
+        "status": "OK",
+        "num_simulations": num_simulations,
+        "years": years,
+        "success_rate_pct": round(success_rate, 2),
+        "median_ending_corpus": round(median_corpus, 2),
+        "tenth_percentile_corpus": round(p10_corpus, 2)
+    }

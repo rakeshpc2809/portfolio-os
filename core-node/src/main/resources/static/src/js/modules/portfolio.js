@@ -150,6 +150,55 @@ export function renderPieChart(containerId, data) {
   return instance;
 }
 
+export function renderNetWorthTrendChart(containerId, dates, values) {
+  const container = document.getElementById(containerId);
+  if (!container || !dates || dates.length === 0 || !window.echarts) return null;
+
+  const instance = window.echarts.init(container);
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross', label: { backgroundColor: '#090f1e' } },
+      formatter: params => `${params[0].name}<br/>Valuation: <b>₹ ${formatINR(params[0].value)}</b>`
+    },
+    grid: { left: '3%', right: '4%', bottom: '18%', containLabel: true },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: dates,
+      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+      axisLabel: { color: '#94a3b8', fontSize: 11 }
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+      axisLabel: { color: '#94a3b8', fontSize: 11, formatter: v => `₹ ${(v/100000).toFixed(1)}L` }
+    },
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', start: 0, end: 100, height: 16, bottom: 0, borderColor: 'transparent', backgroundColor: 'rgba(255,255,255,0.05)', fillerColor: 'rgba(208,255,0,0.2)' }
+    ],
+    series: [{
+      name: 'Net Worth',
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      lineStyle: { width: 3, color: '#d0ff00' },
+      areaStyle: {
+        color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(208,255,0,0.35)' },
+          { offset: 1, color: 'rgba(6,182,212,0.02)' }
+        ])
+      },
+      data: values
+    }]
+  };
+  instance.setOption(option);
+  return instance;
+}
+
 export function renderAllocationChart(allocations) {
   if (state.charts.allocChart) state.charts.allocChart.dispose();
   if (!allocations || allocations.length === 0) return;
