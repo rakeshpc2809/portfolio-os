@@ -162,4 +162,5 @@ class CasPdfParser:
         except Exception as err:
             print(f"Fallback parser error: {err}")
 
-        return events
+        from .sip_detector import detect_and_tag_sips
+        return detect_and_tag_sips(events)

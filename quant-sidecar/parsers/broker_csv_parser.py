@@ -79,4 +79,5 @@ class BrokerCsvParser:
         except Exception:
             pass
 
-        return events
+        from .sip_detector import detect_and_tag_sips
+        return detect_and_tag_sips(events)

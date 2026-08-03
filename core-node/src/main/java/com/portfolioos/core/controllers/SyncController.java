@@ -272,6 +272,24 @@ public class SyncController {
             System.err.println("Non-critical Quant Flight RPC signal extraction warning: " + ex.getMessage());
         }
 
+        // 2.5 Automated SIP Cashflow Signal
+        long sipCount = events.stream()
+            .filter(e -> e.eventType() == EventType.SIP_INSTALMENT)
+            .map(TaxEvent::assetId)
+            .distinct()
+            .count();
+
+        if (sipCount > 0) {
+            radarSignals.add(0, new RadarSignalDto(
+                "SIP_DETECTION",
+                "Automated SIP Tracker",
+                "RECURRING SIP DISCIPLINE",
+                String.format("Auto-detected %d active monthly SIPs across portfolio. Disciplined recurring cashflow active.", sipCount),
+                "INFO",
+                sipCount + " Active SIPs"
+            ));
+        }
+
         // 3. LTCG Maturation Ladder Signal
         Lot maturingLot = null;
         long minDaysToLtcg = 9999L;

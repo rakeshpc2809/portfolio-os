@@ -42,6 +42,7 @@ parsers/
   broker_csv_parser.py
   cas_parser.py
   models.py
+  sip_detector.py
 quant/
   analytics_engine.py
 app.py
@@ -212,6 +213,38 @@ class Config
 populate_by_name = True
 ⋮----
 def unit_delta(self) -> Decimal
+```
+
+## File: parsers/sip_detector.py
+```python
+def detect_and_tag_sips(events: List[TaxEventSchema]) -> List[TaxEventSchema]
+⋮----
+"""
+    Auto-detects Systematic Investment Plans (SIPs) by grouping transactions by ISIN/Asset ID,
+    checking date spacing (25 to 35 days for monthly recurring investments), and amount variation (<= 5%).
+    Tags matching ACQUISITION events as EventType.SIP_INSTALMENT.
+    """
+⋮----
+# Group ACQUISITION events by asset_id / isin
+acquisitions_by_asset = defaultdict(list)
+⋮----
+asset_key = event.isin or event.asset_id
+⋮----
+sip_indices = set()
+⋮----
+# Sort chronologically by date
+sorted_events = sorted(asset_events, key=lambda x: x[1].event_date)
+⋮----
+date_diff = (ev2.event_date - ev1.event_date).days
+amt1 = float(ev1.gross_amount)
+amt2 = float(ev2.gross_amount)
+⋮----
+amt_diff_pct = abs(amt1 - amt2) / max(amt1, amt2, 1.0)
+⋮----
+# Monthly SIP criteria: 25 to 35 days spacing AND <= 5% amount variation
+⋮----
+# Return new events list with SIP_INSTALMENT tags applied
+updated_events = []
 ```
 
 ## File: quant/analytics_engine.py
