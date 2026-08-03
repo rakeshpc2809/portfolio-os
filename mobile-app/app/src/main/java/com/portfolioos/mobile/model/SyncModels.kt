@@ -1,7 +1,9 @@
 package com.portfolioos.mobile.model
 
+import androidx.compose.runtime.Immutable
 import com.google.gson.annotations.SerializedName
 
+@Immutable
 data class SyncSnapshot(
     @SerializedName("sync_info") val syncInfo: SyncInfoDto? = null,
     @SerializedName("holdings") val holdings: List<FlatHoldingDto>? = emptyList(),
@@ -9,6 +11,7 @@ data class SyncSnapshot(
     @SerializedName("radar_signals") val radarSignals: List<RadarSignalDto>? = emptyList()
 )
 
+@Immutable
 data class SyncInfoDto(
     @SerializedName("timestamp") val timestamp: Long = 0L,
     @SerializedName("ledger_hash") val ledgerHash: String = "",
@@ -24,6 +27,7 @@ data class SyncInfoDto(
     @SerializedName("formatted_unrealized_gain") val formattedUnrealizedGain: String = "₹0.00"
 )
 
+@Immutable
 data class FlatHoldingDto(
     @SerializedName("isin") val isin: String = "",
     @SerializedName("fund_name") val fundName: String = "",
@@ -37,6 +41,7 @@ data class FlatHoldingDto(
     @SerializedName("formatted_invested_value") val formattedInvestedValue: String = "₹0.00"
 )
 
+@Immutable
 data class FlatTaxLotDto(
     @SerializedName("isin") val isin: String = "",
     @SerializedName("buy_date") val buyDate: String = "",
@@ -49,6 +54,7 @@ data class FlatTaxLotDto(
     @SerializedName("days_to_ltcg") val daysToLtcg: Long = 0L
 )
 
+@Immutable
 data class RadarSignalDto(
     @SerializedName("signal_type") val signalType: String = "",
     @SerializedName("title") val title: String = "",

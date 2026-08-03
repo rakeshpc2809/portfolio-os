@@ -59,7 +59,7 @@ fun DashboardScreen(
     onRefresh: () -> Unit,
     onUpdateCustomUrl: (String) -> Unit = {}
 ) {
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
     var showUrlDialog by remember { mutableStateOf(false) }
     var inputUrl by remember { mutableStateOf("") }
@@ -190,6 +190,7 @@ fun DashboardScreen(
                             0 -> HoldingsView(syncInfo, holdings)
                             1 -> RadarSignalsView(radarSignals)
                             2 -> GroupedTaxLotsView(taxLots, holdings)
+                            3 -> SimulatorView(holdings)
                         }
                     }
                 }
@@ -251,6 +252,17 @@ fun DashboardScreen(
                             onClick = {
                                 coroutineScope.launch {
                                     pagerState.animateScrollToPage(2)
+                                }
+                            }
+                        )
+                        ExpressiveNavPill(
+                            selected = pagerState.currentPage == 3,
+                            label = "Simulator",
+                            icon = Icons.Default.Settings,
+                            activeColor = Color(0xFFD0FF00),
+                            onClick = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(3)
                                 }
                             }
                         )

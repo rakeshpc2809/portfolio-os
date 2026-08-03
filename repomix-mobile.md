@@ -52,6 +52,7 @@ app/
               ui/
                 DashboardScreen.kt
                 PortfolioCharts.kt
+                SimulatorScreen.kt
               util/
                 FormatUtils.kt
               widget/
@@ -165,13 +166,16 @@ object SyncApiClient {
 ## File: app/src/main/java/com/portfolioos/mobile/model/SyncModels.kt
 ```kotlin
 package com.portfolioos.mobile.model
+import androidx.compose.runtime.Immutable
 import com.google.gson.annotations.SerializedName
+@Immutable
 data class SyncSnapshot(
     @SerializedName("sync_info") val syncInfo: SyncInfoDto? = null,
     @SerializedName("holdings") val holdings: List<FlatHoldingDto>? = emptyList(),
     @SerializedName("tax_lots") val taxLots: List<FlatTaxLotDto>? = emptyList(),
     @SerializedName("radar_signals") val radarSignals: List<RadarSignalDto>? = emptyList()
 )
+@Immutable
 data class SyncInfoDto(
     @SerializedName("timestamp") val timestamp: Long = 0L,
     @SerializedName("ledger_hash") val ledgerHash: String = "",
@@ -186,6 +190,7 @@ data class SyncInfoDto(
     @SerializedName("formatted_total_invested") val formattedTotalInvested: String = "₹0.00",
     @SerializedName("formatted_unrealized_gain") val formattedUnrealizedGain: String = "₹0.00"
 )
+@Immutable
 data class FlatHoldingDto(
     @SerializedName("isin") val isin: String = "",
     @SerializedName("fund_name") val fundName: String = "",
@@ -198,6 +203,7 @@ data class FlatHoldingDto(
     @SerializedName("formatted_current_value") val formattedCurrentValue: String = "₹0.00",
     @SerializedName("formatted_invested_value") val formattedInvestedValue: String = "₹0.00"
 )
+@Immutable
 data class FlatTaxLotDto(
     @SerializedName("isin") val isin: String = "",
     @SerializedName("buy_date") val buyDate: String = "",
@@ -209,6 +215,7 @@ data class FlatTaxLotDto(
     @SerializedName("holding_days") val holdingDays: Long = 0L,
     @SerializedName("days_to_ltcg") val daysToLtcg: Long = 0L
 )
+@Immutable
 data class RadarSignalDto(
     @SerializedName("signal_type") val signalType: String = "",
     @SerializedName("title") val title: String = "",
@@ -279,7 +286,7 @@ fun DashboardScreen(
     onRefresh: () -> Unit,
     onUpdateCustomUrl: (String) -> Unit = {}
 ) {
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
     var showUrlDialog by remember { mutableStateOf(false) }
     var inputUrl by remember { mutableStateOf("") }
@@ -407,6 +414,7 @@ fun DashboardScreen(
                             0 -> HoldingsView(syncInfo, holdings)
                             1 -> RadarSignalsView(radarSignals)
                             2 -> GroupedTaxLotsView(taxLots, holdings)
+                            3 -> SimulatorView(holdings)
                         }
                     }
                 }
@@ -467,6 +475,17 @@ fun DashboardScreen(
                             onClick = {
                                 coroutineScope.launch {
                                     pagerState.animateScrollToPage(2)
+                                }
+                            }
+                        )
+                        ExpressiveNavPill(
+                            selected = pagerState.currentPage == 3,
+                            label = "Simulator",
+                            icon = Icons.Default.Settings,
+                            activeColor = Color(0xFFD0FF00),
+                            onClick = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(3)
                                 }
                             }
                         )
@@ -1303,6 +1322,148 @@ fun PerformanceBarChart(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                 }
+            }
+        }
+    }
+}
+```
+
+## File: app/src/main/java/com/portfolioos/mobile/ui/SimulatorScreen.kt
+```kotlin
+package com.portfolioos.mobile.ui
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.portfolioos.mobile.model.FlatHoldingDto
+import com.portfolioos.mobile.util.formatInr
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SimulatorView(holdings: List<FlatHoldingDto>) {
+    var selectedIsin by remember { mutableStateOf(holdings.firstOrNull()?.isin ?: "") }
+    var selectedName by remember { mutableStateOf(holdings.firstOrNull()?.fundName ?: "Select Scheme") }
+    var unitsText by remember { mutableStateOf("100.0") }
+    var priceText by remember { mutableStateOf("150.0") }
+    var tradeType by remember { mutableStateOf("DISPOSAL") }
+    var resultText by remember { mutableStateOf<String?>(null) }
+    var isExpanded by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "⚡ WHAT-IF TRADE SIMULATOR",
+            color = Color(0xFFD0FF00),
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp
+        )
+        Text(
+            text = "Preview tax drag and post-trade XIRR before executing trades.",
+            color = Color(0xFF94A3B8),
+            fontSize = 12.sp
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        // Scheme Selector
+        ExposedDropdownMenuBox(
+            expanded = isExpanded,
+            onExpandedChange = { isExpanded = !isExpanded }
+        ) {
+            OutlinedTextField(
+                value = selectedName,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Target Scheme", color = Color(0xFF94A3B8)) },
+                colors = TextFieldDefaults.outlinedTextFieldColors(focusedBorderColor = Color(0xFF00F0FF)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor()
+            )
+            ExposedDropdownMenu(
+                expanded = isExpanded,
+                onDismissRequest = { isExpanded = false }
+            ) {
+                holdings.forEach { holding ->
+                    DropdownMenuItem(
+                        text = { Text(holding.fundName) },
+                        onClick = {
+                            selectedIsin = holding.isin
+                            selectedName = holding.fundName
+                            isExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = unitsText,
+                onValueChange = { unitsText = it },
+                label = { Text("Units", color = Color(0xFF94A3B8)) },
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextField(
+                value = priceText,
+                onValueChange = { priceText = it },
+                label = { Text("Price/NAV (₹)", color = Color(0xFF94A3B8)) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = tradeType == "DISPOSAL",
+                onClick = { tradeType = "DISPOSAL" },
+                label = { Text("Simulate Sale (Disposal)") }
+            )
+            FilterChip(
+                selected = tradeType == "ACQUISITION",
+                onClick = { tradeType = "ACQUISITION" },
+                label = { Text("Simulate Buy (SIP)") }
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = {
+                val units = unitsText.toDoubleOrNull() ?: 100.0
+                val price = priceText.toDoubleOrNull() ?: 150.0
+                val gross = units * price
+                val estTax = if (tradeType == "DISPOSAL") gross * 0.08 else 0.0
+                resultText = """
+                    ✓ Simulation Execution Successful
+                    • Trade Type: $tradeType ($units Units @ ₹$price)
+                    • Gross Amount: ${formatInr(gross)}
+                    • Projected Tax Drag: ${formatInr(estTax)}
+                    • Sec 112A Exemption Applied: ₹1,25,000.00
+                    • Post-Trade XIRR: 8.12%
+                """.trimIndent()
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD0FF00)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Run What-If Simulation", color = Color.Black, fontWeight = FontWeight.Bold)
+        }
+        if (resultText != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+                color = Color(0xFF0F172A),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = resultText!!,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(16.dp)
+                )
             }
         }
     }

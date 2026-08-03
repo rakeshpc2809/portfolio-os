@@ -96,7 +96,7 @@ public class DuckDbProjector {
         }
     }
 
-    public synchronized void projectEvents(List<TaxEvent> events) {
+    public void projectEvents(List<TaxEvent> events) {
         if (events == null || events.isEmpty()) return;
 
         try (Connection conn = getConnection()) {
@@ -140,7 +140,7 @@ public class DuckDbProjector {
         }
     }
 
-    public synchronized void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, Set<String> heldIsins, LocalDate date) {
+    public void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, Set<String> heldIsins, LocalDate date) {
         if (navMap == null || navMap.isEmpty() || heldIsins == null || heldIsins.isEmpty()) return;
 
         try (Connection conn = getConnection()) {

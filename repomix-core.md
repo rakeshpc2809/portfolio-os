@@ -49,6 +49,7 @@ src/
             controllers/
               RebalanceController.java
               ReportController.java
+              SimulatorController.java
               StatementsController.java
               SyncController.java
             dtos/
@@ -92,6 +93,7 @@ src/
             service/
               LedgerCacheService.java
               PortfolioValuationService.java
+              SimulationService.java
               TaxOptimizationService.java
             tax/
               ScheduleCgExporter.java
@@ -233,6 +235,15 @@ valuationService.getCachedState().fifoResult().matchedLots(),
 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Schedule-CG-FY" + fy + ".csv\"")
 .contentType(MediaType.parseMediaType("text/csv"))
 .body(csv);
+```
+
+## File: src/main/java/com/portfolioos/core/controllers/SimulatorController.java
+```java
+public class SimulatorController {
+⋮----
+public ResponseEntity<TradeSimulationResult> simulateTrade(
+⋮----
+return ResponseEntity.ok(simulationService.simulateTrade(req));
 ```
 
 ## File: src/main/java/com/portfolioos/core/controllers/StatementsController.java
@@ -932,7 +943,7 @@ stmt.execute(
 ⋮----
 throw new RuntimeException("Failed to initialize DuckDB schema", e);
 ⋮----
-public synchronized void projectEvents(List<TaxEvent> events) {
+public void projectEvents(List<TaxEvent> events) {
 if (events == null || events.isEmpty()) return;
 ⋮----
 try (Connection conn = getConnection()) {
@@ -968,7 +979,7 @@ conn.setAutoCommit(wasAutoCommit);
 ⋮----
 throw new RuntimeException("DuckDB transaction failure", e);
 ⋮----
-public synchronized void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, Set<String> heldIsins, LocalDate date) {
+public void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, Set<String> heldIsins, LocalDate date) {
 if (navMap == null || navMap.isEmpty() || heldIsins == null || heldIsins.isEmpty()) return;
 ⋮----
 String dateStr = date.toString();
@@ -1946,6 +1957,90 @@ fmt(result.totalProceeds()),
 ⋮----
 result.isRebalanceWindowOpen(),
 result.nextScheduledWindow()
+```
+
+## File: src/main/java/com/portfolioos/core/service/SimulationService.java
+```java
+public class SimulationService {
+⋮----
+String tradeType // DISPOSAL or ACQUISITION
+⋮----
+public TradeSimulationResult simulateTrade(TradeSimulationRequest req) {
+LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+List<TaxEvent> existingEvents = state.events();
+Map<String, BigDecimal> navMap = state.navMap();
+⋮----
+LocalDate tradeDate = (req.tradeDate() != null && !req.tradeDate().isBlank())
+? LocalDate.parse(req.tradeDate())
+: LocalDate.now();
+⋮----
+BigDecimal unitsBd = BigDecimal.valueOf(req.units()).setScale(4, RoundingMode.HALF_UP);
+BigDecimal priceBd = BigDecimal.valueOf(req.pricePerUnit()).setScale(4, RoundingMode.HALF_UP);
+BigDecimal grossAmount = unitsBd.multiply(priceBd).setScale(2, RoundingMode.HALF_UP);
+⋮----
+EventType type = "ACQUISITION".equalsIgnoreCase(req.tradeType()) ? EventType.ACQUISITION : EventType.DISPOSAL;
+String isin = (req.isin() != null && !req.isin().isBlank()) ? req.isin() : "SIMULATED_ASSET";
+String name = (req.schemeName() != null && !req.schemeName().isBlank()) ? req.schemeName() : "Simulated Fund";
+⋮----
+TaxEvent simEvent = new TaxEvent(
+"SIM_" + System.currentTimeMillis(),
+⋮----
+java.time.Instant.now()
+⋮----
+simEvents.add(simEvent);
+⋮----
+FifoMatcher matcher = new FifoMatcher();
+FifoMatcher.FifoResult simResult = matcher.processEvents(simEvents);
+⋮----
+for (MatchedLot match : simResult.matchedLots()) {
+if (match.sellEvent().id().equals(simEvent.id())) {
+Lot buy = match.buyLot();
+long days = ChronoUnit.DAYS.between(buy.acquisitionDate(), simEvent.eventDate());
+AssetCategory category = TaxClassifier.detectCategory(buy.assetId(), buy.assetName());
+boolean isListed = TaxClassifier.isListed(buy.assetId(), buy.assetName());
+TaxTerm term = TaxClassifier.classifyTaxTerm(category, days, "2026-27", isListed);
+⋮----
+BigDecimal matchedUnits = match.matchedUnits();
+BigDecimal cost = buy.pricePerUnit().multiply(matchedUnits);
+BigDecimal sale = simEvent.pricePerUnit().multiply(matchedUnits);
+BigDecimal gain = sale.subtract(cost);
+totalGain += gain.doubleValue();
+⋮----
+ltcgEquity += gain.doubleValue();
+⋮----
+stcgEquity += gain.doubleValue();
+⋮----
+debtGain += gain.doubleValue();
+⋮----
+double exemptionApplied = Math.min(Math.max(0.0, ltcgEquity), exemptionLimit);
+double taxableLtcg = Math.max(0.0, ltcgEquity - exemptionApplied);
+double estimatedTax = (taxableLtcg * 0.125) + (Math.max(0.0, stcgEquity) * 0.20) + (Math.max(0.0, debtGain) * 0.30);
+⋮----
+// Compute post-trade net worth & XIRR
+⋮----
+for (Lot lot : simResult.openLots()) {
+postInvested += lot.remainingUnits().multiply(lot.pricePerUnit()).doubleValue();
+BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.pricePerUnit());
+postCurrentVal += lot.remainingUnits().multiply(nav).doubleValue();
+⋮----
+double amt = (ev.eventType() == EventType.ACQUISITION)
+? -ev.grossAmount().doubleValue()
+: ev.grossAmount().doubleValue();
+cashFlows.add(new XirrEngine.CashFlow(ev.eventDate(), amt));
+⋮----
+cashFlows.add(new XirrEngine.CashFlow(tradeDate, postCurrentVal));
+⋮----
+double postXirr = XirrEngine.calculateXirr(cashFlows);
+⋮----
+? String.format("Simulated Sale: Estimated Tax Drag ₹%,.2f (LTCG Exemption Used: ₹%,.2f)", estimatedTax, exemptionApplied)
+: String.format("Simulated Purchase: Added ₹%,.2f investment to portfolio.", grossAmount.doubleValue());
+⋮----
+return new TradeSimulationResult(
+⋮----
+type.name(),
+req.units(),
+req.pricePerUnit(),
+grossAmount.doubleValue(),
 ```
 
 ## File: src/main/java/com/portfolioos/core/service/TaxOptimizationService.java
