@@ -797,6 +797,19 @@ fun M3HoldingCard(holding: FlatHoldingDto) {
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Surface(
+                    color = M3ElectricLime.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(100.dp)
+                ) {
+                    Text(
+                        text = "🔄 SIP",
+                        color = M3ElectricLime,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Surface(
                     color = if (holding.xirr >= 0) M3GreenPositive.copy(alpha = 0.15f) else Color.Red.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(100.dp)
                 ) {

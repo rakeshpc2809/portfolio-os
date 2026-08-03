@@ -58,9 +58,12 @@ export function renderHoldingsTable(holdings) {
     const gainSign = gain >= 0 ? '+' : '';
     const gainColor = gain >= 0 ? 'color: #10b981;' : 'color: #ef4444;';
 
+    const isSip = h.has_sip || h.hasSip || (lots && lots.some(l => (l.event_type || l.eventType) === 'SIP_INSTALMENT'));
+    const sipBadge = isSip ? ' <span style="background:rgba(208,255,0,0.15); color:#d0ff00; border:1px solid rgba(208,255,0,0.3); font-size:10px; padding:2px 6px; border-radius:4px; margin-left:6px; font-weight:700;">🔄 Active SIP</span>' : '';
+
     html += `
       <tr class="holding-row" onclick="toggleLotDetails('${idx}')">
-        <td style="font-weight:600;">${assetName}</td>
+        <td style="font-weight:600;">${assetName}${sipBadge}</td>
         <td><span class="cat-badge cat-${category}">${category.replace('_SPECIFIED_50AA', '')}</span></td>
         <td class="font-mono">${formatINR(inv)}</td>
         <td class="font-mono" style="font-weight:600;">${formatINR(cur)}</td>
