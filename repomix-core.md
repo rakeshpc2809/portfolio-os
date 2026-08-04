@@ -4883,6 +4883,495 @@ export function renderRealizedLogTable(logs) {
 }
 </file>
 
+<file path="core-node/src/main/java/com/portfolioos/core/dtos/SyncDtos.java">
+package com.portfolioos.core.dtos;
+
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.util.List;
+
+public class SyncDtos {
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record SyncInfoDto(
+        long timestamp,
+        String ledgerHash,
+        String generatedAt,
+        String fiscalYear,
+        double portfolioXirr,
+        String xirrPercentage,
+        double totalInvested,
+        double currentValue,
+        double unrealizedGain,
+        String formattedCurrentValue,
+        String formattedTotalInvested,
+        String formattedUnrealizedGain
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record FlatHoldingDto(
+        String isin,
+        String fundName,
+        double totalUnits,
+        double avgCost,
+        double xirr,
+        String assetBucket,
+        double currentValue,
+        double investedValue,
+        String formattedCurrentValue,
+        String formattedInvestedValue
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record FlatTaxLotDto(
+        String isin,
+        String buyDate,
+        double units,
+        String taxClassification,
+        boolean isLongTerm,
+        Double grandfatheredNav,
+        double costPerUnit,
+        long holdingDays,
+        long daysToLtcg
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RadarSignalDto(
+        String signalType,
+        String title,
+        String subtitle,
+        String description,
+        String severity,
+        String badgeText
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record NetWorthPointDto(
+        String date,
+        double valuation,
+        double invested
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record UnidirectionalSyncSnapshot(
+        SyncInfoDto syncInfo,
+        List<FlatHoldingDto> holdings,
+        List<FlatTaxLotDto> taxLots,
+        List<RadarSignalDto> radarSignals,
+        List<NetWorthPointDto> netWorthHistory
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record PairRequestDto(
+        String deviceId,
+        String deviceName
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record PairResponseDto(
+        String status,
+        String token,
+        String serverName
+    ) {}
+}
+</file>
+
+<file path="core-node/src/main/java/com/portfolioos/core/persistence/SqliteEventStore.java">
+package com.portfolioos.core.persistence;
+
+import com.portfolioos.core.model.EventType;
+import com.portfolioos.core.model.TaxEvent;
+import com.portfolioos.core.ports.EventStorePort;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.File;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
+public class SqliteEventStore implements EventStorePort {
+
+    private final String dbPath;
+    private final String jdbcUrl;
+    private final String hmacSecret;
+    private final HikariDataSource dataSource;
+
+    public SqliteEventStore() {
+        this(System.getenv("SQLITE_PATH") != null && !System.getenv("SQLITE_PATH").isBlank() 
+             ? System.getenv("SQLITE_PATH") : "data/tax_ledger.db");
+    }
+
+    public SqliteEventStore(String dbPath) {
+        this.dbPath = dbPath;
+        String envSecret = System.getenv("LEDGER_HMAC_SECRET");
+        if (envSecret == null || envSecret.isBlank()) {
+            throw new IllegalStateException("SECURITY CRITICAL: LEDGER_HMAC_SECRET environment variable is required and cannot be empty.");
+        }
+        this.hmacSecret = envSecret;
+
+        try {
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("SQLite JDBC driver not found", e);
+        }
+
+        if (":memory:".equals(dbPath)) {
+            jdbcUrl = "jdbc:sqlite::memory:";
+        } else {
+            File file = new File(dbPath);
+            if (file.getParentFile() != null) {
+                file.getParentFile().mkdirs();
+            }
+            jdbcUrl = "jdbc:sqlite:" + file.getAbsolutePath();
+        }
+
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(jdbcUrl);
+        config.setDriverClassName("org.sqlite.JDBC");
+        config.setMaximumPoolSize(10);
+        config.setMinimumIdle(2);
+        config.setIdleTimeout(30000);
+        config.setPoolName("SqliteEventStorePool");
+
+        this.dataSource = new HikariDataSource(config);
+        initSchema();
+    }
+
+    private Connection getConnection() throws SQLException {
+        return dataSource.getConnection();
+    }
+
+    private void initSchema() {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS tax_events (" +
+                "  id TEXT PRIMARY KEY," +
+                "  asset_id TEXT NOT NULL," +
+                "  asset_name TEXT NOT NULL," +
+                "  isin TEXT," +
+                "  event_type TEXT NOT NULL," +
+                "  event_date TEXT NOT NULL," +
+                "  units TEXT NOT NULL," +
+                "  price_per_unit TEXT NOT NULL," +
+                "  gross_amount TEXT NOT NULL," +
+                "  source_document_id TEXT NOT NULL," +
+                "  ingested_at TEXT NOT NULL," +
+                "  previous_hash TEXT NOT NULL," +
+                "  event_hash TEXT NOT NULL" +
+                ")"
+            );
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to initialize SQLite schema", e);
+        }
+    }
+
+    @Override
+    public String getLatestEventHash() {
+        String sql = "SELECT event_hash FROM tax_events ORDER BY ingested_at DESC, id DESC LIMIT 1";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getString("event_hash");
+            }
+            return "GENESIS";
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch latest event hash", e);
+        }
+    }
+
+    private String toCanonicalString(BigDecimal val) {
+        return val.setScale(8, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    private String computeHash(String prevHash, TaxEvent event) {
+        String raw = prevHash + "|" + event.id() + "|" + event.assetId() + "|" + event.eventType().name() + "|" +
+                     event.eventDate().toString() + "|" + toCanonicalString(event.units()) + "|" +
+                     toCanonicalString(event.grossAmount()) + "|" + event.sourceDocumentId();
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(hmacSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            mac.init(secretKey);
+            byte[] bytes = mac.doFinal(raw.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : bytes) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to compute HMAC-SHA256", e);
+        }
+    }
+
+    @Override
+    public String appendEvent(TaxEvent event) {
+        List<String> hashes = appendEvents(List.of(event));
+        return hashes.isEmpty() ? null : hashes.get(0);
+    }
+
+    @Override
+    public synchronized List<String> appendEvents(List<TaxEvent> events) {
+        if (events.isEmpty()) return List.of();
+
+        List<String> hashes = new ArrayList<>();
+        String checkSql = "SELECT event_hash FROM tax_events WHERE asset_id = ? AND event_type = ? AND event_date = ? AND units = ? AND gross_amount = ? LIMIT 1";
+        String insertSql = "INSERT INTO tax_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at, previous_hash, event_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = getConnection()) {
+            boolean wasAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try (PreparedStatement checkStmt = conn.prepareStatement(checkSql);
+                 PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
+
+                String prevHash = getLatestEventHash();
+                if (prevHash == null) prevHash = "GENESIS";
+
+                for (TaxEvent event : events) {
+                    checkStmt.setString(1, event.assetId());
+                    checkStmt.setString(2, event.eventType().name());
+                    checkStmt.setString(3, event.eventDate().toString());
+                    checkStmt.setString(4, event.units().toPlainString());
+                    checkStmt.setString(5, event.grossAmount().toPlainString());
+
+                    try (ResultSet rs = checkStmt.executeQuery()) {
+                        if (rs.next()) {
+                            String existingHash = rs.getString("event_hash");
+                            hashes.add(existingHash);
+                            continue;
+                        }
+                    }
+
+                    String eventHash = computeHash(prevHash, event);
+
+                    insertStmt.setString(1, event.id());
+                    insertStmt.setString(2, event.assetId());
+                    insertStmt.setString(3, event.assetName());
+                    insertStmt.setString(4, event.isin());
+                    insertStmt.setString(5, event.eventType().name());
+                    insertStmt.setString(6, event.eventDate().toString());
+                    insertStmt.setString(7, event.units().toPlainString());
+                    insertStmt.setString(8, event.pricePerUnit().toPlainString());
+                    insertStmt.setString(9, event.grossAmount().toPlainString());
+                    insertStmt.setString(10, event.sourceDocumentId());
+                    insertStmt.setString(11, event.ingestedAt().toString());
+                    insertStmt.setString(12, prevHash);
+                    insertStmt.setString(13, eventHash);
+                    insertStmt.executeUpdate();
+
+                    hashes.add(eventHash);
+                    prevHash = eventHash;
+                }
+
+                conn.commit();
+            } catch (Exception e) {
+                conn.rollback();
+                throw new RuntimeException("Failed to commit transaction ledger", e);
+            } finally {
+                conn.setAutoCommit(wasAutoCommit);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Database error in transaction execution", e);
+        }
+        return hashes;
+    }
+
+    @Override
+    public List<TaxEvent> getEventsForAsset(String assetId) {
+        List<TaxEvent> events = new ArrayList<>();
+        String sql = "SELECT * FROM tax_events WHERE asset_id = ? ORDER BY event_date ASC, ingested_at ASC";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, assetId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    events.add(mapResultSetToTaxEvent(rs));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch events for asset " + assetId, e);
+        }
+        return events;
+    }
+
+    @Override
+    public List<TaxEvent> getAllEvents() {
+        List<TaxEvent> events = new ArrayList<>();
+        String sql = "SELECT * FROM tax_events ORDER BY event_date ASC, ingested_at ASC";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                events.add(mapResultSetToTaxEvent(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch all events", e);
+        }
+        return events;
+    }
+
+    @Override
+    public boolean verifyLedgerIntegrity() {
+        String sql = "SELECT previous_hash, event_hash, id, asset_id, event_type, event_date, units, gross_amount, source_document_id FROM tax_events ORDER BY ingested_at ASC, id ASC";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            String expectedPrevHash = "GENESIS";
+            while (rs.next()) {
+                String actualPrevHash = rs.getString("previous_hash");
+                String actualEventHash = rs.getString("event_hash");
+
+                if (!actualPrevHash.equals(expectedPrevHash)) {
+                    return false;
+                }
+
+                TaxEvent mockEvent = new TaxEvent(
+                    rs.getString("id"),
+                    rs.getString("asset_id"),
+                    "",
+                    null,
+                    EventType.valueOf(rs.getString("event_type")),
+                    LocalDate.parse(rs.getString("event_date")),
+                    rs.getBigDecimal("units"),
+                    BigDecimal.ZERO,
+                    rs.getBigDecimal("gross_amount"),
+                    rs.getString("source_document_id"),
+                    null
+                );
+
+                String recomputedHash = computeHash(expectedPrevHash, mockEvent);
+                if (!recomputedHash.equals(actualEventHash)) {
+                    return false;
+                }
+                expectedPrevHash = actualEventHash;
+            }
+            return true;
+        } catch (SQLException e) {
+            throw new RuntimeException("Ledger integrity verification failed", e);
+        }
+    }
+
+    @Override
+    public void clearAllEvents() {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("DELETE FROM tax_events");
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to clear ledger", e);
+        }
+    }
+
+    private TaxEvent mapResultSetToTaxEvent(ResultSet rs) throws SQLException {
+        return new TaxEvent(
+            rs.getString("id"),
+            rs.getString("asset_id"),
+            rs.getString("asset_name"),
+            rs.getString("isin"),
+            EventType.valueOf(rs.getString("event_type")),
+            LocalDate.parse(rs.getString("event_date")),
+            new BigDecimal(rs.getString("units")),
+            new BigDecimal(rs.getString("price_per_unit")),
+            new BigDecimal(rs.getString("gross_amount")),
+            rs.getString("source_document_id"),
+            Instant.parse(rs.getString("ingested_at"))
+        );
+    }
+}
+</file>
+
+<file path="core-node/src/main/java/com/portfolioos/core/service/LedgerCacheService.java">
+package com.portfolioos.core.service;
+
+import com.portfolioos.core.matcher.FifoMatcher;
+import com.portfolioos.core.model.TaxEvent;
+import com.portfolioos.core.nav.AmfiNavSync;
+import com.portfolioos.core.ports.EventStorePort;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+@Service
+public class LedgerCacheService {
+
+    private final EventStorePort eventStore;
+    private final AmfiNavSync amfiSync = new AmfiNavSync();
+    private final FifoMatcher fifoMatcher = new FifoMatcher();
+
+    private final AtomicReference<CachedLedgerState> stateHolder = new AtomicReference<>(null);
+    private volatile long lastNavSyncTime = 0L;
+    private final Object updateLock = new Object();
+
+    public LedgerCacheService(EventStorePort eventStore) {
+        this.eventStore = eventStore;
+    }
+
+    public static record CachedLedgerState(
+        List<TaxEvent> events,
+        FifoMatcher.FifoResult fifoResult,
+        Map<String, BigDecimal> navMap,
+        String ledgerHash
+    ) {}
+
+    @EventListener(ApplicationReadyEvent.class)
+    @Scheduled(fixedRate = 30000)
+    public void refreshCacheInBackground() {
+        synchronized (updateLock) {
+            try {
+                String currentHash = eventStore.getLatestEventHash();
+                long now = System.currentTimeMillis();
+
+                CachedLedgerState current = stateHolder.get();
+                if (current == null || current.ledgerHash() == null || !currentHash.equals(current.ledgerHash()) || (now - lastNavSyncTime) >= 30_000) {
+                    List<TaxEvent> events = eventStore.getAllEvents();
+                    FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(events);
+                    Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+                    
+                    stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash));
+                    lastNavSyncTime = now;
+                }
+            } catch (Exception e) {
+                System.err.println("Background cache refresh warning: " + e.getMessage());
+            }
+        }
+    }
+
+    public CachedLedgerState getCachedState() {
+        CachedLedgerState current = stateHolder.get();
+        if (current == null) {
+            refreshCacheInBackground();
+            current = stateHolder.get();
+        }
+        return current;
+    }
+
+    public void invalidateCache() {
+        stateHolder.set(null);
+        refreshCacheInBackground();
+    }
+}
+</file>
+
 <file path="core-node/src/main/resources/static/src/style.css">
 :root {
   --bg-obsidian: #050811;
@@ -5636,39 +6125,36 @@ body.bg-obsidian {
   font-size: 11px;
 }
 
-.command-palette-dialog {
-  border: none;
-  background: transparent;
-  padding: 0;
-  margin: 0;
-  max-width: 600px;
-  width: 90%;
-  border-radius: 16px;
-  overflow: hidden;
+.cmd-modal-overlay {
   position: fixed;
-  top: 15%;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10000;
-  color: #fff;
-}
-
-.command-palette-dialog[open] {
-  display: block !important;
-}
-
-.command-palette-dialog::backdrop {
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
   background: rgba(3, 7, 18, 0.85);
   backdrop-filter: blur(8px);
-  z-index: 9999;
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 99999;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  box-sizing: border-box;
+}
+
+.cmd-modal-overlay[style*="display: none"] {
+  display: none !important;
 }
 
 .command-palette-box {
   background: #090f1e;
   border: 1px solid rgba(208, 255, 0, 0.4);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9), 0 0 30px rgba(208, 255, 0, 0.15);
   border-radius: 16px;
   padding: 16px;
+  width: 90%;
+  max-width: 620px;
+  color: #fff;
 }
 
 .command-palette-header {
@@ -5719,495 +6205,6 @@ body.bg-obsidian {
   border-color: rgba(208, 255, 0, 0.4);
   color: #d0ff00;
   transform: translateX(4px);
-}
-</file>
-
-<file path="core-node/src/main/java/com/portfolioos/core/dtos/SyncDtos.java">
-package com.portfolioos.core.dtos;
-
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import java.util.List;
-
-public class SyncDtos {
-
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record SyncInfoDto(
-        long timestamp,
-        String ledgerHash,
-        String generatedAt,
-        String fiscalYear,
-        double portfolioXirr,
-        String xirrPercentage,
-        double totalInvested,
-        double currentValue,
-        double unrealizedGain,
-        String formattedCurrentValue,
-        String formattedTotalInvested,
-        String formattedUnrealizedGain
-    ) {}
-
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record FlatHoldingDto(
-        String isin,
-        String fundName,
-        double totalUnits,
-        double avgCost,
-        double xirr,
-        String assetBucket,
-        double currentValue,
-        double investedValue,
-        String formattedCurrentValue,
-        String formattedInvestedValue
-    ) {}
-
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record FlatTaxLotDto(
-        String isin,
-        String buyDate,
-        double units,
-        String taxClassification,
-        boolean isLongTerm,
-        Double grandfatheredNav,
-        double costPerUnit,
-        long holdingDays,
-        long daysToLtcg
-    ) {}
-
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record RadarSignalDto(
-        String signalType,
-        String title,
-        String subtitle,
-        String description,
-        String severity,
-        String badgeText
-    ) {}
-
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record NetWorthPointDto(
-        String date,
-        double valuation,
-        double invested
-    ) {}
-
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record UnidirectionalSyncSnapshot(
-        SyncInfoDto syncInfo,
-        List<FlatHoldingDto> holdings,
-        List<FlatTaxLotDto> taxLots,
-        List<RadarSignalDto> radarSignals,
-        List<NetWorthPointDto> netWorthHistory
-    ) {}
-
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record PairRequestDto(
-        String deviceId,
-        String deviceName
-    ) {}
-
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record PairResponseDto(
-        String status,
-        String token,
-        String serverName
-    ) {}
-}
-</file>
-
-<file path="core-node/src/main/java/com/portfolioos/core/persistence/SqliteEventStore.java">
-package com.portfolioos.core.persistence;
-
-import com.portfolioos.core.model.EventType;
-import com.portfolioos.core.model.TaxEvent;
-import com.portfolioos.core.ports.EventStorePort;
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.File;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
-
-public class SqliteEventStore implements EventStorePort {
-
-    private final String dbPath;
-    private final String jdbcUrl;
-    private final String hmacSecret;
-    private final HikariDataSource dataSource;
-
-    public SqliteEventStore() {
-        this(System.getenv("SQLITE_PATH") != null && !System.getenv("SQLITE_PATH").isBlank() 
-             ? System.getenv("SQLITE_PATH") : "data/tax_ledger.db");
-    }
-
-    public SqliteEventStore(String dbPath) {
-        this.dbPath = dbPath;
-        String envSecret = System.getenv("LEDGER_HMAC_SECRET");
-        if (envSecret == null || envSecret.isBlank()) {
-            throw new IllegalStateException("SECURITY CRITICAL: LEDGER_HMAC_SECRET environment variable is required and cannot be empty.");
-        }
-        this.hmacSecret = envSecret;
-
-        try {
-            Class.forName("org.sqlite.JDBC");
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("SQLite JDBC driver not found", e);
-        }
-
-        if (":memory:".equals(dbPath)) {
-            jdbcUrl = "jdbc:sqlite::memory:";
-        } else {
-            File file = new File(dbPath);
-            if (file.getParentFile() != null) {
-                file.getParentFile().mkdirs();
-            }
-            jdbcUrl = "jdbc:sqlite:" + file.getAbsolutePath();
-        }
-
-        HikariConfig config = new HikariConfig();
-        config.setJdbcUrl(jdbcUrl);
-        config.setDriverClassName("org.sqlite.JDBC");
-        config.setMaximumPoolSize(10);
-        config.setMinimumIdle(2);
-        config.setIdleTimeout(30000);
-        config.setPoolName("SqliteEventStorePool");
-
-        this.dataSource = new HikariDataSource(config);
-        initSchema();
-    }
-
-    private Connection getConnection() throws SQLException {
-        return dataSource.getConnection();
-    }
-
-    private void initSchema() {
-        try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement()) {
-            stmt.execute(
-                "CREATE TABLE IF NOT EXISTS tax_events (" +
-                "  id TEXT PRIMARY KEY," +
-                "  asset_id TEXT NOT NULL," +
-                "  asset_name TEXT NOT NULL," +
-                "  isin TEXT," +
-                "  event_type TEXT NOT NULL," +
-                "  event_date TEXT NOT NULL," +
-                "  units TEXT NOT NULL," +
-                "  price_per_unit TEXT NOT NULL," +
-                "  gross_amount TEXT NOT NULL," +
-                "  source_document_id TEXT NOT NULL," +
-                "  ingested_at TEXT NOT NULL," +
-                "  previous_hash TEXT NOT NULL," +
-                "  event_hash TEXT NOT NULL" +
-                ")"
-            );
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to initialize SQLite schema", e);
-        }
-    }
-
-    @Override
-    public String getLatestEventHash() {
-        String sql = "SELECT event_hash FROM tax_events ORDER BY ingested_at DESC, id DESC LIMIT 1";
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
-            if (rs.next()) {
-                return rs.getString("event_hash");
-            }
-            return "GENESIS";
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch latest event hash", e);
-        }
-    }
-
-    private String toCanonicalString(BigDecimal val) {
-        return val.setScale(8, RoundingMode.HALF_UP).toPlainString();
-    }
-
-    private String computeHash(String prevHash, TaxEvent event) {
-        String raw = prevHash + "|" + event.id() + "|" + event.assetId() + "|" + event.eventType().name() + "|" +
-                     event.eventDate().toString() + "|" + toCanonicalString(event.units()) + "|" +
-                     toCanonicalString(event.grossAmount()) + "|" + event.sourceDocumentId();
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKey = new SecretKeySpec(hmacSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-            mac.init(secretKey);
-            byte[] bytes = mac.doFinal(raw.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : bytes) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
-                hexString.append(hex);
-            }
-            return hexString.toString();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to compute HMAC-SHA256", e);
-        }
-    }
-
-    @Override
-    public String appendEvent(TaxEvent event) {
-        List<String> hashes = appendEvents(List.of(event));
-        return hashes.isEmpty() ? null : hashes.get(0);
-    }
-
-    @Override
-    public synchronized List<String> appendEvents(List<TaxEvent> events) {
-        if (events.isEmpty()) return List.of();
-
-        List<String> hashes = new ArrayList<>();
-        String checkSql = "SELECT event_hash FROM tax_events WHERE asset_id = ? AND event_type = ? AND event_date = ? AND units = ? AND gross_amount = ? LIMIT 1";
-        String insertSql = "INSERT INTO tax_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at, previous_hash, event_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        try (Connection conn = getConnection()) {
-            boolean wasAutoCommit = conn.getAutoCommit();
-            conn.setAutoCommit(false);
-            try (PreparedStatement checkStmt = conn.prepareStatement(checkSql);
-                 PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
-
-                String prevHash = getLatestEventHash();
-                if (prevHash == null) prevHash = "GENESIS";
-
-                for (TaxEvent event : events) {
-                    checkStmt.setString(1, event.assetId());
-                    checkStmt.setString(2, event.eventType().name());
-                    checkStmt.setString(3, event.eventDate().toString());
-                    checkStmt.setString(4, event.units().toPlainString());
-                    checkStmt.setString(5, event.grossAmount().toPlainString());
-
-                    try (ResultSet rs = checkStmt.executeQuery()) {
-                        if (rs.next()) {
-                            String existingHash = rs.getString("event_hash");
-                            hashes.add(existingHash);
-                            continue;
-                        }
-                    }
-
-                    String eventHash = computeHash(prevHash, event);
-
-                    insertStmt.setString(1, event.id());
-                    insertStmt.setString(2, event.assetId());
-                    insertStmt.setString(3, event.assetName());
-                    insertStmt.setString(4, event.isin());
-                    insertStmt.setString(5, event.eventType().name());
-                    insertStmt.setString(6, event.eventDate().toString());
-                    insertStmt.setString(7, event.units().toPlainString());
-                    insertStmt.setString(8, event.pricePerUnit().toPlainString());
-                    insertStmt.setString(9, event.grossAmount().toPlainString());
-                    insertStmt.setString(10, event.sourceDocumentId());
-                    insertStmt.setString(11, event.ingestedAt().toString());
-                    insertStmt.setString(12, prevHash);
-                    insertStmt.setString(13, eventHash);
-                    insertStmt.executeUpdate();
-
-                    hashes.add(eventHash);
-                    prevHash = eventHash;
-                }
-
-                conn.commit();
-            } catch (Exception e) {
-                conn.rollback();
-                throw new RuntimeException("Failed to commit transaction ledger", e);
-            } finally {
-                conn.setAutoCommit(wasAutoCommit);
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("Database error in transaction execution", e);
-        }
-        return hashes;
-    }
-
-    @Override
-    public List<TaxEvent> getEventsForAsset(String assetId) {
-        List<TaxEvent> events = new ArrayList<>();
-        String sql = "SELECT * FROM tax_events WHERE asset_id = ? ORDER BY event_date ASC, ingested_at ASC";
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, assetId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    events.add(mapResultSetToTaxEvent(rs));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch events for asset " + assetId, e);
-        }
-        return events;
-    }
-
-    @Override
-    public List<TaxEvent> getAllEvents() {
-        List<TaxEvent> events = new ArrayList<>();
-        String sql = "SELECT * FROM tax_events ORDER BY event_date ASC, ingested_at ASC";
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
-            while (rs.next()) {
-                events.add(mapResultSetToTaxEvent(rs));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch all events", e);
-        }
-        return events;
-    }
-
-    @Override
-    public boolean verifyLedgerIntegrity() {
-        String sql = "SELECT previous_hash, event_hash, id, asset_id, event_type, event_date, units, gross_amount, source_document_id FROM tax_events ORDER BY ingested_at ASC, id ASC";
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
-
-            String expectedPrevHash = "GENESIS";
-            while (rs.next()) {
-                String actualPrevHash = rs.getString("previous_hash");
-                String actualEventHash = rs.getString("event_hash");
-
-                if (!actualPrevHash.equals(expectedPrevHash)) {
-                    return false;
-                }
-
-                TaxEvent mockEvent = new TaxEvent(
-                    rs.getString("id"),
-                    rs.getString("asset_id"),
-                    "",
-                    null,
-                    EventType.valueOf(rs.getString("event_type")),
-                    LocalDate.parse(rs.getString("event_date")),
-                    rs.getBigDecimal("units"),
-                    BigDecimal.ZERO,
-                    rs.getBigDecimal("gross_amount"),
-                    rs.getString("source_document_id"),
-                    null
-                );
-
-                String recomputedHash = computeHash(expectedPrevHash, mockEvent);
-                if (!recomputedHash.equals(actualEventHash)) {
-                    return false;
-                }
-                expectedPrevHash = actualEventHash;
-            }
-            return true;
-        } catch (SQLException e) {
-            throw new RuntimeException("Ledger integrity verification failed", e);
-        }
-    }
-
-    @Override
-    public void clearAllEvents() {
-        try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement()) {
-            stmt.execute("DELETE FROM tax_events");
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to clear ledger", e);
-        }
-    }
-
-    private TaxEvent mapResultSetToTaxEvent(ResultSet rs) throws SQLException {
-        return new TaxEvent(
-            rs.getString("id"),
-            rs.getString("asset_id"),
-            rs.getString("asset_name"),
-            rs.getString("isin"),
-            EventType.valueOf(rs.getString("event_type")),
-            LocalDate.parse(rs.getString("event_date")),
-            new BigDecimal(rs.getString("units")),
-            new BigDecimal(rs.getString("price_per_unit")),
-            new BigDecimal(rs.getString("gross_amount")),
-            rs.getString("source_document_id"),
-            Instant.parse(rs.getString("ingested_at"))
-        );
-    }
-}
-</file>
-
-<file path="core-node/src/main/java/com/portfolioos/core/service/LedgerCacheService.java">
-package com.portfolioos.core.service;
-
-import com.portfolioos.core.matcher.FifoMatcher;
-import com.portfolioos.core.model.TaxEvent;
-import com.portfolioos.core.nav.AmfiNavSync;
-import com.portfolioos.core.ports.EventStorePort;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
-
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
-
-@Service
-public class LedgerCacheService {
-
-    private final EventStorePort eventStore;
-    private final AmfiNavSync amfiSync = new AmfiNavSync();
-    private final FifoMatcher fifoMatcher = new FifoMatcher();
-
-    private final AtomicReference<CachedLedgerState> stateHolder = new AtomicReference<>(null);
-    private volatile long lastNavSyncTime = 0L;
-    private final Object updateLock = new Object();
-
-    public LedgerCacheService(EventStorePort eventStore) {
-        this.eventStore = eventStore;
-    }
-
-    public static record CachedLedgerState(
-        List<TaxEvent> events,
-        FifoMatcher.FifoResult fifoResult,
-        Map<String, BigDecimal> navMap,
-        String ledgerHash
-    ) {}
-
-    @EventListener(ApplicationReadyEvent.class)
-    @Scheduled(fixedRate = 30000)
-    public void refreshCacheInBackground() {
-        synchronized (updateLock) {
-            try {
-                String currentHash = eventStore.getLatestEventHash();
-                long now = System.currentTimeMillis();
-
-                CachedLedgerState current = stateHolder.get();
-                if (current == null || current.ledgerHash() == null || !currentHash.equals(current.ledgerHash()) || (now - lastNavSyncTime) >= 30_000) {
-                    List<TaxEvent> events = eventStore.getAllEvents();
-                    FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(events);
-                    Map<String, BigDecimal> navMap = amfiSync.getNavMap();
-                    
-                    stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash));
-                    lastNavSyncTime = now;
-                }
-            } catch (Exception e) {
-                System.err.println("Background cache refresh warning: " + e.getMessage());
-            }
-        }
-    }
-
-    public CachedLedgerState getCachedState() {
-        CachedLedgerState current = stateHolder.get();
-        if (current == null) {
-            refreshCacheInBackground();
-            current = stateHolder.get();
-        }
-        return current;
-    }
-
-    public void invalidateCache() {
-        stateHolder.set(null);
-        refreshCacheInBackground();
-    }
 }
 </file>
 
@@ -6785,12 +6782,12 @@ public class FlightRpcClient {
           </div>
         </div>
       </div>
-  <!-- Global Command Palette Modal (Cmd + K / Ctrl + K) -->
-  <dialog id="commandPaletteModal" class="command-palette-dialog">
+  <!-- Global Command Palette Modal -->
+  <div id="commandPaletteModal" class="cmd-modal-overlay" style="display: none;">
     <div class="command-palette-box">
       <div class="command-palette-header">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D0FF00" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <input type="text" id="commandPaletteInput" placeholder="Type an AI prompt, SQL query, or tax question... (Esc to exit)" autofocus>
+        <input type="text" id="commandPaletteInput" placeholder="Type an AI prompt, SQL query, or tax question... (Esc to exit)">
         <button type="button" id="closeCmdPaletteBtn" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:18px; font-weight:bold; padding:0 4px;" title="Close (Esc)">✕</button>
       </div>
       <div class="command-palette-results" id="commandPaletteResults">
@@ -6801,9 +6798,9 @@ public class FlightRpcClient {
         <div class="cmd-item" data-action="radar">🧠 View AI Quant Radar Signals</div>
       </div>
     </div>
-  </dialog>
+  </div>
 
-  <script type="module" src="./src/app.js?v=3.0.5"></script>
+  <script type="module" src="./src/app.js?v=3.0.6"></script>
 </body>
 </html>
 </file>
@@ -7263,314 +7260,6 @@ export function renderBucketRebalance(data) {
 }
 </file>
 
-<file path="core-node/src/main/resources/static/src/app.js">
-import { API_BASE, fetchJson, getAuthHeaders, DEFAULT_AUTH_TOKEN } from './js/api.js';
-import { state, setCurrentFy } from './js/state.js';
-import { showToast, formatINR } from './js/utils.js';
-import {
-  fetchTaxMetrics,
-  fetchRealizedLog,
-  fetchDecisionRadar
-} from './js/modules/tax.js';
-import {
-  updatePortfolioSummary,
-  renderHoldingsTable,
-  renderAllocationChart,
-  renderCategoryChart,
-  fetchConsolidationPreviewData,
-  fetchRebalancePreview,
-  fetchGoalSummary,
-  fetchFireSummary,
-  fetchBucketRebalance
-} from './js/modules/portfolio.js';
-
-document.addEventListener('DOMContentLoaded', () => {
-  // Tab Switching Handler
-  const tabBtns = document.querySelectorAll('.tab-btn');
-  const tabContents = document.querySelectorAll('.tab-content');
-
-  tabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = btn.getAttribute('data-tab');
-      tabBtns.forEach(b => b.classList.remove('active'));
-      tabContents.forEach(c => c.classList.remove('active'));
-
-      btn.classList.add('active');
-      const content = document.getElementById(`tab-${target}`);
-      if (content) content.classList.add('active');
-
-      setTimeout(() => {
-        if (state.charts.allocChart) state.charts.allocChart.resize();
-        if (state.charts.categoryChart) state.charts.categoryChart.resize();
-      }, 50);
-    });
-  });
-
-  const fySelect = document.getElementById('fySelect');
-  if (fySelect) {
-    setCurrentFy(fySelect.value);
-    fySelect.addEventListener('change', () => {
-      setCurrentFy(fySelect.value);
-      fetchTaxMetrics();
-      fetchRealizedLog();
-      fetchRebalancePreview();
-    });
-  }
-
-  fetchLiveMetrics();
-
-  // Command Palette Handler (Cmd + K / Ctrl + K / Slash)
-  const cmdPaletteModal = document.getElementById('commandPaletteModal');
-  const cmdInput = document.getElementById('commandPaletteInput');
-  const cmdResults = document.getElementById('commandPaletteResults');
-
-  function openCmdPalette() {
-    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
-    const input = document.getElementById('commandPaletteInput') || cmdInput;
-    if (!modal) return;
-
-    if (!modal.open && !modal.hasAttribute('open')) {
-      try {
-        modal.showModal();
-      } catch (e) {
-        modal.setAttribute('open', 'true');
-      }
-    }
-
-    if (input) {
-      setTimeout(() => {
-        input.focus();
-        input.select();
-      }, 50);
-    }
-  }
-
-  function closeCmdPalette() {
-    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
-    if (!modal) return;
-
-    try {
-      if (modal.open) {
-        modal.close();
-      } else {
-        modal.removeAttribute('open');
-      }
-    } catch (e) {
-      modal.removeAttribute('open');
-    }
-  }
-
-  window.openCmdPalette = openCmdPalette;
-  window.closeCmdPalette = closeCmdPalette;
-
-  // Event Delegation for Button, Close X, and Backdrop Click
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('#cmdKTriggerBtn, .cmd-k-btn')) {
-      e.preventDefault();
-      openCmdPalette();
-      return;
-    }
-
-    if (e.target.closest('#closeCmdPaletteBtn')) {
-      e.preventDefault();
-      closeCmdPalette();
-      return;
-    }
-
-    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
-    if (modal && e.target === modal) {
-      closeCmdPalette();
-    }
-  });
-
-  if (cmdPaletteModal) {
-    cmdPaletteModal.addEventListener('cancel', () => closeCmdPalette());
-  }
-
-  window.addEventListener('keydown', (e) => {
-    const key = e.key ? e.key.toLowerCase() : '';
-    const isInputActive = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
-
-    if (((e.metaKey || e.ctrlKey || e.altKey) && key === 'k') || (!isInputActive && key === '/')) {
-      e.preventDefault();
-      e.stopPropagation();
-      openCmdPalette();
-    }
-  }, true);
-
-  if (cmdInput) {
-    cmdInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        const query = cmdInput.value.trim();
-        if (!query) return;
-
-        if (cmdResults) {
-          cmdResults.innerHTML = '<div style="padding:12px; color:#06b6d4; font-family:monospace;">🧠 AI Engine Thinking...</div>';
-        }
-
-        const evtSource = new EventSource(`/api/v1/llm/stream?prompt=${encodeURIComponent(query)}`);
-        let outputText = '';
-
-        evtSource.onmessage = function(event) {
-          outputText += event.data;
-          if (cmdResults) {
-            cmdResults.innerHTML = `
-              <div style="padding:12px; background:#0f172a; border-radius:8px; color:#f8fafc; font-size:13px; white-space:pre-wrap; font-family:monospace; line-height:1.5;">
-                <div style="color:#d0ff00; font-weight:bold; margin-bottom:6px;">⚡ PORTFOLIO OS AI RESPONSE</div>
-                ${outputText}
-              </div>
-            `;
-          }
-        };
-
-        evtSource.onerror = function() {
-          evtSource.close();
-        };
-      }
-    });
-  }
-
-  if (cmdResults) {
-    cmdResults.addEventListener('click', (e) => {
-      const item = e.target.closest('.cmd-item');
-      if (!item) return;
-      const action = item.getAttribute('data-action');
-      closeCmdPalette();
-
-      if (action === 'schedule-cg') {
-        window.open('/api/v1/tax/schedule-cg/export', '_blank');
-        showToast('Downloading Schedule CG Tax Report CSV...', 'success');
-      } else if (action === 'rebalance') {
-        fetchBucketRebalance();
-        showToast('Evaluating Portfolio Rebalance Rungs...', 'info');
-      } else if (action === 'whatif' || action === 'holdings') {
-        const hTab = document.querySelector('[data-tab="holdings"]');
-        if (hTab) hTab.click();
-      } else if (action === 'radar') {
-        fetchDecisionRadar();
-      }
-    });
-  }
-
-  // Export ZIP button listener
-  const exportZipBtn = document.getElementById('exportZipBtn');
-  if (exportZipBtn) {
-    exportZipBtn.addEventListener('click', () => {
-      const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
-      window.location.href = `${API_BASE}/tax/export/itr2/zip?fy=${state.currentFy}&token=${encodeURIComponent(token)}`;
-      showToast(`Generating ITR-2 CSV Bundle (.zip) for ${state.currentFy}...`, 'success');
-    });
-  }
-
-  // Rebalance Slider listener
-  const slider = document.getElementById('rebalanceSlider');
-  const sliderVal = document.getElementById('rebalanceSliderVal');
-  if (slider && sliderVal) {
-    slider.addEventListener('input', () => {
-      const val = parseInt(slider.value) || 100000;
-      sliderVal.textContent = formatINR(val);
-      fetchRebalancePreview(val);
-    });
-  }
-
-  // File Upload listener
-  const fileInput = document.getElementById('fileUploadInput');
-  if (fileInput) {
-    fileInput.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      let password = '';
-      if (file.name.toLowerCase().endsWith('.pdf')) {
-        password = prompt("Enter password for encrypted CAS PDF (usually PAN in lowercase or PAN + DOB):") || '';
-      }
-
-      const formData = new FormData();
-      formData.append('file', file);
-      if (password) {
-        formData.append('password', password);
-      }
-
-      const uploadBtn = document.querySelector('.upload-btn');
-      try {
-        if (uploadBtn) uploadBtn.textContent = 'Parsing Statement...';
-
-        const res = await fetch(`${API_BASE}/statements/upload`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: formData
-        });
-
-        const result = await res.json().catch(() => null);
-
-        if (res.ok && result && (result.status === 'SUCCESS' || Array.isArray(result) || result.eventsIngested !== undefined)) {
-          const count = Array.isArray(result) ? result.length : (result.eventsIngested || 0);
-          showToast(`Statement ingested successfully (${count} events).`, 'success');
-          fetchLiveMetrics();
-        } else {
-          const msg = (result && result.message) ? result.message : 'Statement parsing failed or unauthorized.';
-          showToast(msg, 'error');
-        }
-      } catch (err) {
-        showToast(`Upload error: ${err.message}`, 'error');
-      } finally {
-        if (uploadBtn) uploadBtn.textContent = 'Upload CAS PDF / CSV';
-        fileInput.value = '';
-      }
-    });
-  }
-});
-
-async function fetchLiveMetrics() {
-  try {
-    const summary = await fetchJson(`${API_BASE}/portfolio/summary`).catch(() => null);
-    if (summary) {
-      updatePortfolioSummary(summary);
-    }
-
-    fetchTaxMetrics();
-
-    const allocations = await fetchJson(`${API_BASE}/portfolio/allocation`).catch(() => null);
-    if (allocations) {
-      renderAllocationChart(allocations);
-    }
-
-    const catAllocations = await fetchJson(`${API_BASE}/portfolio/category-allocation`).catch(() => null);
-    if (catAllocations) {
-      renderCategoryChart(catAllocations);
-    }
-
-    const holdings = await fetchJson(`${API_BASE}/portfolio/holdings`).catch(() => null);
-    if (holdings) {
-      renderHoldingsTable(holdings);
-    }
-
-    fetchDecisionRadar();
-    fetchRealizedLog();
-    fetchGoalSummary();
-    fetchFireSummary();
-    fetchBucketRebalance();
-    fetchConsolidationPreviewData();
-
-    const slider = document.getElementById('rebalanceSlider');
-    const amt = slider ? slider.value : 100000;
-    fetchRebalancePreview(amt);
-  } catch (err) {
-    console.log('Portfolio OS API starting up, retrying...');
-  }
-}
-
-// Global debounced resize listener for ECharts
-let resizeTimer = null;
-window.addEventListener('resize', () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    if (state.charts.allocChart) state.charts.allocChart.resize();
-    if (state.charts.categoryChart) state.charts.categoryChart.resize();
-  }, 150);
-});
-</file>
-
 <file path="core-node/src/main/java/com/portfolioos/core/persistence/DuckDbProjector.java">
 package com.portfolioos.core.persistence;
 
@@ -7806,6 +7495,299 @@ public class DuckDbProjector {
         return trend;
     }
 }
+</file>
+
+<file path="core-node/src/main/resources/static/src/app.js">
+import { API_BASE, fetchJson, getAuthHeaders, DEFAULT_AUTH_TOKEN } from './js/api.js';
+import { state, setCurrentFy } from './js/state.js';
+import { showToast, formatINR } from './js/utils.js';
+import {
+  fetchTaxMetrics,
+  fetchRealizedLog,
+  fetchDecisionRadar
+} from './js/modules/tax.js';
+import {
+  updatePortfolioSummary,
+  renderHoldingsTable,
+  renderAllocationChart,
+  renderCategoryChart,
+  fetchConsolidationPreviewData,
+  fetchRebalancePreview,
+  fetchGoalSummary,
+  fetchFireSummary,
+  fetchBucketRebalance
+} from './js/modules/portfolio.js';
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Tab Switching Handler
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.getAttribute('data-tab');
+      tabBtns.forEach(b => b.classList.remove('active'));
+      tabContents.forEach(c => c.classList.remove('active'));
+
+      btn.classList.add('active');
+      const content = document.getElementById(`tab-${target}`);
+      if (content) content.classList.add('active');
+
+      setTimeout(() => {
+        if (state.charts.allocChart) state.charts.allocChart.resize();
+        if (state.charts.categoryChart) state.charts.categoryChart.resize();
+      }, 50);
+    });
+  });
+
+  const fySelect = document.getElementById('fySelect');
+  if (fySelect) {
+    setCurrentFy(fySelect.value);
+    fySelect.addEventListener('change', () => {
+      setCurrentFy(fySelect.value);
+      fetchTaxMetrics();
+      fetchRealizedLog();
+      fetchRebalancePreview();
+    });
+  }
+
+  fetchLiveMetrics();
+
+  // Command Palette Handler (Cmd + K / Ctrl + K / Slash)
+  const cmdPaletteModal = document.getElementById('commandPaletteModal');
+  const cmdInput = document.getElementById('commandPaletteInput');
+  const cmdResults = document.getElementById('commandPaletteResults');
+
+  function openCmdPalette() {
+    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
+    const input = document.getElementById('commandPaletteInput') || cmdInput;
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+
+    if (input) {
+      setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 50);
+    }
+  }
+
+  function closeCmdPalette() {
+    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
+    if (!modal) return;
+    modal.style.display = 'none';
+  }
+
+  window.openCmdPalette = openCmdPalette;
+  window.closeCmdPalette = closeCmdPalette;
+
+  // Event Delegation for Button, Close X, and Backdrop Click
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#cmdKTriggerBtn, .cmd-k-btn')) {
+      e.preventDefault();
+      openCmdPalette();
+      return;
+    }
+
+    if (e.target.closest('#closeCmdPaletteBtn')) {
+      e.preventDefault();
+      closeCmdPalette();
+      return;
+    }
+
+    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
+    if (modal && e.target === modal) {
+      closeCmdPalette();
+    }
+  });
+
+  if (cmdPaletteModal) {
+    cmdPaletteModal.addEventListener('cancel', () => closeCmdPalette());
+  }
+
+  window.addEventListener('keydown', (e) => {
+    const key = e.key ? e.key.toLowerCase() : '';
+    const isInputActive = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+
+    if (((e.metaKey || e.ctrlKey || e.altKey) && key === 'k') || (!isInputActive && key === '/')) {
+      e.preventDefault();
+      e.stopPropagation();
+      openCmdPalette();
+    }
+  }, true);
+
+  if (cmdInput) {
+    cmdInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const query = cmdInput.value.trim();
+        if (!query) return;
+
+        if (cmdResults) {
+          cmdResults.innerHTML = '<div style="padding:12px; color:#06b6d4; font-family:monospace;">🧠 AI Engine Thinking...</div>';
+        }
+
+        const evtSource = new EventSource(`/api/v1/llm/stream?prompt=${encodeURIComponent(query)}`);
+        let outputText = '';
+
+        evtSource.onmessage = function(event) {
+          outputText += event.data;
+          if (cmdResults) {
+            cmdResults.innerHTML = `
+              <div style="padding:12px; background:#0f172a; border-radius:8px; color:#f8fafc; font-size:13px; white-space:pre-wrap; font-family:monospace; line-height:1.5;">
+                <div style="color:#d0ff00; font-weight:bold; margin-bottom:6px;">⚡ PORTFOLIO OS AI RESPONSE</div>
+                ${outputText}
+              </div>
+            `;
+          }
+        };
+
+        evtSource.onerror = function() {
+          evtSource.close();
+        };
+      }
+    });
+  }
+
+  if (cmdResults) {
+    cmdResults.addEventListener('click', (e) => {
+      const item = e.target.closest('.cmd-item');
+      if (!item) return;
+      const action = item.getAttribute('data-action');
+      closeCmdPalette();
+
+      if (action === 'schedule-cg') {
+        window.open('/api/v1/tax/schedule-cg/export', '_blank');
+        showToast('Downloading Schedule CG Tax Report CSV...', 'success');
+      } else if (action === 'rebalance') {
+        fetchBucketRebalance();
+        showToast('Evaluating Portfolio Rebalance Rungs...', 'info');
+      } else if (action === 'whatif' || action === 'holdings') {
+        const hTab = document.querySelector('[data-tab="holdings"]');
+        if (hTab) hTab.click();
+      } else if (action === 'radar') {
+        fetchDecisionRadar();
+      }
+    });
+  }
+
+  // Export ZIP button listener
+  const exportZipBtn = document.getElementById('exportZipBtn');
+  if (exportZipBtn) {
+    exportZipBtn.addEventListener('click', () => {
+      const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
+      window.location.href = `${API_BASE}/tax/export/itr2/zip?fy=${state.currentFy}&token=${encodeURIComponent(token)}`;
+      showToast(`Generating ITR-2 CSV Bundle (.zip) for ${state.currentFy}...`, 'success');
+    });
+  }
+
+  // Rebalance Slider listener
+  const slider = document.getElementById('rebalanceSlider');
+  const sliderVal = document.getElementById('rebalanceSliderVal');
+  if (slider && sliderVal) {
+    slider.addEventListener('input', () => {
+      const val = parseInt(slider.value) || 100000;
+      sliderVal.textContent = formatINR(val);
+      fetchRebalancePreview(val);
+    });
+  }
+
+  // File Upload listener
+  const fileInput = document.getElementById('fileUploadInput');
+  if (fileInput) {
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      let password = '';
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        password = prompt("Enter password for encrypted CAS PDF (usually PAN in lowercase or PAN + DOB):") || '';
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+      if (password) {
+        formData.append('password', password);
+      }
+
+      const uploadBtn = document.querySelector('.upload-btn');
+      try {
+        if (uploadBtn) uploadBtn.textContent = 'Parsing Statement...';
+
+        const res = await fetch(`${API_BASE}/statements/upload`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: formData
+        });
+
+        const result = await res.json().catch(() => null);
+
+        if (res.ok && result && (result.status === 'SUCCESS' || Array.isArray(result) || result.eventsIngested !== undefined)) {
+          const count = Array.isArray(result) ? result.length : (result.eventsIngested || 0);
+          showToast(`Statement ingested successfully (${count} events).`, 'success');
+          fetchLiveMetrics();
+        } else {
+          const msg = (result && result.message) ? result.message : 'Statement parsing failed or unauthorized.';
+          showToast(msg, 'error');
+        }
+      } catch (err) {
+        showToast(`Upload error: ${err.message}`, 'error');
+      } finally {
+        if (uploadBtn) uploadBtn.textContent = 'Upload CAS PDF / CSV';
+        fileInput.value = '';
+      }
+    });
+  }
+});
+
+async function fetchLiveMetrics() {
+  try {
+    const summary = await fetchJson(`${API_BASE}/portfolio/summary`).catch(() => null);
+    if (summary) {
+      updatePortfolioSummary(summary);
+    }
+
+    fetchTaxMetrics();
+
+    const allocations = await fetchJson(`${API_BASE}/portfolio/allocation`).catch(() => null);
+    if (allocations) {
+      renderAllocationChart(allocations);
+    }
+
+    const catAllocations = await fetchJson(`${API_BASE}/portfolio/category-allocation`).catch(() => null);
+    if (catAllocations) {
+      renderCategoryChart(catAllocations);
+    }
+
+    const holdings = await fetchJson(`${API_BASE}/portfolio/holdings`).catch(() => null);
+    if (holdings) {
+      renderHoldingsTable(holdings);
+    }
+
+    fetchDecisionRadar();
+    fetchRealizedLog();
+    fetchGoalSummary();
+    fetchFireSummary();
+    fetchBucketRebalance();
+    fetchConsolidationPreviewData();
+
+    const slider = document.getElementById('rebalanceSlider');
+    const amt = slider ? slider.value : 100000;
+    fetchRebalancePreview(amt);
+  } catch (err) {
+    console.log('Portfolio OS API starting up, retrying...');
+  }
+}
+
+// Global debounced resize listener for ECharts
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (state.charts.allocChart) state.charts.allocChart.resize();
+    if (state.charts.categoryChart) state.charts.categoryChart.resize();
+  }, 150);
+});
 </file>
 
 <file path="core-node/src/main/java/com/portfolioos/core/controllers/SyncController.java">

@@ -63,13 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('commandPaletteInput') || cmdInput;
     if (!modal) return;
 
-    if (!modal.open && !modal.hasAttribute('open')) {
-      try {
-        modal.showModal();
-      } catch (e) {
-        modal.setAttribute('open', 'true');
-      }
-    }
+    modal.style.display = 'flex';
 
     if (input) {
       setTimeout(() => {
@@ -82,16 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function closeCmdPalette() {
     const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
     if (!modal) return;
-
-    try {
-      if (modal.open) {
-        modal.close();
-      } else {
-        modal.removeAttribute('open');
-      }
-    } catch (e) {
-      modal.removeAttribute('open');
-    }
+    modal.style.display = 'none';
   }
 
   window.openCmdPalette = openCmdPalette;

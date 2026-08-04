@@ -750,39 +750,36 @@ body.bg-obsidian {
   font-size: 11px;
 }
 
-.command-palette-dialog {
-  border: none;
-  background: transparent;
-  padding: 0;
-  margin: 0;
-  max-width: 600px;
-  width: 90%;
-  border-radius: 16px;
-  overflow: hidden;
+.cmd-modal-overlay {
   position: fixed;
-  top: 15%;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10000;
-  color: #fff;
-}
-
-.command-palette-dialog[open] {
-  display: block !important;
-}
-
-.command-palette-dialog::backdrop {
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
   background: rgba(3, 7, 18, 0.85);
   backdrop-filter: blur(8px);
-  z-index: 9999;
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 99999;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  box-sizing: border-box;
+}
+
+.cmd-modal-overlay[style*="display: none"] {
+  display: none !important;
 }
 
 .command-palette-box {
   background: #090f1e;
   border: 1px solid rgba(208, 255, 0, 0.4);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9), 0 0 30px rgba(208, 255, 0, 0.15);
   border-radius: 16px;
   padding: 16px;
+  width: 90%;
+  max-width: 620px;
+  color: #fff;
 }
 
 .command-palette-header {
