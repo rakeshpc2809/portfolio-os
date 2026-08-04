@@ -73,11 +73,15 @@ document.addEventListener('DOMContentLoaded', () => {
   if (cmdKTriggerBtn) cmdKTriggerBtn.addEventListener('click', openCmdPalette);
 
   window.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    const key = e.key ? e.key.toLowerCase() : '';
+    const isInputActive = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+
+    if (((e.metaKey || e.ctrlKey || e.altKey) && key === 'k') || (!isInputActive && key === '/')) {
       e.preventDefault();
+      e.stopPropagation();
       openCmdPalette();
     }
-  });
+  }, true);
 
   if (cmdInput) {
     cmdInput.addEventListener('keydown', (e) => {
