@@ -57,35 +57,53 @@ document.addEventListener('DOMContentLoaded', () => {
   function openCmdPalette() {
     const modal = document.getElementById('commandPaletteModal');
     const input = document.getElementById('commandPaletteInput');
-    if (modal) {
-      try {
-        if (!modal.open) {
-          modal.showModal();
-        }
-      } catch (e) {
-        modal.setAttribute('open', 'true');
-      }
-      if (input) setTimeout(() => input.focus(), 50);
+    if (!modal) return;
+
+    if (modal.hasAttribute('open') || modal.open) {
+      return;
+    }
+
+    try {
+      modal.showModal();
+    } catch (e) {
+      modal.setAttribute('open', 'true');
+    }
+
+    if (input) {
+      setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 50);
     }
   }
 
   function closeCmdPalette() {
     const modal = document.getElementById('commandPaletteModal');
-    if (modal) {
-      try {
+    if (!modal) return;
+
+    try {
+      if (modal.open) {
         modal.close();
-      } catch (e) {
+      } else {
         modal.removeAttribute('open');
       }
+    } catch (e) {
+      modal.removeAttribute('open');
     }
   }
 
-  // Event Delegation for Button & Backdrop Click
+  // Event Delegation for Button, Close X, and Backdrop Click
   document.addEventListener('click', (e) => {
-    const trigger = e.target.closest('#cmdKTriggerBtn, .cmd-k-btn');
-    if (trigger) {
+    if (e.target.closest('#cmdKTriggerBtn, .cmd-k-btn')) {
       e.preventDefault();
       openCmdPalette();
+      return;
+    }
+
+    if (e.target.closest('#closeCmdPaletteBtn')) {
+      e.preventDefault();
+      closeCmdPalette();
+      return;
     }
 
     const modal = document.getElementById('commandPaletteModal');
@@ -93,6 +111,11 @@ document.addEventListener('DOMContentLoaded', () => {
       closeCmdPalette();
     }
   });
+
+  const cmdModalEl = document.getElementById('commandPaletteModal');
+  if (cmdModalEl) {
+    cmdModalEl.addEventListener('cancel', () => closeCmdPalette());
+  }
 
   window.addEventListener('keydown', (e) => {
     const key = e.key ? e.key.toLowerCase() : '';
