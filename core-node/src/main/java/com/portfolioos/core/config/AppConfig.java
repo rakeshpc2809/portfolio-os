@@ -49,7 +49,7 @@ public class AppConfig {
         OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
         OllamaChatModel chatModel = new OllamaChatModel(
             ollamaApi,
-            OllamaOptions.create().withModel("qwen2.5-coder:7b-instruct-q4_K_M")
+            OllamaOptions.create().withModel("qwen2.5-coder:3b")
         );
         return ChatClient.builder(chatModel);
     }

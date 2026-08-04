@@ -2610,7 +2610,7 @@ public class AppConfig {
         OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
         OllamaChatModel chatModel = new OllamaChatModel(
             ollamaApi,
-            OllamaOptions.create().withModel("qwen2.5-coder:7b-instruct-q4_K_M")
+            OllamaOptions.create().withModel("qwen2.5-coder:3b")
         );
         return ChatClient.builder(chatModel);
     }
@@ -6200,6 +6200,285 @@ public class LedgerCacheService {
 }
 </file>
 
+<file path="core-node/pom.xml">
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.5</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    
+    <groupId>com.portfolioos</groupId>
+    <artifactId>core-node</artifactId>
+    <version>3.0.0</version>
+    <name>core-node</name>
+    <description>Portfolio OS Core Ledger Node (2026 rebuild)</description>
+    
+    <properties>
+        <java.version>21</java.version>
+        <arrow.version>15.0.0</arrow.version>
+    </properties>
+    
+    <dependencies>
+        <!-- Spring Boot Starters -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jdbc</artifactId>
+        </dependency>
+
+        <!-- HikariCP Connection Pooling -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+        </dependency>
+        
+        <!-- Databases -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.45.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.duckdb</groupId>
+            <artifactId>duckdb_jdbc</artifactId>
+            <version>0.10.0</version>
+        </dependency>
+        
+        <!-- YAML Config Loader -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <!-- Apache Arrow Flight RPC -->
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-vector</artifactId>
+            <version>${arrow.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>flight-core</artifactId>
+            <version>${arrow.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>flight-grpc</artifactId>
+            <version>${arrow.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-memory-netty</artifactId>
+            <version>${arrow.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Spring AI Ollama -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>1.0.0-M1</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <repositories>
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+</file>
+
+<file path="core-node/src/main/java/com/portfolioos/core/rpc/FlightRpcClient.java">
+package com.portfolioos.core.rpc;
+
+import com.portfolioos.core.persistence.DuckDbProjector.NavHistorySeriesEntry;
+import org.apache.arrow.flight.*;
+import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.vector.Float8Vector;
+import org.apache.arrow.vector.VarCharVector;
+import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.types.FloatingPointPrecision;
+import org.apache.arrow.vector.types.pojo.ArrowType;
+import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.vector.types.pojo.FieldType;
+import org.apache.arrow.vector.types.pojo.Schema;
+
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+public class FlightRpcClient {
+
+    private final String host;
+    private final int port;
+    private final String flightUrl;
+    private final BufferAllocator allocator;
+
+    public FlightRpcClient() {
+        this("quant-sidecar", 8001);
+    }
+
+    public FlightRpcClient(String host, int port) {
+        this.host = host;
+        this.port = port;
+        this.flightUrl = "grpc+tcp://" + host + ":" + port;
+        this.allocator = new RootAllocator(Long.MAX_VALUE);
+    }
+
+    public FlightRpcClient(String flightUrl) {
+        this.flightUrl = flightUrl;
+        URI uri = URI.create(flightUrl.replace("grpc+tcp://", "http://"));
+        this.host = uri.getHost() != null ? uri.getHost() : "quant-sidecar";
+        this.port = uri.getPort() > 0 ? uri.getPort() : 8001;
+        this.allocator = new RootAllocator(Long.MAX_VALUE);
+    }
+
+    public Map<String, Map<String, Object>> computeQuantMetrics(Map<String, List<Double>> fundNavSeries) {
+        Map<String, NavHistorySeriesEntry> adapterMap = new HashMap<>();
+        if (fundNavSeries != null) {
+            for (Map.Entry<String, List<Double>> entry : fundNavSeries.entrySet()) {
+                adapterMap.put(entry.getKey(), new NavHistorySeriesEntry(entry.getValue(), Collections.emptyList()));
+            }
+        }
+        return computeQuantMetricsWithDates(adapterMap);
+    }
+
+    public Map<String, Map<String, Object>> computeQuantMetricsWithDates(Map<String, NavHistorySeriesEntry> fundNavSeries) {
+        Map<String, Map<String, Object>> out = new HashMap<>();
+        if (fundNavSeries == null || fundNavSeries.isEmpty()) {
+            return out;
+        }
+
+        int totalRows = fundNavSeries.values().stream().mapToInt(e -> e.navs().size()).sum();
+        if (totalRows == 0) {
+            return out;
+        }
+
+        try {
+            Location location = Location.forGrpcInsecure(host, port);
+            try (FlightClient client = FlightClient.builder(allocator, location).build()) {
+
+                Schema inSchema = new Schema(List.of(
+                    new Field("amfi_code", FieldType.nullable(new ArrowType.Utf8()), null),
+                    new Field("nav_date", FieldType.nullable(new ArrowType.Utf8()), null),
+                    new Field("nav_value", FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)), null)
+                ));
+
+                try (VectorSchemaRoot inRoot = VectorSchemaRoot.create(inSchema, allocator)) {
+                    VarCharVector codeVec = (VarCharVector) inRoot.getVector("amfi_code");
+                    VarCharVector dateVec = (VarCharVector) inRoot.getVector("nav_date");
+                    Float8Vector navVec = (Float8Vector) inRoot.getVector("nav_value");
+                    codeVec.allocateNew(totalRows * 32L, totalRows);
+                    dateVec.allocateNew(totalRows * 16L, totalRows);
+                    navVec.allocateNew(totalRows);
+
+                    int row = 0;
+                    for (Map.Entry<String, NavHistorySeriesEntry> entry : fundNavSeries.entrySet()) {
+                        byte[] codeBytes = entry.getKey().getBytes(StandardCharsets.UTF_8);
+                        List<Double> navs = entry.getValue().navs();
+                        List<String> dates = entry.getValue().dates();
+
+                        for (int i = 0; i < navs.size(); i++) {
+                            codeVec.setSafe(row, codeBytes);
+                            if (i < dates.size() && dates.get(i) != null) {
+                                dateVec.setSafe(row, dates.get(i).getBytes(StandardCharsets.UTF_8));
+                            } else {
+                                dateVec.setSafe(row, "".getBytes(StandardCharsets.UTF_8));
+                            }
+                            navVec.setSafe(row, navs.get(i));
+                            row++;
+                        }
+                    }
+                    inRoot.setRowCount(totalRows);
+
+                    FlightDescriptor descriptor = FlightDescriptor.path("quant_metrics");
+                    FlightClient.ExchangeReaderWriter exchange = client.doExchange(descriptor);
+
+                    FlightClient.ClientStreamListener writer = exchange.getWriter();
+                    writer.start(inRoot);
+                    writer.putNext();
+                    writer.completed();
+
+                    try (FlightStream reader = exchange.getReader()) {
+                        while (reader.next()) {
+                            VectorSchemaRoot outRoot = reader.getRoot();
+                            VarCharVector outCode = (VarCharVector) outRoot.getVector("amfi_code");
+                            for (int i = 0; i < outRoot.getRowCount(); i++) {
+                                String code = new String(outCode.get(i), StandardCharsets.UTF_8);
+                                Map<String, Object> metrics = new HashMap<>();
+                                for (Field f : outRoot.getSchema().getFields()) {
+                                    if (f.getName().equals("amfi_code")) continue;
+                                    metrics.put(f.getName(), outRoot.getVector(f.getName()).getObject(i));
+                                }
+                                out.put(code, metrics);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Arrow Flight quant metrics call error: " + e.getMessage());
+        }
+        return out;
+    }
+}
+</file>
+
 <file path="core-node/src/main/resources/static/index.html">
 <!DOCTYPE html>
 <html lang="en">
@@ -6516,285 +6795,6 @@ public class LedgerCacheService {
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
-</file>
-
-<file path="core-node/pom.xml">
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.5</version>
-        <relativePath/> <!-- lookup parent from repository -->
-    </parent>
-    
-    <groupId>com.portfolioos</groupId>
-    <artifactId>core-node</artifactId>
-    <version>3.0.0</version>
-    <name>core-node</name>
-    <description>Portfolio OS Core Ledger Node (2026 rebuild)</description>
-    
-    <properties>
-        <java.version>21</java.version>
-        <arrow.version>15.0.0</arrow.version>
-    </properties>
-    
-    <dependencies>
-        <!-- Spring Boot Starters -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jdbc</artifactId>
-        </dependency>
-
-        <!-- HikariCP Connection Pooling -->
-        <dependency>
-            <groupId>com.zaxxer</groupId>
-            <artifactId>HikariCP</artifactId>
-        </dependency>
-        
-        <!-- Databases -->
-        <dependency>
-            <groupId>org.xerial</groupId>
-            <artifactId>sqlite-jdbc</artifactId>
-            <version>3.45.1.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.duckdb</groupId>
-            <artifactId>duckdb_jdbc</artifactId>
-            <version>0.10.0</version>
-        </dependency>
-        
-        <!-- YAML Config Loader -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.dataformat</groupId>
-            <artifactId>jackson-dataformat-yaml</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
-        </dependency>
-
-        <!-- Apache Arrow Flight RPC -->
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>arrow-vector</artifactId>
-            <version>${arrow.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>flight-core</artifactId>
-            <version>${arrow.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>flight-grpc</artifactId>
-            <version>${arrow.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>arrow-memory-netty</artifactId>
-            <version>${arrow.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <!-- Spring AI Ollama -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
-        </dependency>
-
-        <!-- Testing -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-    
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.springframework.ai</groupId>
-                <artifactId>spring-ai-bom</artifactId>
-                <version>1.0.0-M1</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
-    <repositories>
-        <repository>
-            <id>spring-milestones</id>
-            <name>Spring Milestones</name>
-            <url>https://repo.spring.io/milestone</url>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-    
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <release>21</release>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-</project>
-</file>
-
-<file path="core-node/src/main/java/com/portfolioos/core/rpc/FlightRpcClient.java">
-package com.portfolioos.core.rpc;
-
-import com.portfolioos.core.persistence.DuckDbProjector.NavHistorySeriesEntry;
-import org.apache.arrow.flight.*;
-import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
-import org.apache.arrow.vector.Float8Vector;
-import org.apache.arrow.vector.VarCharVector;
-import org.apache.arrow.vector.VectorSchemaRoot;
-import org.apache.arrow.vector.types.FloatingPointPrecision;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.FieldType;
-import org.apache.arrow.vector.types.pojo.Schema;
-
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-
-public class FlightRpcClient {
-
-    private final String host;
-    private final int port;
-    private final String flightUrl;
-    private final BufferAllocator allocator;
-
-    public FlightRpcClient() {
-        this("quant-sidecar", 8001);
-    }
-
-    public FlightRpcClient(String host, int port) {
-        this.host = host;
-        this.port = port;
-        this.flightUrl = "grpc+tcp://" + host + ":" + port;
-        this.allocator = new RootAllocator(Long.MAX_VALUE);
-    }
-
-    public FlightRpcClient(String flightUrl) {
-        this.flightUrl = flightUrl;
-        URI uri = URI.create(flightUrl.replace("grpc+tcp://", "http://"));
-        this.host = uri.getHost() != null ? uri.getHost() : "quant-sidecar";
-        this.port = uri.getPort() > 0 ? uri.getPort() : 8001;
-        this.allocator = new RootAllocator(Long.MAX_VALUE);
-    }
-
-    public Map<String, Map<String, Object>> computeQuantMetrics(Map<String, List<Double>> fundNavSeries) {
-        Map<String, NavHistorySeriesEntry> adapterMap = new HashMap<>();
-        if (fundNavSeries != null) {
-            for (Map.Entry<String, List<Double>> entry : fundNavSeries.entrySet()) {
-                adapterMap.put(entry.getKey(), new NavHistorySeriesEntry(entry.getValue(), Collections.emptyList()));
-            }
-        }
-        return computeQuantMetricsWithDates(adapterMap);
-    }
-
-    public Map<String, Map<String, Object>> computeQuantMetricsWithDates(Map<String, NavHistorySeriesEntry> fundNavSeries) {
-        Map<String, Map<String, Object>> out = new HashMap<>();
-        if (fundNavSeries == null || fundNavSeries.isEmpty()) {
-            return out;
-        }
-
-        int totalRows = fundNavSeries.values().stream().mapToInt(e -> e.navs().size()).sum();
-        if (totalRows == 0) {
-            return out;
-        }
-
-        try {
-            Location location = Location.forGrpcInsecure(host, port);
-            try (FlightClient client = FlightClient.builder(allocator, location).build()) {
-
-                Schema inSchema = new Schema(List.of(
-                    new Field("amfi_code", FieldType.nullable(new ArrowType.Utf8()), null),
-                    new Field("nav_date", FieldType.nullable(new ArrowType.Utf8()), null),
-                    new Field("nav_value", FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)), null)
-                ));
-
-                try (VectorSchemaRoot inRoot = VectorSchemaRoot.create(inSchema, allocator)) {
-                    VarCharVector codeVec = (VarCharVector) inRoot.getVector("amfi_code");
-                    VarCharVector dateVec = (VarCharVector) inRoot.getVector("nav_date");
-                    Float8Vector navVec = (Float8Vector) inRoot.getVector("nav_value");
-                    codeVec.allocateNew(totalRows * 32L, totalRows);
-                    dateVec.allocateNew(totalRows * 16L, totalRows);
-                    navVec.allocateNew(totalRows);
-
-                    int row = 0;
-                    for (Map.Entry<String, NavHistorySeriesEntry> entry : fundNavSeries.entrySet()) {
-                        byte[] codeBytes = entry.getKey().getBytes(StandardCharsets.UTF_8);
-                        List<Double> navs = entry.getValue().navs();
-                        List<String> dates = entry.getValue().dates();
-
-                        for (int i = 0; i < navs.size(); i++) {
-                            codeVec.setSafe(row, codeBytes);
-                            if (i < dates.size() && dates.get(i) != null) {
-                                dateVec.setSafe(row, dates.get(i).getBytes(StandardCharsets.UTF_8));
-                            } else {
-                                dateVec.setSafe(row, "".getBytes(StandardCharsets.UTF_8));
-                            }
-                            navVec.setSafe(row, navs.get(i));
-                            row++;
-                        }
-                    }
-                    inRoot.setRowCount(totalRows);
-
-                    FlightDescriptor descriptor = FlightDescriptor.path("quant_metrics");
-                    FlightClient.ExchangeReaderWriter exchange = client.doExchange(descriptor);
-
-                    FlightClient.ClientStreamListener writer = exchange.getWriter();
-                    writer.start(inRoot);
-                    writer.putNext();
-                    writer.completed();
-
-                    try (FlightStream reader = exchange.getReader()) {
-                        while (reader.next()) {
-                            VectorSchemaRoot outRoot = reader.getRoot();
-                            VarCharVector outCode = (VarCharVector) outRoot.getVector("amfi_code");
-                            for (int i = 0; i < outRoot.getRowCount(); i++) {
-                                String code = new String(outCode.get(i), StandardCharsets.UTF_8);
-                                Map<String, Object> metrics = new HashMap<>();
-                                for (Field f : outRoot.getSchema().getFields()) {
-                                    if (f.getName().equals("amfi_code")) continue;
-                                    metrics.put(f.getName(), outRoot.getVector(f.getName()).getObject(i));
-                                }
-                                out.put(code, metrics);
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Arrow Flight quant metrics call error: " + e.getMessage());
-        }
-        return out;
-    }
-}
 </file>
 
 <file path="core-node/src/main/resources/static/src/js/modules/portfolio.js">
