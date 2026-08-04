@@ -2558,65 +2558,6 @@ test {
 rootProject.name = 'core-node'
 </file>
 
-<file path="core-node/src/main/java/com/portfolioos/core/config/AppConfig.java">
-package com.portfolioos.core.config;
-
-import com.portfolioos.core.persistence.DuckDbProjector;
-import com.portfolioos.core.persistence.SqliteEventStore;
-import com.portfolioos.core.ports.EventStorePort;
-import com.portfolioos.core.rpc.FlightRpcClient;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.ollama.OllamaChatModel;
-import org.springframework.ai.ollama.api.OllamaApi;
-import org.springframework.ai.ollama.api.OllamaOptions;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class AppConfig {
-
-    @Bean
-    public EventStorePort eventStore(
-        @Value("${sqlite.path:data/tax_ledger.db}") String dbPath
-    ) {
-        return new SqliteEventStore(dbPath);
-    }
-
-    @Bean
-    public DuckDbProjector duckDbProjector(
-        @Value("${duckdb.path:data/tax_ledger.duckdb}") String dbPath
-    ) {
-        return new DuckDbProjector(dbPath);
-    }
-
-    @Bean
-    public FlightRpcClient flightRpcClient(
-        @Value("${quant-sidecar.flight.host:quant-sidecar}") String host,
-        @Value("${quant-sidecar.flight.port:8001}") int port
-    ) {
-        return new FlightRpcClient(host, port);
-    }
-
-    @Bean
-    public ChatClient.Builder chatClientBuilder(
-        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
-    ) {
-        String resolvedUrl = ollamaUrl;
-        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
-            // Test if running inside container and target host gateway if needed
-            resolvedUrl = "http://127.0.0.1:11434";
-        }
-        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
-        OllamaChatModel chatModel = new OllamaChatModel(
-            ollamaApi,
-            OllamaOptions.create().withModel("qwen2.5-coder:3b")
-        );
-        return ChatClient.builder(chatModel);
-    }
-}
-</file>
-
 <file path="core-node/src/main/java/com/portfolioos/core/fire/FireTracker.java">
 package com.portfolioos.core.fire;
 
@@ -4216,6 +4157,65 @@ COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
 
 ENTRYPOINT ["java", "--add-opens=java.base/java.nio=ALL-UNNAMED", "-jar", "app.jar"]
+</file>
+
+<file path="core-node/src/main/java/com/portfolioos/core/config/AppConfig.java">
+package com.portfolioos.core.config;
+
+import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.SqliteEventStore;
+import com.portfolioos.core.ports.EventStorePort;
+import com.portfolioos.core.rpc.FlightRpcClient;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.ollama.api.OllamaApi;
+import org.springframework.ai.ollama.api.OllamaOptions;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public EventStorePort eventStore(
+        @Value("${sqlite.path:data/tax_ledger.db}") String dbPath
+    ) {
+        return new SqliteEventStore(dbPath);
+    }
+
+    @Bean
+    public DuckDbProjector duckDbProjector(
+        @Value("${duckdb.path:data/tax_ledger.duckdb}") String dbPath
+    ) {
+        return new DuckDbProjector(dbPath);
+    }
+
+    @Bean
+    public FlightRpcClient flightRpcClient(
+        @Value("${quant-sidecar.flight.host:quant-sidecar}") String host,
+        @Value("${quant-sidecar.flight.port:8001}") int port
+    ) {
+        return new FlightRpcClient(host, port);
+    }
+
+    @Bean
+    public ChatClient.Builder chatClientBuilder(
+        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
+    ) {
+        String resolvedUrl = ollamaUrl;
+        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
+            // Test if running inside container and target host gateway if needed
+            resolvedUrl = "http://127.0.0.1:11434";
+        }
+        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
+        OllamaChatModel chatModel = new OllamaChatModel(
+            ollamaApi,
+            OllamaOptions.create().withModel("qwen2.5-coder:3b")
+        );
+        return ChatClient.builder(chatModel);
+    }
+}
 </file>
 
 <file path="core-node/src/main/java/com/portfolioos/core/controllers/ReportController.java">
@@ -7309,9 +7309,13 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchLiveMetrics();
 
   // Command Palette Handler (Cmd + K / Ctrl + K / Slash)
+  const cmdPaletteModal = document.getElementById('commandPaletteModal');
+  const cmdInput = document.getElementById('commandPaletteInput');
+  const cmdResults = document.getElementById('commandPaletteResults');
+
   function openCmdPalette() {
-    const modal = document.getElementById('commandPaletteModal');
-    const input = document.getElementById('commandPaletteInput');
+    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
+    const input = document.getElementById('commandPaletteInput') || cmdInput;
     if (!modal) return;
 
     if (modal.hasAttribute('open') || modal.open) {
@@ -7333,7 +7337,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function closeCmdPalette() {
-    const modal = document.getElementById('commandPaletteModal');
+    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
     if (!modal) return;
 
     try {
@@ -7361,15 +7365,14 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const modal = document.getElementById('commandPaletteModal');
+    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
     if (modal && e.target === modal) {
       closeCmdPalette();
     }
   });
 
-  const cmdModalEl = document.getElementById('commandPaletteModal');
-  if (cmdModalEl) {
-    cmdModalEl.addEventListener('cancel', () => closeCmdPalette());
+  if (cmdPaletteModal) {
+    cmdPaletteModal.addEventListener('cancel', () => closeCmdPalette());
   }
 
   window.addEventListener('keydown', (e) => {

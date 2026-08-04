@@ -54,9 +54,13 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchLiveMetrics();
 
   // Command Palette Handler (Cmd + K / Ctrl + K / Slash)
+  const cmdPaletteModal = document.getElementById('commandPaletteModal');
+  const cmdInput = document.getElementById('commandPaletteInput');
+  const cmdResults = document.getElementById('commandPaletteResults');
+
   function openCmdPalette() {
-    const modal = document.getElementById('commandPaletteModal');
-    const input = document.getElementById('commandPaletteInput');
+    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
+    const input = document.getElementById('commandPaletteInput') || cmdInput;
     if (!modal) return;
 
     if (modal.hasAttribute('open') || modal.open) {
@@ -78,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function closeCmdPalette() {
-    const modal = document.getElementById('commandPaletteModal');
+    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
     if (!modal) return;
 
     try {
@@ -106,15 +110,14 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const modal = document.getElementById('commandPaletteModal');
+    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
     if (modal && e.target === modal) {
       closeCmdPalette();
     }
   });
 
-  const cmdModalEl = document.getElementById('commandPaletteModal');
-  if (cmdModalEl) {
-    cmdModalEl.addEventListener('cancel', () => closeCmdPalette());
+  if (cmdPaletteModal) {
+    cmdPaletteModal.addEventListener('cancel', () => closeCmdPalette());
   }
 
   window.addEventListener('keydown', (e) => {
