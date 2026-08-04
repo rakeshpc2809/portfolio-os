@@ -1,89 +1,1164 @@
-This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
-The content has been processed where empty lines have been removed, content has been compressed (code blocks are separated by ⋮---- delimiter).
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
 
-# File Summary
+<file_summary>
+This section contains a summary of this file.
 
-## Purpose
+<purpose>
 This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
 It is designed to be easily consumable by AI systems for analysis, code review,
 or other automated processes.
+</purpose>
 
-## File Format
+<file_format>
 The content is organized as follows:
 1. This summary section
 2. Repository information
 3. Directory structure
 4. Repository files (if enabled)
 5. Multiple file entries, each consisting of:
-  a. A header with the file path (## File: path/to/file)
-  b. The full contents of the file in a code block
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
 
-## Usage Guidelines
+<usage_guidelines>
 - This file should be treated as read-only. Any changes should be made to the
   original repository files, not this packed version.
 - When processing this file, use the file path to distinguish
   between different files in the repository.
 - Be aware that this file may contain sensitive information. Handle it with
   the same level of security as you would the original repository.
+</usage_guidelines>
 
-## Notes
+<notes>
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
-- Files matching these patterns are excluded: build/**, .gradle/**, **/*.class, **/*.apk
+- Only files matching these patterns are included: mobile-app/**/*
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
-- Empty lines have been removed from all files
-- Content has been compressed - code blocks are separated by ⋮---- delimiter
 - Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
 
-# Directory Structure
-```
-app/
-  src/
-    main/
-      java/
-        com/
-          portfolioos/
-            mobile/
-              api/
-                SyncApiClient.kt
-              model/
-                SyncModels.kt
-              ui/
-                DashboardScreen.kt
-                PortfolioCharts.kt
-                SimulatorScreen.kt
-              util/
-                FormatUtils.kt
-              widget/
-                PortfolioGlanceWidget.kt
-              MainActivity.kt
-      res/
-        drawable/
-          ic_launcher_background.xml
-          ic_launcher_foreground.xml
-        mipmap-anydpi-v26/
-          ic_launcher_round.xml
-          ic_launcher.xml
-        values/
-          styles.xml
-        xml/
-          backup_rules.xml
-          data_extraction_rules.xml
-          portfolio_glance_widget_info.xml
-      AndroidManifest.xml
+</file_summary>
+
+<directory_structure>
+mobile-app/
+  app/
+    src/
+      main/
+        java/
+          com/
+            portfolioos/
+              mobile/
+                api/
+                  SyncApiClient.kt
+                model/
+                  SyncModels.kt
+                ui/
+                  DashboardScreen.kt
+                  PortfolioCharts.kt
+                  SimulatorScreen.kt
+                util/
+                  FormatUtils.kt
+                widget/
+                  PortfolioGlanceWidget.kt
+                MainActivity.kt
+        res/
+          drawable/
+            ic_launcher_background.xml
+            ic_launcher_foreground.xml
+          mipmap-anydpi-v26/
+            ic_launcher_round.xml
+            ic_launcher.xml
+          values/
+            styles.xml
+          xml/
+            backup_rules.xml
+            data_extraction_rules.xml
+            portfolio_glance_widget_info.xml
+        AndroidManifest.xml
+    build.gradle.kts
   build.gradle.kts
-build.gradle.kts
-gradle.properties
-local.properties
-settings.gradle.kts
-```
+  gradle.properties
+  local.properties
+  settings.gradle.kts
+</directory_structure>
 
-# Files
+<files>
+This section contains the contents of the repository's files.
 
-## File: app/src/main/java/com/portfolioos/mobile/api/SyncApiClient.kt
-```kotlin
+<file path="mobile-app/app/src/main/java/com/portfolioos/mobile/util/FormatUtils.kt">
+package com.portfolioos.mobile.util
+
+import java.text.NumberFormat
+import java.util.Locale
+
+fun formatInr(valNum: Double, showDecimals: Boolean = false): String {
+    val locale = Locale("en", "IN")
+    val formatter = NumberFormat.getCurrencyInstance(locale).apply {
+        maximumFractionDigits = if (showDecimals) 2 else 0
+        minimumFractionDigits = if (showDecimals) 2 else 0
+    }
+    val formatted = formatter.format(valNum)
+    return if (formatted.startsWith("INR")) {
+        formatted.replace("INR", "₹").trim()
+    } else {
+        formatted
+    }
+}
+
+fun formatInrStr(valStr: String?): String {
+    if (valStr.isNullOrBlank()) return "₹0"
+    val cleaned = valStr.replace("₹", "").replace(",", "").trim()
+    val dbl = cleaned.toDoubleOrNull() ?: return valStr
+    return formatInr(dbl, showDecimals = false)
+}
+</file>
+
+<file path="mobile-app/app/src/main/res/drawable/ic_launcher_background.xml">
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#030712"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#0D1424"
+        android:pathData="M0,0 L108,108 L0,108 Z" />
+</vector>
+</file>
+
+<file path="mobile-app/app/src/main/res/drawable/ic_launcher_foreground.xml">
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Glowing Cyber Grid Accent -->
+    <path
+        android:strokeColor="#1E293B"
+        android:strokeWidth="1"
+        android:pathData="M24,36 H84 M24,54 H84 M24,72 H84" />
+
+    <!-- Upward Trend Line -->
+    <path
+        android:strokeColor="#00F0FF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M28,68 L44,52 L56,60 L80,36" />
+
+    <!-- Trend Line Sparkle Dots -->
+    <path
+        android:fillColor="#D0FF00"
+        android:pathData="M80,36 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+
+    <!-- Portfolio OS Monogram "P" Emblem -->
+    <path
+        android:fillColor="#D0FF00"
+        android:pathData="M34,34 h16 a12,12 0 0,1 0,24 h-8 v16 h-8 z" />
+
+    <path
+        android:fillColor="#030712"
+        android:pathData="M42,42 h8 a4,4 0 0,1 0,8 h-8 z" />
+</vector>
+</file>
+
+<file path="mobile-app/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml">
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+</file>
+
+<file path="mobile-app/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml">
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+</file>
+
+<file path="mobile-app/app/src/main/res/values/styles.xml">
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.PortfolioOS" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#050811</item>
+        <item name="android:windowBackground">#050811</item>
+    </style>
+</resources>
+</file>
+
+<file path="mobile-app/app/src/main/res/xml/backup_rules.xml">
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude path="." />
+</full-backup-content>
+</file>
+
+<file path="mobile-app/app/src/main/res/xml/data_extraction_rules.xml">
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude path="." />
+    </cloud-backup>
+</data-extraction-rules>
+</file>
+
+<file path="mobile-app/app/src/main/res/xml/portfolio_glance_widget_info.xml">
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:updatePeriodMillis="1800000"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen">
+</appwidget-provider>
+</file>
+
+<file path="mobile-app/build.gradle.kts">
+plugins {
+    id("com.android.application") version "8.2.2" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+}
+</file>
+
+<file path="mobile-app/gradle.properties">
+android.useAndroidX=true
+android.nonFinalResIds=false
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+</file>
+
+<file path="mobile-app/local.properties">
+sdk.dir=/home/rakeshpc/Android/Sdk
+</file>
+
+<file path="mobile-app/settings.gradle.kts">
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "portfolio-os-mobile"
+include(":app")
+</file>
+
+<file path="mobile-app/app/src/main/java/com/portfolioos/mobile/ui/SimulatorScreen.kt">
+package com.portfolioos.mobile.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.portfolioos.mobile.api.SyncApiClient
+import com.portfolioos.mobile.model.FlatHoldingDto
+import com.portfolioos.mobile.model.TradeSimulationRequestDto
+import com.portfolioos.mobile.util.formatInr
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SimulatorView(holdings: List<FlatHoldingDto>) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var selectedIsin by remember { mutableStateOf(holdings.firstOrNull()?.isin ?: "") }
+    var selectedName by remember { mutableStateOf(holdings.firstOrNull()?.fundName ?: "Select Scheme") }
+    var unitsText by remember { mutableStateOf("100.0") }
+    var priceText by remember { mutableStateOf("150.0") }
+    var tradeType by remember { mutableStateOf("DISPOSAL") }
+    var resultText by remember { mutableStateOf<String?>(null) }
+    var isExpanded by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "⚡ WHAT-IF TRADE SIMULATOR",
+            color = Color(0xFFD0FF00),
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp
+        )
+        Text(
+            text = "Preview tax drag and post-trade XIRR before executing trades.",
+            color = Color(0xFF94A3B8),
+            fontSize = 12.sp
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Scheme Selector
+        ExposedDropdownMenuBox(
+            expanded = isExpanded,
+            onExpandedChange = { isExpanded = !isExpanded }
+        ) {
+            OutlinedTextField(
+                value = selectedName,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Target Scheme", color = Color(0xFF94A3B8)) },
+                colors = TextFieldDefaults.outlinedTextFieldColors(focusedBorderColor = Color(0xFF00F0FF)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor()
+            )
+            ExposedDropdownMenu(
+                expanded = isExpanded,
+                onDismissRequest = { isExpanded = false }
+            ) {
+                holdings.forEach { holding ->
+                    DropdownMenuItem(
+                        text = { Text(holding.fundName) },
+                        onClick = {
+                            selectedIsin = holding.isin
+                            selectedName = holding.fundName
+                            isExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = unitsText,
+                onValueChange = { unitsText = it },
+                label = { Text("Units", color = Color(0xFF94A3B8)) },
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextField(
+                value = priceText,
+                onValueChange = { priceText = it },
+                label = { Text("Price/NAV (₹)", color = Color(0xFF94A3B8)) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = tradeType == "DISPOSAL",
+                onClick = { tradeType = "DISPOSAL" },
+                label = { Text("Simulate Sale (Disposal)") }
+            )
+            FilterChip(
+                selected = tradeType == "ACQUISITION",
+                onClick = { tradeType = "ACQUISITION" },
+                label = { Text("Simulate Buy (SIP)") }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                val units = unitsText.toDoubleOrNull() ?: 100.0
+                val price = priceText.toDoubleOrNull() ?: 150.0
+                isLoading = true
+                scope.launch {
+                    try {
+                        val req = TradeSimulationRequestDto(
+                            isin = selectedIsin,
+                            schemeName = selectedName,
+                            units = units,
+                            pricePerUnit = price,
+                            tradeType = tradeType
+                        )
+                        val res = SyncApiClient.simulateTradeWithFallback(context, req)
+                        resultText = """
+                            ✓ Simulation Execution Successful (Live Engine)
+                            • Target: ${res.schemeName}
+                            • Trade Type: ${res.tradeType} (${res.units} Units @ ₹${res.pricePerUnit})
+                            • Gross Trade Amount: ${formatInr(res.grossTradeAmount)}
+                            • Gross Capital Gain: ${formatInr(res.grossCapitalGain)}
+                            • LTCG Equity: ${formatInr(res.ltcgEquity)} | STCG Equity: ${formatInr(res.stcgEquity)}
+                            • Sec 112A Exemption Applied: ${formatInr(res.sec112aExemptionApplied)}
+                            • Projected Tax Liability: ${formatInr(res.estimatedTaxLiability)}
+                            • Post-Trade Valuation: ${formatInr(res.postTradeNetWorth)}
+                            • Post-Trade Portfolio XIRR: ${String.format("%.2f", res.postTradeXirr)}%
+                        """.trimIndent()
+                    } catch (e: Exception) {
+                        resultText = "⚠️ Simulation RPC failed: ${e.localizedMessage}"
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            },
+            enabled = !isLoading,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD0FF00)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.Black, strokeWidth = 2.dp)
+            } else {
+                Text("Run What-If Simulation", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        if (resultText != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+                color = Color(0xFF0F172A),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = resultText!!,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        }
+    }
+}
+</file>
+
+<file path="mobile-app/app/src/main/java/com/portfolioos/mobile/widget/PortfolioGlanceWidget.kt">
+package com.portfolioos.mobile.widget
+
+import android.content.Context
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.glance.GlanceId
+import androidx.glance.GlanceModifier
+import androidx.glance.GlanceTheme
+import androidx.glance.action.actionStartActivity
+import androidx.glance.action.clickable
+import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.provideContent
+import androidx.glance.background
+import androidx.glance.layout.Alignment
+import androidx.glance.layout.Column
+import androidx.glance.layout.Row
+import androidx.glance.layout.Spacer
+import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.fillMaxWidth
+import androidx.glance.layout.height
+import androidx.glance.layout.padding
+import androidx.glance.layout.width
+import androidx.glance.text.FontWeight
+import androidx.glance.text.Text
+import androidx.glance.text.TextStyle
+import androidx.glance.unit.ColorProvider
+import com.portfolioos.mobile.MainActivity
+import com.portfolioos.mobile.data.SnapshotCacheManager
+
+class PortfolioGlanceWidget : GlanceAppWidget() {
+
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val snapshot = SnapshotCacheManager.loadSnapshot(context)
+        val info = snapshot?.syncInfo
+        val holdings = snapshot?.holdings ?: emptyList()
+
+        val bestFund = holdings.maxByOrNull { it.xirr }
+        val worstFund = holdings.minByOrNull { it.xirr }
+
+        // Calculate portfolio gain percentage for privacy-first display
+        val totalInvested = info?.totalInvested ?: 1.0
+        val unrealizedGain = info?.unrealizedGain ?: 0.0
+        val gainPct = if (totalInvested > 0) (unrealizedGain / totalInvested) * 100.0 else 0.0
+        val formattedGainPct = String.format("%s%.2f%%", if (gainPct >= 0) "+" else "", gainPct)
+
+        provideContent {
+            GlanceTheme {
+                Column(
+                    modifier = GlanceModifier
+                        .fillMaxSize()
+                        .background(ColorProvider(Color(0xFF0D1424)))
+                        .padding(14.dp)
+                        .clickable(actionStartActivity<MainActivity>()),
+                    verticalAlignment = Alignment.Vertical.CenterVertically
+                ) {
+                    Row(
+                        modifier = GlanceModifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Vertical.CenterVertically
+                    ) {
+                        Text(
+                            text = "PORTFOLIO OS",
+                            style = TextStyle(
+                                color = ColorProvider(Color(0xFFD0FF00)),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                        Spacer(modifier = GlanceModifier.defaultWeight())
+                        Text(
+                            text = info?.xirrPercentage ?: "0.00% XIRR",
+                            style = TextStyle(
+                                color = ColorProvider(Color(0xFF10B981)),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = GlanceModifier.height(6.dp))
+
+                    // Privacy-First Valuation & Return Header
+                    Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
+                        Text(
+                            text = "₹ • • • • • •",
+                            style = TextStyle(
+                                color = ColorProvider(Color(0xFF94A3B8)),
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                        Spacer(modifier = GlanceModifier.width(8.dp))
+                        Text(
+                            text = formattedGainPct,
+                            style = TextStyle(
+                                color = ColorProvider(if (gainPct >= 0) Color(0xFF10B981) else Color(0xFFEF4444)),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = GlanceModifier.height(8.dp))
+
+                    Row(modifier = GlanceModifier.fillMaxWidth()) {
+                        Column(modifier = GlanceModifier.defaultWeight()) {
+                            Text(
+                                text = "BEST PERFORMER",
+                                style = TextStyle(color = ColorProvider(Color(0xFF94A3B8)), fontSize = 8.sp)
+                            )
+                            Text(
+                                text = bestFund?.let { "${it.fundName.take(14)} (+${it.xirr}%)" } ?: "N/A",
+                                style = TextStyle(color = ColorProvider(Color(0xFF10B981)), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            )
+                        }
+
+                        Spacer(modifier = GlanceModifier.width(6.dp))
+
+                        Column(modifier = GlanceModifier.defaultWeight()) {
+                            Text(
+                                text = "WORST PERFORMER",
+                                style = TextStyle(color = ColorProvider(Color(0xFF94A3B8)), fontSize = 8.sp)
+                            )
+                            Text(
+                                text = worstFund?.let { "${it.fundName.take(14)} (${it.xirr}%)" } ?: "N/A",
+                                style = TextStyle(color = ColorProvider(Color(0xFFF59E0B)), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = GlanceModifier.height(6.dp))
+
+                    Text(
+                        text = "Valuation Hidden for Privacy · Tap to Open App",
+                        style = TextStyle(color = ColorProvider(Color(0xFF00F0FF)), fontSize = 9.sp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+class PortfolioGlanceReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = PortfolioGlanceWidget()
+}
+</file>
+
+<file path="mobile-app/app/src/main/java/com/portfolioos/mobile/MainActivity.kt">
+package com.portfolioos.mobile
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.*
+import com.portfolioos.mobile.api.SyncApiClient
+import com.portfolioos.mobile.data.SnapshotCacheManager
+import com.portfolioos.mobile.model.SyncSnapshot
+import com.portfolioos.mobile.ui.DashboardScreen
+import kotlinx.coroutines.launch
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            var snapshot by remember { mutableStateOf<SyncSnapshot?>(null) }
+            var isLoading by remember { mutableStateOf(true) }
+            val scope = rememberCoroutineScope()
+
+            fun fetchSyncSnapshot() {
+                scope.launch {
+                    isLoading = true
+                    try {
+                        snapshot = SyncApiClient.fetchSnapshotWithFallback(applicationContext)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            }
+
+            LaunchedEffect(Unit) {
+                fetchSyncSnapshot()
+            }
+
+            DashboardScreen(
+                snapshot = snapshot,
+                isLoading = isLoading,
+                onRefresh = { fetchSyncSnapshot() },
+                onUpdateCustomUrl = { newUrl ->
+                    SnapshotCacheManager.setCustomUrl(applicationContext, newUrl)
+                    fetchSyncSnapshot()
+                }
+            )
+        }
+    }
+}
+</file>
+
+<file path="mobile-app/app/src/main/java/com/portfolioos/mobile/ui/PortfolioCharts.kt">
+package com.portfolioos.mobile.ui
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.portfolioos.mobile.model.FlatHoldingDto
+import com.portfolioos.mobile.model.NetWorthPointDto
+
+data class BucketAllocation(
+    val bucketName: String,
+    val totalAmount: Double,
+    val percentage: Float,
+    val color: Color
+)
+
+val SEBIBucketColors = mapOf(
+    "Flexi Cap" to Color(0xFF06B6D4),                // Vibrant Cyan
+    "Large & Midcap" to Color(0xFFA855F7),           // Electric Violet
+    "Midcap" to Color(0xFF3B82F6),                   // Royal Blue
+    "Small Cap" to Color(0xFF10B981),                // Emerald Green
+    "Microcap" to Color(0xFFEC4899),                 // Coral Pink
+    "Factor Value Index" to Color(0xFFF59E0B),       // Amber Gold
+    "Factor Momentum Index" to Color(0xFF6366F1),    // Indigo
+    "Equal Weight Index" to Color(0xFF14B8A6),       // Teal
+    "Sectoral/Thematic" to Color(0xFFF43F5E),        // Rose
+    "Gold & Commodities" to Color(0xFFEAB308),       // Gold
+    "Debt & Liquid" to Color(0xFF64748B)             // Slate
+)
+
+@Composable
+fun DonutAllocationChart(
+    holdings: List<FlatHoldingDto>,
+    modifier: Modifier = Modifier
+) {
+    val defaultColor = Color(0xFF94A3B8)
+
+    val allocations = remember(holdings) {
+        val totalVal = holdings.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }.coerceAtLeast(1.0)
+        val grouped = holdings.groupBy { it.assetBucket.ifEmpty { "Others" } }
+        grouped.map { (bucket, list) ->
+            val bucketVal = list.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }
+            val pct = (bucketVal / totalVal * 100).toFloat()
+            BucketAllocation(
+                bucketName = bucket,
+                totalAmount = bucketVal,
+                percentage = pct,
+                color = SEBIBucketColors[bucket] ?: defaultColor
+            )
+        }.sortedByDescending { it.percentage }
+    }
+
+    val animProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(holdings) {
+        animProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing)
+        )
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = "SEBI CATEGORY ALLOCATION",
+                color = Color(0xFF94A3B8),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Donut Canvas
+                Box(
+                    modifier = Modifier.size(130.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .size(120.dp)
+                            .graphicsLayer()
+                    ) {
+                        val strokeWidth = 22.dp.toPx()
+                        var startAngle = -90f
+
+                        allocations.forEach { alloc ->
+                            val sweepAngle = (alloc.percentage / 100f) * 360f * animProgress.value
+                            drawArc(
+                                color = alloc.color,
+                                startAngle = startAngle,
+                                sweepAngle = sweepAngle,
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
+                            )
+                            startAngle += sweepAngle
+                        }
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${allocations.size}",
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = "Categories",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Legend List
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    allocations.take(5).forEach { alloc ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(alloc.color)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = alloc.bucketName,
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = "%.1f%%".format(alloc.percentage),
+                                color = alloc.color,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PerformanceBarChart(
+    holdings: List<FlatHoldingDto>,
+    modifier: Modifier = Modifier
+) {
+    val topHoldings = remember(holdings) {
+        holdings.sortedByDescending { it.xirr }.take(5)
+    }
+
+    val maxVal = remember(topHoldings) {
+        topHoldings.maxOfOrNull { kotlin.math.abs(it.xirr) }?.toFloat()?.coerceAtLeast(1f) ?: 10f
+    }
+
+    val animProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(holdings) {
+        animProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
+        )
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = "TOP PERFORMING SCHEMES (XIRR)",
+                color = Color(0xFF94A3B8),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            topHoldings.forEach { holding ->
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = holding.fundName.ifEmpty { holding.isin },
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "${if (holding.xirr >= 0) "+" else ""}${holding.xirr}%",
+                            color = if (holding.xirr >= 0) Color(0xFF10B981) else Color.Red,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    val barRatio = (kotlin.math.abs(holding.xirr).toFloat() / maxVal * animProgress.value).coerceIn(0.05f, 1f)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF181F33))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(barRatio)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = if (holding.xirr >= 0) listOf(Color(0xFF06B6D4), Color(0xFF10B981))
+                                        else listOf(Color(0xFFEF4444), Color(0xFFB91C1C))
+                                    )
+                                )
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HistoricalNetWorthTrendChart(
+    trendPoints: List<NetWorthPointDto>,
+    modifier: Modifier = Modifier
+) {
+    val animProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(trendPoints) {
+        animProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing)
+        )
+    }
+
+    val rawVals = if (trendPoints.isEmpty()) listOf(100.0, 105.0, 110.0, 115.0, 120.0) else trendPoints.map { it.valuation }
+    val minVal = rawVals.minOrNull() ?: 1.0
+    val maxVal = rawVals.maxOrNull() ?: (minVal * 1.2)
+    val valRange = (maxVal - minVal).coerceAtLeast(1.0)
+    val points = rawVals.map { v -> ((v - minVal) / valRange * 0.70 + 0.25).toFloat() }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "HISTORICAL NET WORTH TREND",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "NAV Growth & Capital Curve",
+                        color = Color(0xFFD0FF00),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp)
+            ) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer()
+                ) {
+                    val width = size.width
+                    val height = size.height
+
+                    val stepX = width / (points.size - 1).coerceAtLeast(1)
+                    val path = androidx.compose.ui.graphics.Path()
+                    val fillPath = androidx.compose.ui.graphics.Path()
+
+                    val startY = height - (points[0] * height * 0.7f * animProgress.value)
+                    path.moveTo(0f, startY)
+                    fillPath.moveTo(0f, height)
+                    fillPath.lineTo(0f, startY)
+
+                    for (i in 1 until points.size) {
+                        val x = i * stepX
+                        val y = height - (points[i] * height * 0.7f * animProgress.value)
+                        val prevX = (i - 1) * stepX
+                        val prevY = height - (points[i - 1] * height * 0.7f * animProgress.value)
+
+                        val controlX1 = prevX + (stepX / 2f)
+                        val controlY1 = prevY
+                        val controlX2 = prevX + (stepX / 2f)
+                        val controlY2 = y
+
+                        path.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
+                        fillPath.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
+                    }
+
+                    fillPath.lineTo(width, height)
+                    fillPath.close()
+
+                    drawPath(
+                        path = fillPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFFD0FF00).copy(alpha = 0.35f), Color(0xFF00F0FF).copy(alpha = 0.02f))
+                        )
+                    )
+
+                    drawPath(
+                        path = path,
+                        color = Color(0xFFD0FF00),
+                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+            }
+        }
+    }
+}
+</file>
+
+<file path="mobile-app/app/src/main/AndroidManifest.xml">
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="Portfolio OS"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PortfolioOS"
+        android:usesCleartextTraffic="true"
+        tools:targetApi="31">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.PortfolioOS">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".widget.PortfolioGlanceReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/portfolio_glance_widget_info" />
+        </receiver>
+    </application>
+
+</manifest>
+</file>
+
+<file path="mobile-app/app/build.gradle.kts">
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "com.portfolioos.mobile"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.portfolioos.mobile"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "3.0.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        vectorDrawables {
+            useSupportLibrary = true
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.8"
+    }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.activity:activity-compose:1.8.2")
+    implementation(platform("androidx.compose:compose-bom:2023.08.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+
+    // Room Database
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+
+    // Jetpack Glance Widget
+    implementation("androidx.glance:glance-appwidget:1.0.0")
+    implementation("androidx.glance:glance-material3:1.0.0")
+
+    // Networking
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2023.08.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+</file>
+
+<file path="mobile-app/app/src/main/java/com/portfolioos/mobile/api/SyncApiClient.kt">
 package com.portfolioos.mobile.api
+
 import android.content.Context
 import com.portfolioos.mobile.BuildConfig
 import com.portfolioos.mobile.data.SnapshotCacheManager
@@ -100,41 +1175,50 @@ import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
+
 interface SyncApiService {
     @GET("api/v1/sync/snapshot")
     suspend fun getSnapshot(
         @Header("X-Api-Auth-Token") token: String,
         @Query("fy") fiscalYear: String = "2026-27"
     ): SyncSnapshot
+
     @POST("api/v1/simulate/trade")
     suspend fun simulateTrade(
         @Header("X-Api-Auth-Token") token: String,
         @Body request: TradeSimulationRequestDto
     ): TradeSimulationResultDto
 }
+
 object SyncApiClient {
     const val USB_BASE_URL = "http://127.0.0.1:8080/"
     const val EMULATOR_BASE_URL = "http://10.0.2.2:8080/"
     const val WIFI_BASE_URL = "http://192.168.1.13:8080/"
+
     fun createService(baseUrl: String = USB_BASE_URL): SyncApiService {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
         }
+
         val okHttpClient = OkHttpClient.Builder()
             .connectTimeout(3, TimeUnit.SECONDS)
             .readTimeout(3, TimeUnit.SECONDS)
             .addInterceptor(logging)
             .build()
+
         val retrofit = Retrofit.Builder()
             .baseUrl(baseUrl)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
+
         return retrofit.create(SyncApiService::class.java)
     }
+
     suspend fun fetchSnapshotWithFallback(context: Context): SyncSnapshot {
         val customUrl = SnapshotCacheManager.getCustomUrl(context)
         val authToken = SnapshotCacheManager.getAuthToken(context)
+        
         // 1. Try Custom Remote/Tunnel URL if configured
         if (!customUrl.isNullOrBlank()) {
             try {
@@ -146,6 +1230,7 @@ object SyncApiClient {
                 // fallthrough to local networks
             }
         }
+
         // 2. Try USB Loopback (adb reverse)
         try {
             val snapshot = createService(USB_BASE_URL).getSnapshot(token = authToken)
@@ -175,9 +1260,11 @@ object SyncApiClient {
             }
         }
     }
+
     suspend fun simulateTradeWithFallback(context: Context, request: TradeSimulationRequestDto): TradeSimulationResultDto {
         val customUrl = SnapshotCacheManager.getCustomUrl(context)
         val authToken = SnapshotCacheManager.getAuthToken(context)
+
         if (!customUrl.isNullOrBlank()) {
             try {
                 val formatted = if (customUrl.endsWith("/")) customUrl else "$customUrl/"
@@ -186,6 +1273,7 @@ object SyncApiClient {
                 // fallthrough
             }
         }
+
         try {
             return createService(USB_BASE_URL).simulateTrade(token = authToken, request = request)
         } catch (e1: Exception) {
@@ -197,19 +1285,21 @@ object SyncApiClient {
         }
     }
 }
-```
+</file>
 
-## File: app/src/main/java/com/portfolioos/mobile/model/SyncModels.kt
-```kotlin
+<file path="mobile-app/app/src/main/java/com/portfolioos/mobile/model/SyncModels.kt">
 package com.portfolioos.mobile.model
+
 import androidx.compose.runtime.Immutable
 import com.google.gson.annotations.SerializedName
+
 @Immutable
 data class NetWorthPointDto(
     @SerializedName("date") val date: String = "",
     @SerializedName("valuation") val valuation: Double = 0.0,
     @SerializedName("invested") val invested: Double = 0.0
 )
+
 @Immutable
 data class SyncSnapshot(
     @SerializedName("sync_info") val syncInfo: SyncInfoDto? = null,
@@ -218,6 +1308,7 @@ data class SyncSnapshot(
     @SerializedName("radar_signals") val radarSignals: List<RadarSignalDto>? = emptyList(),
     @SerializedName("net_worth_history") val netWorthHistory: List<NetWorthPointDto>? = emptyList()
 )
+
 @Immutable
 data class SyncInfoDto(
     @SerializedName("timestamp") val timestamp: Long = 0L,
@@ -233,6 +1324,7 @@ data class SyncInfoDto(
     @SerializedName("formatted_total_invested") val formattedTotalInvested: String = "₹0.00",
     @SerializedName("formatted_unrealized_gain") val formattedUnrealizedGain: String = "₹0.00"
 )
+
 @Immutable
 data class FlatHoldingDto(
     @SerializedName("isin") val isin: String = "",
@@ -246,6 +1338,7 @@ data class FlatHoldingDto(
     @SerializedName("formatted_current_value") val formattedCurrentValue: String = "₹0.00",
     @SerializedName("formatted_invested_value") val formattedInvestedValue: String = "₹0.00"
 )
+
 @Immutable
 data class FlatTaxLotDto(
     @SerializedName("isin") val isin: String = "",
@@ -258,6 +1351,7 @@ data class FlatTaxLotDto(
     @SerializedName("holding_days") val holdingDays: Long = 0L,
     @SerializedName("days_to_ltcg") val daysToLtcg: Long = 0L
 )
+
 @Immutable
 data class RadarSignalDto(
     @SerializedName("signal_type") val signalType: String = "",
@@ -267,6 +1361,7 @@ data class RadarSignalDto(
     @SerializedName("severity") val severity: String = "",
     @SerializedName("badge_text") val badgeText: String = ""
 )
+
 @Immutable
 data class TradeSimulationRequestDto(
     @SerializedName("isin") val isin: String,
@@ -276,6 +1371,7 @@ data class TradeSimulationRequestDto(
     @SerializedName("tradeDate") val tradeDate: String = "",
     @SerializedName("tradeType") val tradeType: String // DISPOSAL or ACQUISITION
 )
+
 @Immutable
 data class TradeSimulationResultDto(
     @SerializedName("isin") val isin: String = "",
@@ -295,11 +1391,11 @@ data class TradeSimulationResultDto(
     @SerializedName("postTradeXirr") val postTradeXirr: Double = 0.0,
     @SerializedName("taxSummaryNotice") val taxSummaryNotice: String = ""
 )
-```
+</file>
 
-## File: app/src/main/java/com/portfolioos/mobile/ui/DashboardScreen.kt
-```kotlin
+<file path="mobile-app/app/src/main/java/com/portfolioos/mobile/ui/DashboardScreen.kt">
 package com.portfolioos.mobile.ui
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -339,6 +1435,7 @@ import com.portfolioos.mobile.model.RadarSignalDto
 import com.portfolioos.mobile.model.SyncSnapshot
 import com.portfolioos.mobile.util.formatInr
 import kotlinx.coroutines.launch
+
 // Bleeding-Edge Material 3 Expressive Vibrant Obsidian Palette
 val M3ObsidianDark = Color(0xFF030712)
 val M3SurfaceCard = Color(0xFF0D1424)
@@ -349,6 +1446,7 @@ val M3VibrantViolet = Color(0xFFE040FB)
 val M3GreenPositive = Color(0xFF10B981)
 val M3AmberWarning = Color(0xFFF59E0B)
 val M3TextMuted = Color(0xFF94A3B8)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DashboardScreen(
@@ -361,6 +1459,7 @@ fun DashboardScreen(
     val coroutineScope = rememberCoroutineScope()
     var showUrlDialog by remember { mutableStateOf(false) }
     var inputUrl by remember { mutableStateOf("") }
+
     MaterialTheme(
         colorScheme = darkColorScheme(
             background = M3ObsidianDark,
@@ -416,6 +1515,7 @@ fun DashboardScreen(
                         containerColor = M3ObsidianDark
                     )
                 )
+
                 if (isLoading) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -473,6 +1573,7 @@ fun DashboardScreen(
                     val holdings = snapshot.holdings ?: emptyList()
                     val radarSignals = snapshot.radarSignals ?: emptyList()
                     val taxLots = snapshot.taxLots ?: emptyList()
+
                     // High-performance 120fps Horizontal Pager with zero per-frame transform overhead
                     HorizontalPager(
                         state = pagerState,
@@ -490,6 +1591,7 @@ fun DashboardScreen(
                     }
                 }
             }
+
             // Google Material 3 Expressive Floating Glassmorphic Pill Overlaid directly over Screen
             Box(
                 modifier = Modifier
@@ -579,6 +1681,7 @@ fun DashboardScreen(
                     }
                 }
             }
+
             // Dialog for setting Custom Core Node Remote Server URL (Tailscale / Ngrok / LAN IP)
             if (showUrlDialog) {
                 AlertDialog(
@@ -624,6 +1727,7 @@ fun DashboardScreen(
         }
     }
 }
+
 @Composable
 fun ExpressiveNavPill(
     selected: Boolean,
@@ -637,6 +1741,7 @@ fun ExpressiveNavPill(
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessHigh),
         label = "PillScale"
     )
+
     Surface(
         onClick = onClick,
         color = if (selected) activeColor.copy(alpha = 0.22f) else Color.Transparent,
@@ -667,6 +1772,7 @@ fun ExpressiveNavPill(
         }
     }
 }
+
 @Composable
 fun HoldingsView(snapshot: com.portfolioos.mobile.model.SyncSnapshot?, syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: List<FlatHoldingDto>) {
     LazyColumn(
@@ -742,6 +1848,7 @@ fun HoldingsView(snapshot: com.portfolioos.mobile.model.SyncSnapshot?, syncInfo:
                         Spacer(modifier = Modifier.height(14.dp))
                         Divider(color = Color.White.copy(alpha = 0.1f))
                         Spacer(modifier = Modifier.height(14.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -782,15 +1889,19 @@ fun HoldingsView(snapshot: com.portfolioos.mobile.model.SyncSnapshot?, syncInfo:
                 }
             }
         }
+
         item {
             HistoricalNetWorthTrendChart(trendPoints = snapshot?.netWorthHistory ?: emptyList())
         }
+
         item {
             DonutAllocationChart(holdings = holdings)
         }
+
         item {
             PerformanceBarChart(holdings = holdings)
         }
+
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -818,6 +1929,7 @@ fun HoldingsView(snapshot: com.portfolioos.mobile.model.SyncSnapshot?, syncInfo:
                 }
             }
         }
+
         if (holdings.isEmpty()) {
             item {
                 Card(
@@ -840,6 +1952,7 @@ fun HoldingsView(snapshot: com.portfolioos.mobile.model.SyncSnapshot?, syncInfo:
         }
     }
 }
+
 @Composable
 fun M3HoldingCard(holding: FlatHoldingDto) {
     Card(
@@ -925,6 +2038,7 @@ fun M3HoldingCard(holding: FlatHoldingDto) {
         }
     }
 }
+
 @Composable
 fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
     LazyColumn(
@@ -944,6 +2058,7 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
                 letterSpacing = 1.5.sp
             )
         }
+
         if (radarSignals.isEmpty()) {
             item {
                 Card(
@@ -966,12 +2081,14 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
         }
     }
 }
+
 @Composable
 fun M3RadarCard(signal: RadarSignalDto) {
     val isQuant = signal.signalType.contains("QUANT", ignoreCase = true)
     val isWarning = signal.severity.equals("WARNING", ignoreCase = true)
     val borderColor = if (isQuant) M3VibrantViolet else if (isWarning) M3AmberWarning else M3NeonCyan
     val containerColor = if (isQuant) Color(0xFF1A0A26) else M3SurfaceCard
+
     OutlinedCard(
         colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
         border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(borderColor)),
@@ -1013,14 +2130,17 @@ fun M3RadarCard(signal: RadarSignalDto) {
         }
     }
 }
+
 @Composable
 fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingDto>) {
     val nameMap = remember(holdings) {
         holdings.associate { it.isin to it.fundName }
     }
+
     val groupedLots = remember(taxLots) {
         taxLots.groupBy { it.isin }
     }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1038,6 +2158,7 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
                 letterSpacing = 1.5.sp
             )
         }
+
         if (groupedLots.isEmpty()) {
             item {
                 Card(
@@ -1061,12 +2182,15 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
         }
     }
 }
+
 @Composable
 fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTaxLotDto>) {
     var expanded by remember { mutableStateOf(false) }
+
     val ltcgCount = remember(lots) { lots.count { it.isLongTerm } }
     val stcgCount = remember(lots) { lots.size - ltcgCount }
     val totalUnits = remember(lots) { lots.sumOf { it.units } }
+
     Card(
         colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
         shape = RoundedCornerShape(20.dp),
@@ -1095,6 +2219,7 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                         fontFamily = FontFamily.Monospace
                     )
                 }
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (ltcgCount > 0) {
                         Surface(
@@ -1133,11 +2258,13 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                     )
                 }
             }
+
             AnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(modifier = Modifier.height(12.dp))
                     Divider(color = M3SurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
+
                     lots.forEach { lot ->
                         Row(
                             modifier = Modifier
@@ -1165,1005 +2292,6 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
         }
     }
 }
-```
+</file>
 
-## File: app/src/main/java/com/portfolioos/mobile/ui/PortfolioCharts.kt
-```kotlin
-package com.portfolioos.mobile.ui
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.portfolioos.mobile.model.FlatHoldingDto
-import com.portfolioos.mobile.model.NetWorthPointDto
-data class BucketAllocation(
-    val bucketName: String,
-    val totalAmount: Double,
-    val percentage: Float,
-    val color: Color
-)
-val SEBIBucketColors = mapOf(
-    "Flexi Cap" to Color(0xFF06B6D4),                // Vibrant Cyan
-    "Large & Midcap" to Color(0xFFA855F7),           // Electric Violet
-    "Midcap" to Color(0xFF3B82F6),                   // Royal Blue
-    "Small Cap" to Color(0xFF10B981),                // Emerald Green
-    "Microcap" to Color(0xFFEC4899),                 // Coral Pink
-    "Factor Value Index" to Color(0xFFF59E0B),       // Amber Gold
-    "Factor Momentum Index" to Color(0xFF6366F1),    // Indigo
-    "Equal Weight Index" to Color(0xFF14B8A6),       // Teal
-    "Sectoral/Thematic" to Color(0xFFF43F5E),        // Rose
-    "Gold & Commodities" to Color(0xFFEAB308),       // Gold
-    "Debt & Liquid" to Color(0xFF64748B)             // Slate
-)
-@Composable
-fun DonutAllocationChart(
-    holdings: List<FlatHoldingDto>,
-    modifier: Modifier = Modifier
-) {
-    val defaultColor = Color(0xFF94A3B8)
-    val allocations = remember(holdings) {
-        val totalVal = holdings.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }.coerceAtLeast(1.0)
-        val grouped = holdings.groupBy { it.assetBucket.ifEmpty { "Others" } }
-        grouped.map { (bucket, list) ->
-            val bucketVal = list.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }
-            val pct = (bucketVal / totalVal * 100).toFloat()
-            BucketAllocation(
-                bucketName = bucket,
-                totalAmount = bucketVal,
-                percentage = pct,
-                color = SEBIBucketColors[bucket] ?: defaultColor
-            )
-        }.sortedByDescending { it.percentage }
-    }
-    val animProgress = remember { Animatable(0f) }
-    LaunchedEffect(holdings) {
-        animProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing)
-        )
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
-        shape = RoundedCornerShape(20.dp),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                text = "SEBI CATEGORY ALLOCATION",
-                color = Color(0xFF94A3B8),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Donut Canvas
-                Box(
-                    modifier = Modifier.size(130.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(modifier = Modifier.size(120.dp)) {
-                        val strokeWidth = 22.dp.toPx()
-                        var startAngle = -90f
-                        allocations.forEach { alloc ->
-                            val sweepAngle = (alloc.percentage / 100f) * 360f * animProgress.value
-                            drawArc(
-                                color = alloc.color,
-                                startAngle = startAngle,
-                                sweepAngle = sweepAngle,
-                                useCenter = false,
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
-                            )
-                            startAngle += sweepAngle
-                        }
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${allocations.size}",
-                            color = Color.White,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            text = "Categories",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                // Legend List
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    allocations.take(5).forEach { alloc ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(alloc.color)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = alloc.bucketName,
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Text(
-                                text = "%.1f%%".format(alloc.percentage),
-                                color = alloc.color,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-@Composable
-fun PerformanceBarChart(
-    holdings: List<FlatHoldingDto>,
-    modifier: Modifier = Modifier
-) {
-    val topHoldings = remember(holdings) {
-        holdings.sortedByDescending { it.xirr }.take(5)
-    }
-    val maxVal = remember(topHoldings) {
-        topHoldings.maxOfOrNull { kotlin.math.abs(it.xirr) }?.toFloat()?.coerceAtLeast(1f) ?: 10f
-    }
-    val animProgress = remember { Animatable(0f) }
-    LaunchedEffect(holdings) {
-        animProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
-        )
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
-        shape = RoundedCornerShape(20.dp),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                text = "TOP PERFORMING SCHEMES (XIRR)",
-                color = Color(0xFF94A3B8),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            topHoldings.forEach { holding ->
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = holding.fundName.ifEmpty { holding.isin },
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = "${if (holding.xirr >= 0) "+" else ""}${holding.xirr}%",
-                            color = if (holding.xirr >= 0) Color(0xFF10B981) else Color.Red,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    val barRatio = (kotlin.math.abs(holding.xirr).toFloat() / maxVal * animProgress.value).coerceIn(0.05f, 1f)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF181F33))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(barRatio)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(
-                                    Brush.horizontalGradient(
-                                        colors = if (holding.xirr >= 0) listOf(Color(0xFF06B6D4), Color(0xFF10B981))
-                                        else listOf(Color(0xFFEF4444), Color(0xFFB91C1C))
-                                    )
-                                )
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-            }
-        }
-    }
-}
-@Composable
-fun HistoricalNetWorthTrendChart(
-    trendPoints: List<NetWorthPointDto>,
-    modifier: Modifier = Modifier
-) {
-    val animProgress = remember { Animatable(0f) }
-    LaunchedEffect(trendPoints) {
-        animProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing)
-        )
-    }
-    val rawVals = if (trendPoints.isEmpty()) listOf(100.0, 105.0, 110.0, 115.0, 120.0) else trendPoints.map { it.valuation }
-    val minVal = rawVals.minOrNull() ?: 1.0
-    val maxVal = rawVals.maxOrNull() ?: (minVal * 1.2)
-    val valRange = (maxVal - minVal).coerceAtLeast(1.0)
-    val points = rawVals.map { v -> ((v - minVal) / valRange * 0.70 + 0.25).toFloat() }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
-        shape = RoundedCornerShape(20.dp),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "HISTORICAL NET WORTH TREND",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "NAV Growth & Capital Curve",
-                        color = Color(0xFFD0FF00),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(140.dp)
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val width = size.width
-                    val height = size.height
-                    val stepX = width / (points.size - 1).coerceAtLeast(1)
-                    val path = androidx.compose.ui.graphics.Path()
-                    val fillPath = androidx.compose.ui.graphics.Path()
-                    val startY = height - (points[0] * height * 0.7f * animProgress.value)
-                    path.moveTo(0f, startY)
-                    fillPath.moveTo(0f, height)
-                    fillPath.lineTo(0f, startY)
-                    for (i in 1 until points.size) {
-                        val x = i * stepX
-                        val y = height - (points[i] * height * 0.7f * animProgress.value)
-                        val prevX = (i - 1) * stepX
-                        val prevY = height - (points[i - 1] * height * 0.7f * animProgress.value)
-                        val controlX1 = prevX + (stepX / 2f)
-                        val controlY1 = prevY
-                        val controlX2 = prevX + (stepX / 2f)
-                        val controlY2 = y
-                        path.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
-                        fillPath.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
-                    }
-                    fillPath.lineTo(width, height)
-                    fillPath.close()
-                    drawPath(
-                        path = fillPath,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFFD0FF00).copy(alpha = 0.35f), Color(0xFF00F0FF).copy(alpha = 0.02f))
-                        )
-                    )
-                    drawPath(
-                        path = path,
-                        color = Color(0xFFD0FF00),
-                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                }
-            }
-        }
-    }
-}
-```
-
-## File: app/src/main/java/com/portfolioos/mobile/ui/SimulatorScreen.kt
-```kotlin
-package com.portfolioos.mobile.ui
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.portfolioos.mobile.api.SyncApiClient
-import com.portfolioos.mobile.model.FlatHoldingDto
-import com.portfolioos.mobile.model.TradeSimulationRequestDto
-import com.portfolioos.mobile.util.formatInr
-import kotlinx.coroutines.launch
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SimulatorView(holdings: List<FlatHoldingDto>) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var selectedIsin by remember { mutableStateOf(holdings.firstOrNull()?.isin ?: "") }
-    var selectedName by remember { mutableStateOf(holdings.firstOrNull()?.fundName ?: "Select Scheme") }
-    var unitsText by remember { mutableStateOf("100.0") }
-    var priceText by remember { mutableStateOf("150.0") }
-    var tradeType by remember { mutableStateOf("DISPOSAL") }
-    var resultText by remember { mutableStateOf<String?>(null) }
-    var isExpanded by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "⚡ WHAT-IF TRADE SIMULATOR",
-            color = Color(0xFFD0FF00),
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp
-        )
-        Text(
-            text = "Preview tax drag and post-trade XIRR before executing trades.",
-            color = Color(0xFF94A3B8),
-            fontSize = 12.sp
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        // Scheme Selector
-        ExposedDropdownMenuBox(
-            expanded = isExpanded,
-            onExpandedChange = { isExpanded = !isExpanded }
-        ) {
-            OutlinedTextField(
-                value = selectedName,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Target Scheme", color = Color(0xFF94A3B8)) },
-                colors = TextFieldDefaults.outlinedTextFieldColors(focusedBorderColor = Color(0xFF00F0FF)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor()
-            )
-            ExposedDropdownMenu(
-                expanded = isExpanded,
-                onDismissRequest = { isExpanded = false }
-            ) {
-                holdings.forEach { holding ->
-                    DropdownMenuItem(
-                        text = { Text(holding.fundName) },
-                        onClick = {
-                            selectedIsin = holding.isin
-                            selectedName = holding.fundName
-                            isExpanded = false
-                        }
-                    )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = unitsText,
-                onValueChange = { unitsText = it },
-                label = { Text("Units", color = Color(0xFF94A3B8)) },
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedTextField(
-                value = priceText,
-                onValueChange = { priceText = it },
-                label = { Text("Price/NAV (₹)", color = Color(0xFF94A3B8)) },
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = tradeType == "DISPOSAL",
-                onClick = { tradeType = "DISPOSAL" },
-                label = { Text("Simulate Sale (Disposal)") }
-            )
-            FilterChip(
-                selected = tradeType == "ACQUISITION",
-                onClick = { tradeType = "ACQUISITION" },
-                label = { Text("Simulate Buy (SIP)") }
-            )
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = {
-                val units = unitsText.toDoubleOrNull() ?: 100.0
-                val price = priceText.toDoubleOrNull() ?: 150.0
-                isLoading = true
-                scope.launch {
-                    try {
-                        val req = TradeSimulationRequestDto(
-                            isin = selectedIsin,
-                            schemeName = selectedName,
-                            units = units,
-                            pricePerUnit = price,
-                            tradeType = tradeType
-                        )
-                        val res = SyncApiClient.simulateTradeWithFallback(context, req)
-                        resultText = """
-                            ✓ Simulation Execution Successful (Live Engine)
-                            • Target: ${res.schemeName}
-                            • Trade Type: ${res.tradeType} (${res.units} Units @ ₹${res.pricePerUnit})
-                            • Gross Trade Amount: ${formatInr(res.grossTradeAmount)}
-                            • Gross Capital Gain: ${formatInr(res.grossCapitalGain)}
-                            • LTCG Equity: ${formatInr(res.ltcgEquity)} | STCG Equity: ${formatInr(res.stcgEquity)}
-                            • Sec 112A Exemption Applied: ${formatInr(res.sec112aExemptionApplied)}
-                            • Projected Tax Liability: ${formatInr(res.estimatedTaxLiability)}
-                            • Post-Trade Valuation: ${formatInr(res.postTradeNetWorth)}
-                            • Post-Trade Portfolio XIRR: ${String.format("%.2f", res.postTradeXirr)}%
-                        """.trimIndent()
-                    } catch (e: Exception) {
-                        resultText = "⚠️ Simulation RPC failed: ${e.localizedMessage}"
-                    } finally {
-                        isLoading = false
-                    }
-                }
-            },
-            enabled = !isLoading,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD0FF00)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.Black, strokeWidth = 2.dp)
-            } else {
-                Text("Run What-If Simulation", color = Color.Black, fontWeight = FontWeight.Bold)
-            }
-        }
-        if (resultText != null) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Surface(
-                color = Color(0xFF0F172A),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = resultText!!,
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-        }
-    }
-}
-```
-
-## File: app/src/main/java/com/portfolioos/mobile/util/FormatUtils.kt
-```kotlin
-package com.portfolioos.mobile.util
-import java.text.NumberFormat
-import java.util.Locale
-fun formatInr(valNum: Double, showDecimals: Boolean = false): String {
-    val locale = Locale("en", "IN")
-    val formatter = NumberFormat.getCurrencyInstance(locale).apply {
-        maximumFractionDigits = if (showDecimals) 2 else 0
-        minimumFractionDigits = if (showDecimals) 2 else 0
-    }
-    val formatted = formatter.format(valNum)
-    return if (formatted.startsWith("INR")) {
-        formatted.replace("INR", "₹").trim()
-    } else {
-        formatted
-    }
-}
-fun formatInrStr(valStr: String?): String {
-    if (valStr.isNullOrBlank()) return "₹0"
-    val cleaned = valStr.replace("₹", "").replace(",", "").trim()
-    val dbl = cleaned.toDoubleOrNull() ?: return valStr
-    return formatInr(dbl, showDecimals = false)
-}
-```
-
-## File: app/src/main/java/com/portfolioos/mobile/widget/PortfolioGlanceWidget.kt
-```kotlin
-package com.portfolioos.mobile.widget
-import android.content.Context
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.glance.GlanceId
-import androidx.glance.GlanceModifier
-import androidx.glance.GlanceTheme
-import androidx.glance.action.actionStartActivity
-import androidx.glance.action.clickable
-import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.GlanceAppWidgetReceiver
-import androidx.glance.appwidget.provideContent
-import androidx.glance.background
-import androidx.glance.layout.Alignment
-import androidx.glance.layout.Column
-import androidx.glance.layout.Row
-import androidx.glance.layout.Spacer
-import androidx.glance.layout.fillMaxSize
-import androidx.glance.layout.fillMaxWidth
-import androidx.glance.layout.height
-import androidx.glance.layout.padding
-import androidx.glance.layout.width
-import androidx.glance.text.FontWeight
-import androidx.glance.text.Text
-import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
-import com.portfolioos.mobile.MainActivity
-import com.portfolioos.mobile.data.SnapshotCacheManager
-class PortfolioGlanceWidget : GlanceAppWidget() {
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val snapshot = SnapshotCacheManager.loadSnapshot(context)
-        val info = snapshot?.syncInfo
-        val holdings = snapshot?.holdings ?: emptyList()
-        val bestFund = holdings.maxByOrNull { it.xirr }
-        val worstFund = holdings.minByOrNull { it.xirr }
-        // Calculate portfolio gain percentage for privacy-first display
-        val totalInvested = info?.totalInvested ?: 1.0
-        val unrealizedGain = info?.unrealizedGain ?: 0.0
-        val gainPct = if (totalInvested > 0) (unrealizedGain / totalInvested) * 100.0 else 0.0
-        val formattedGainPct = String.format("%s%.2f%%", if (gainPct >= 0) "+" else "", gainPct)
-        provideContent {
-            GlanceTheme {
-                Column(
-                    modifier = GlanceModifier
-                        .fillMaxSize()
-                        .background(ColorProvider(Color(0xFF0D1424)))
-                        .padding(14.dp)
-                        .clickable(actionStartActivity<MainActivity>()),
-                    verticalAlignment = Alignment.Vertical.CenterVertically
-                ) {
-                    Row(
-                        modifier = GlanceModifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.Vertical.CenterVertically
-                    ) {
-                        Text(
-                            text = "PORTFOLIO OS",
-                            style = TextStyle(
-                                color = ColorProvider(Color(0xFFD0FF00)),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
-                        Spacer(modifier = GlanceModifier.defaultWeight())
-                        Text(
-                            text = info?.xirrPercentage ?: "0.00% XIRR",
-                            style = TextStyle(
-                                color = ColorProvider(Color(0xFF10B981)),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
-                    }
-                    Spacer(modifier = GlanceModifier.height(6.dp))
-                    // Privacy-First Valuation & Return Header
-                    Row(verticalAlignment = Alignment.Vertical.CenterVertically) {
-                        Text(
-                            text = "₹ • • • • • •",
-                            style = TextStyle(
-                                color = ColorProvider(Color(0xFF94A3B8)),
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
-                        Spacer(modifier = GlanceModifier.width(8.dp))
-                        Text(
-                            text = formattedGainPct,
-                            style = TextStyle(
-                                color = ColorProvider(if (gainPct >= 0) Color(0xFF10B981) else Color(0xFFEF4444)),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
-                    }
-                    Spacer(modifier = GlanceModifier.height(8.dp))
-                    Row(modifier = GlanceModifier.fillMaxWidth()) {
-                        Column(modifier = GlanceModifier.defaultWeight()) {
-                            Text(
-                                text = "BEST PERFORMER",
-                                style = TextStyle(color = ColorProvider(Color(0xFF94A3B8)), fontSize = 8.sp)
-                            )
-                            Text(
-                                text = bestFund?.let { "${it.fundName.take(14)} (+${it.xirr}%)" } ?: "N/A",
-                                style = TextStyle(color = ColorProvider(Color(0xFF10B981)), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            )
-                        }
-                        Spacer(modifier = GlanceModifier.width(6.dp))
-                        Column(modifier = GlanceModifier.defaultWeight()) {
-                            Text(
-                                text = "WORST PERFORMER",
-                                style = TextStyle(color = ColorProvider(Color(0xFF94A3B8)), fontSize = 8.sp)
-                            )
-                            Text(
-                                text = worstFund?.let { "${it.fundName.take(14)} (${it.xirr}%)" } ?: "N/A",
-                                style = TextStyle(color = ColorProvider(Color(0xFFF59E0B)), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            )
-                        }
-                    }
-                    Spacer(modifier = GlanceModifier.height(6.dp))
-                    Text(
-                        text = "Valuation Hidden for Privacy · Tap to Open App",
-                        style = TextStyle(color = ColorProvider(Color(0xFF00F0FF)), fontSize = 9.sp)
-                    )
-                }
-            }
-        }
-    }
-}
-class PortfolioGlanceReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = PortfolioGlanceWidget()
-}
-```
-
-## File: app/src/main/java/com/portfolioos/mobile/MainActivity.kt
-```kotlin
-package com.portfolioos.mobile
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.runtime.*
-import com.portfolioos.mobile.api.SyncApiClient
-import com.portfolioos.mobile.data.SnapshotCacheManager
-import com.portfolioos.mobile.model.SyncSnapshot
-import com.portfolioos.mobile.ui.DashboardScreen
-import kotlinx.coroutines.launch
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            var snapshot by remember { mutableStateOf<SyncSnapshot?>(null) }
-            var isLoading by remember { mutableStateOf(true) }
-            val scope = rememberCoroutineScope()
-            fun fetchSyncSnapshot() {
-                scope.launch {
-                    isLoading = true
-                    try {
-                        snapshot = SyncApiClient.fetchSnapshotWithFallback(applicationContext)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    } finally {
-                        isLoading = false
-                    }
-                }
-            }
-            LaunchedEffect(Unit) {
-                fetchSyncSnapshot()
-            }
-            DashboardScreen(
-                snapshot = snapshot,
-                isLoading = isLoading,
-                onRefresh = { fetchSyncSnapshot() },
-                onUpdateCustomUrl = { newUrl ->
-                    SnapshotCacheManager.setCustomUrl(applicationContext, newUrl)
-                    fetchSyncSnapshot()
-                }
-            )
-        }
-    }
-}
-```
-
-## File: app/src/main/res/drawable/ic_launcher_background.xml
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="#030712"
-        android:pathData="M0,0h108v108h-108z" />
-    <path
-        android:fillColor="#0D1424"
-        android:pathData="M0,0 L108,108 L0,108 Z" />
-</vector>
-```
-
-## File: app/src/main/res/drawable/ic_launcher_foreground.xml
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Glowing Cyber Grid Accent -->
-    <path
-        android:strokeColor="#1E293B"
-        android:strokeWidth="1"
-        android:pathData="M24,36 H84 M24,54 H84 M24,72 H84" />
-    <!-- Upward Trend Line -->
-    <path
-        android:strokeColor="#00F0FF"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M28,68 L44,52 L56,60 L80,36" />
-    <!-- Trend Line Sparkle Dots -->
-    <path
-        android:fillColor="#D0FF00"
-        android:pathData="M80,36 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
-    <!-- Portfolio OS Monogram "P" Emblem -->
-    <path
-        android:fillColor="#D0FF00"
-        android:pathData="M34,34 h16 a12,12 0 0,1 0,24 h-8 v16 h-8 z" />
-    <path
-        android:fillColor="#030712"
-        android:pathData="M42,42 h8 a4,4 0 0,1 0,8 h-8 z" />
-</vector>
-```
-
-## File: app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-</adaptive-icon>
-```
-
-## File: app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-</adaptive-icon>
-```
-
-## File: app/src/main/res/values/styles.xml
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.PortfolioOS" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">#050811</item>
-        <item name="android:windowBackground">#050811</item>
-    </style>
-</resources>
-```
-
-## File: app/src/main/res/xml/backup_rules.xml
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<full-backup-content>
-    <exclude path="." />
-</full-backup-content>
-```
-
-## File: app/src/main/res/xml/data_extraction_rules.xml
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<data-extraction-rules>
-    <cloud-backup>
-        <exclude path="." />
-    </cloud-backup>
-</data-extraction-rules>
-```
-
-## File: app/src/main/res/xml/portfolio_glance_widget_info.xml
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="180dp"
-    android:minHeight="110dp"
-    android:updatePeriodMillis="1800000"
-    android:resizeMode="horizontal|vertical"
-    android:widgetCategory="home_screen">
-</appwidget-provider>
-```
-
-## File: app/src/main/AndroidManifest.xml
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <application
-        android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="Portfolio OS"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.PortfolioOS"
-        android:usesCleartextTraffic="true"
-        tools:targetApi="31">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:theme="@style/Theme.PortfolioOS">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-        <receiver
-            android:name=".widget.PortfolioGlanceReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/portfolio_glance_widget_info" />
-        </receiver>
-    </application>
-</manifest>
-```
-
-## File: app/build.gradle.kts
-```kotlin
-plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-}
-
-android {
-    namespace = "com.portfolioos.mobile"
-    compileSdk = 34
-
-    defaultConfig {
-        applicationId = "com.portfolioos.mobile"
-        minSdk = 26
-        targetSdk = 34
-        versionCode = 1
-        versionName = "3.0.0"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables {
-            useSupportLibrary = true
-        }
-    }
-
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-    buildFeatures {
-        compose = true
-        buildConfig = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
-    }
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-    }
-}
-
-dependencies {
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.activity:activity-compose:1.8.2")
-    implementation(platform("androidx.compose:compose-bom:2023.08.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-
-    // Room Database
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-
-    // Jetpack Glance Widget
-    implementation("androidx.glance:glance-appwidget:1.0.0")
-    implementation("androidx.glance:glance-material3:1.0.0")
-
-    // Networking
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-
-    // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-
-    testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation(platform("androidx.compose:compose-bom:2023.08.00"))
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
-}
-```
-
-## File: build.gradle.kts
-```kotlin
-plugins {
-    id("com.android.application") version "8.2.2" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.22" apply false
-}
-```
-
-## File: gradle.properties
-```
-android.useAndroidX=true
-android.nonFinalResIds=false
-org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-```
-
-## File: local.properties
-```
-sdk.dir=/home/rakeshpc/Android/Sdk
-```
-
-## File: settings.gradle.kts
-```kotlin
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-
-rootProject.name = "portfolio-os-mobile"
-include(":app")
-```
+</files>

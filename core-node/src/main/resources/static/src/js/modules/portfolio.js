@@ -275,7 +275,8 @@ export function renderConsolidationPlan(data) {
     badge.style.color = isWindowOpen ? '#10b981' : '#06b6d4';
   }
 
-  const proceeds = Math.round(parseFloat(totalProceeds) || 256200);
+  const parsedProceeds = parseFloat(totalProceeds);
+  const proceeds = (!isNaN(parsedProceeds)) ? Math.round(parsedProceeds) : 0;
   const taxDrag = Math.round(parseFloat(totalTaxDrag) || 0);
 
   let html = `

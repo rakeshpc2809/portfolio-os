@@ -125,13 +125,11 @@ def run_monte_carlo_fire_simulation(
         }
 
     returns = np.array(daily_returns_list)
-    mean_daily = np.mean(returns)
-    std_daily = np.std(returns)
-
     trading_days = years * 252
     daily_expense = annual_expense / 252.0
 
-    simulated_daily_returns = np.random.normal(loc=mean_daily, scale=std_daily, size=(num_simulations, trading_days))
+    # Historical Bootstrapping: Randomly sample actual past daily returns with replacement to preserve true fat tails & skewness
+    simulated_daily_returns = np.random.choice(returns, size=(num_simulations, trading_days), replace=True)
 
     surviving_sims = 0
     final_corpuses = []

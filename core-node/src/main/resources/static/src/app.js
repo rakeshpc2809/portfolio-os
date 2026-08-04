@@ -79,6 +79,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  if (cmdInput) {
+    cmdInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const query = cmdInput.value.trim();
+        if (!query) return;
+
+        if (cmdResults) {
+          cmdResults.innerHTML = '<div style="padding:12px; color:#06b6d4; font-family:monospace;">🧠 AI Engine Thinking...</div>';
+        }
+
+        const evtSource = new EventSource(`/api/v1/llm/stream?prompt=${encodeURIComponent(query)}`);
+        let outputText = '';
+
+        evtSource.onmessage = function(event) {
+          outputText += event.data;
+          if (cmdResults) {
+            cmdResults.innerHTML = `
+              <div style="padding:12px; background:#0f172a; border-radius:8px; color:#f8fafc; font-size:13px; white-space:pre-wrap; font-family:monospace; line-height:1.5;">
+                <div style="color:#d0ff00; font-weight:bold; margin-bottom:6px;">⚡ PORTFOLIO OS AI RESPONSE</div>
+                ${outputText}
+              </div>
+            `;
+          }
+        };
+
+        evtSource.onerror = function() {
+          evtSource.close();
+        };
+      }
+    });
+  }
+
   if (cmdResults) {
     cmdResults.addEventListener('click', (e) => {
       const item = e.target.closest('.cmd-item');

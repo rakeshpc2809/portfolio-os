@@ -1,8 +1,9 @@
 package com.portfolioos.core.service;
 
 import com.portfolioos.core.matcher.FifoMatcher;
+import com.portfolioos.core.matcher.TaxClassifier;
 import com.portfolioos.core.model.*;
-import com.portfolioos.core.tax.TaxClassifier;
+import com.portfolioos.core.xirr.CashFlow;
 import com.portfolioos.core.xirr.XirrEngine;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +17,7 @@ import java.util.*;
 public class SimulationService {
 
     private final LedgerCacheService cacheService;
+    private final XirrEngine xirrEngine = new XirrEngine();
 
     public SimulationService(LedgerCacheService cacheService) {
         this.cacheService = cacheService;
@@ -93,20 +95,14 @@ public class SimulationService {
 
         if (type == EventType.DISPOSAL) {
             for (MatchedLot match : simResult.matchedLots()) {
-                if (match.sellEvent().id().equals(simEvent.id())) {
-                    Lot buy = match.buyLot();
-                    long days = ChronoUnit.DAYS.between(buy.acquisitionDate(), simEvent.eventDate());
-                    AssetCategory category = TaxClassifier.detectCategory(buy.assetId(), buy.assetName());
-                    boolean isListed = TaxClassifier.isListed(buy.assetId(), buy.assetName());
-                    TaxTerm term = TaxClassifier.classifyTaxTerm(category, days, "2026-27", isListed);
+                if (match.disposalEventId().equals(simEvent.id())) {
+                    AssetCategory category = match.assetCategory();
+                    TaxTerm term = match.taxTerm();
 
-                    BigDecimal matchedUnits = match.matchedUnits();
-                    BigDecimal cost = buy.pricePerUnit().multiply(matchedUnits);
-                    BigDecimal sale = simEvent.pricePerUnit().multiply(matchedUnits);
-                    BigDecimal gain = sale.subtract(cost);
+                    BigDecimal gain = match.realizedGain();
                     totalGain += gain.doubleValue();
 
-                    if (category == AssetCategory.EQUITY || category == AssetCategory.EQUITY_ORIENTED) {
+                    if (category == AssetCategory.EQUITY) {
                         if (term == TaxTerm.LONG_TERM) {
                             ltcgEquity += gain.doubleValue();
                         } else {
@@ -121,17 +117,8 @@ public class SimulationService {
 
         double previousLtcgRealized = 0.0;
         for (MatchedLot match : state.fifoResult().matchedLots()) {
-            Lot buy = match.buyLot();
-            TaxEvent sell = match.sellEvent();
-            long days = ChronoUnit.DAYS.between(buy.acquisitionDate(), sell.eventDate());
-            AssetCategory category = TaxClassifier.detectCategory(buy.assetId(), buy.assetName());
-            boolean isListed = TaxClassifier.isListed(buy.assetId(), buy.assetName());
-            TaxTerm term = TaxClassifier.classifyTaxTerm(category, days, "2026-27", isListed);
-            if ((category == AssetCategory.EQUITY || category == AssetCategory.EQUITY_ORIENTED) && term == TaxTerm.LONG_TERM) {
-                BigDecimal matchedUnits = match.matchedUnits();
-                BigDecimal cost = buy.pricePerUnit().multiply(matchedUnits);
-                BigDecimal sale = sell.pricePerUnit().multiply(matchedUnits);
-                previousLtcgRealized += Math.max(0.0, sale.subtract(cost).doubleValue());
+            if (match.assetCategory() == AssetCategory.EQUITY && match.taxTerm() == TaxTerm.LONG_TERM) {
+                previousLtcgRealized += Math.max(0.0, match.realizedGain().doubleValue());
             }
         }
 
@@ -145,23 +132,23 @@ public class SimulationService {
         double postCurrentVal = 0.0;
 
         for (Lot lot : simResult.openLots()) {
-            postInvested += lot.remainingUnits().multiply(lot.pricePerUnit()).doubleValue();
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.pricePerUnit());
+            postInvested += lot.remainingUnits().multiply(lot.costPerUnit()).doubleValue();
+            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
             postCurrentVal += lot.remainingUnits().multiply(nav).doubleValue();
         }
 
-        List<XirrEngine.CashFlow> cashFlows = new ArrayList<>();
+        List<CashFlow> cashFlows = new ArrayList<>();
         for (TaxEvent ev : simEvents) {
-            double amt = (ev.eventType() == EventType.ACQUISITION)
-                ? -ev.grossAmount().doubleValue()
-                : ev.grossAmount().doubleValue();
-            cashFlows.add(new XirrEngine.CashFlow(ev.eventDate(), amt));
+            BigDecimal amt = (ev.eventType() == EventType.ACQUISITION || ev.eventType() == EventType.SIP_INSTALMENT)
+                ? ev.grossAmount().negate()
+                : ev.grossAmount();
+            cashFlows.add(new CashFlow(ev.eventDate(), amt));
         }
         if (postCurrentVal > 0) {
-            cashFlows.add(new XirrEngine.CashFlow(tradeDate, postCurrentVal));
+            cashFlows.add(new CashFlow(tradeDate, BigDecimal.valueOf(postCurrentVal)));
         }
 
-        double postXirr = XirrEngine.calculateXirr(cashFlows);
+        double postXirr = xirrEngine.calculateXirr(cashFlows);
 
         String notice = (type == EventType.DISPOSAL)
             ? String.format("Simulated Sale: Estimated Tax Drag ₹%,.2f (LTCG Exemption Used: ₹%,.2f)", estimatedTax, exemptionApplied)

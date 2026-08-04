@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class LedgerCacheService {
@@ -20,12 +21,9 @@ public class LedgerCacheService {
     private final AmfiNavSync amfiSync = new AmfiNavSync();
     private final FifoMatcher fifoMatcher = new FifoMatcher();
 
-    private String cachedHash = null;
-    private long lastNavSyncTime = 0L;
-    private List<TaxEvent> cachedEvents = null;
-    private FifoMatcher.FifoResult cachedResult = null;
-    private Map<String, BigDecimal> cachedNavMap = null;
-    private final Object lock = new Object();
+    private final AtomicReference<CachedLedgerState> stateHolder = new AtomicReference<>(null);
+    private volatile long lastNavSyncTime = 0L;
+    private final Object updateLock = new Object();
 
     public LedgerCacheService(EventStorePort eventStore) {
         this.eventStore = eventStore;
@@ -41,16 +39,18 @@ public class LedgerCacheService {
     @EventListener(ApplicationReadyEvent.class)
     @Scheduled(fixedRate = 30000)
     public void refreshCacheInBackground() {
-        synchronized (lock) {
+        synchronized (updateLock) {
             try {
                 String currentHash = eventStore.getLatestEventHash();
                 long now = System.currentTimeMillis();
 
-                if (cachedResult == null || !currentHash.equals(cachedHash) || (now - lastNavSyncTime) >= 30_000) {
-                    cachedEvents = eventStore.getAllEvents();
-                    cachedResult = fifoMatcher.processEvents(cachedEvents);
-                    cachedNavMap = amfiSync.getNavMap();
-                    cachedHash = currentHash;
+                CachedLedgerState current = stateHolder.get();
+                if (current == null || current.ledgerHash() == null || !currentHash.equals(current.ledgerHash()) || (now - lastNavSyncTime) >= 30_000) {
+                    List<TaxEvent> events = eventStore.getAllEvents();
+                    FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(events);
+                    Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+                    
+                    stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash));
                     lastNavSyncTime = now;
                 }
             } catch (Exception e) {
@@ -60,21 +60,16 @@ public class LedgerCacheService {
     }
 
     public CachedLedgerState getCachedState() {
-        synchronized (lock) {
-            if (cachedResult == null) {
-                refreshCacheInBackground();
-            }
-            return new CachedLedgerState(cachedEvents, cachedResult, cachedNavMap, cachedHash);
+        CachedLedgerState current = stateHolder.get();
+        if (current == null) {
+            refreshCacheInBackground();
+            current = stateHolder.get();
         }
+        return current;
     }
 
     public void invalidateCache() {
-        synchronized (lock) {
-            cachedHash = null;
-            cachedEvents = null;
-            cachedResult = null;
-            cachedNavMap = null;
-            refreshCacheInBackground();
-        }
+        stateHolder.set(null);
+        refreshCacheInBackground();
     }
 }

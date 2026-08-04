@@ -273,7 +273,7 @@ public class SyncController {
         }
 
         // 2.5 Automated SIP Cashflow Signal
-        long sipCount = events.stream()
+        long sipCount = allEvents.stream()
             .filter(e -> e.eventType() == EventType.SIP_INSTALMENT)
             .map(TaxEvent::assetId)
             .distinct()

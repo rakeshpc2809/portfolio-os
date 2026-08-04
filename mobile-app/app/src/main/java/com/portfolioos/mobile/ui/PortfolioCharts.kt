@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -104,7 +105,11 @@ fun DonutAllocationChart(
                     modifier = Modifier.size(130.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Canvas(modifier = Modifier.size(120.dp)) {
+                    Canvas(
+                        modifier = Modifier
+                            .size(120.dp)
+                            .graphicsLayer()
+                    ) {
                         val strokeWidth = 22.dp.toPx()
                         var startAngle = -90f
 
@@ -319,7 +324,11 @@ fun HistoricalNetWorthTrendChart(
                     .fillMaxWidth()
                     .height(140.dp)
             ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer()
+                ) {
                     val width = size.width
                     val height = size.height
 

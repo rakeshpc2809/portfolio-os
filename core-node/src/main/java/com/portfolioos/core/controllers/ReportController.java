@@ -23,10 +23,12 @@ public class ReportController {
 
     private final PortfolioValuationService valuationService;
     private final TaxOptimizationService taxService;
+    private final com.portfolioos.core.service.LedgerCacheService cacheService;
 
-    public ReportController(PortfolioValuationService valuationService, TaxOptimizationService taxService) {
+    public ReportController(PortfolioValuationService valuationService, TaxOptimizationService taxService, com.portfolioos.core.service.LedgerCacheService cacheService) {
         this.valuationService = valuationService;
         this.taxService = taxService;
+        this.cacheService = cacheService;
     }
 
     @GetMapping({"/reports/summary", "/portfolio/summary"})
@@ -112,7 +114,7 @@ public class ReportController {
         @RequestParam(value = "fy", defaultValue = "2026-27") String fy
     ) {
         String csv = com.portfolioos.core.tax.ScheduleCgExporter.generateCsvReport(
-            valuationService.getCachedState().fifoResult().matchedLots(),
+            cacheService.getCachedState().fifoResult().matchedLots(),
             fy
         );
 
