@@ -5640,16 +5640,27 @@ body.bg-obsidian {
   border: none;
   background: transparent;
   padding: 0;
-  margin: auto;
+  margin: 0;
   max-width: 600px;
   width: 90%;
   border-radius: 16px;
   overflow: hidden;
+  position: fixed;
+  top: 15%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  color: #fff;
+}
+
+.command-palette-dialog[open] {
+  display: block !important;
 }
 
 .command-palette-dialog::backdrop {
-  background: rgba(3, 7, 18, 0.75);
+  background: rgba(3, 7, 18, 0.85);
   backdrop-filter: blur(8px);
+  z-index: 9999;
 }
 
 .command-palette-box {
@@ -6521,7 +6532,7 @@ public class FlightRpcClient {
       </div>
 
       <div class="header-actions">
-        <button id="cmdKTriggerBtn" class="upload-btn cmd-k-btn">
+        <button id="cmdKTriggerBtn" class="upload-btn cmd-k-btn" onclick="window.openCmdPalette && window.openCmdPalette()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           ⚡ AI Search <kbd>/</kbd> <kbd>⌘K</kbd>
         </button>
@@ -6792,7 +6803,7 @@ public class FlightRpcClient {
     </div>
   </dialog>
 
-  <script type="module" src="./src/app.js"></script>
+  <script type="module" src="./src/app.js?v=3.0.5"></script>
 </body>
 </html>
 </file>
@@ -7318,14 +7329,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('commandPaletteInput') || cmdInput;
     if (!modal) return;
 
-    if (modal.hasAttribute('open') || modal.open) {
-      return;
-    }
-
-    try {
-      modal.showModal();
-    } catch (e) {
-      modal.setAttribute('open', 'true');
+    if (!modal.open && !modal.hasAttribute('open')) {
+      try {
+        modal.showModal();
+      } catch (e) {
+        modal.setAttribute('open', 'true');
+      }
     }
 
     if (input) {
@@ -7350,6 +7359,9 @@ document.addEventListener('DOMContentLoaded', () => {
       modal.removeAttribute('open');
     }
   }
+
+  window.openCmdPalette = openCmdPalette;
+  window.closeCmdPalette = closeCmdPalette;
 
   // Event Delegation for Button, Close X, and Backdrop Click
   document.addEventListener('click', (e) => {

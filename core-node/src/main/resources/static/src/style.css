@@ -754,16 +754,27 @@ body.bg-obsidian {
   border: none;
   background: transparent;
   padding: 0;
-  margin: auto;
+  margin: 0;
   max-width: 600px;
   width: 90%;
   border-radius: 16px;
   overflow: hidden;
+  position: fixed;
+  top: 15%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  color: #fff;
+}
+
+.command-palette-dialog[open] {
+  display: block !important;
 }
 
 .command-palette-dialog::backdrop {
-  background: rgba(3, 7, 18, 0.75);
+  background: rgba(3, 7, 18, 0.85);
   backdrop-filter: blur(8px);
+  z-index: 9999;
 }
 
 .command-palette-box {

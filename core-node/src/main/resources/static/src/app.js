@@ -63,14 +63,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('commandPaletteInput') || cmdInput;
     if (!modal) return;
 
-    if (modal.hasAttribute('open') || modal.open) {
-      return;
-    }
-
-    try {
-      modal.showModal();
-    } catch (e) {
-      modal.setAttribute('open', 'true');
+    if (!modal.open && !modal.hasAttribute('open')) {
+      try {
+        modal.showModal();
+      } catch (e) {
+        modal.setAttribute('open', 'true');
+      }
     }
 
     if (input) {
@@ -95,6 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
       modal.removeAttribute('open');
     }
   }
+
+  window.openCmdPalette = openCmdPalette;
+  window.closeCmdPalette = closeCmdPalette;
 
   // Event Delegation for Button, Close X, and Backdrop Click
   document.addEventListener('click', (e) => {
