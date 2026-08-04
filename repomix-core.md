@@ -148,6 +148,10 @@ import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.persistence.SqliteEventStore;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.rpc.FlightRpcClient;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.ollama.api.OllamaApi;
+import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -175,6 +179,23 @@ public class AppConfig {
         @Value("${quant-sidecar.flight.port:8001}") int port
     ) {
         return new FlightRpcClient(host, port);
+    }
+
+    @Bean
+    public ChatClient.Builder chatClientBuilder(
+        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
+    ) {
+        String resolvedUrl = ollamaUrl;
+        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
+            // Test if running inside container and target host gateway if needed
+            resolvedUrl = "http://127.0.0.1:11434";
+        }
+        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
+        OllamaChatModel chatModel = new OllamaChatModel(
+            ollamaApi,
+            OllamaOptions.create().withModel("qwen2.5-coder:7b-instruct-q4_K_M")
+        );
+        return ChatClient.builder(chatModel);
     }
 }
 </file>
@@ -5690,324 +5711,6 @@ body.bg-obsidian {
 }
 </file>
 
-<file path="core-node/src/main/resources/static/index.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Portfolio OS - Web Cockpit (v3.0)</title>
-  <link rel="stylesheet" href="./src/style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-</head>
-<body class="bg-obsidian">
-  <!-- Glowing Background Ambient Spheres -->
-  <div class="ambient-glow glow-1"></div>
-  <div class="ambient-glow glow-2"></div>
-
-  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
-
-  <div id="app" class="container">
-    <!-- Clean Minimalist Header -->
-    <header class="header">
-      <div class="brand">
-        <div class="logo-icon">🚀</div>
-        <div class="brand-title-group">
-          <div class="brand-title-row">
-            <h1 class="brand-title">Portfolio OS</h1>
-            <span class="v2-tag">v3.0 Vapor</span>
-          </div>
-          <div class="fy-selector-row">
-            <span>PERIOD:</span>
-            <select class="fy-select" id="fySelect">
-              <option value="2024-25">FY 2024-25</option>
-              <option value="2025-26">FY 2025-26</option>
-              <option value="2026-27" selected>FY 2026-27</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="header-actions">
-        <button id="cmdKTriggerBtn" class="upload-btn cmd-k-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          ⚡ AI Search <kbd>/</kbd> <kbd>⌘K</kbd>
-        </button>
-
-        <button id="exportZipBtn" class="upload-btn export-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-          Export ITR-2 Bundle (.zip)
-        </button>
-
-        <label for="fileUploadInput" class="upload-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-          Upload CAS PDF / CSV
-        </label>
-        <input type="file" id="fileUploadInput" accept=".pdf,.csv" style="display: none;">
-
-        <div class="status-pill">
-          <span class="status-dot"></span> SHA-256 Engine Active
-        </div>
-      </div>
-    </header>
-
-    <!-- Top Key Metrics Row -->
-    <section class="top-metrics-grid">
-      <div class="glass-card metric-box">
-        <div class="metric-label">NET WORTH</div>
-        <div class="metric-value font-mono skeleton net-worth-val">₹ --,--,---</div>
-        <div class="metric-delta neutral net-worth-gain">Unrealized gain: --</div>
-        <div class="metric-subtext net-worth-sub">Active Holdings: -- Schemes</div>
-      </div>
-
-      <div class="glass-card metric-box">
-        <div class="metric-label">UNALLOCATED CASH</div>
-        <div class="metric-value font-mono highlight-cyan skeleton idle-cash-val">₹ --,--,---</div>
-        <div class="metric-subtext">Sitting idle across Liquid & Bank</div>
-      </div>
-
-      <div class="glass-card metric-box exemption-box">
-        <div class="metric-label">LTCG EXEMPTION (SEC 112A)</div>
-        <div class="metric-value font-mono skeleton ltcg-meter-val">₹ 0 <span class="sub-limit">/ 1.25L</span></div>
-        <div class="progress-track">
-          <div class="progress-fill-gradient" style="width: 0%;"></div>
-        </div>
-        <div class="meter-meta">
-          <span class="pct-used">0% Used</span>
-          <span class="remaining">₹ 1,25,000 Available</span>
-        </div>
-      </div>
-
-      <div class="glass-card metric-box">
-        <div class="metric-label">PORTFOLIO XIRR</div>
-        <div class="metric-value font-mono highlight-cyan skeleton xirr-val">--%</div>
-        <div class="metric-subtext">Money-Weighted XIRR</div>
-      </div>
-    </section>
-
-    <!-- Minimalist Tab Navigation Bar -->
-    <nav class="tab-nav">
-      <button class="tab-btn active" data-tab="overview">📊 Overview & Allocation</button>
-      <button class="tab-btn" data-tab="tax">⚡ Tax Optimization & Audit</button>
-      <button class="tab-btn" data-tab="fire">🎯 FIRE & Rebalancing</button>
-    </nav>
-
-    <!-- TAB 1: Overview & Allocation -->
-    <main class="tab-content active" id="tab-overview">
-      <div class="dashboard-grid">
-        <!-- Fund Allocation Chart -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Fund Asset Allocation</h2>
-            <span class="live-tag">BY SCHEME</span>
-          </div>
-          <div class="canvas-wrapper-small" id="allocationChart" style="height: 280px; width: 100%;"></div>
-        </div>
-
-        <!-- Risk Category Allocation Chart -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Risk Exposure</h2>
-            <span class="live-tag">BY CATEGORY</span>
-          </div>
-          <div class="canvas-wrapper-small" id="categoryChart" style="height: 280px; width: 100%;"></div>
-        </div>
-
-        <!-- Open Holdings Table -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Open Holdings & FIFO Lots</h2>
-            <span class="live-tag">LEDGER DRILL-DOWN</span>
-          </div>
-          <div class="table-container">
-            <table class="data-table" id="holdingsTable">
-              <thead>
-                <tr>
-                  <th>Scheme Name</th>
-                  <th>Category</th>
-                  <th>Invested</th>
-                  <th>Current Value</th>
-                  <th>Unrealized Gain</th>
-                  <th>Allocation %</th>
-                  <th>Open Lots</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="7" class="loading-td">Loading holdings...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- TAB 2: Tax Optimization & Audit -->
-    <main class="tab-content" id="tab-tax">
-      <div class="dashboard-grid">
-        <!-- AI Decision Radar -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Tax & Strategy Decision Radar</h2>
-            <span class="live-tag">AI ADVISOR</span>
-          </div>
-          <div class="radar-list">
-            <div class="radar-empty-state">Scanning open lots for tax-loss harvesting and LTCG maturation opportunities...</div>
-          </div>
-        </div>
-
-        <!-- Schedule FA Pre-Flight Checklist -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Schedule FA Compliance</h2>
-            <span class="live-tag">FOREIGN ASSETS</span>
-          </div>
-          <div class="compliance-list">
-            <div class="compliance-item valid">
-              <span class="check-icon">✓</span>
-              <div class="comp-text">
-                <div class="comp-title">Foreign Entity Identification & Address</div>
-                <div class="comp-desc">International ETF ISINs mapped to US jurisdiction.</div>
-              </div>
-            </div>
-            <div class="compliance-item valid">
-              <span class="check-icon">✓</span>
-              <div class="comp-text">
-                <div class="comp-title">Peak Intra-Year Valuation INR</div>
-                <div class="comp-desc">SBI Telegraphic Transfer conversion applied to peak balances.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Realized Disposals Audit Log -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Realized Disposals Audit Log</h2>
-            <span class="live-tag">SELECTED FY</span>
-          </div>
-          <div class="table-container">
-            <table class="data-table" id="realizedLogTable">
-              <thead>
-                <tr>
-                  <th>Disposal Date</th>
-                  <th>Acquisition Date</th>
-                  <th>Scheme Name</th>
-                  <th>Units</th>
-                  <th>Proceeds</th>
-                  <th>Cost Basis</th>
-                  <th>Realized Gain</th>
-                  <th>Tax Term</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="8" class="loading-td">Loading realized log...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- TAB 3: FIRE & Rebalancing -->
-    <main class="tab-content" id="tab-fire">
-      <div class="dashboard-grid">
-        <!-- FIRE Tracker Module -->
-        <div class="glass-card col-12 fire-card">
-          <div class="card-header">
-            <div class="title-with-badge">
-              <h2>FIRE Tracker & Decumulation Runway</h2>
-              <span class="fire-status-pill on-track" id="fireStatusPill">ON TRACK</span>
-            </div>
-            <div class="live-tag font-mono" id="fireScenarioLabel">Scenario: Primary Target</div>
-          </div>
-
-          <div class="fire-metrics-grid">
-            <div class="fire-stat-box">
-              <span class="lbl">Investable Net Worth</span>
-              <strong class="val font-mono highlight-cyan" id="fireInvestableNw">₹ --</strong>
-              <span class="sub font-mono">Liquid Investments</span>
-            </div>
-            <div class="fire-stat-box">
-              <span class="lbl">Required Corpus (Age 45)</span>
-              <strong class="val font-mono" id="fireRequiredCorpus">₹ --</strong>
-              <span class="sub font-mono" id="fireExpenseSub">3.0% SWR @ ₹60k/mo</span>
-            </div>
-            <div class="fire-stat-box">
-              <span class="lbl">Projected Corpus @ 45</span>
-              <strong class="val font-mono positive" id="fireProjectedCorpus">₹ --</strong>
-              <span class="sub font-mono" id="fireYearsSub">6% Real Return</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tax-Aware Rebalancing Predictor -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Tax-Aware Rebalancing Predictor</h2>
-            <span class="live-tag">TAX DRAG CALCULATOR</span>
-          </div>
-          <div class="rebalance-controls">
-            <label class="input-lbl">Target Redemption Amount (INR):</label>
-            <div class="slider-box">
-              <input type="range" id="rebalanceSlider" min="25000" max="1000000" step="25000" value="100000">
-              <span class="font-mono slider-val" id="rebalanceSliderVal">₹ 1,00,000</span>
-            </div>
-            <div class="rebalance-summary-box">
-              <div class="reb-stat"><span class="lbl">Predicted Tax Drag:</span> <strong class="val font-mono highlight-cyan" id="rebTaxDrag">₹ 0</strong></div>
-              <div class="reb-stat"><span class="lbl">Effective Tax Rate:</span> <strong class="val font-mono" id="rebEffRate">0.00%</strong></div>
-              <div class="reb-stat"><span class="lbl">LTCG Tax-Free Harvested:</span> <strong class="val font-mono" id="rebLtcgHarvested">₹ 0</strong></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Bucket Rebalancing -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Flat Bucket Rebalancer</h2>
-            <span class="live-tag" id="drawdownTag">Nifty 500: Normal</span>
-          </div>
-          <div class="bucket-grid" id="bucketGrid">
-            <!-- Rendered dynamically -->
-          </div>
-        </div>
-
-        <!-- Disciplined Consolidation -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Disciplined Consolidation Plan</h2>
-            <span class="live-tag" id="consolidationWindowBadge">March / September Window</span>
-          </div>
-          <div id="consolidationPlanContainer">
-            <!-- Rendered dynamically -->
-          </div>
-        </div>
-      </div>
-  <!-- Global Command Palette Modal (Cmd + K / Ctrl + K) -->
-  <dialog id="commandPaletteModal" class="command-palette-dialog">
-    <div class="command-palette-box">
-      <div class="command-palette-header">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D0FF00" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <input type="text" id="commandPaletteInput" placeholder="Type a command or search schemes... (Esc to exit)" autofocus>
-        <span class="cmd-k-badge">ESC</span>
-      </div>
-      <div class="command-palette-results" id="commandPaletteResults">
-        <div class="cmd-item" data-action="whatif">⚡ Open What-If Trade Simulator</div>
-        <div class="cmd-item" data-action="schedule-cg">📄 Download Schedule CG Tax CSV</div>
-        <div class="cmd-item" data-action="rebalance">⚖️ Run Portfolio Rebalance Engine</div>
-        <div class="cmd-item" data-action="holdings">📊 Jump to Holdings & NAV Trend</div>
-        <div class="cmd-item" data-action="radar">🧠 View AI Quant Radar Signals</div>
-      </div>
-    </div>
-  </dialog>
-
-  <script type="module" src="./src/app.js"></script>
-</body>
-</html>
-</file>
-
 <file path="core-node/src/main/java/com/portfolioos/core/dtos/SyncDtos.java">
 package com.portfolioos.core.dtos;
 
@@ -6495,6 +6198,324 @@ public class LedgerCacheService {
         refreshCacheInBackground();
     }
 }
+</file>
+
+<file path="core-node/src/main/resources/static/index.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portfolio OS - Web Cockpit (v3.0)</title>
+  <link rel="stylesheet" href="./src/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body class="bg-obsidian">
+  <!-- Glowing Background Ambient Spheres -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <div id="app" class="container">
+    <!-- Clean Minimalist Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">🚀</div>
+        <div class="brand-title-group">
+          <div class="brand-title-row">
+            <h1 class="brand-title">Portfolio OS</h1>
+            <span class="v2-tag">v3.0 Vapor</span>
+          </div>
+          <div class="fy-selector-row">
+            <span>PERIOD:</span>
+            <select class="fy-select" id="fySelect">
+              <option value="2024-25">FY 2024-25</option>
+              <option value="2025-26">FY 2025-26</option>
+              <option value="2026-27" selected>FY 2026-27</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="cmdKTriggerBtn" class="upload-btn cmd-k-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          ⚡ AI Search <kbd>/</kbd> <kbd>⌘K</kbd>
+        </button>
+
+        <button id="exportZipBtn" class="upload-btn export-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Export ITR-2 Bundle (.zip)
+        </button>
+
+        <label for="fileUploadInput" class="upload-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Upload CAS PDF / CSV
+        </label>
+        <input type="file" id="fileUploadInput" accept=".pdf,.csv" style="display: none;">
+
+        <div class="status-pill">
+          <span class="status-dot"></span> SHA-256 Engine Active
+        </div>
+      </div>
+    </header>
+
+    <!-- Top Key Metrics Row -->
+    <section class="top-metrics-grid">
+      <div class="glass-card metric-box">
+        <div class="metric-label">NET WORTH</div>
+        <div class="metric-value font-mono skeleton net-worth-val">₹ --,--,---</div>
+        <div class="metric-delta neutral net-worth-gain">Unrealized gain: --</div>
+        <div class="metric-subtext net-worth-sub">Active Holdings: -- Schemes</div>
+      </div>
+
+      <div class="glass-card metric-box">
+        <div class="metric-label">UNALLOCATED CASH</div>
+        <div class="metric-value font-mono highlight-cyan skeleton idle-cash-val">₹ --,--,---</div>
+        <div class="metric-subtext">Sitting idle across Liquid & Bank</div>
+      </div>
+
+      <div class="glass-card metric-box exemption-box">
+        <div class="metric-label">LTCG EXEMPTION (SEC 112A)</div>
+        <div class="metric-value font-mono skeleton ltcg-meter-val">₹ 0 <span class="sub-limit">/ 1.25L</span></div>
+        <div class="progress-track">
+          <div class="progress-fill-gradient" style="width: 0%;"></div>
+        </div>
+        <div class="meter-meta">
+          <span class="pct-used">0% Used</span>
+          <span class="remaining">₹ 1,25,000 Available</span>
+        </div>
+      </div>
+
+      <div class="glass-card metric-box">
+        <div class="metric-label">PORTFOLIO XIRR</div>
+        <div class="metric-value font-mono highlight-cyan skeleton xirr-val">--%</div>
+        <div class="metric-subtext">Money-Weighted XIRR</div>
+      </div>
+    </section>
+
+    <!-- Minimalist Tab Navigation Bar -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="overview">📊 Overview & Allocation</button>
+      <button class="tab-btn" data-tab="tax">⚡ Tax Optimization & Audit</button>
+      <button class="tab-btn" data-tab="fire">🎯 FIRE & Rebalancing</button>
+    </nav>
+
+    <!-- TAB 1: Overview & Allocation -->
+    <main class="tab-content active" id="tab-overview">
+      <div class="dashboard-grid">
+        <!-- Fund Allocation Chart -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Fund Asset Allocation</h2>
+            <span class="live-tag">BY SCHEME</span>
+          </div>
+          <div class="canvas-wrapper-small" id="allocationChart" style="height: 280px; width: 100%;"></div>
+        </div>
+
+        <!-- Risk Category Allocation Chart -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Risk Exposure</h2>
+            <span class="live-tag">BY CATEGORY</span>
+          </div>
+          <div class="canvas-wrapper-small" id="categoryChart" style="height: 280px; width: 100%;"></div>
+        </div>
+
+        <!-- Open Holdings Table -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Open Holdings & FIFO Lots</h2>
+            <span class="live-tag">LEDGER DRILL-DOWN</span>
+          </div>
+          <div class="table-container">
+            <table class="data-table" id="holdingsTable">
+              <thead>
+                <tr>
+                  <th>Scheme Name</th>
+                  <th>Category</th>
+                  <th>Invested</th>
+                  <th>Current Value</th>
+                  <th>Unrealized Gain</th>
+                  <th>Allocation %</th>
+                  <th>Open Lots</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="7" class="loading-td">Loading holdings...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 2: Tax Optimization & Audit -->
+    <main class="tab-content" id="tab-tax">
+      <div class="dashboard-grid">
+        <!-- AI Decision Radar -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Tax & Strategy Decision Radar</h2>
+            <span class="live-tag">AI ADVISOR</span>
+          </div>
+          <div class="radar-list">
+            <div class="radar-empty-state">Scanning open lots for tax-loss harvesting and LTCG maturation opportunities...</div>
+          </div>
+        </div>
+
+        <!-- Schedule FA Pre-Flight Checklist -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Schedule FA Compliance</h2>
+            <span class="live-tag">FOREIGN ASSETS</span>
+          </div>
+          <div class="compliance-list">
+            <div class="compliance-item valid">
+              <span class="check-icon">✓</span>
+              <div class="comp-text">
+                <div class="comp-title">Foreign Entity Identification & Address</div>
+                <div class="comp-desc">International ETF ISINs mapped to US jurisdiction.</div>
+              </div>
+            </div>
+            <div class="compliance-item valid">
+              <span class="check-icon">✓</span>
+              <div class="comp-text">
+                <div class="comp-title">Peak Intra-Year Valuation INR</div>
+                <div class="comp-desc">SBI Telegraphic Transfer conversion applied to peak balances.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Realized Disposals Audit Log -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Realized Disposals Audit Log</h2>
+            <span class="live-tag">SELECTED FY</span>
+          </div>
+          <div class="table-container">
+            <table class="data-table" id="realizedLogTable">
+              <thead>
+                <tr>
+                  <th>Disposal Date</th>
+                  <th>Acquisition Date</th>
+                  <th>Scheme Name</th>
+                  <th>Units</th>
+                  <th>Proceeds</th>
+                  <th>Cost Basis</th>
+                  <th>Realized Gain</th>
+                  <th>Tax Term</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="8" class="loading-td">Loading realized log...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 3: FIRE & Rebalancing -->
+    <main class="tab-content" id="tab-fire">
+      <div class="dashboard-grid">
+        <!-- FIRE Tracker Module -->
+        <div class="glass-card col-12 fire-card">
+          <div class="card-header">
+            <div class="title-with-badge">
+              <h2>FIRE Tracker & Decumulation Runway</h2>
+              <span class="fire-status-pill on-track" id="fireStatusPill">ON TRACK</span>
+            </div>
+            <div class="live-tag font-mono" id="fireScenarioLabel">Scenario: Primary Target</div>
+          </div>
+
+          <div class="fire-metrics-grid">
+            <div class="fire-stat-box">
+              <span class="lbl">Investable Net Worth</span>
+              <strong class="val font-mono highlight-cyan" id="fireInvestableNw">₹ --</strong>
+              <span class="sub font-mono">Liquid Investments</span>
+            </div>
+            <div class="fire-stat-box">
+              <span class="lbl">Required Corpus (Age 45)</span>
+              <strong class="val font-mono" id="fireRequiredCorpus">₹ --</strong>
+              <span class="sub font-mono" id="fireExpenseSub">3.0% SWR @ ₹60k/mo</span>
+            </div>
+            <div class="fire-stat-box">
+              <span class="lbl">Projected Corpus @ 45</span>
+              <strong class="val font-mono positive" id="fireProjectedCorpus">₹ --</strong>
+              <span class="sub font-mono" id="fireYearsSub">6% Real Return</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tax-Aware Rebalancing Predictor -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Tax-Aware Rebalancing Predictor</h2>
+            <span class="live-tag">TAX DRAG CALCULATOR</span>
+          </div>
+          <div class="rebalance-controls">
+            <label class="input-lbl">Target Redemption Amount (INR):</label>
+            <div class="slider-box">
+              <input type="range" id="rebalanceSlider" min="25000" max="1000000" step="25000" value="100000">
+              <span class="font-mono slider-val" id="rebalanceSliderVal">₹ 1,00,000</span>
+            </div>
+            <div class="rebalance-summary-box">
+              <div class="reb-stat"><span class="lbl">Predicted Tax Drag:</span> <strong class="val font-mono highlight-cyan" id="rebTaxDrag">₹ 0</strong></div>
+              <div class="reb-stat"><span class="lbl">Effective Tax Rate:</span> <strong class="val font-mono" id="rebEffRate">0.00%</strong></div>
+              <div class="reb-stat"><span class="lbl">LTCG Tax-Free Harvested:</span> <strong class="val font-mono" id="rebLtcgHarvested">₹ 0</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bucket Rebalancing -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Flat Bucket Rebalancer</h2>
+            <span class="live-tag" id="drawdownTag">Nifty 500: Normal</span>
+          </div>
+          <div class="bucket-grid" id="bucketGrid">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Disciplined Consolidation -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Disciplined Consolidation Plan</h2>
+            <span class="live-tag" id="consolidationWindowBadge">March / September Window</span>
+          </div>
+          <div id="consolidationPlanContainer">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+  <!-- Global Command Palette Modal (Cmd + K / Ctrl + K) -->
+  <dialog id="commandPaletteModal" class="command-palette-dialog">
+    <div class="command-palette-box">
+      <div class="command-palette-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D0FF00" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="commandPaletteInput" placeholder="Type a command or search schemes... (Esc to exit)" autofocus>
+        <span class="cmd-k-badge">ESC</span>
+      </div>
+      <div class="command-palette-results" id="commandPaletteResults">
+        <div class="cmd-item" data-action="whatif">⚡ Open What-If Trade Simulator</div>
+        <div class="cmd-item" data-action="schedule-cg">📄 Download Schedule CG Tax CSV</div>
+        <div class="cmd-item" data-action="rebalance">⚖️ Run Portfolio Rebalance Engine</div>
+        <div class="cmd-item" data-action="holdings">📊 Jump to Holdings & NAV Trend</div>
+        <div class="cmd-item" data-action="radar">🧠 View AI Quant Radar Signals</div>
+      </div>
+    </div>
+  </dialog>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
 </file>
 
 <file path="core-node/pom.xml">

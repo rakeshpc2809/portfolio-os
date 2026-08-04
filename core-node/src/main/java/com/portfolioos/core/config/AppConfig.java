@@ -4,6 +4,10 @@ import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.persistence.SqliteEventStore;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.rpc.FlightRpcClient;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.ollama.api.OllamaApi;
+import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,5 +35,22 @@ public class AppConfig {
         @Value("${quant-sidecar.flight.port:8001}") int port
     ) {
         return new FlightRpcClient(host, port);
+    }
+
+    @Bean
+    public ChatClient.Builder chatClientBuilder(
+        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
+    ) {
+        String resolvedUrl = ollamaUrl;
+        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
+            // Test if running inside container and target host gateway if needed
+            resolvedUrl = "http://127.0.0.1:11434";
+        }
+        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
+        OllamaChatModel chatModel = new OllamaChatModel(
+            ollamaApi,
+            OllamaOptions.create().withModel("qwen2.5-coder:7b-instruct-q4_K_M")
+        );
+        return ChatClient.builder(chatModel);
     }
 }
