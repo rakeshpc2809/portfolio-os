@@ -53,24 +53,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
   fetchLiveMetrics();
 
-  // Command Palette Handler (Cmd + K / Ctrl + K)
-  const cmdPaletteModal = document.getElementById('commandPaletteModal');
-  const cmdKTriggerBtn = document.getElementById('cmdKTriggerBtn');
-  const cmdInput = document.getElementById('commandPaletteInput');
-  const cmdResults = document.getElementById('commandPaletteResults');
-
+  // Command Palette Handler (Cmd + K / Ctrl + K / Slash)
   function openCmdPalette() {
-    if (cmdPaletteModal) {
-      cmdPaletteModal.showModal();
-      if (cmdInput) cmdInput.focus();
+    const modal = document.getElementById('commandPaletteModal');
+    const input = document.getElementById('commandPaletteInput');
+    if (modal) {
+      try {
+        if (!modal.open) {
+          modal.showModal();
+        }
+      } catch (e) {
+        modal.setAttribute('open', 'true');
+      }
+      if (input) setTimeout(() => input.focus(), 50);
     }
   }
 
   function closeCmdPalette() {
-    if (cmdPaletteModal) cmdPaletteModal.close();
+    const modal = document.getElementById('commandPaletteModal');
+    if (modal) {
+      try {
+        modal.close();
+      } catch (e) {
+        modal.removeAttribute('open');
+      }
+    }
   }
 
-  if (cmdKTriggerBtn) cmdKTriggerBtn.addEventListener('click', openCmdPalette);
+  // Event Delegation for Button & Backdrop Click
+  document.addEventListener('click', (e) => {
+    const trigger = e.target.closest('#cmdKTriggerBtn, .cmd-k-btn');
+    if (trigger) {
+      e.preventDefault();
+      openCmdPalette();
+    }
+
+    const modal = document.getElementById('commandPaletteModal');
+    if (modal && e.target === modal) {
+      closeCmdPalette();
+    }
+  });
 
   window.addEventListener('keydown', (e) => {
     const key = e.key ? e.key.toLowerCase() : '';

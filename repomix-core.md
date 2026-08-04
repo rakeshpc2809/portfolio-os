@@ -141,65 +141,6 @@ core-node/
 <files>
 This section contains the contents of the repository's files.
 
-<file path="core-node/src/main/java/com/portfolioos/core/config/AppConfig.java">
-package com.portfolioos.core.config;
-
-import com.portfolioos.core.persistence.DuckDbProjector;
-import com.portfolioos.core.persistence.SqliteEventStore;
-import com.portfolioos.core.ports.EventStorePort;
-import com.portfolioos.core.rpc.FlightRpcClient;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.ollama.OllamaChatModel;
-import org.springframework.ai.ollama.api.OllamaApi;
-import org.springframework.ai.ollama.api.OllamaOptions;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class AppConfig {
-
-    @Bean
-    public EventStorePort eventStore(
-        @Value("${sqlite.path:data/tax_ledger.db}") String dbPath
-    ) {
-        return new SqliteEventStore(dbPath);
-    }
-
-    @Bean
-    public DuckDbProjector duckDbProjector(
-        @Value("${duckdb.path:data/tax_ledger.duckdb}") String dbPath
-    ) {
-        return new DuckDbProjector(dbPath);
-    }
-
-    @Bean
-    public FlightRpcClient flightRpcClient(
-        @Value("${quant-sidecar.flight.host:quant-sidecar}") String host,
-        @Value("${quant-sidecar.flight.port:8001}") int port
-    ) {
-        return new FlightRpcClient(host, port);
-    }
-
-    @Bean
-    public ChatClient.Builder chatClientBuilder(
-        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
-    ) {
-        String resolvedUrl = ollamaUrl;
-        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
-            // Test if running inside container and target host gateway if needed
-            resolvedUrl = "http://127.0.0.1:11434";
-        }
-        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
-        OllamaChatModel chatModel = new OllamaChatModel(
-            ollamaApi,
-            OllamaOptions.create().withModel("qwen2.5-coder:7b-instruct-q4_K_M")
-        );
-        return ChatClient.builder(chatModel);
-    }
-}
-</file>
-
 <file path="core-node/src/main/java/com/portfolioos/core/controllers/LlmQueryController.java">
 package com.portfolioos.core.controllers;
 
@@ -2615,6 +2556,65 @@ test {
 
 <file path="core-node/settings.gradle">
 rootProject.name = 'core-node'
+</file>
+
+<file path="core-node/src/main/java/com/portfolioos/core/config/AppConfig.java">
+package com.portfolioos.core.config;
+
+import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.SqliteEventStore;
+import com.portfolioos.core.ports.EventStorePort;
+import com.portfolioos.core.rpc.FlightRpcClient;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.ollama.api.OllamaApi;
+import org.springframework.ai.ollama.api.OllamaOptions;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public EventStorePort eventStore(
+        @Value("${sqlite.path:data/tax_ledger.db}") String dbPath
+    ) {
+        return new SqliteEventStore(dbPath);
+    }
+
+    @Bean
+    public DuckDbProjector duckDbProjector(
+        @Value("${duckdb.path:data/tax_ledger.duckdb}") String dbPath
+    ) {
+        return new DuckDbProjector(dbPath);
+    }
+
+    @Bean
+    public FlightRpcClient flightRpcClient(
+        @Value("${quant-sidecar.flight.host:quant-sidecar}") String host,
+        @Value("${quant-sidecar.flight.port:8001}") int port
+    ) {
+        return new FlightRpcClient(host, port);
+    }
+
+    @Bean
+    public ChatClient.Builder chatClientBuilder(
+        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
+    ) {
+        String resolvedUrl = ollamaUrl;
+        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
+            // Test if running inside container and target host gateway if needed
+            resolvedUrl = "http://127.0.0.1:11434";
+        }
+        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
+        OllamaChatModel chatModel = new OllamaChatModel(
+            ollamaApi,
+            OllamaOptions.create().withModel("qwen2.5-coder:7b-instruct-q4_K_M")
+        );
+        return ChatClient.builder(chatModel);
+    }
+}
 </file>
 
 <file path="core-node/src/main/java/com/portfolioos/core/fire/FireTracker.java">
@@ -6853,24 +6853,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
   fetchLiveMetrics();
 
-  // Command Palette Handler (Cmd + K / Ctrl + K)
-  const cmdPaletteModal = document.getElementById('commandPaletteModal');
-  const cmdKTriggerBtn = document.getElementById('cmdKTriggerBtn');
-  const cmdInput = document.getElementById('commandPaletteInput');
-  const cmdResults = document.getElementById('commandPaletteResults');
-
+  // Command Palette Handler (Cmd + K / Ctrl + K / Slash)
   function openCmdPalette() {
-    if (cmdPaletteModal) {
-      cmdPaletteModal.showModal();
-      if (cmdInput) cmdInput.focus();
+    const modal = document.getElementById('commandPaletteModal');
+    const input = document.getElementById('commandPaletteInput');
+    if (modal) {
+      try {
+        if (!modal.open) {
+          modal.showModal();
+        }
+      } catch (e) {
+        modal.setAttribute('open', 'true');
+      }
+      if (input) setTimeout(() => input.focus(), 50);
     }
   }
 
   function closeCmdPalette() {
-    if (cmdPaletteModal) cmdPaletteModal.close();
+    const modal = document.getElementById('commandPaletteModal');
+    if (modal) {
+      try {
+        modal.close();
+      } catch (e) {
+        modal.removeAttribute('open');
+      }
+    }
   }
 
-  if (cmdKTriggerBtn) cmdKTriggerBtn.addEventListener('click', openCmdPalette);
+  // Event Delegation for Button & Backdrop Click
+  document.addEventListener('click', (e) => {
+    const trigger = e.target.closest('#cmdKTriggerBtn, .cmd-k-btn');
+    if (trigger) {
+      e.preventDefault();
+      openCmdPalette();
+    }
+
+    const modal = document.getElementById('commandPaletteModal');
+    if (modal && e.target === modal) {
+      closeCmdPalette();
+    }
+  });
 
   window.addEventListener('keydown', (e) => {
     const key = e.key ? e.key.toLowerCase() : '';
