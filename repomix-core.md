@@ -534,6 +534,10 @@ currencyFormat.format(totalPortfolioCurrentVal),
 currencyFormat.format(totalPortfolioInvested),
 (unrealizedGain.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + currencyFormat.format(unrealizedGain)
 ⋮----
+List<NetWorthPointDto> netWorthHistory = duckDbProjector.getDailyNetWorthTrend().stream()
+.map(p -> new NetWorthPointDto(p.date(), p.valuation(), p.invested()))
+.toList();
+⋮----
 return ResponseEntity.ok(new UnidirectionalSyncSnapshot(
 ⋮----
 public ResponseEntity<PairResponseDto> pairDevice(
@@ -2021,7 +2025,16 @@ stcgEquity += gain.doubleValue();
 ⋮----
 debtGain += gain.doubleValue();
 ⋮----
-double exemptionApplied = Math.min(Math.max(0.0, ltcgEquity), exemptionLimit);
+for (MatchedLot match : state.fifoResult().matchedLots()) {
+⋮----
+TaxEvent sell = match.sellEvent();
+long days = ChronoUnit.DAYS.between(buy.acquisitionDate(), sell.eventDate());
+⋮----
+BigDecimal sale = sell.pricePerUnit().multiply(matchedUnits);
+previousLtcgRealized += Math.max(0.0, sale.subtract(cost).doubleValue());
+⋮----
+double remainingExemptionLimit = Math.max(0.0, 125000.0 - previousLtcgRealized);
+double exemptionApplied = Math.min(Math.max(0.0, ltcgEquity), remainingExemptionLimit);
 double taxableLtcg = Math.max(0.0, ltcgEquity - exemptionApplied);
 double estimatedTax = (taxableLtcg * 0.125) + (Math.max(0.0, stcgEquity) * 0.20) + (Math.max(0.0, debtGain) * 0.30);
 ⋮----

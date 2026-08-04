@@ -187,7 +187,7 @@ fun DashboardScreen(
                             .weight(1f)
                     ) { page ->
                         when (page) {
-                            0 -> HoldingsView(syncInfo, holdings)
+                            0 -> HoldingsView(snapshot, syncInfo, holdings)
                             1 -> RadarSignalsView(radarSignals)
                             2 -> GroupedTaxLotsView(taxLots, holdings)
                             3 -> SimulatorView(holdings)
@@ -378,7 +378,7 @@ fun ExpressiveNavPill(
 }
 
 @Composable
-fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: List<FlatHoldingDto>) {
+fun HoldingsView(snapshot: com.portfolioos.mobile.model.SyncSnapshot?, syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: List<FlatHoldingDto>) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -495,7 +495,7 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
         }
 
         item {
-            HistoricalNetWorthTrendChart(holdings = holdings)
+            HistoricalNetWorthTrendChart(trendPoints = snapshot?.netWorthHistory ?: emptyList())
         }
 
         item {

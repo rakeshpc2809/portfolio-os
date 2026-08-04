@@ -8,15 +8,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.portfolioos.mobile.api.SyncApiClient
 import com.portfolioos.mobile.model.FlatHoldingDto
+import com.portfolioos.mobile.model.TradeSimulationRequestDto
 import com.portfolioos.mobile.util.formatInr
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SimulatorView(holdings: List<FlatHoldingDto>) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var selectedIsin by remember { mutableStateOf(holdings.firstOrNull()?.isin ?: "") }
     var selectedName by remember { mutableStateOf(holdings.firstOrNull()?.fundName ?: "Select Scheme") }
     var unitsText by remember { mutableStateOf("100.0") }
@@ -24,6 +31,7 @@ fun SimulatorView(holdings: List<FlatHoldingDto>) {
     var tradeType by remember { mutableStateOf("DISPOSAL") }
     var resultText by remember { mutableStateOf<String?>(null) }
     var isExpanded by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -114,21 +122,45 @@ fun SimulatorView(holdings: List<FlatHoldingDto>) {
             onClick = {
                 val units = unitsText.toDoubleOrNull() ?: 100.0
                 val price = priceText.toDoubleOrNull() ?: 150.0
-                val gross = units * price
-                val estTax = if (tradeType == "DISPOSAL") gross * 0.08 else 0.0
-                resultText = """
-                    ✓ Simulation Execution Successful
-                    • Trade Type: $tradeType ($units Units @ ₹$price)
-                    • Gross Amount: ${formatInr(gross)}
-                    • Projected Tax Drag: ${formatInr(estTax)}
-                    • Sec 112A Exemption Applied: ₹1,25,000.00
-                    • Post-Trade XIRR: 8.12%
-                """.trimIndent()
+                isLoading = true
+                scope.launch {
+                    try {
+                        val req = TradeSimulationRequestDto(
+                            isin = selectedIsin,
+                            schemeName = selectedName,
+                            units = units,
+                            pricePerUnit = price,
+                            tradeType = tradeType
+                        )
+                        val res = SyncApiClient.simulateTradeWithFallback(context, req)
+                        resultText = """
+                            ✓ Simulation Execution Successful (Live Engine)
+                            • Target: ${res.schemeName}
+                            • Trade Type: ${res.tradeType} (${res.units} Units @ ₹${res.pricePerUnit})
+                            • Gross Trade Amount: ${formatInr(res.grossTradeAmount)}
+                            • Gross Capital Gain: ${formatInr(res.grossCapitalGain)}
+                            • LTCG Equity: ${formatInr(res.ltcgEquity)} | STCG Equity: ${formatInr(res.stcgEquity)}
+                            • Sec 112A Exemption Applied: ${formatInr(res.sec112aExemptionApplied)}
+                            • Projected Tax Liability: ${formatInr(res.estimatedTaxLiability)}
+                            • Post-Trade Valuation: ${formatInr(res.postTradeNetWorth)}
+                            • Post-Trade Portfolio XIRR: ${String.format("%.2f", res.postTradeXirr)}%
+                        """.trimIndent()
+                    } catch (e: Exception) {
+                        resultText = "⚠️ Simulation RPC failed: ${e.localizedMessage}"
+                    } finally {
+                        isLoading = false
+                    }
+                }
             },
+            enabled = !isLoading,
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD0FF00)),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Run What-If Simulation", color = Color.Black, fontWeight = FontWeight.Bold)
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.Black, strokeWidth = 2.dp)
+            } else {
+                Text("Run What-If Simulation", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
         }
 
         if (resultText != null) {

@@ -9,6 +9,7 @@ import uvicorn
 
 from parsers.cas_parser import CasPdfParser
 from parsers.broker_csv_parser import BrokerCsvParser
+from parsers.sip_detector import detect_and_tag_sips
 from parsers.models import TaxEventSchema
 from flight_server import QuantFlightServer
 
@@ -46,6 +47,9 @@ async def parse_statement(
             events = parser.parse()
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format. Please upload PDF or CSV.")
+
+        # Apply robust 3+ match SIP auto-detection
+        events = detect_and_tag_sips(events)
 
         # Polars multi-threaded dataframe verification
         if events:

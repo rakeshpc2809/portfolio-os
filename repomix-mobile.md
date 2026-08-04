@@ -88,12 +88,16 @@ import android.content.Context
 import com.portfolioos.mobile.BuildConfig
 import com.portfolioos.mobile.data.SnapshotCacheManager
 import com.portfolioos.mobile.model.SyncSnapshot
+import com.portfolioos.mobile.model.TradeSimulationRequestDto
+import com.portfolioos.mobile.model.TradeSimulationResultDto
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.POST
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 interface SyncApiService {
@@ -102,6 +106,11 @@ interface SyncApiService {
         @Header("X-Api-Auth-Token") token: String,
         @Query("fy") fiscalYear: String = "2026-27"
     ): SyncSnapshot
+    @POST("api/v1/simulate/trade")
+    suspend fun simulateTrade(
+        @Header("X-Api-Auth-Token") token: String,
+        @Body request: TradeSimulationRequestDto
+    ): TradeSimulationResultDto
 }
 object SyncApiClient {
     const val USB_BASE_URL = "http://127.0.0.1:8080/"
@@ -166,6 +175,27 @@ object SyncApiClient {
             }
         }
     }
+    suspend fun simulateTradeWithFallback(context: Context, request: TradeSimulationRequestDto): TradeSimulationResultDto {
+        val customUrl = SnapshotCacheManager.getCustomUrl(context)
+        val authToken = SnapshotCacheManager.getAuthToken(context)
+        if (!customUrl.isNullOrBlank()) {
+            try {
+                val formatted = if (customUrl.endsWith("/")) customUrl else "$customUrl/"
+                return createService(formatted).simulateTrade(token = authToken, request = request)
+            } catch (e: Exception) {
+                // fallthrough
+            }
+        }
+        try {
+            return createService(USB_BASE_URL).simulateTrade(token = authToken, request = request)
+        } catch (e1: Exception) {
+            try {
+                return createService(EMULATOR_BASE_URL).simulateTrade(token = authToken, request = request)
+            } catch (e2: Exception) {
+                return createService(WIFI_BASE_URL).simulateTrade(token = authToken, request = request)
+            }
+        }
+    }
 }
 ```
 
@@ -175,11 +205,18 @@ package com.portfolioos.mobile.model
 import androidx.compose.runtime.Immutable
 import com.google.gson.annotations.SerializedName
 @Immutable
+data class NetWorthPointDto(
+    @SerializedName("date") val date: String = "",
+    @SerializedName("valuation") val valuation: Double = 0.0,
+    @SerializedName("invested") val invested: Double = 0.0
+)
+@Immutable
 data class SyncSnapshot(
     @SerializedName("sync_info") val syncInfo: SyncInfoDto? = null,
     @SerializedName("holdings") val holdings: List<FlatHoldingDto>? = emptyList(),
     @SerializedName("tax_lots") val taxLots: List<FlatTaxLotDto>? = emptyList(),
-    @SerializedName("radar_signals") val radarSignals: List<RadarSignalDto>? = emptyList()
+    @SerializedName("radar_signals") val radarSignals: List<RadarSignalDto>? = emptyList(),
+    @SerializedName("net_worth_history") val netWorthHistory: List<NetWorthPointDto>? = emptyList()
 )
 @Immutable
 data class SyncInfoDto(
@@ -229,6 +266,34 @@ data class RadarSignalDto(
     @SerializedName("description") val description: String = "",
     @SerializedName("severity") val severity: String = "",
     @SerializedName("badge_text") val badgeText: String = ""
+)
+@Immutable
+data class TradeSimulationRequestDto(
+    @SerializedName("isin") val isin: String,
+    @SerializedName("schemeName") val schemeName: String,
+    @SerializedName("units") val units: Double,
+    @SerializedName("pricePerUnit") val pricePerUnit: Double,
+    @SerializedName("tradeDate") val tradeDate: String = "",
+    @SerializedName("tradeType") val tradeType: String // DISPOSAL or ACQUISITION
+)
+@Immutable
+data class TradeSimulationResultDto(
+    @SerializedName("isin") val isin: String = "",
+    @SerializedName("schemeName") val schemeName: String = "",
+    @SerializedName("tradeType") val tradeType: String = "",
+    @SerializedName("units") val units: Double = 0.0,
+    @SerializedName("pricePerUnit") val pricePerUnit: Double = 0.0,
+    @SerializedName("grossTradeAmount") val grossTradeAmount: Double = 0.0,
+    @SerializedName("grossCapitalGain") val grossCapitalGain: Double = 0.0,
+    @SerializedName("ltcgEquity") val ltcgEquity: Double = 0.0,
+    @SerializedName("stcgEquity") val stcgEquity: Double = 0.0,
+    @SerializedName("debtGain") val debtGain: Double = 0.0,
+    @SerializedName("sec112aExemptionApplied") val sec112aExemptionApplied: Double = 0.0,
+    @SerializedName("estimatedTaxLiability") val estimatedTaxLiability: Double = 0.0,
+    @SerializedName("postTradeNetWorth") val postTradeNetWorth: Double = 0.0,
+    @SerializedName("postTradeInvestedCost") val postTradeInvestedCost: Double = 0.0,
+    @SerializedName("postTradeXirr") val postTradeXirr: Double = 0.0,
+    @SerializedName("taxSummaryNotice") val taxSummaryNotice: String = ""
 )
 ```
 
@@ -417,7 +482,7 @@ fun DashboardScreen(
                             .weight(1f)
                     ) { page ->
                         when (page) {
-                            0 -> HoldingsView(syncInfo, holdings)
+                            0 -> HoldingsView(snapshot, syncInfo, holdings)
                             1 -> RadarSignalsView(radarSignals)
                             2 -> GroupedTaxLotsView(taxLots, holdings)
                             3 -> SimulatorView(holdings)
@@ -603,7 +668,7 @@ fun ExpressiveNavPill(
     }
 }
 @Composable
-fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: List<FlatHoldingDto>) {
+fun HoldingsView(snapshot: com.portfolioos.mobile.model.SyncSnapshot?, syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: List<FlatHoldingDto>) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -718,7 +783,7 @@ fun HoldingsView(syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: 
             }
         }
         item {
-            HistoricalNetWorthTrendChart(holdings = holdings)
+            HistoricalNetWorthTrendChart(trendPoints = snapshot?.netWorthHistory ?: emptyList())
         }
         item {
             DonutAllocationChart(holdings = holdings)
@@ -1131,6 +1196,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.portfolioos.mobile.model.FlatHoldingDto
+import com.portfolioos.mobile.model.NetWorthPointDto
 data class BucketAllocation(
     val bucketName: String,
     val totalAmount: Double,
@@ -1350,17 +1416,21 @@ fun PerformanceBarChart(
 }
 @Composable
 fun HistoricalNetWorthTrendChart(
-    holdings: List<FlatHoldingDto>,
+    trendPoints: List<NetWorthPointDto>,
     modifier: Modifier = Modifier
 ) {
     val animProgress = remember { Animatable(0f) }
-    LaunchedEffect(holdings) {
+    LaunchedEffect(trendPoints) {
         animProgress.animateTo(
             targetValue = 1f,
             animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing)
         )
     }
-    val totalVal = holdings.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }
+    val rawVals = if (trendPoints.isEmpty()) listOf(100.0, 105.0, 110.0, 115.0, 120.0) else trendPoints.map { it.valuation }
+    val minVal = rawVals.minOrNull() ?: 1.0
+    val maxVal = rawVals.maxOrNull() ?: (minVal * 1.2)
+    val valRange = (maxVal - minVal).coerceAtLeast(1.0)
+    val points = rawVals.map { v -> ((v - minVal) / valRange * 0.70 + 0.25).toFloat() }
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
         shape = RoundedCornerShape(20.dp),
@@ -1389,7 +1459,6 @@ fun HistoricalNetWorthTrendChart(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            // Canvas Line & Area Chart
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1398,10 +1467,7 @@ fun HistoricalNetWorthTrendChart(
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val width = size.width
                     val height = size.height
-                    val points = listOf(
-                        0.45f, 0.48f, 0.52f, 0.55f, 0.53f, 0.60f, 0.68f, 0.72f, 0.70f, 0.82f, 0.89f, 1.0f
-                    )
-                    val stepX = width / (points.size - 1)
+                    val stepX = width / (points.size - 1).coerceAtLeast(1)
                     val path = androidx.compose.ui.graphics.Path()
                     val fillPath = androidx.compose.ui.graphics.Path()
                     val startY = height - (points[0] * height * 0.7f * animProgress.value)
@@ -1422,14 +1488,12 @@ fun HistoricalNetWorthTrendChart(
                     }
                     fillPath.lineTo(width, height)
                     fillPath.close()
-                    // Draw Area Gradient Fill
                     drawPath(
                         path = fillPath,
                         brush = Brush.verticalGradient(
                             colors = listOf(Color(0xFFD0FF00).copy(alpha = 0.35f), Color(0xFF00F0FF).copy(alpha = 0.02f))
                         )
                     )
-                    // Draw Trend Line
                     drawPath(
                         path = path,
                         color = Color(0xFFD0FF00),
@@ -1453,14 +1517,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.portfolioos.mobile.api.SyncApiClient
 import com.portfolioos.mobile.model.FlatHoldingDto
+import com.portfolioos.mobile.model.TradeSimulationRequestDto
 import com.portfolioos.mobile.util.formatInr
+import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SimulatorView(holdings: List<FlatHoldingDto>) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var selectedIsin by remember { mutableStateOf(holdings.firstOrNull()?.isin ?: "") }
     var selectedName by remember { mutableStateOf(holdings.firstOrNull()?.fundName ?: "Select Scheme") }
     var unitsText by remember { mutableStateOf("100.0") }
@@ -1468,6 +1538,7 @@ fun SimulatorView(holdings: List<FlatHoldingDto>) {
     var tradeType by remember { mutableStateOf("DISPOSAL") }
     var resultText by remember { mutableStateOf<String?>(null) }
     var isExpanded by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1549,21 +1620,45 @@ fun SimulatorView(holdings: List<FlatHoldingDto>) {
             onClick = {
                 val units = unitsText.toDoubleOrNull() ?: 100.0
                 val price = priceText.toDoubleOrNull() ?: 150.0
-                val gross = units * price
-                val estTax = if (tradeType == "DISPOSAL") gross * 0.08 else 0.0
-                resultText = """
-                    ✓ Simulation Execution Successful
-                    • Trade Type: $tradeType ($units Units @ ₹$price)
-                    • Gross Amount: ${formatInr(gross)}
-                    • Projected Tax Drag: ${formatInr(estTax)}
-                    • Sec 112A Exemption Applied: ₹1,25,000.00
-                    • Post-Trade XIRR: 8.12%
-                """.trimIndent()
+                isLoading = true
+                scope.launch {
+                    try {
+                        val req = TradeSimulationRequestDto(
+                            isin = selectedIsin,
+                            schemeName = selectedName,
+                            units = units,
+                            pricePerUnit = price,
+                            tradeType = tradeType
+                        )
+                        val res = SyncApiClient.simulateTradeWithFallback(context, req)
+                        resultText = """
+                            ✓ Simulation Execution Successful (Live Engine)
+                            • Target: ${res.schemeName}
+                            • Trade Type: ${res.tradeType} (${res.units} Units @ ₹${res.pricePerUnit})
+                            • Gross Trade Amount: ${formatInr(res.grossTradeAmount)}
+                            • Gross Capital Gain: ${formatInr(res.grossCapitalGain)}
+                            • LTCG Equity: ${formatInr(res.ltcgEquity)} | STCG Equity: ${formatInr(res.stcgEquity)}
+                            • Sec 112A Exemption Applied: ${formatInr(res.sec112aExemptionApplied)}
+                            • Projected Tax Liability: ${formatInr(res.estimatedTaxLiability)}
+                            • Post-Trade Valuation: ${formatInr(res.postTradeNetWorth)}
+                            • Post-Trade Portfolio XIRR: ${String.format("%.2f", res.postTradeXirr)}%
+                        """.trimIndent()
+                    } catch (e: Exception) {
+                        resultText = "⚠️ Simulation RPC failed: ${e.localizedMessage}"
+                    } finally {
+                        isLoading = false
+                    }
+                }
             },
+            enabled = !isLoading,
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD0FF00)),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Run What-If Simulation", color = Color.Black, fontWeight = FontWeight.Bold)
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.Black, strokeWidth = 2.dp)
+            } else {
+                Text("Run What-If Simulation", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
         }
         if (resultText != null) {
             Spacer(modifier = Modifier.height(16.dp))

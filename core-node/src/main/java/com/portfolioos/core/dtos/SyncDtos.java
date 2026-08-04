@@ -60,11 +60,19 @@ public class SyncDtos {
     ) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record NetWorthPointDto(
+        String date,
+        double valuation,
+        double invested
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record UnidirectionalSyncSnapshot(
         SyncInfoDto syncInfo,
         List<FlatHoldingDto> holdings,
         List<FlatTaxLotDto> taxLots,
-        List<RadarSignalDto> radarSignals
+        List<RadarSignalDto> radarSignals,
+        List<NetWorthPointDto> netWorthHistory
     ) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

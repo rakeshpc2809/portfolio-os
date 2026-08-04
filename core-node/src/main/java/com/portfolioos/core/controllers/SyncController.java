@@ -351,8 +351,12 @@ public class SyncController {
             (unrealizedGain.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + currencyFormat.format(unrealizedGain)
         );
 
+        List<NetWorthPointDto> netWorthHistory = duckDbProjector.getDailyNetWorthTrend().stream()
+            .map(p -> new NetWorthPointDto(p.date(), p.valuation(), p.invested()))
+            .toList();
+
         return ResponseEntity.ok(new UnidirectionalSyncSnapshot(
-            syncInfo, holdings, taxLots, radarSignals
+            syncInfo, holdings, taxLots, radarSignals, netWorthHistory
         ));
     }
 

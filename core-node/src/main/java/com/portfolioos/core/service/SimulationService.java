@@ -119,8 +119,24 @@ public class SimulationService {
             }
         }
 
-        double exemptionLimit = 125000.0;
-        double exemptionApplied = Math.min(Math.max(0.0, ltcgEquity), exemptionLimit);
+        double previousLtcgRealized = 0.0;
+        for (MatchedLot match : state.fifoResult().matchedLots()) {
+            Lot buy = match.buyLot();
+            TaxEvent sell = match.sellEvent();
+            long days = ChronoUnit.DAYS.between(buy.acquisitionDate(), sell.eventDate());
+            AssetCategory category = TaxClassifier.detectCategory(buy.assetId(), buy.assetName());
+            boolean isListed = TaxClassifier.isListed(buy.assetId(), buy.assetName());
+            TaxTerm term = TaxClassifier.classifyTaxTerm(category, days, "2026-27", isListed);
+            if ((category == AssetCategory.EQUITY || category == AssetCategory.EQUITY_ORIENTED) && term == TaxTerm.LONG_TERM) {
+                BigDecimal matchedUnits = match.matchedUnits();
+                BigDecimal cost = buy.pricePerUnit().multiply(matchedUnits);
+                BigDecimal sale = sell.pricePerUnit().multiply(matchedUnits);
+                previousLtcgRealized += Math.max(0.0, sale.subtract(cost).doubleValue());
+            }
+        }
+
+        double remainingExemptionLimit = Math.max(0.0, 125000.0 - previousLtcgRealized);
+        double exemptionApplied = Math.min(Math.max(0.0, ltcgEquity), remainingExemptionLimit);
         double taxableLtcg = Math.max(0.0, ltcgEquity - exemptionApplied);
         double estimatedTax = (taxableLtcg * 0.125) + (Math.max(0.0, stcgEquity) * 0.20) + (Math.max(0.0, debtGain) * 0.30);
 

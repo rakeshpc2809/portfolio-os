@@ -4,12 +4,16 @@ import android.content.Context
 import com.portfolioos.mobile.BuildConfig
 import com.portfolioos.mobile.data.SnapshotCacheManager
 import com.portfolioos.mobile.model.SyncSnapshot
+import com.portfolioos.mobile.model.TradeSimulationRequestDto
+import com.portfolioos.mobile.model.TradeSimulationResultDto
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.POST
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
@@ -19,6 +23,12 @@ interface SyncApiService {
         @Header("X-Api-Auth-Token") token: String,
         @Query("fy") fiscalYear: String = "2026-27"
     ): SyncSnapshot
+
+    @POST("api/v1/simulate/trade")
+    suspend fun simulateTrade(
+        @Header("X-Api-Auth-Token") token: String,
+        @Body request: TradeSimulationRequestDto
+    ): TradeSimulationResultDto
 }
 
 object SyncApiClient {
@@ -88,6 +98,30 @@ object SyncApiClient {
                         throw e3
                     }
                 }
+            }
+        }
+    }
+
+    suspend fun simulateTradeWithFallback(context: Context, request: TradeSimulationRequestDto): TradeSimulationResultDto {
+        val customUrl = SnapshotCacheManager.getCustomUrl(context)
+        val authToken = SnapshotCacheManager.getAuthToken(context)
+
+        if (!customUrl.isNullOrBlank()) {
+            try {
+                val formatted = if (customUrl.endsWith("/")) customUrl else "$customUrl/"
+                return createService(formatted).simulateTrade(token = authToken, request = request)
+            } catch (e: Exception) {
+                // fallthrough
+            }
+        }
+
+        try {
+            return createService(USB_BASE_URL).simulateTrade(token = authToken, request = request)
+        } catch (e1: Exception) {
+            try {
+                return createService(EMULATOR_BASE_URL).simulateTrade(token = authToken, request = request)
+            } catch (e2: Exception) {
+                return createService(WIFI_BASE_URL).simulateTrade(token = authToken, request = request)
             }
         }
     }

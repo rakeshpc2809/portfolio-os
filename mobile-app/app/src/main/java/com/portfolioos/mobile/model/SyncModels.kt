@@ -4,11 +4,19 @@ import androidx.compose.runtime.Immutable
 import com.google.gson.annotations.SerializedName
 
 @Immutable
+data class NetWorthPointDto(
+    @SerializedName("date") val date: String = "",
+    @SerializedName("valuation") val valuation: Double = 0.0,
+    @SerializedName("invested") val invested: Double = 0.0
+)
+
+@Immutable
 data class SyncSnapshot(
     @SerializedName("sync_info") val syncInfo: SyncInfoDto? = null,
     @SerializedName("holdings") val holdings: List<FlatHoldingDto>? = emptyList(),
     @SerializedName("tax_lots") val taxLots: List<FlatTaxLotDto>? = emptyList(),
-    @SerializedName("radar_signals") val radarSignals: List<RadarSignalDto>? = emptyList()
+    @SerializedName("radar_signals") val radarSignals: List<RadarSignalDto>? = emptyList(),
+    @SerializedName("net_worth_history") val netWorthHistory: List<NetWorthPointDto>? = emptyList()
 )
 
 @Immutable
@@ -62,4 +70,34 @@ data class RadarSignalDto(
     @SerializedName("description") val description: String = "",
     @SerializedName("severity") val severity: String = "",
     @SerializedName("badge_text") val badgeText: String = ""
+)
+
+@Immutable
+data class TradeSimulationRequestDto(
+    @SerializedName("isin") val isin: String,
+    @SerializedName("schemeName") val schemeName: String,
+    @SerializedName("units") val units: Double,
+    @SerializedName("pricePerUnit") val pricePerUnit: Double,
+    @SerializedName("tradeDate") val tradeDate: String = "",
+    @SerializedName("tradeType") val tradeType: String // DISPOSAL or ACQUISITION
+)
+
+@Immutable
+data class TradeSimulationResultDto(
+    @SerializedName("isin") val isin: String = "",
+    @SerializedName("schemeName") val schemeName: String = "",
+    @SerializedName("tradeType") val tradeType: String = "",
+    @SerializedName("units") val units: Double = 0.0,
+    @SerializedName("pricePerUnit") val pricePerUnit: Double = 0.0,
+    @SerializedName("grossTradeAmount") val grossTradeAmount: Double = 0.0,
+    @SerializedName("grossCapitalGain") val grossCapitalGain: Double = 0.0,
+    @SerializedName("ltcgEquity") val ltcgEquity: Double = 0.0,
+    @SerializedName("stcgEquity") val stcgEquity: Double = 0.0,
+    @SerializedName("debtGain") val debtGain: Double = 0.0,
+    @SerializedName("sec112aExemptionApplied") val sec112aExemptionApplied: Double = 0.0,
+    @SerializedName("estimatedTaxLiability") val estimatedTaxLiability: Double = 0.0,
+    @SerializedName("postTradeNetWorth") val postTradeNetWorth: Double = 0.0,
+    @SerializedName("postTradeInvestedCost") val postTradeInvestedCost: Double = 0.0,
+    @SerializedName("postTradeXirr") val postTradeXirr: Double = 0.0,
+    @SerializedName("taxSummaryNotice") val taxSummaryNotice: String = ""
 )

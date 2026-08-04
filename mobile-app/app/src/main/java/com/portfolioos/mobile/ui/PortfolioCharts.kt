@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.portfolioos.mobile.model.FlatHoldingDto
+import com.portfolioos.mobile.model.NetWorthPointDto
 
 data class BucketAllocation(
     val bucketName: String,
@@ -265,19 +266,23 @@ fun PerformanceBarChart(
 
 @Composable
 fun HistoricalNetWorthTrendChart(
-    holdings: List<FlatHoldingDto>,
+    trendPoints: List<NetWorthPointDto>,
     modifier: Modifier = Modifier
 ) {
     val animProgress = remember { Animatable(0f) }
 
-    LaunchedEffect(holdings) {
+    LaunchedEffect(trendPoints) {
         animProgress.animateTo(
             targetValue = 1f,
             animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing)
         )
     }
 
-    val totalVal = holdings.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }
+    val rawVals = if (trendPoints.isEmpty()) listOf(100.0, 105.0, 110.0, 115.0, 120.0) else trendPoints.map { it.valuation }
+    val minVal = rawVals.minOrNull() ?: 1.0
+    val maxVal = rawVals.maxOrNull() ?: (minVal * 1.2)
+    val valRange = (maxVal - minVal).coerceAtLeast(1.0)
+    val points = rawVals.map { v -> ((v - minVal) / valRange * 0.70 + 0.25).toFloat() }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
@@ -309,7 +314,6 @@ fun HistoricalNetWorthTrendChart(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Canvas Line & Area Chart
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -318,11 +322,8 @@ fun HistoricalNetWorthTrendChart(
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val width = size.width
                     val height = size.height
-                    val points = listOf(
-                        0.45f, 0.48f, 0.52f, 0.55f, 0.53f, 0.60f, 0.68f, 0.72f, 0.70f, 0.82f, 0.89f, 1.0f
-                    )
 
-                    val stepX = width / (points.size - 1)
+                    val stepX = width / (points.size - 1).coerceAtLeast(1)
                     val path = androidx.compose.ui.graphics.Path()
                     val fillPath = androidx.compose.ui.graphics.Path()
 
@@ -349,7 +350,6 @@ fun HistoricalNetWorthTrendChart(
                     fillPath.lineTo(width, height)
                     fillPath.close()
 
-                    // Draw Area Gradient Fill
                     drawPath(
                         path = fillPath,
                         brush = Brush.verticalGradient(
@@ -357,7 +357,6 @@ fun HistoricalNetWorthTrendChart(
                         )
                     )
 
-                    // Draw Trend Line
                     drawPath(
                         path = path,
                         color = Color(0xFFD0FF00),

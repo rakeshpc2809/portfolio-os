@@ -217,33 +217,33 @@ def unit_delta(self) -> Decimal
 
 ## File: parsers/sip_detector.py
 ```python
-def detect_and_tag_sips(events: List[TaxEventSchema]) -> List[TaxEventSchema]
+def detect_and_tag_sips(events: List[TaxEventSchema], min_consecutive_matches: int = 3) -> List[TaxEventSchema]
 ⋮----
 """
     Auto-detects Systematic Investment Plans (SIPs) by grouping transactions by ISIN/Asset ID,
     checking date spacing (25 to 35 days for monthly recurring investments), and amount variation (<= 5%).
+    Requires at least `min_consecutive_matches` (default 3+) consecutive matching transactions to eliminate false positives.
     Tags matching ACQUISITION events as EventType.SIP_INSTALMENT.
     """
 ⋮----
-# Group ACQUISITION events by asset_id / isin
 acquisitions_by_asset = defaultdict(list)
 ⋮----
 asset_key = event.isin or event.asset_id
 ⋮----
 sip_indices = set()
 ⋮----
-# Sort chronologically by date
 sorted_events = sorted(asset_events, key=lambda x: x[1].event_date)
+current_chain = [sorted_events[0]]
 ⋮----
 date_diff = (ev2.event_date - ev1.event_date).days
 amt1 = float(ev1.gross_amount)
 amt2 = float(ev2.gross_amount)
-⋮----
 amt_diff_pct = abs(amt1 - amt2) / max(amt1, amt2, 1.0)
 ⋮----
 # Monthly SIP criteria: 25 to 35 days spacing AND <= 5% amount variation
 ⋮----
-# Return new events list with SIP_INSTALMENT tags applied
+current_chain = [sorted_events[i + 1]]
+⋮----
 updated_events = []
 ```
 
@@ -342,6 +342,9 @@ events = parser.parse_events()
 ⋮----
 parser = BrokerCsvParser(tmp_path)
 events = parser.parse()
+⋮----
+# Apply robust 3+ match SIP auto-detection
+events = detect_and_tag_sips(events)
 ⋮----
 # Polars multi-threaded dataframe verification
 ⋮----
