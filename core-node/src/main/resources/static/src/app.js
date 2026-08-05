@@ -117,41 +117,51 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }, true);
 
-  if (cmdInput) {
-    cmdInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        const query = cmdInput.value.trim();
-        if (!query) return;
+  window.submitAiPrompt = function(queryOverride) {
+    const input = document.getElementById('commandPaletteInput');
+    const query = (queryOverride || (input ? input.value : '')).trim();
+    if (!query) return;
 
-        if (cmdResults) {
-          cmdResults.innerHTML = '<div style="padding:12px; color:#06b6d4; font-family:monospace;">🧠 AI Engine Thinking...</div>';
-        }
+    const cmdResults = document.getElementById('commandPaletteResults');
+    if (cmdResults) {
+      cmdResults.innerHTML = '<div style="padding:14px; color:#06b6d4; font-family:monospace; font-weight:bold;">🧠 AI Engine Thinking...</div>';
+    }
 
-        const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
-        const evtSource = new EventSource(`/api/v1/llm/stream?prompt=${encodeURIComponent(query)}&token=${encodeURIComponent(token)}`);
-        let outputText = '';
+    const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
+    const evtSource = new EventSource(`/api/v1/llm/stream?prompt=${encodeURIComponent(query)}&token=${encodeURIComponent(token)}`);
+    let outputText = '';
 
-        evtSource.onmessage = function(event) {
-          outputText += event.data;
-          if (cmdResults) {
-            cmdResults.innerHTML = `
-              <div style="padding:12px; background:#0f172a; border-radius:8px; color:#f8fafc; font-size:13px; white-space:pre-wrap; font-family:monospace; line-height:1.5;">
-                <div style="color:#d0ff00; font-weight:bold; margin-bottom:6px;">⚡ PORTFOLIO OS AI RESPONSE</div>
-                ${outputText}
-              </div>
-            `;
-          }
-        };
-
-        evtSource.onerror = function() {
-          evtSource.close();
-          if (cmdResults && !outputText) {
-            cmdResults.innerHTML = '<div style="padding:12px; color:#ef4444; font-family:monospace;">⚠️ Streaming failed. Verify connection or authentication token.</div>';
-          }
-        };
+    evtSource.onmessage = function(event) {
+      outputText += event.data;
+      const resEl = document.getElementById('commandPaletteResults');
+      if (resEl) {
+        resEl.innerHTML = `
+          <div style="padding:14px; background:#0f172a; border:1px solid rgba(6,182,212,0.4); border-radius:10px; color:#f8fafc; font-size:13px; white-space:pre-wrap; font-family:'JetBrains Mono', monospace; line-height:1.6;">
+            <div style="color:#d0ff00; font-weight:bold; margin-bottom:8px; font-size:14px;">⚡ PORTFOLIO OS AI RESPONSE</div>
+            ${outputText}
+          </div>
+        `;
       }
-    });
-  }
+    };
+
+    evtSource.onerror = function() {
+      evtSource.close();
+      const resEl = document.getElementById('commandPaletteResults');
+      if (resEl && !outputText) {
+        resEl.innerHTML = '<div style="padding:12px; color:#ef4444; font-family:monospace;">⚠️ Streaming failed. Verify connection or authentication token.</div>';
+      }
+    };
+  };
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const activeEl = document.activeElement;
+      if (activeEl && activeEl.id === 'commandPaletteInput') {
+        e.preventDefault();
+        window.submitAiPrompt();
+      }
+    }
+  });
 
   if (cmdResults) {
     cmdResults.addEventListener('click', (e) => {
