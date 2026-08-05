@@ -113,9 +113,10 @@ public class ReportController {
     public ResponseEntity<String> downloadScheduleCgCsv(
         @RequestParam(value = "fy", defaultValue = "2026-27") String fy
     ) {
-        String csv = com.portfolioos.core.reporting.Itr2CsvExporter.exportItr2ScheduleCg(
+        String csv = com.portfolioos.core.reporting.Itr2CsvExporter.generateSchedule112aCsv(
             cacheService.getCachedState().fifoResult().matchedLots(),
             fy,
+            java.util.Collections.emptyMap(),
             java.util.Collections.emptyMap()
         );
 
