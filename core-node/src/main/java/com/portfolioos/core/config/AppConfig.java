@@ -65,7 +65,7 @@ public class AppConfig {
         OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
         return new org.springframework.ai.ollama.OllamaEmbeddingModel(
             ollamaApi,
-            OllamaOptions.create().withModel("qwen2.5-coder:3b")
+            OllamaOptions.create().withModel("nomic-embed-text")
         );
     }
 
