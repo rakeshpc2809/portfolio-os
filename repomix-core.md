@@ -141,43 +141,6 @@ core-node/
 <files>
 This section contains the contents of the repository's files.
 
-<file path="core-node/src/main/resources/META-INF/native-image/reflect-config.json">
-[
-  {
-    "name": "org.duckdb.DuckDBDriver",
-    "allDeclaredConstructors": true,
-    "allPublicConstructors": true,
-    "allDeclaredMethods": true,
-    "allPublicMethods": true
-  },
-  {
-    "name": "org.duckdb.DuckDBConnection",
-    "allDeclaredConstructors": true,
-    "allPublicConstructors": true,
-    "allDeclaredMethods": true,
-    "allPublicMethods": true
-  },
-  {
-    "name": "org.sqlite.JDBC",
-    "allDeclaredConstructors": true,
-    "allPublicConstructors": true,
-    "allDeclaredMethods": true,
-    "allPublicMethods": true
-  }
-]
-</file>
-
-<file path="core-node/src/main/resources/META-INF/native-image/resource-config.json">
-{
-  "resources": {
-    "includes": [
-      { "pattern": "static/.*" },
-      { "pattern": "rules/.*" }
-    ]
-  }
-}
-</file>
-
 <file path="core-node/src/main/java/com/portfolioos/core/controllers/LlmQueryController.java">
 package com.portfolioos.core.controllers;
 
@@ -2333,6 +2296,43 @@ public record CashFlow(
     LocalDate date,
     BigDecimal amount // negative for investments, positive for inflows / current valuation
 ) {}
+</file>
+
+<file path="core-node/src/main/resources/META-INF/native-image/reflect-config.json">
+[
+  {
+    "name": "org.duckdb.DuckDBDriver",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.duckdb.DuckDBConnection",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.sqlite.JDBC",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  }
+]
+</file>
+
+<file path="core-node/src/main/resources/META-INF/native-image/resource-config.json">
+{
+  "resources": {
+    "includes": [
+      { "pattern": "static/.*" },
+      { "pattern": "rules/.*" }
+    ]
+  }
+}
 </file>
 
 <file path="core-node/src/main/resources/static/src/js/state.js">
@@ -6351,7 +6351,7 @@ body.bg-obsidian {
     
     <properties>
         <java.version>21</java.version>
-        <arrow.version>16.0.0</arrow.version>
+        <arrow.version>15.0.0</arrow.version>
     </properties>
     
     <dependencies>

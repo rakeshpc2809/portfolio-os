@@ -18,7 +18,7 @@
     
     <properties>
         <java.version>21</java.version>
-        <arrow.version>16.0.0</arrow.version>
+        <arrow.version>15.0.0</arrow.version>
     </properties>
     
     <dependencies>
