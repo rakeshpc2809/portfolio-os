@@ -116,6 +116,10 @@ core-node/
                 XirrEngine.java
               CoreApplication.java
       resources/
+        META-INF/
+          native-image/
+            reflect-config.json
+            resource-config.json
         static/
           src/
             js/
@@ -136,6 +140,43 @@ core-node/
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="core-node/src/main/resources/META-INF/native-image/reflect-config.json">
+[
+  {
+    "name": "org.duckdb.DuckDBDriver",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.duckdb.DuckDBConnection",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "org.sqlite.JDBC",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  }
+]
+</file>
+
+<file path="core-node/src/main/resources/META-INF/native-image/resource-config.json">
+{
+  "resources": {
+    "includes": [
+      { "pattern": "static/.*" },
+      { "pattern": "rules/.*" }
+    ]
+  }
+}
+</file>
 
 <file path="core-node/src/main/java/com/portfolioos/core/controllers/LlmQueryController.java">
 package com.portfolioos.core.controllers;
@@ -4615,87 +4656,6 @@ export function renderRealizedLogTable(logs) {
 }
 </file>
 
-<file path="core-node/src/main/java/com/portfolioos/core/config/AppConfig.java">
-package com.portfolioos.core.config;
-
-import com.portfolioos.core.persistence.DuckDbProjector;
-import com.portfolioos.core.persistence.SqliteEventStore;
-import com.portfolioos.core.ports.EventStorePort;
-import com.portfolioos.core.rpc.FlightRpcClient;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.ollama.OllamaChatModel;
-import org.springframework.ai.ollama.api.OllamaApi;
-import org.springframework.ai.ollama.api.OllamaOptions;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class AppConfig {
-
-    @Bean
-    public EventStorePort eventStore(
-        @Value("${sqlite.path:data/tax_ledger.db}") String dbPath
-    ) {
-        return new SqliteEventStore(dbPath);
-    }
-
-    @Bean
-    public DuckDbProjector duckDbProjector(
-        @Value("${duckdb.path:data/tax_ledger.duckdb}") String dbPath
-    ) {
-        return new DuckDbProjector(dbPath);
-    }
-
-    @Bean
-    public FlightRpcClient flightRpcClient(
-        @Value("${quant-sidecar.flight.host:quant-sidecar}") String host,
-        @Value("${quant-sidecar.flight.port:8001}") int port
-    ) {
-        return new FlightRpcClient(host, port);
-    }
-
-    @Bean
-    public ChatClient.Builder chatClientBuilder(
-        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
-    ) {
-        String resolvedUrl = ollamaUrl;
-        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
-            // Test if running inside container and target host gateway if needed
-            resolvedUrl = "http://127.0.0.1:11434";
-        }
-        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
-        OllamaChatModel chatModel = new OllamaChatModel(
-            ollamaApi,
-            OllamaOptions.create().withModel("qwen2.5-coder:3b")
-        );
-        return ChatClient.builder(chatModel);
-    }
-
-    @Bean
-    public org.springframework.ai.ollama.OllamaEmbeddingModel embeddingModel(
-        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
-    ) {
-        String resolvedUrl = ollamaUrl;
-        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
-            resolvedUrl = "http://127.0.0.1:11434";
-        }
-        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
-        return new org.springframework.ai.ollama.OllamaEmbeddingModel(
-            ollamaApi,
-            OllamaOptions.create().withModel("nomic-embed-text")
-        );
-    }
-
-    @Bean
-    public org.springframework.ai.vectorstore.VectorStore vectorStore(
-        org.springframework.ai.ollama.OllamaEmbeddingModel embeddingModel
-    ) {
-        return new org.springframework.ai.vectorstore.SimpleVectorStore(embeddingModel);
-    }
-}
-</file>
-
 <file path="core-node/src/main/java/com/portfolioos/core/dtos/SyncDtos.java">
 package com.portfolioos.core.dtos;
 
@@ -5181,6 +5141,87 @@ public class LedgerCacheService {
     public void invalidateCache() {
         stateHolder.set(null);
         refreshCacheInBackground();
+    }
+}
+</file>
+
+<file path="core-node/src/main/java/com/portfolioos/core/config/AppConfig.java">
+package com.portfolioos.core.config;
+
+import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.SqliteEventStore;
+import com.portfolioos.core.ports.EventStorePort;
+import com.portfolioos.core.rpc.FlightRpcClient;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.ollama.api.OllamaApi;
+import org.springframework.ai.ollama.api.OllamaOptions;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public EventStorePort eventStore(
+        @Value("${sqlite.path:data/tax_ledger.db}") String dbPath
+    ) {
+        return new SqliteEventStore(dbPath);
+    }
+
+    @Bean
+    public DuckDbProjector duckDbProjector(
+        @Value("${duckdb.path:data/tax_ledger.duckdb}") String dbPath
+    ) {
+        return new DuckDbProjector(dbPath);
+    }
+
+    @Bean
+    public FlightRpcClient flightRpcClient(
+        @Value("${quant-sidecar.flight.host:quant-sidecar}") String host,
+        @Value("${quant-sidecar.flight.port:8001}") int port
+    ) {
+        return new FlightRpcClient(host, port);
+    }
+
+    @Bean
+    public ChatClient.Builder chatClientBuilder(
+        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
+    ) {
+        String resolvedUrl = ollamaUrl;
+        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
+            // Test if running inside container and target host gateway if needed
+            resolvedUrl = "http://127.0.0.1:11434";
+        }
+        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
+        OllamaChatModel chatModel = new OllamaChatModel(
+            ollamaApi,
+            OllamaOptions.create().withModel("qwen2.5-coder:3b")
+        );
+        return ChatClient.builder(chatModel);
+    }
+
+    @Bean
+    public org.springframework.ai.ollama.OllamaEmbeddingModel embeddingModel(
+        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
+    ) {
+        String resolvedUrl = ollamaUrl;
+        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
+            resolvedUrl = "http://127.0.0.1:11434";
+        }
+        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
+        return new org.springframework.ai.ollama.OllamaEmbeddingModel(
+            ollamaApi,
+            OllamaOptions.create().withModel("nomic-embed-text")
+        );
+    }
+
+    @Bean
+    public org.springframework.ai.vectorstore.VectorStore vectorStore(
+        org.springframework.ai.ollama.OllamaEmbeddingModel embeddingModel
+    ) {
+        return new org.springframework.ai.vectorstore.SimpleVectorStore(embeddingModel);
     }
 }
 </file>
@@ -6310,7 +6351,7 @@ body.bg-obsidian {
     
     <properties>
         <java.version>21</java.version>
-        <arrow.version>15.0.0</arrow.version>
+        <arrow.version>16.0.0</arrow.version>
     </properties>
     
     <dependencies>
@@ -6334,12 +6375,12 @@ body.bg-obsidian {
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
-            <version>3.45.1.0</version>
+            <version>3.46.0.0</version>
         </dependency>
         <dependency>
             <groupId>org.duckdb</groupId>
             <artifactId>duckdb_jdbc</artifactId>
-            <version>0.10.0</version>
+            <version>0.10.2</version>
         </dependency>
         
         <!-- YAML Config Loader -->
@@ -6425,6 +6466,11 @@ body.bg-obsidian {
                 <configuration>
                     <release>21</release>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.graalvm.buildtools</groupId>
+                <artifactId>native-maven-plugin</artifactId>
+                <version>0.10.2</version>
             </plugin>
         </plugins>
     </build>
