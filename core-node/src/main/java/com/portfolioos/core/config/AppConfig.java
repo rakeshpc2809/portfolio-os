@@ -53,4 +53,26 @@ public class AppConfig {
         );
         return ChatClient.builder(chatModel);
     }
+
+    @Bean
+    public org.springframework.ai.ollama.OllamaEmbeddingModel embeddingModel(
+        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
+    ) {
+        String resolvedUrl = ollamaUrl;
+        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
+            resolvedUrl = "http://127.0.0.1:11434";
+        }
+        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
+        return new org.springframework.ai.ollama.OllamaEmbeddingModel(
+            ollamaApi,
+            OllamaOptions.create().withModel("qwen2.5-coder:3b")
+        );
+    }
+
+    @Bean
+    public org.springframework.ai.vectorstore.VectorStore vectorStore(
+        org.springframework.ai.ollama.OllamaEmbeddingModel embeddingModel
+    ) {
+        return new org.springframework.ai.vectorstore.SimpleVectorStore(embeddingModel);
+    }
 }

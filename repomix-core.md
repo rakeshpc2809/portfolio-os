@@ -103,8 +103,6 @@ core-node/
                 PortfolioValuationService.java
                 SimulationService.java
                 TaxOptimizationService.java
-              tax/
-                ScheduleCgExporter.java
               util/
                 Pair.java
               valuation/
@@ -132,10 +130,8 @@ core-node/
             style.css
           index.html
         application.yml
-  build.gradle
   Dockerfile
   pom.xml
-  settings.gradle
 </directory_structure>
 
 <files>
@@ -871,14 +867,7 @@ public class SqlGeneratorService {
             // Clean markdown syntax if present
             String sql = rawSql.replaceAll("```sql", "").replaceAll("```", "").trim();
 
-            // Strict SELECT Guardrail
-            if (!sql.toUpperCase().startsWith("SELECT") && !sql.toUpperCase().startsWith("WITH")) {
-                throw new SecurityException("Security violation: Only read-only SELECT queries are permitted.");
-            }
-
-            if (sql.contains(";") && sql.indexOf(";") != sql.length() - 1) {
-                throw new SecurityException("Security violation: Multi-statement queries are forbidden.");
-            }
+            validateAndSanitizeSql(sql);
 
             List<Map<String, Object>> results = executeDuckDbQuery(sql);
             return new SqlQueryResult(sql, results, "SUCCESS", null);
@@ -887,9 +876,39 @@ public class SqlGeneratorService {
         }
     }
 
+    private void validateAndSanitizeSql(String sql) {
+        String upper = sql.toUpperCase();
+
+        // 1. Strict SELECT / WITH prefix check
+        if (!upper.startsWith("SELECT") && !upper.startsWith("WITH")) {
+            throw new SecurityException("Security violation: Only read-only SELECT or WITH queries are permitted.");
+        }
+
+        // 2. Prevent multi-statement execution
+        if (sql.contains(";") && sql.indexOf(";") != sql.length() - 1) {
+            throw new SecurityException("Security violation: Multi-statement queries are forbidden.");
+        }
+
+        // 3. Block file read/write, system, and administrative DuckDB table functions
+        String[] forbiddenTokens = {
+            "READ_CSV", "READ_CSV_AUTO", "READ_PARQUET", "READ_JSON", "READ_NDJSON",
+            "READ_TEXT", "ST_READ", "GLOB", "READ_BLOB", "READ_FILE", "WRITE_CSV",
+            "COPY", "EXPORT", "INSTALL", "LOAD", "PRAGMA", "ATTACH", "DETACH", "QUERY_TABLE"
+        };
+
+        for (String token : forbiddenTokens) {
+            if (upper.matches(".*\\b" + token + "\\b.*")) {
+                throw new SecurityException("Security violation: Restricted function call '" + token + "' detected.");
+            }
+        }
+    }
+
     private List<Map<String, Object>> executeDuckDbQuery(String sql) {
         List<Map<String, Object>> rows = new ArrayList<>();
-        try (java.sql.Connection conn = java.sql.DriverManager.getConnection("jdbc:duckdb:" + new java.io.File("data/tax_ledger.duckdb").getAbsolutePath());
+        String dbPath = new java.io.File("data/tax_ledger.duckdb").getAbsolutePath();
+        String jdbcUrl = "jdbc:duckdb:" + dbPath + "?access_mode=READ_ONLY";
+
+        try (java.sql.Connection conn = java.sql.DriverManager.getConnection(jdbcUrl);
              java.sql.Statement stmt = conn.createStatement();
              java.sql.ResultSet rs = stmt.executeQuery(sql)) {
 
@@ -916,38 +935,48 @@ package com.portfolioos.core.llm;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
 import java.io.File;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class TaxRagService {
 
     private final ChatClient.Builder chatClientBuilder;
-    private VectorStore vectorStore;
+    private final VectorStore vectorStore;
 
-    public TaxRagService(ChatClient.Builder chatClientBuilder) {
+    public TaxRagService(ChatClient.Builder chatClientBuilder, VectorStore vectorStore) {
         this.chatClientBuilder = chatClientBuilder;
+        this.vectorStore = vectorStore;
     }
 
     @PostConstruct
     public void initTaxKnowledgeBase() {
         try {
-            // Spring AI SimpleVectorStore in-memory setup for Indian Tax Code rules
             File rulesFile = new File("rules/FY2026-27.yaml");
             if (rulesFile.exists()) {
                 String content = Files.readString(rulesFile.toPath());
-                Document doc = new Document(
-                    "INDIAN TAX CODE & RULES FY2026-27:\n" + content,
-                    Map.of("source", "FY2026-27.yaml", "category", "TAX_RULES")
-                );
-                // Vector store placeholder populated on demand
+                String[] sections = content.split("\n\n");
+                List<Document> docs = new ArrayList<>();
+                for (int i = 0; i < sections.length; i++) {
+                    if (!sections[i].isBlank()) {
+                        docs.add(new Document(
+                            sections[i].trim(),
+                            Map.of("source", "FY2026-27.yaml", "section_id", i)
+                        ));
+                    }
+                }
+                if (!docs.isEmpty()) {
+                    vectorStore.add(docs);
+                }
             }
         } catch (Exception e) {
             System.err.println("Tax Vector Store initialization warning: " + e.getMessage());
@@ -956,20 +985,35 @@ public class TaxRagService {
 
     public String answerTaxQuestion(String userQuestion) {
         try {
-            String systemText = """
+            List<Document> similarDocs = vectorStore.similaritySearch(
+                SearchRequest.query(userQuestion).withTopK(3)
+            );
+
+            String retrievedContext = similarDocs.stream()
+                .map(Document::getContent)
+                .collect(Collectors.joining("\n---\n"));
+
+            if (retrievedContext.isBlank()) {
+                retrievedContext = """
+                    - Equity LTCG (holding > 365 days): Taxed at 12.5% above Section 112A exemption limit of ₹1,25,000 per financial year.
+                    - Equity STCG (holding <= 365 days): Taxed at 20.0% under Section 111A.
+                    - Debt Mutual Funds acquired after April 1, 2023: Taxed at slab rates under Section 50AA regardless of holding period.
+                    - Grandfathering Rule: NAV as of 31-Jan-2018 is used as cost basis for equity holdings acquired prior to 01-Feb-2018.
+                    """;
+            }
+
+            String systemPrompt = """
                 You are an expert Indian Income Tax advisor for Mutual Funds and Equity Capital Gains.
-                Use the following ground-truth rules:
-                - Equity LTCG (holding > 365 days): Taxed at 12.5% above Section 112A exemption limit of ₹1,25,000 per financial year.
-                - Equity STCG (holding <= 365 days): Taxed at 20.0% under Section 111A.
-                - Debt Mutual Funds acquired after April 1, 2023: Taxed at slab rates under Section 50AA regardless of holding period.
-                - Grandfathering Rule: NAV as of 31-Jan-2018 is used as cost basis for equity holdings acquired prior to 01-Feb-2018.
+                Use the following retrieved ground-truth tax rules to answer the user's question:
+
+                %s
 
                 Provide clear, concise, legally grounded answers.
-                """;
+                """.formatted(retrievedContext);
 
             ChatClient chatClient = chatClientBuilder.build();
             return chatClient.prompt()
-                .system(systemText)
+                .system(systemPrompt)
                 .user(userQuestion)
                 .call()
                 .content();
@@ -2521,43 +2565,6 @@ export function showToast(message, type = 'success') {
 }
 </file>
 
-<file path="core-node/build.gradle">
-plugins {
-    id 'java'
-    id 'org.springframework.boot' version '3.2.5'
-    id 'io.spring.dependency-management' version '1.1.4'
-}
-
-group = 'com.portfolioos'
-version = '3.0.0-SNAPSHOT'
-
-repositories {
-    mavenCentral()
-}
-
-dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-web'
-    implementation 'org.xerial:sqlite-jdbc:3.45.2.0'
-    implementation 'org.duckdb:duckdb_jdbc:0.10.1'
-    implementation 'org.apache.arrow:arrow-flight:15.0.0'
-    implementation 'org.apache.arrow:arrow-vector:15.0.0'
-    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-}
-
-tasks.withType(JavaCompile) {
-    options.compilerArgs += ['--enable-preview']
-}
-
-test {
-    useJUnitPlatform()
-}
-</file>
-
-<file path="core-node/settings.gradle">
-rootProject.name = 'core-node'
-</file>
-
 <file path="core-node/src/main/java/com/portfolioos/core/fire/FireTracker.java">
 package com.portfolioos.core.fire;
 
@@ -3254,93 +3261,6 @@ public class PortfolioValuationService {
             result.isRebalanceWindowOpen(),
             result.nextScheduledWindow()
         );
-    }
-}
-</file>
-
-<file path="core-node/src/main/java/com/portfolioos/core/tax/ScheduleCgExporter.java">
-package com.portfolioos.core.tax;
-
-import com.portfolioos.core.matcher.TaxClassifier;
-import com.portfolioos.core.model.AssetCategory;
-import com.portfolioos.core.model.MatchedLot;
-import com.portfolioos.core.model.TaxTerm;
-
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.List;
-
-public class ScheduleCgExporter {
-
-    public static String generateCsvReport(List<MatchedLot> matchedLots, String fiscalYear) {
-        StringBuilder csv = new StringBuilder();
-        csv.append("ITR SCHEDULE CG - CAPITAL GAINS SUMMARY (FY ").append(fiscalYear).append(")\n");
-        csv.append("Generated by Portfolio OS Tax Engine\n\n");
-        csv.append("ISIN,Purchase Date,Sale Date,Holding Days,Units Sold,Purchase Cost (INR),Sale Value (INR),Capital Gain (INR),Tax Classification,Section,Tax Rate\n");
-
-        BigDecimal totalLtcgEquity = BigDecimal.ZERO;
-        BigDecimal totalStcgEquity = BigDecimal.ZERO;
-        BigDecimal totalDebtGain = BigDecimal.ZERO;
-
-        for (MatchedLot match : matchedLots) {
-            long days = match.holdingPeriodDays();
-            AssetCategory category = match.assetCategory();
-            TaxTerm term = match.taxTerm();
-
-            BigDecimal units = match.unitsMatched();
-            BigDecimal cost = match.costBasis().setScale(2, RoundingMode.HALF_UP);
-            BigDecimal saleVal = match.saleProceeds().setScale(2, RoundingMode.HALF_UP);
-            BigDecimal gain = match.realizedGain().setScale(2, RoundingMode.HALF_UP);
-
-            String section;
-            String taxRate;
-
-            if (category == AssetCategory.EQUITY) {
-                if (term == TaxTerm.LONG_TERM) {
-                    section = "112A";
-                    taxRate = "12.5%";
-                    totalLtcgEquity = totalLtcgEquity.add(gain);
-                } else {
-                    section = "111A";
-                    taxRate = "20.0%";
-                    totalStcgEquity = totalStcgEquity.add(gain);
-                }
-            } else {
-                section = "50AA";
-                taxRate = "Slab Rate";
-                totalDebtGain = totalDebtGain.add(gain);
-            }
-
-            csv.append(escapeCsv(match.assetId())).append(",")
-               .append(match.acquisitionDate()).append(",")
-               .append(match.disposalDate()).append(",")
-               .append(days).append(",")
-               .append(units.toPlainString()).append(",")
-               .append(cost.toPlainString()).append(",")
-               .append(saleVal.toPlainString()).append(",")
-               .append(gain.toPlainString()).append(",")
-               .append(term.name()).append(",")
-               .append(section).append(",")
-               .append(taxRate).append("\n");
-        }
-
-        csv.append("\nSUMMARY TAX OBLIGATION RECAP\n");
-        csv.append("Equity Sec 112A Total LTCG Gain: INR ").append(totalLtcgEquity.toPlainString()).append("\n");
-        csv.append("Sec 112A Annual Exemption Limit: INR 125000.00\n");
-        BigDecimal taxableLtcg = totalLtcgEquity.subtract(new BigDecimal("125000.00")).max(BigDecimal.ZERO);
-        csv.append("Net Taxable Sec 112A LTCG: INR ").append(taxableLtcg.toPlainString()).append("\n");
-        csv.append("Equity Sec 111A Total STCG Gain (20%): INR ").append(totalStcgEquity.toPlainString()).append("\n");
-        csv.append("Debt Sec 50AA Total Gain (Slab Rate): INR ").append(totalDebtGain.toPlainString()).append("\n");
-
-        return csv.toString();
-    }
-
-    private static String escapeCsv(String text) {
-        if (text == null) return "";
-        if (text.contains(",") || text.contains("\"") || text.contains("\n")) {
-            return "\"" + text.replace("\"", "\"\"") + "\"";
-        }
-        return text;
     }
 }
 </file>
@@ -4215,6 +4135,28 @@ public class AppConfig {
         );
         return ChatClient.builder(chatModel);
     }
+
+    @Bean
+    public org.springframework.ai.ollama.OllamaEmbeddingModel embeddingModel(
+        @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
+    ) {
+        String resolvedUrl = ollamaUrl;
+        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
+            resolvedUrl = "http://127.0.0.1:11434";
+        }
+        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
+        return new org.springframework.ai.ollama.OllamaEmbeddingModel(
+            ollamaApi,
+            OllamaOptions.create().withModel("qwen2.5-coder:3b")
+        );
+    }
+
+    @Bean
+    public org.springframework.ai.vectorstore.VectorStore vectorStore(
+        org.springframework.ai.ollama.OllamaEmbeddingModel embeddingModel
+    ) {
+        return new org.springframework.ai.vectorstore.SimpleVectorStore(embeddingModel);
+    }
 }
 </file>
 
@@ -4334,9 +4276,10 @@ public class ReportController {
     public ResponseEntity<String> downloadScheduleCgCsv(
         @RequestParam(value = "fy", defaultValue = "2026-27") String fy
     ) {
-        String csv = com.portfolioos.core.tax.ScheduleCgExporter.generateCsvReport(
+        String csv = com.portfolioos.core.reporting.Itr2CsvExporter.exportItr2ScheduleCg(
             cacheService.getCachedState().fifoResult().matchedLots(),
-            fy
+            fy,
+            java.util.Collections.emptyMap()
         );
 
         return ResponseEntity.ok()
@@ -5372,148 +5315,6 @@ public class LedgerCacheService {
 }
 </file>
 
-<file path="core-node/pom.xml">
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.5</version>
-        <relativePath/> <!-- lookup parent from repository -->
-    </parent>
-    
-    <groupId>com.portfolioos</groupId>
-    <artifactId>core-node</artifactId>
-    <version>3.0.0</version>
-    <name>core-node</name>
-    <description>Portfolio OS Core Ledger Node (2026 rebuild)</description>
-    
-    <properties>
-        <java.version>21</java.version>
-        <arrow.version>15.0.0</arrow.version>
-    </properties>
-    
-    <dependencies>
-        <!-- Spring Boot Starters -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jdbc</artifactId>
-        </dependency>
-
-        <!-- HikariCP Connection Pooling -->
-        <dependency>
-            <groupId>com.zaxxer</groupId>
-            <artifactId>HikariCP</artifactId>
-        </dependency>
-        
-        <!-- Databases -->
-        <dependency>
-            <groupId>org.xerial</groupId>
-            <artifactId>sqlite-jdbc</artifactId>
-            <version>3.45.1.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.duckdb</groupId>
-            <artifactId>duckdb_jdbc</artifactId>
-            <version>0.10.0</version>
-        </dependency>
-        
-        <!-- YAML Config Loader -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.dataformat</groupId>
-            <artifactId>jackson-dataformat-yaml</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
-        </dependency>
-
-        <!-- Apache Arrow Flight RPC -->
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>arrow-vector</artifactId>
-            <version>${arrow.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>flight-core</artifactId>
-            <version>${arrow.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>flight-grpc</artifactId>
-            <version>${arrow.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>arrow-memory-netty</artifactId>
-            <version>${arrow.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <!-- Spring AI Ollama -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
-        </dependency>
-
-        <!-- Testing -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-    
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.springframework.ai</groupId>
-                <artifactId>spring-ai-bom</artifactId>
-                <version>1.0.0-M1</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
-    <repositories>
-        <repository>
-            <id>spring-milestones</id>
-            <name>Spring Milestones</name>
-            <url>https://repo.spring.io/milestone</url>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-    
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <release>21</release>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-</project>
-</file>
-
 <file path="core-node/src/main/java/com/portfolioos/core/rpc/FlightRpcClient.java">
 package com.portfolioos.core.rpc;
 
@@ -6485,6 +6286,148 @@ body.bg-obsidian {
   color: #d0ff00;
   transform: translateX(4px);
 }
+</file>
+
+<file path="core-node/pom.xml">
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    
+    <groupId>com.portfolioos</groupId>
+    <artifactId>core-node</artifactId>
+    <version>3.0.0</version>
+    <name>core-node</name>
+    <description>Portfolio OS Core Ledger Node (2026 rebuild)</description>
+    
+    <properties>
+        <java.version>21</java.version>
+        <arrow.version>15.0.0</arrow.version>
+    </properties>
+    
+    <dependencies>
+        <!-- Spring Boot Starters -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jdbc</artifactId>
+        </dependency>
+
+        <!-- HikariCP Connection Pooling -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+        </dependency>
+        
+        <!-- Databases -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.45.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.duckdb</groupId>
+            <artifactId>duckdb_jdbc</artifactId>
+            <version>0.10.0</version>
+        </dependency>
+        
+        <!-- YAML Config Loader -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <!-- Apache Arrow Flight RPC -->
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-vector</artifactId>
+            <version>${arrow.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>flight-core</artifactId>
+            <version>${arrow.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>flight-grpc</artifactId>
+            <version>${arrow.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-memory-netty</artifactId>
+            <version>${arrow.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Spring AI Ollama -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>1.0.0-M1</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <repositories>
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
 </file>
 
 <file path="core-node/src/main/resources/static/src/js/modules/portfolio.js">

@@ -71,14 +71,7 @@ public class SqlGeneratorService {
             // Clean markdown syntax if present
             String sql = rawSql.replaceAll("```sql", "").replaceAll("```", "").trim();
 
-            // Strict SELECT Guardrail
-            if (!sql.toUpperCase().startsWith("SELECT") && !sql.toUpperCase().startsWith("WITH")) {
-                throw new SecurityException("Security violation: Only read-only SELECT queries are permitted.");
-            }
-
-            if (sql.contains(";") && sql.indexOf(";") != sql.length() - 1) {
-                throw new SecurityException("Security violation: Multi-statement queries are forbidden.");
-            }
+            validateAndSanitizeSql(sql);
 
             List<Map<String, Object>> results = executeDuckDbQuery(sql);
             return new SqlQueryResult(sql, results, "SUCCESS", null);
@@ -87,9 +80,39 @@ public class SqlGeneratorService {
         }
     }
 
+    private void validateAndSanitizeSql(String sql) {
+        String upper = sql.toUpperCase();
+
+        // 1. Strict SELECT / WITH prefix check
+        if (!upper.startsWith("SELECT") && !upper.startsWith("WITH")) {
+            throw new SecurityException("Security violation: Only read-only SELECT or WITH queries are permitted.");
+        }
+
+        // 2. Prevent multi-statement execution
+        if (sql.contains(";") && sql.indexOf(";") != sql.length() - 1) {
+            throw new SecurityException("Security violation: Multi-statement queries are forbidden.");
+        }
+
+        // 3. Block file read/write, system, and administrative DuckDB table functions
+        String[] forbiddenTokens = {
+            "READ_CSV", "READ_CSV_AUTO", "READ_PARQUET", "READ_JSON", "READ_NDJSON",
+            "READ_TEXT", "ST_READ", "GLOB", "READ_BLOB", "READ_FILE", "WRITE_CSV",
+            "COPY", "EXPORT", "INSTALL", "LOAD", "PRAGMA", "ATTACH", "DETACH", "QUERY_TABLE"
+        };
+
+        for (String token : forbiddenTokens) {
+            if (upper.matches(".*\\b" + token + "\\b.*")) {
+                throw new SecurityException("Security violation: Restricted function call '" + token + "' detected.");
+            }
+        }
+    }
+
     private List<Map<String, Object>> executeDuckDbQuery(String sql) {
         List<Map<String, Object>> rows = new ArrayList<>();
-        try (java.sql.Connection conn = java.sql.DriverManager.getConnection("jdbc:duckdb:" + new java.io.File("data/tax_ledger.duckdb").getAbsolutePath());
+        String dbPath = new java.io.File("data/tax_ledger.duckdb").getAbsolutePath();
+        String jdbcUrl = "jdbc:duckdb:" + dbPath + "?access_mode=READ_ONLY";
+
+        try (java.sql.Connection conn = java.sql.DriverManager.getConnection(jdbcUrl);
              java.sql.Statement stmt = conn.createStatement();
              java.sql.ResultSet rs = stmt.executeQuery(sql)) {
 
