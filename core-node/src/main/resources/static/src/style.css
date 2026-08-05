@@ -775,9 +775,6 @@ body.bg-obsidian {
   box-sizing: border-box;
 }
 
-.cmd-modal-overlay[style*="display: none"] {
-  display: none !important;
-}
 
 .command-palette-box {
   background: #090f1e;
