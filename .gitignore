@@ -65,3 +65,7 @@ data/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Repomix bundles
+repomix*.md
+
