@@ -127,7 +127,8 @@ document.addEventListener('DOMContentLoaded', () => {
           cmdResults.innerHTML = '<div style="padding:12px; color:#06b6d4; font-family:monospace;">🧠 AI Engine Thinking...</div>';
         }
 
-        const evtSource = new EventSource(`/api/v1/llm/stream?prompt=${encodeURIComponent(query)}`);
+        const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
+        const evtSource = new EventSource(`/api/v1/llm/stream?prompt=${encodeURIComponent(query)}&token=${encodeURIComponent(token)}`);
         let outputText = '';
 
         evtSource.onmessage = function(event) {
@@ -144,6 +145,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         evtSource.onerror = function() {
           evtSource.close();
+          if (cmdResults && !outputText) {
+            cmdResults.innerHTML = '<div style="padding:12px; color:#ef4444; font-family:monospace;">⚠️ Streaming failed. Verify connection or authentication token.</div>';
+          }
         };
       }
     });
