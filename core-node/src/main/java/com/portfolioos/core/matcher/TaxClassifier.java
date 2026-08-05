@@ -61,9 +61,31 @@ public class TaxClassifier {
     }
 
     public static TaxTerm classifyTaxTerm(AssetCategory category, long holdingDays, String fiscalYear, boolean isListed) {
+        return classifyTaxTerm(category, holdingDays, fiscalYear, isListed, null, null);
+    }
+
+    public static TaxTerm classifyTaxTerm(AssetCategory category, long holdingDays, String fiscalYear, boolean isListed, java.time.LocalDate acquisitionDate, java.time.LocalDate disposalDate) {
         TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
         return switch (category) {
-            case DEBT_SPECIFIED_50AA -> TaxTerm.SHORT_TERM; // Sec 50AA: Always Short-Term
+            case DEBT_SPECIFIED_50AA -> {
+                // Section 50AA Finance Act (No. 2) 2024 Temporal Branching:
+                // Purchased Post April 1, 2023 -> Always Short-Term (Slab Rate)
+                // Purchased Pre April 1, 2023 (Legacy Debt Fund):
+                // - Sold Post July 23, 2024: > 24 months (730d) -> LTCG @ 12.5% (no indexation); else STCG
+                // - Sold Pre July 23, 2024: > 36 months (1095d) -> LTCG @ 20% (with indexation); else STCG
+                java.time.LocalDate apr2023Cutoff = java.time.LocalDate.of(2023, 4, 1);
+                java.time.LocalDate jul2024Cutoff = java.time.LocalDate.of(2024, 7, 23);
+
+                if (acquisitionDate != null && acquisitionDate.isBefore(apr2023Cutoff)) {
+                    if (disposalDate != null && !disposalDate.isBefore(jul2024Cutoff)) {
+                        yield holdingDays > 730 ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                    } else {
+                        yield holdingDays > 1095 ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                    }
+                } else {
+                    yield TaxTerm.SHORT_TERM;
+                }
+            }
             case EQUITY -> {
                 if (holdingDays >= rules.equityLtcgThresholdDays()) {
                     yield TaxTerm.LONG_TERM;

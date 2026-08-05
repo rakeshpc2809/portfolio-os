@@ -33,13 +33,16 @@ public class LedgerCacheService {
         List<TaxEvent> events,
         FifoMatcher.FifoResult fifoResult,
         Map<String, BigDecimal> navMap,
-        String ledgerHash
+        String ledgerHash,
+        long lastNavFreshnessTimestamp,
+        String healthStatus // HEALTHY, DEGRADED_AMFI_TIMEOUT
     ) {}
 
     @EventListener(ApplicationReadyEvent.class)
     @Scheduled(fixedRate = 30000)
     public void refreshCacheInBackground() {
         synchronized (updateLock) {
+            String health = "HEALTHY";
             try {
                 String currentHash = eventStore.getLatestEventHash();
                 long now = System.currentTimeMillis();
@@ -48,9 +51,15 @@ public class LedgerCacheService {
                 if (current == null || current.ledgerHash() == null || !currentHash.equals(current.ledgerHash()) || (now - lastNavSyncTime) >= 30_000) {
                     List<TaxEvent> events = eventStore.getAllEvents();
                     FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(events);
-                    Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+                    Map<String, BigDecimal> navMap = null;
+                    try {
+                        navMap = amfiSync.getNavMap();
+                    } catch (Exception amfiEx) {
+                        health = "DEGRADED_AMFI_TIMEOUT";
+                        navMap = current != null ? current.navMap() : java.util.Collections.emptyMap();
+                    }
                     
-                    stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash));
+                    stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash, now, health));
                     lastNavSyncTime = now;
                 }
             } catch (Exception e) {

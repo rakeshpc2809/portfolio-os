@@ -96,7 +96,7 @@ public class FifoMatcher {
                         boolean isListed = TaxClassifier.isListed(event.assetId(), event.assetName());
 
                         TaxTerm taxTerm = isSgbMaturity ? TaxTerm.EXEMPT 
-                            : TaxClassifier.classifyTaxTerm(category, holdingDays, "2026-27", isListed);
+                            : TaxClassifier.classifyTaxTerm(category, holdingDays, "2026-27", isListed, currentLot.acquisitionDate(), event.eventDate());
 
                         matchedLots.add(new MatchedLot(
                             UUID.randomUUID().toString(),

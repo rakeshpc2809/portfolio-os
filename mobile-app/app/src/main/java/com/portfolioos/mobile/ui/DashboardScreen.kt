@@ -64,6 +64,10 @@ fun DashboardScreen(
     var showUrlDialog by remember { mutableStateOf(false) }
     var inputUrl by remember { mutableStateOf("") }
 
+    val derivedInfo by remember(snapshot) {
+        derivedStateOf { snapshot?.syncInfo }
+    }
+
     MaterialTheme(
         colorScheme = darkColorScheme(
             background = M3ObsidianDark,

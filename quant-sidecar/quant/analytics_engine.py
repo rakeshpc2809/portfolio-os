@@ -128,8 +128,20 @@ def run_monte_carlo_fire_simulation(
     trading_days = years * 252
     daily_expense = annual_expense / 252.0
 
-    # Historical Bootstrapping: Randomly sample actual past daily returns with replacement to preserve true fat tails & skewness
-    simulated_daily_returns = np.random.choice(returns, size=(num_simulations, trading_days), replace=True)
+    # Circular Block Bootstrapping: Sample contiguous multi-day blocks (block_size = 15 trading days)
+    # to preserve temporal autocorrelation and GARCH volatility clustering regimes
+    n_returns = len(returns)
+    block_size = min(15, n_returns)
+    n_blocks_needed = int(np.ceil(trading_days / block_size))
+
+    simulated_daily_returns = np.zeros((num_simulations, trading_days))
+    for sim_idx in range(num_simulations):
+        start_indices = np.random.randint(0, n_returns, size=n_blocks_needed)
+        path = []
+        for idx in start_indices:
+            block = [returns[(idx + k) % n_returns] for k in range(block_size)]
+            path.extend(block)
+        simulated_daily_returns[sim_idx, :] = np.array(path[:trading_days])
 
     surviving_sims = 0
     final_corpuses = []
