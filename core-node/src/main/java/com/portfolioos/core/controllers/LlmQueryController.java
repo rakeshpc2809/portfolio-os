@@ -6,12 +6,7 @@ import com.portfolioos.core.service.SimulationService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
-import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import reactor.core.publisher.Flux;
 
 @RestController
 @RequestMapping("/api/v1/llm")
@@ -21,7 +16,6 @@ public class LlmQueryController {
     private final TaxRagService taxRagService;
     private final SimulationService simulationService;
     private final ChatClient.Builder chatClientBuilder;
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     public LlmQueryController(
         SqlGeneratorService sqlService,
@@ -57,7 +51,6 @@ public class LlmQueryController {
         // 1. Tool Call Interception for Trade Simulation
         if (promptLower.contains("simulate") || promptLower.contains("what-if") || promptLower.contains("what if")) {
             try {
-                // Example tool parameter extraction for paired or single trade
                 SimulationService.TradeSimulationRequest simReq = new SimulationService.TradeSimulationRequest(
                     "INF200K01229",
                     "Parag Parikh Flexi Cap Fund",
@@ -90,31 +83,18 @@ public class LlmQueryController {
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamQuery(@RequestParam("prompt") String prompt) {
-        SseEmitter emitter = new SseEmitter(60000L);
-        executorService.execute(() -> {
-            try {
-                LlmQueryResponse res = handleQuery(new LlmQueryRequest(prompt));
-                String content = res.textResponse();
-
-                if (res.generatedSql() != null && !res.generatedSql().isBlank()) {
-                    content += "\n\n```sql\n" + res.generatedSql() + "\n```";
-                }
-
-                // Stream tokens word-by-word for live SSE typing effect
-                String[] words = content.split(" ");
-                for (String word : words) {
-                    emitter.send(word + " ");
-                    Thread.sleep(30);
-                }
-                emitter.complete();
-            } catch (Exception e) {
-                try {
-                    emitter.send("⚠️ Streaming error: " + e.getMessage());
-                    emitter.complete();
-                } catch (IOException ignored) {}
-            }
-        });
-        return emitter;
+    public Flux<String> streamQuery(@RequestParam("prompt") String prompt) {
+        if (prompt == null || prompt.isBlank()) {
+            return Flux.just("Please provide a valid prompt.");
+        }
+        try {
+            ChatClient chatClient = chatClientBuilder.build();
+            return chatClient.prompt()
+                .user(prompt)
+                .stream()
+                .content();
+        } catch (Exception e) {
+            return Flux.just("⚠️ Streaming error: " + e.getMessage());
+        }
     }
 }

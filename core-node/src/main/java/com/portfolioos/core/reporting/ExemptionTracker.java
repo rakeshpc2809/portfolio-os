@@ -100,7 +100,9 @@ public class ExemptionTracker {
 
     public static Pair<LocalDate, LocalDate> getFiscalYearBounds(String fiscalYear) {
         String[] parts = fiscalYear.split("-");
-        int startYear = 2026;
+        LocalDate now = LocalDate.now();
+        int defaultStartYear = now.getMonthValue() >= 4 ? now.getYear() : now.getYear() - 1;
+        int startYear = defaultStartYear;
         try {
             startYear = Integer.parseInt(parts[0].trim());
         } catch (Exception e) {

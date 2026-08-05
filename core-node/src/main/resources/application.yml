@@ -8,6 +8,16 @@ spring:
   threads:
     virtual:
       enabled: true
+  ai:
+    ollama:
+      base-url: ${SPRING_AI_OLLAMA_BASE_URL:http://127.0.0.1:11434}
+      chat:
+        options:
+          model: qwen2.5-coder:3b
+          temperature: 0.1
+      embedding:
+        options:
+          model: nomic-embed-text
   mvc:
     static-path-pattern: /**
   resources:
