@@ -5372,6 +5372,285 @@ public class LedgerCacheService {
 }
 </file>
 
+<file path="core-node/pom.xml">
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.5</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    
+    <groupId>com.portfolioos</groupId>
+    <artifactId>core-node</artifactId>
+    <version>3.0.0</version>
+    <name>core-node</name>
+    <description>Portfolio OS Core Ledger Node (2026 rebuild)</description>
+    
+    <properties>
+        <java.version>21</java.version>
+        <arrow.version>15.0.0</arrow.version>
+    </properties>
+    
+    <dependencies>
+        <!-- Spring Boot Starters -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jdbc</artifactId>
+        </dependency>
+
+        <!-- HikariCP Connection Pooling -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+        </dependency>
+        
+        <!-- Databases -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.45.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.duckdb</groupId>
+            <artifactId>duckdb_jdbc</artifactId>
+            <version>0.10.0</version>
+        </dependency>
+        
+        <!-- YAML Config Loader -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <!-- Apache Arrow Flight RPC -->
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-vector</artifactId>
+            <version>${arrow.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>flight-core</artifactId>
+            <version>${arrow.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>flight-grpc</artifactId>
+            <version>${arrow.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-memory-netty</artifactId>
+            <version>${arrow.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Spring AI Ollama -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>1.0.0-M1</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <repositories>
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+</file>
+
+<file path="core-node/src/main/java/com/portfolioos/core/rpc/FlightRpcClient.java">
+package com.portfolioos.core.rpc;
+
+import com.portfolioos.core.persistence.DuckDbProjector.NavHistorySeriesEntry;
+import org.apache.arrow.flight.*;
+import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.vector.Float8Vector;
+import org.apache.arrow.vector.VarCharVector;
+import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.types.FloatingPointPrecision;
+import org.apache.arrow.vector.types.pojo.ArrowType;
+import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.vector.types.pojo.FieldType;
+import org.apache.arrow.vector.types.pojo.Schema;
+
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+public class FlightRpcClient {
+
+    private final String host;
+    private final int port;
+    private final String flightUrl;
+    private final BufferAllocator allocator;
+
+    public FlightRpcClient() {
+        this("quant-sidecar", 8001);
+    }
+
+    public FlightRpcClient(String host, int port) {
+        this.host = host;
+        this.port = port;
+        this.flightUrl = "grpc+tcp://" + host + ":" + port;
+        this.allocator = new RootAllocator(Long.MAX_VALUE);
+    }
+
+    public FlightRpcClient(String flightUrl) {
+        this.flightUrl = flightUrl;
+        URI uri = URI.create(flightUrl.replace("grpc+tcp://", "http://"));
+        this.host = uri.getHost() != null ? uri.getHost() : "quant-sidecar";
+        this.port = uri.getPort() > 0 ? uri.getPort() : 8001;
+        this.allocator = new RootAllocator(Long.MAX_VALUE);
+    }
+
+    public Map<String, Map<String, Object>> computeQuantMetrics(Map<String, List<Double>> fundNavSeries) {
+        Map<String, NavHistorySeriesEntry> adapterMap = new HashMap<>();
+        if (fundNavSeries != null) {
+            for (Map.Entry<String, List<Double>> entry : fundNavSeries.entrySet()) {
+                adapterMap.put(entry.getKey(), new NavHistorySeriesEntry(entry.getValue(), Collections.emptyList()));
+            }
+        }
+        return computeQuantMetricsWithDates(adapterMap);
+    }
+
+    public Map<String, Map<String, Object>> computeQuantMetricsWithDates(Map<String, NavHistorySeriesEntry> fundNavSeries) {
+        Map<String, Map<String, Object>> out = new HashMap<>();
+        if (fundNavSeries == null || fundNavSeries.isEmpty()) {
+            return out;
+        }
+
+        int totalRows = fundNavSeries.values().stream().mapToInt(e -> e.navs().size()).sum();
+        if (totalRows == 0) {
+            return out;
+        }
+
+        try {
+            Location location = Location.forGrpcInsecure(host, port);
+            try (FlightClient client = FlightClient.builder(allocator, location).build()) {
+
+                Schema inSchema = new Schema(List.of(
+                    new Field("amfi_code", FieldType.nullable(new ArrowType.Utf8()), null),
+                    new Field("nav_date", FieldType.nullable(new ArrowType.Utf8()), null),
+                    new Field("nav_value", FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)), null)
+                ));
+
+                try (VectorSchemaRoot inRoot = VectorSchemaRoot.create(inSchema, allocator)) {
+                    VarCharVector codeVec = (VarCharVector) inRoot.getVector("amfi_code");
+                    VarCharVector dateVec = (VarCharVector) inRoot.getVector("nav_date");
+                    Float8Vector navVec = (Float8Vector) inRoot.getVector("nav_value");
+                    codeVec.allocateNew(totalRows * 32L, totalRows);
+                    dateVec.allocateNew(totalRows * 16L, totalRows);
+                    navVec.allocateNew(totalRows);
+
+                    int row = 0;
+                    for (Map.Entry<String, NavHistorySeriesEntry> entry : fundNavSeries.entrySet()) {
+                        byte[] codeBytes = entry.getKey().getBytes(StandardCharsets.UTF_8);
+                        List<Double> navs = entry.getValue().navs();
+                        List<String> dates = entry.getValue().dates();
+
+                        for (int i = 0; i < navs.size(); i++) {
+                            codeVec.setSafe(row, codeBytes);
+                            if (i < dates.size() && dates.get(i) != null) {
+                                dateVec.setSafe(row, dates.get(i).getBytes(StandardCharsets.UTF_8));
+                            } else {
+                                dateVec.setSafe(row, "".getBytes(StandardCharsets.UTF_8));
+                            }
+                            navVec.setSafe(row, navs.get(i));
+                            row++;
+                        }
+                    }
+                    inRoot.setRowCount(totalRows);
+
+                    FlightDescriptor descriptor = FlightDescriptor.path("quant_metrics");
+                    FlightClient.ExchangeReaderWriter exchange = client.doExchange(descriptor);
+
+                    FlightClient.ClientStreamListener writer = exchange.getWriter();
+                    writer.start(inRoot);
+                    writer.putNext();
+                    writer.completed();
+
+                    try (FlightStream reader = exchange.getReader()) {
+                        while (reader.next()) {
+                            VectorSchemaRoot outRoot = reader.getRoot();
+                            VarCharVector outCode = (VarCharVector) outRoot.getVector("amfi_code");
+                            for (int i = 0; i < outRoot.getRowCount(); i++) {
+                                String code = new String(outCode.get(i), StandardCharsets.UTF_8);
+                                Map<String, Object> metrics = new HashMap<>();
+                                for (Field f : outRoot.getSchema().getFields()) {
+                                    if (f.getName().equals("amfi_code")) continue;
+                                    metrics.put(f.getName(), outRoot.getVector(f.getName()).getObject(i));
+                                }
+                                out.put(code, metrics);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Arrow Flight quant metrics call error: " + e.getMessage());
+        }
+        return out;
+    }
+}
+</file>
+
 <file path="core-node/src/main/resources/static/src/style.css">
 :root {
   --bg-obsidian: #050811;
@@ -6208,603 +6487,6 @@ body.bg-obsidian {
 }
 </file>
 
-<file path="core-node/pom.xml">
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.5</version>
-        <relativePath/> <!-- lookup parent from repository -->
-    </parent>
-    
-    <groupId>com.portfolioos</groupId>
-    <artifactId>core-node</artifactId>
-    <version>3.0.0</version>
-    <name>core-node</name>
-    <description>Portfolio OS Core Ledger Node (2026 rebuild)</description>
-    
-    <properties>
-        <java.version>21</java.version>
-        <arrow.version>15.0.0</arrow.version>
-    </properties>
-    
-    <dependencies>
-        <!-- Spring Boot Starters -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jdbc</artifactId>
-        </dependency>
-
-        <!-- HikariCP Connection Pooling -->
-        <dependency>
-            <groupId>com.zaxxer</groupId>
-            <artifactId>HikariCP</artifactId>
-        </dependency>
-        
-        <!-- Databases -->
-        <dependency>
-            <groupId>org.xerial</groupId>
-            <artifactId>sqlite-jdbc</artifactId>
-            <version>3.45.1.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.duckdb</groupId>
-            <artifactId>duckdb_jdbc</artifactId>
-            <version>0.10.0</version>
-        </dependency>
-        
-        <!-- YAML Config Loader -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.dataformat</groupId>
-            <artifactId>jackson-dataformat-yaml</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
-        </dependency>
-
-        <!-- Apache Arrow Flight RPC -->
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>arrow-vector</artifactId>
-            <version>${arrow.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>flight-core</artifactId>
-            <version>${arrow.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>flight-grpc</artifactId>
-            <version>${arrow.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>arrow-memory-netty</artifactId>
-            <version>${arrow.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <!-- Spring AI Ollama -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
-        </dependency>
-
-        <!-- Testing -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-    
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.springframework.ai</groupId>
-                <artifactId>spring-ai-bom</artifactId>
-                <version>1.0.0-M1</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
-    <repositories>
-        <repository>
-            <id>spring-milestones</id>
-            <name>Spring Milestones</name>
-            <url>https://repo.spring.io/milestone</url>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-    
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <release>21</release>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-</project>
-</file>
-
-<file path="core-node/src/main/java/com/portfolioos/core/rpc/FlightRpcClient.java">
-package com.portfolioos.core.rpc;
-
-import com.portfolioos.core.persistence.DuckDbProjector.NavHistorySeriesEntry;
-import org.apache.arrow.flight.*;
-import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.RootAllocator;
-import org.apache.arrow.vector.Float8Vector;
-import org.apache.arrow.vector.VarCharVector;
-import org.apache.arrow.vector.VectorSchemaRoot;
-import org.apache.arrow.vector.types.FloatingPointPrecision;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.FieldType;
-import org.apache.arrow.vector.types.pojo.Schema;
-
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-
-public class FlightRpcClient {
-
-    private final String host;
-    private final int port;
-    private final String flightUrl;
-    private final BufferAllocator allocator;
-
-    public FlightRpcClient() {
-        this("quant-sidecar", 8001);
-    }
-
-    public FlightRpcClient(String host, int port) {
-        this.host = host;
-        this.port = port;
-        this.flightUrl = "grpc+tcp://" + host + ":" + port;
-        this.allocator = new RootAllocator(Long.MAX_VALUE);
-    }
-
-    public FlightRpcClient(String flightUrl) {
-        this.flightUrl = flightUrl;
-        URI uri = URI.create(flightUrl.replace("grpc+tcp://", "http://"));
-        this.host = uri.getHost() != null ? uri.getHost() : "quant-sidecar";
-        this.port = uri.getPort() > 0 ? uri.getPort() : 8001;
-        this.allocator = new RootAllocator(Long.MAX_VALUE);
-    }
-
-    public Map<String, Map<String, Object>> computeQuantMetrics(Map<String, List<Double>> fundNavSeries) {
-        Map<String, NavHistorySeriesEntry> adapterMap = new HashMap<>();
-        if (fundNavSeries != null) {
-            for (Map.Entry<String, List<Double>> entry : fundNavSeries.entrySet()) {
-                adapterMap.put(entry.getKey(), new NavHistorySeriesEntry(entry.getValue(), Collections.emptyList()));
-            }
-        }
-        return computeQuantMetricsWithDates(adapterMap);
-    }
-
-    public Map<String, Map<String, Object>> computeQuantMetricsWithDates(Map<String, NavHistorySeriesEntry> fundNavSeries) {
-        Map<String, Map<String, Object>> out = new HashMap<>();
-        if (fundNavSeries == null || fundNavSeries.isEmpty()) {
-            return out;
-        }
-
-        int totalRows = fundNavSeries.values().stream().mapToInt(e -> e.navs().size()).sum();
-        if (totalRows == 0) {
-            return out;
-        }
-
-        try {
-            Location location = Location.forGrpcInsecure(host, port);
-            try (FlightClient client = FlightClient.builder(allocator, location).build()) {
-
-                Schema inSchema = new Schema(List.of(
-                    new Field("amfi_code", FieldType.nullable(new ArrowType.Utf8()), null),
-                    new Field("nav_date", FieldType.nullable(new ArrowType.Utf8()), null),
-                    new Field("nav_value", FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)), null)
-                ));
-
-                try (VectorSchemaRoot inRoot = VectorSchemaRoot.create(inSchema, allocator)) {
-                    VarCharVector codeVec = (VarCharVector) inRoot.getVector("amfi_code");
-                    VarCharVector dateVec = (VarCharVector) inRoot.getVector("nav_date");
-                    Float8Vector navVec = (Float8Vector) inRoot.getVector("nav_value");
-                    codeVec.allocateNew(totalRows * 32L, totalRows);
-                    dateVec.allocateNew(totalRows * 16L, totalRows);
-                    navVec.allocateNew(totalRows);
-
-                    int row = 0;
-                    for (Map.Entry<String, NavHistorySeriesEntry> entry : fundNavSeries.entrySet()) {
-                        byte[] codeBytes = entry.getKey().getBytes(StandardCharsets.UTF_8);
-                        List<Double> navs = entry.getValue().navs();
-                        List<String> dates = entry.getValue().dates();
-
-                        for (int i = 0; i < navs.size(); i++) {
-                            codeVec.setSafe(row, codeBytes);
-                            if (i < dates.size() && dates.get(i) != null) {
-                                dateVec.setSafe(row, dates.get(i).getBytes(StandardCharsets.UTF_8));
-                            } else {
-                                dateVec.setSafe(row, "".getBytes(StandardCharsets.UTF_8));
-                            }
-                            navVec.setSafe(row, navs.get(i));
-                            row++;
-                        }
-                    }
-                    inRoot.setRowCount(totalRows);
-
-                    FlightDescriptor descriptor = FlightDescriptor.path("quant_metrics");
-                    FlightClient.ExchangeReaderWriter exchange = client.doExchange(descriptor);
-
-                    FlightClient.ClientStreamListener writer = exchange.getWriter();
-                    writer.start(inRoot);
-                    writer.putNext();
-                    writer.completed();
-
-                    try (FlightStream reader = exchange.getReader()) {
-                        while (reader.next()) {
-                            VectorSchemaRoot outRoot = reader.getRoot();
-                            VarCharVector outCode = (VarCharVector) outRoot.getVector("amfi_code");
-                            for (int i = 0; i < outRoot.getRowCount(); i++) {
-                                String code = new String(outCode.get(i), StandardCharsets.UTF_8);
-                                Map<String, Object> metrics = new HashMap<>();
-                                for (Field f : outRoot.getSchema().getFields()) {
-                                    if (f.getName().equals("amfi_code")) continue;
-                                    metrics.put(f.getName(), outRoot.getVector(f.getName()).getObject(i));
-                                }
-                                out.put(code, metrics);
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Arrow Flight quant metrics call error: " + e.getMessage());
-        }
-        return out;
-    }
-}
-</file>
-
-<file path="core-node/src/main/resources/static/index.html">
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Portfolio OS - Web Cockpit (v3.0)</title>
-  <link rel="stylesheet" href="./src/style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
-</head>
-<body class="bg-obsidian">
-  <!-- Glowing Background Ambient Spheres -->
-  <div class="ambient-glow glow-1"></div>
-  <div class="ambient-glow glow-2"></div>
-
-  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
-
-  <div id="app" class="container">
-    <!-- Clean Minimalist Header -->
-    <header class="header">
-      <div class="brand">
-        <div class="logo-icon">🚀</div>
-        <div class="brand-title-group">
-          <div class="brand-title-row">
-            <h1 class="brand-title">Portfolio OS</h1>
-            <span class="v2-tag">v3.0 Vapor</span>
-          </div>
-          <div class="fy-selector-row">
-            <span>PERIOD:</span>
-            <select class="fy-select" id="fySelect">
-              <option value="2024-25">FY 2024-25</option>
-              <option value="2025-26">FY 2025-26</option>
-              <option value="2026-27" selected>FY 2026-27</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="header-actions">
-        <button id="cmdKTriggerBtn" class="upload-btn cmd-k-btn" onclick="window.openCmdPalette && window.openCmdPalette()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          ⚡ AI Search <kbd>/</kbd> <kbd>⌘K</kbd>
-        </button>
-
-        <button id="exportZipBtn" class="upload-btn export-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-          Export ITR-2 Bundle (.zip)
-        </button>
-
-        <label for="fileUploadInput" class="upload-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-          Upload CAS PDF / CSV
-        </label>
-        <input type="file" id="fileUploadInput" accept=".pdf,.csv" style="display: none;">
-
-        <div class="status-pill">
-          <span class="status-dot"></span> SHA-256 Engine Active
-        </div>
-      </div>
-    </header>
-
-    <!-- Top Key Metrics Row -->
-    <section class="top-metrics-grid">
-      <div class="glass-card metric-box">
-        <div class="metric-label">NET WORTH</div>
-        <div class="metric-value font-mono skeleton net-worth-val">₹ --,--,---</div>
-        <div class="metric-delta neutral net-worth-gain">Unrealized gain: --</div>
-        <div class="metric-subtext net-worth-sub">Active Holdings: -- Schemes</div>
-      </div>
-
-      <div class="glass-card metric-box">
-        <div class="metric-label">UNALLOCATED CASH</div>
-        <div class="metric-value font-mono highlight-cyan skeleton idle-cash-val">₹ --,--,---</div>
-        <div class="metric-subtext">Sitting idle across Liquid & Bank</div>
-      </div>
-
-      <div class="glass-card metric-box exemption-box">
-        <div class="metric-label">LTCG EXEMPTION (SEC 112A)</div>
-        <div class="metric-value font-mono skeleton ltcg-meter-val">₹ 0 <span class="sub-limit">/ 1.25L</span></div>
-        <div class="progress-track">
-          <div class="progress-fill-gradient" style="width: 0%;"></div>
-        </div>
-        <div class="meter-meta">
-          <span class="pct-used">0% Used</span>
-          <span class="remaining">₹ 1,25,000 Available</span>
-        </div>
-      </div>
-
-      <div class="glass-card metric-box">
-        <div class="metric-label">PORTFOLIO XIRR</div>
-        <div class="metric-value font-mono highlight-cyan skeleton xirr-val">--%</div>
-        <div class="metric-subtext">Money-Weighted XIRR</div>
-      </div>
-    </section>
-
-    <!-- Minimalist Tab Navigation Bar -->
-    <nav class="tab-nav">
-      <button class="tab-btn active" data-tab="overview">📊 Overview & Allocation</button>
-      <button class="tab-btn" data-tab="tax">⚡ Tax Optimization & Audit</button>
-      <button class="tab-btn" data-tab="fire">🎯 FIRE & Rebalancing</button>
-    </nav>
-
-    <!-- TAB 1: Overview & Allocation -->
-    <main class="tab-content active" id="tab-overview">
-      <div class="dashboard-grid">
-        <!-- Fund Allocation Chart -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Fund Asset Allocation</h2>
-            <span class="live-tag">BY SCHEME</span>
-          </div>
-          <div class="canvas-wrapper-small" id="allocationChart" style="height: 280px; width: 100%;"></div>
-        </div>
-
-        <!-- Risk Category Allocation Chart -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Risk Exposure</h2>
-            <span class="live-tag">BY CATEGORY</span>
-          </div>
-          <div class="canvas-wrapper-small" id="categoryChart" style="height: 280px; width: 100%;"></div>
-        </div>
-
-        <!-- Open Holdings Table -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Open Holdings & FIFO Lots</h2>
-            <span class="live-tag">LEDGER DRILL-DOWN</span>
-          </div>
-          <div class="table-container">
-            <table class="data-table" id="holdingsTable">
-              <thead>
-                <tr>
-                  <th>Scheme Name</th>
-                  <th>Category</th>
-                  <th>Invested</th>
-                  <th>Current Value</th>
-                  <th>Unrealized Gain</th>
-                  <th>Allocation %</th>
-                  <th>Open Lots</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="7" class="loading-td">Loading holdings...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- TAB 2: Tax Optimization & Audit -->
-    <main class="tab-content" id="tab-tax">
-      <div class="dashboard-grid">
-        <!-- AI Decision Radar -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Tax & Strategy Decision Radar</h2>
-            <span class="live-tag">AI ADVISOR</span>
-          </div>
-          <div class="radar-list">
-            <div class="radar-empty-state">Scanning open lots for tax-loss harvesting and LTCG maturation opportunities...</div>
-          </div>
-        </div>
-
-        <!-- Schedule FA Pre-Flight Checklist -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Schedule FA Compliance</h2>
-            <span class="live-tag">FOREIGN ASSETS</span>
-          </div>
-          <div class="compliance-list">
-            <div class="compliance-item valid">
-              <span class="check-icon">✓</span>
-              <div class="comp-text">
-                <div class="comp-title">Foreign Entity Identification & Address</div>
-                <div class="comp-desc">International ETF ISINs mapped to US jurisdiction.</div>
-              </div>
-            </div>
-            <div class="compliance-item valid">
-              <span class="check-icon">✓</span>
-              <div class="comp-text">
-                <div class="comp-title">Peak Intra-Year Valuation INR</div>
-                <div class="comp-desc">SBI Telegraphic Transfer conversion applied to peak balances.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Realized Disposals Audit Log -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Realized Disposals Audit Log</h2>
-            <span class="live-tag">SELECTED FY</span>
-          </div>
-          <div class="table-container">
-            <table class="data-table" id="realizedLogTable">
-              <thead>
-                <tr>
-                  <th>Disposal Date</th>
-                  <th>Acquisition Date</th>
-                  <th>Scheme Name</th>
-                  <th>Units</th>
-                  <th>Proceeds</th>
-                  <th>Cost Basis</th>
-                  <th>Realized Gain</th>
-                  <th>Tax Term</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="8" class="loading-td">Loading realized log...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- TAB 3: FIRE & Rebalancing -->
-    <main class="tab-content" id="tab-fire">
-      <div class="dashboard-grid">
-        <!-- FIRE Tracker Module -->
-        <div class="glass-card col-12 fire-card">
-          <div class="card-header">
-            <div class="title-with-badge">
-              <h2>FIRE Tracker & Decumulation Runway</h2>
-              <span class="fire-status-pill on-track" id="fireStatusPill">ON TRACK</span>
-            </div>
-            <div class="live-tag font-mono" id="fireScenarioLabel">Scenario: Primary Target</div>
-          </div>
-
-          <div class="fire-metrics-grid">
-            <div class="fire-stat-box">
-              <span class="lbl">Investable Net Worth</span>
-              <strong class="val font-mono highlight-cyan" id="fireInvestableNw">₹ --</strong>
-              <span class="sub font-mono">Liquid Investments</span>
-            </div>
-            <div class="fire-stat-box">
-              <span class="lbl">Required Corpus (Age 45)</span>
-              <strong class="val font-mono" id="fireRequiredCorpus">₹ --</strong>
-              <span class="sub font-mono" id="fireExpenseSub">3.0% SWR @ ₹60k/mo</span>
-            </div>
-            <div class="fire-stat-box">
-              <span class="lbl">Projected Corpus @ 45</span>
-              <strong class="val font-mono positive" id="fireProjectedCorpus">₹ --</strong>
-              <span class="sub font-mono" id="fireYearsSub">6% Real Return</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tax-Aware Rebalancing Predictor -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Tax-Aware Rebalancing Predictor</h2>
-            <span class="live-tag">TAX DRAG CALCULATOR</span>
-          </div>
-          <div class="rebalance-controls">
-            <label class="input-lbl">Target Redemption Amount (INR):</label>
-            <div class="slider-box">
-              <input type="range" id="rebalanceSlider" min="25000" max="1000000" step="25000" value="100000">
-              <span class="font-mono slider-val" id="rebalanceSliderVal">₹ 1,00,000</span>
-            </div>
-            <div class="rebalance-summary-box">
-              <div class="reb-stat"><span class="lbl">Predicted Tax Drag:</span> <strong class="val font-mono highlight-cyan" id="rebTaxDrag">₹ 0</strong></div>
-              <div class="reb-stat"><span class="lbl">Effective Tax Rate:</span> <strong class="val font-mono" id="rebEffRate">0.00%</strong></div>
-              <div class="reb-stat"><span class="lbl">LTCG Tax-Free Harvested:</span> <strong class="val font-mono" id="rebLtcgHarvested">₹ 0</strong></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Bucket Rebalancing -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Flat Bucket Rebalancer</h2>
-            <span class="live-tag" id="drawdownTag">Nifty 500: Normal</span>
-          </div>
-          <div class="bucket-grid" id="bucketGrid">
-            <!-- Rendered dynamically -->
-          </div>
-        </div>
-
-        <!-- Disciplined Consolidation -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Disciplined Consolidation Plan</h2>
-            <span class="live-tag" id="consolidationWindowBadge">March / September Window</span>
-          </div>
-          <div id="consolidationPlanContainer">
-            <!-- Rendered dynamically -->
-          </div>
-        </div>
-      </div>
-  <!-- Global Command Palette Modal -->
-  <div id="commandPaletteModal" class="cmd-modal-overlay" style="display: none;">
-    <div class="command-palette-box">
-      <div class="command-palette-header">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D0FF00" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <input type="text" id="commandPaletteInput" placeholder="Type an AI prompt, SQL query, or tax question... (Esc to exit)">
-        <button type="button" id="closeCmdPaletteBtn" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:18px; font-weight:bold; padding:0 4px;" title="Close (Esc)">✕</button>
-      </div>
-      <div class="command-palette-results" id="commandPaletteResults">
-        <div class="cmd-item" data-action="whatif">⚡ Open What-If Trade Simulator</div>
-        <div class="cmd-item" data-action="schedule-cg">📄 Download Schedule CG Tax CSV</div>
-        <div class="cmd-item" data-action="rebalance">⚖️ Run Portfolio Rebalance Engine</div>
-        <div class="cmd-item" data-action="holdings">📊 Jump to Holdings & NAV Trend</div>
-        <div class="cmd-item" data-action="radar">🧠 View AI Quant Radar Signals</div>
-      </div>
-    </div>
-  </div>
-
-  <script type="module" src="./src/app.js?v=3.0.6"></script>
-</body>
-</html>
-</file>
-
 <file path="core-node/src/main/resources/static/src/js/modules/portfolio.js">
 import { API_BASE, fetchJson } from '../api.js';
 import { state } from '../state.js';
@@ -7258,6 +6940,324 @@ export function renderBucketRebalance(data) {
     bucketGrid.innerHTML = html;
   }
 }
+</file>
+
+<file path="core-node/src/main/resources/static/index.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portfolio OS - Web Cockpit (v3.0)</title>
+  <link rel="stylesheet" href="./src/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body class="bg-obsidian">
+  <!-- Glowing Background Ambient Spheres -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <div id="app" class="container">
+    <!-- Clean Minimalist Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">🚀</div>
+        <div class="brand-title-group">
+          <div class="brand-title-row">
+            <h1 class="brand-title">Portfolio OS</h1>
+            <span class="v2-tag">v3.0 Vapor</span>
+          </div>
+          <div class="fy-selector-row">
+            <span>PERIOD:</span>
+            <select class="fy-select" id="fySelect">
+              <option value="2024-25">FY 2024-25</option>
+              <option value="2025-26">FY 2025-26</option>
+              <option value="2026-27" selected>FY 2026-27</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="cmdKTriggerBtn" class="upload-btn cmd-k-btn" onclick="window.openCmdPalette && window.openCmdPalette()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          ⚡ AI Search <kbd>/</kbd> <kbd>⌘K</kbd>
+        </button>
+
+        <button id="exportZipBtn" class="upload-btn export-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Export ITR-2 Bundle (.zip)
+        </button>
+
+        <label for="fileUploadInput" class="upload-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Upload CAS PDF / CSV
+        </label>
+        <input type="file" id="fileUploadInput" accept=".pdf,.csv" style="display: none;">
+
+        <div class="status-pill">
+          <span class="status-dot"></span> SHA-256 Engine Active
+        </div>
+      </div>
+    </header>
+
+    <!-- Top Key Metrics Row -->
+    <section class="top-metrics-grid">
+      <div class="glass-card metric-box">
+        <div class="metric-label">NET WORTH</div>
+        <div class="metric-value font-mono skeleton net-worth-val">₹ --,--,---</div>
+        <div class="metric-delta neutral net-worth-gain">Unrealized gain: --</div>
+        <div class="metric-subtext net-worth-sub">Active Holdings: -- Schemes</div>
+      </div>
+
+      <div class="glass-card metric-box">
+        <div class="metric-label">UNALLOCATED CASH</div>
+        <div class="metric-value font-mono highlight-cyan skeleton idle-cash-val">₹ --,--,---</div>
+        <div class="metric-subtext">Sitting idle across Liquid & Bank</div>
+      </div>
+
+      <div class="glass-card metric-box exemption-box">
+        <div class="metric-label">LTCG EXEMPTION (SEC 112A)</div>
+        <div class="metric-value font-mono skeleton ltcg-meter-val">₹ 0 <span class="sub-limit">/ 1.25L</span></div>
+        <div class="progress-track">
+          <div class="progress-fill-gradient" style="width: 0%;"></div>
+        </div>
+        <div class="meter-meta">
+          <span class="pct-used">0% Used</span>
+          <span class="remaining">₹ 1,25,000 Available</span>
+        </div>
+      </div>
+
+      <div class="glass-card metric-box">
+        <div class="metric-label">PORTFOLIO XIRR</div>
+        <div class="metric-value font-mono highlight-cyan skeleton xirr-val">--%</div>
+        <div class="metric-subtext">Money-Weighted XIRR</div>
+      </div>
+    </section>
+
+    <!-- Minimalist Tab Navigation Bar -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="overview">📊 Overview & Allocation</button>
+      <button class="tab-btn" data-tab="tax">⚡ Tax Optimization & Audit</button>
+      <button class="tab-btn" data-tab="fire">🎯 FIRE & Rebalancing</button>
+    </nav>
+
+    <!-- TAB 1: Overview & Allocation -->
+    <main class="tab-content active" id="tab-overview">
+      <div class="dashboard-grid">
+        <!-- Fund Allocation Chart -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Fund Asset Allocation</h2>
+            <span class="live-tag">BY SCHEME</span>
+          </div>
+          <div class="canvas-wrapper-small" id="allocationChart" style="height: 280px; width: 100%;"></div>
+        </div>
+
+        <!-- Risk Category Allocation Chart -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Risk Exposure</h2>
+            <span class="live-tag">BY CATEGORY</span>
+          </div>
+          <div class="canvas-wrapper-small" id="categoryChart" style="height: 280px; width: 100%;"></div>
+        </div>
+
+        <!-- Open Holdings Table -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Open Holdings & FIFO Lots</h2>
+            <span class="live-tag">LEDGER DRILL-DOWN</span>
+          </div>
+          <div class="table-container">
+            <table class="data-table" id="holdingsTable">
+              <thead>
+                <tr>
+                  <th>Scheme Name</th>
+                  <th>Category</th>
+                  <th>Invested</th>
+                  <th>Current Value</th>
+                  <th>Unrealized Gain</th>
+                  <th>Allocation %</th>
+                  <th>Open Lots</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="7" class="loading-td">Loading holdings...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 2: Tax Optimization & Audit -->
+    <main class="tab-content" id="tab-tax">
+      <div class="dashboard-grid">
+        <!-- AI Decision Radar -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Tax & Strategy Decision Radar</h2>
+            <span class="live-tag">AI ADVISOR</span>
+          </div>
+          <div class="radar-list">
+            <div class="radar-empty-state">Scanning open lots for tax-loss harvesting and LTCG maturation opportunities...</div>
+          </div>
+        </div>
+
+        <!-- Schedule FA Pre-Flight Checklist -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Schedule FA Compliance</h2>
+            <span class="live-tag">FOREIGN ASSETS</span>
+          </div>
+          <div class="compliance-list">
+            <div class="compliance-item valid">
+              <span class="check-icon">✓</span>
+              <div class="comp-text">
+                <div class="comp-title">Foreign Entity Identification & Address</div>
+                <div class="comp-desc">International ETF ISINs mapped to US jurisdiction.</div>
+              </div>
+            </div>
+            <div class="compliance-item valid">
+              <span class="check-icon">✓</span>
+              <div class="comp-text">
+                <div class="comp-title">Peak Intra-Year Valuation INR</div>
+                <div class="comp-desc">SBI Telegraphic Transfer conversion applied to peak balances.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Realized Disposals Audit Log -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Realized Disposals Audit Log</h2>
+            <span class="live-tag">SELECTED FY</span>
+          </div>
+          <div class="table-container">
+            <table class="data-table" id="realizedLogTable">
+              <thead>
+                <tr>
+                  <th>Disposal Date</th>
+                  <th>Acquisition Date</th>
+                  <th>Scheme Name</th>
+                  <th>Units</th>
+                  <th>Proceeds</th>
+                  <th>Cost Basis</th>
+                  <th>Realized Gain</th>
+                  <th>Tax Term</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="8" class="loading-td">Loading realized log...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 3: FIRE & Rebalancing -->
+    <main class="tab-content" id="tab-fire">
+      <div class="dashboard-grid">
+        <!-- FIRE Tracker Module -->
+        <div class="glass-card col-12 fire-card">
+          <div class="card-header">
+            <div class="title-with-badge">
+              <h2>FIRE Tracker & Decumulation Runway</h2>
+              <span class="fire-status-pill on-track" id="fireStatusPill">ON TRACK</span>
+            </div>
+            <div class="live-tag font-mono" id="fireScenarioLabel">Scenario: Primary Target</div>
+          </div>
+
+          <div class="fire-metrics-grid">
+            <div class="fire-stat-box">
+              <span class="lbl">Investable Net Worth</span>
+              <strong class="val font-mono highlight-cyan" id="fireInvestableNw">₹ --</strong>
+              <span class="sub font-mono">Liquid Investments</span>
+            </div>
+            <div class="fire-stat-box">
+              <span class="lbl">Required Corpus (Age 45)</span>
+              <strong class="val font-mono" id="fireRequiredCorpus">₹ --</strong>
+              <span class="sub font-mono" id="fireExpenseSub">3.0% SWR @ ₹60k/mo</span>
+            </div>
+            <div class="fire-stat-box">
+              <span class="lbl">Projected Corpus @ 45</span>
+              <strong class="val font-mono positive" id="fireProjectedCorpus">₹ --</strong>
+              <span class="sub font-mono" id="fireYearsSub">6% Real Return</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tax-Aware Rebalancing Predictor -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Tax-Aware Rebalancing Predictor</h2>
+            <span class="live-tag">TAX DRAG CALCULATOR</span>
+          </div>
+          <div class="rebalance-controls">
+            <label class="input-lbl">Target Redemption Amount (INR):</label>
+            <div class="slider-box">
+              <input type="range" id="rebalanceSlider" min="25000" max="1000000" step="25000" value="100000">
+              <span class="font-mono slider-val" id="rebalanceSliderVal">₹ 1,00,000</span>
+            </div>
+            <div class="rebalance-summary-box">
+              <div class="reb-stat"><span class="lbl">Predicted Tax Drag:</span> <strong class="val font-mono highlight-cyan" id="rebTaxDrag">₹ 0</strong></div>
+              <div class="reb-stat"><span class="lbl">Effective Tax Rate:</span> <strong class="val font-mono" id="rebEffRate">0.00%</strong></div>
+              <div class="reb-stat"><span class="lbl">LTCG Tax-Free Harvested:</span> <strong class="val font-mono" id="rebLtcgHarvested">₹ 0</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bucket Rebalancing -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Flat Bucket Rebalancer</h2>
+            <span class="live-tag" id="drawdownTag">Nifty 500: Normal</span>
+          </div>
+          <div class="bucket-grid" id="bucketGrid">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Disciplined Consolidation -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Disciplined Consolidation Plan</h2>
+            <span class="live-tag" id="consolidationWindowBadge">March / September Window</span>
+          </div>
+          <div id="consolidationPlanContainer">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+  <!-- Global Command Palette Modal -->
+  <div id="commandPaletteModal" class="cmd-modal-overlay" style="display: none;">
+    <div class="command-palette-box">
+      <div class="command-palette-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D0FF00" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="commandPaletteInput" placeholder="Type an AI prompt, SQL query, or tax question... (Esc to exit)">
+        <button type="button" id="closeCmdPaletteBtn" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:18px; font-weight:bold; padding:0 4px;" title="Close (Esc)">✕</button>
+      </div>
+      <div class="command-palette-results" id="commandPaletteResults">
+        <div class="cmd-item" data-action="whatif">⚡ Open What-If Trade Simulator</div>
+        <div class="cmd-item" data-action="schedule-cg">📄 Download Schedule CG Tax CSV</div>
+        <div class="cmd-item" data-action="rebalance">⚖️ Run Portfolio Rebalance Engine</div>
+        <div class="cmd-item" data-action="holdings">📊 Jump to Holdings & NAV Trend</div>
+        <div class="cmd-item" data-action="radar">🧠 View AI Quant Radar Signals</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/app.js?v=3.0.6"></script>
+</body>
+</html>
 </file>
 
 <file path="core-node/src/main/java/com/portfolioos/core/persistence/DuckDbProjector.java">
