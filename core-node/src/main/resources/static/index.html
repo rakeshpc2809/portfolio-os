@@ -9,6 +9,22 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <script>
+    window.openCmdPalette = function() {
+      var modal = document.getElementById('commandPaletteModal');
+      var input = document.getElementById('commandPaletteInput');
+      if (modal) {
+        modal.style.display = 'flex';
+        if (input) {
+          setTimeout(function() { input.focus(); input.select(); }, 50);
+        }
+      }
+    };
+    window.closeCmdPalette = function() {
+      var modal = document.getElementById('commandPaletteModal');
+      if (modal) modal.style.display = 'none';
+    };
+  </script>
 </head>
 <body class="bg-obsidian">
   <!-- Glowing Background Ambient Spheres -->
@@ -310,6 +326,6 @@
     </div>
   </div>
 
-  <script type="module" src="./src/app.js?v=3.0.6"></script>
+  <script type="module" src="./src/app.js?v=3.0.7"></script>
 </body>
 </html>
