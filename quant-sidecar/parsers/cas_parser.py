@@ -32,7 +32,7 @@ class CasPdfParser:
 
                     for txn in scheme.transactions:
                         txn_type_str = str(txn.type).upper()
-                        if any(x in txn_type_str for x in ["REDEMPTION", "SWITCH_OUT", "SELL"]):
+                        if any(x in txn_type_str for x in ["REDEMPTION", "SWITCH_OUT", "SWITCH OUT", "SELL", "STP_OUT", "STP OUT", "SWP", "SYSTEMATIC WITHDRAWAL"]):
                             event_type = EventType.DISPOSAL
                         elif "BONUS" in txn_type_str:
                             event_type = EventType.BONUS
@@ -135,7 +135,7 @@ class CasPdfParser:
                                 price = clean_nums[2]
 
                                 line_upper = rest.upper()
-                                if any(x in line_upper for x in ["REDEMPTION", "SWITCH OUT", "SELL"]):
+                                if any(x in line_upper for x in ["REDEMPTION", "SWITCH OUT", "SWITCH_OUT", "SELL", "STP OUT", "STP_OUT", "SWP", "SYSTEMATIC WITHDRAWAL"]):
                                     event_type = EventType.DISPOSAL
                                 elif "BONUS" in line_upper:
                                     event_type = EventType.BONUS

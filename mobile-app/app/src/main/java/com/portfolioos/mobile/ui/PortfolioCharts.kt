@@ -59,7 +59,7 @@ fun PortfolioAllocationBarChart(
     val totalInvested = holdings.sumOf { it.currentValue }
     if (totalInvested <= 0) return
 
-    val bucketMap = holdings.groupBy { it.category }
+    val bucketMap = holdings.groupBy { it.assetBucket }
         .mapValues { entry -> entry.value.sumOf { it.currentValue } }
 
     val allocations = bucketMap.map { (cat, amount) ->

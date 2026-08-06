@@ -63,6 +63,8 @@ fun DashboardScreen(
     val coroutineScope = rememberCoroutineScope()
     var showSimulatorBottomSheet by remember { mutableStateOf(false) }
     var selectedHoldingForSimulator by remember { mutableStateOf<FlatHoldingDto?>(null) }
+    var showUrlDialog by remember { mutableStateOf(false) }
+    var inputUrl by remember { mutableStateOf("") }
 
     val derivedInfo by remember(snapshot) {
         derivedStateOf { snapshot?.syncInfo }
@@ -560,11 +562,7 @@ fun HoldingsView(
         }
 
         item {
-            DonutAllocationChart(holdings = holdings)
-        }
-
-        item {
-            PerformanceBarChart(holdings = holdings)
+            PortfolioAllocationBarChart(holdings = holdings)
         }
 
         item {
