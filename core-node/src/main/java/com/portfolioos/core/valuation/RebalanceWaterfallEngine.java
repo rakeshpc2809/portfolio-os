@@ -63,12 +63,13 @@ public class RebalanceWaterfallEngine {
 
         List<WaterfallStep> steps = new ArrayList<>();
 
-        // Partition lots into legacy vs core
+        // Partition lots into legacy vs core (dynamic check: no purchases/SIP in last 3 months)
+        java.util.Set<String> activeAssetIds = FundTierClassifier.findActiveAssetIds(openLots, today);
         List<Lot> legacyLots = new ArrayList<>();
         List<Lot> coreLots = new ArrayList<>();
 
         for (Lot lot : openLots) {
-            if (FundTierClassifier.isLegacyFund(lot.assetId(), lot.assetName())) {
+            if (FundTierClassifier.isLegacyFund(lot.assetId(), activeAssetIds)) {
                 legacyLots.add(lot);
             } else {
                 coreLots.add(lot);

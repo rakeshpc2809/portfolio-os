@@ -66,8 +66,9 @@ public class ConsolidationRebalanceEngine {
     ) {
         TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
 
+        java.util.Set<String> activeAssetIds = com.portfolioos.core.matcher.FundTierClassifier.findActiveAssetIds(openLots, currentDate);
         List<Lot> phaseOutLots = openLots.stream().filter(lot ->
-            com.portfolioos.core.matcher.FundTierClassifier.isLegacyFund(lot.assetId(), lot.assetName())
+            com.portfolioos.core.matcher.FundTierClassifier.isLegacyFund(lot.assetId(), activeAssetIds)
         ).toList();
 
         BigDecimal totalProceeds = BigDecimal.ZERO;

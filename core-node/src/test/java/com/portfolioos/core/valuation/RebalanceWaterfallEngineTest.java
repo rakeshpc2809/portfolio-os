@@ -14,28 +14,29 @@ import static org.junit.jupiter.api.Assertions.*;
 class RebalanceWaterfallEngineTest {
 
     @Test
-    void testLegacyFundPriority() {
+    void testLegacyFundPriorityDynamicInactiveSip() {
         LocalDate today = LocalDate.of(2026, 8, 1);
-        LocalDate acqOld = LocalDate.of(2024, 1, 1);
+        LocalDate acqRecent = LocalDate.of(2026, 7, 15); // Active fund: purchase within 3 months
+        LocalDate acqOld = LocalDate.of(2024, 1, 1);     // Inactive/Legacy fund: no purchase in last 3 months
 
-        // Core fund lot
-        Lot coreLot = new Lot("L1", "NIFTY_LARGEMIDCAP_250", "Nifty LargeMidcap 250 Index Fund",
-            acqOld, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
+        // Core active fund lot (purchased 17 days ago)
+        Lot coreActiveLot = new Lot("L1", "NIFTY_LARGEMIDCAP_250", "Nifty LargeMidcap 250 Index Fund",
+            acqRecent, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
 
-        // Legacy fund lot (NIFTY100_EW)
-        Lot legacyLot = new Lot("L2", "NIFTY100_EW", "Nifty 100 Equal Weight Index Fund",
+        // Inactive fund lot (no purchase in last 3 months)
+        Lot inactiveLegacyLot = new Lot("L2", "OLD_FUND_XYZ", "Old Phased Out Fund",
             acqOld, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
 
         Map<String, BigDecimal> navMap = Map.of(
             "NIFTY_LARGEMIDCAP_250", new BigDecimal("150"),
-            "NIFTY100_EW", new BigDecimal("150")
+            "OLD_FUND_XYZ", new BigDecimal("150")
         );
 
         // Trim 5,000 INR
         RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
             BucketEngine.Bucket.EQUITY_CORE,
             new BigDecimal("5000"),
-            List.of(coreLot, legacyLot),
+            List.of(coreActiveLot, inactiveLegacyLot),
             navMap,
             new BigDecimal("125000"),
             false,
@@ -48,16 +49,16 @@ class RebalanceWaterfallEngineTest {
         assertEquals(new BigDecimal("0.00"), result.deferredAmount());
         assertFalse(result.steps().isEmpty());
 
-        // First step must be Tier 1 (LEGACY_FUND)
+        // First step must be Tier 1 (LEGACY_FUND) for the inactive fund
         RebalanceWaterfallEngine.WaterfallStep firstStep = result.steps().get(0);
         assertEquals(WaterfallTier.LEGACY_FUND, firstStep.tier());
-        assertEquals("NIFTY100_EW", firstStep.assetId());
+        assertEquals("OLD_FUND_XYZ", firstStep.assetId());
     }
 
     @Test
     void testStcgDeferralWhenNotUrgent() {
         LocalDate today = LocalDate.of(2026, 8, 1);
-        LocalDate acqRecent = LocalDate.of(2026, 5, 1); // 3 months old -> STCG
+        LocalDate acqRecent = LocalDate.of(2026, 7, 1); // 1 month old -> STCG
 
         Lot recentLot = new Lot("L1", "NIFTY_LARGEMIDCAP_250", "Nifty LargeMidcap 250 Index Fund",
             acqRecent, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
@@ -88,7 +89,7 @@ class RebalanceWaterfallEngineTest {
     @Test
     void testStcgExecutionWhenUrgent() {
         LocalDate today = LocalDate.of(2026, 8, 1);
-        LocalDate acqRecent = LocalDate.of(2026, 5, 1); // 3 months old -> STCG
+        LocalDate acqRecent = LocalDate.of(2026, 7, 1); // 1 month old -> STCG
 
         Lot recentLot = new Lot("L1", "NIFTY_LARGEMIDCAP_250", "Nifty LargeMidcap 250 Index Fund",
             acqRecent, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
