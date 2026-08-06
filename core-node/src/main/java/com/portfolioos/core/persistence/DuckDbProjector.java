@@ -238,18 +238,33 @@ public class DuckDbProjector {
                     trend.add(new NetWorthPoint(d, val, inv));
                 }
             }
-        } catch (SQLException e) {
-            try (Connection conn = getConnection();
-                 Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT nav_date, SUM(nav) as total_nav FROM nav_history GROUP BY nav_date ORDER BY nav_date ASC")) {
-                while (rs.next()) {
-                    String d = rs.getString("nav_date");
-                    double val = rs.getDouble("total_nav");
-                    trend.add(new NetWorthPoint(d, val, val));
+
+            if (trend.size() < 10) {
+                String fallbackSql = """
+                    SELECT 
+                        event_date,
+                        SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(gross_amount AS DOUBLE) ELSE -CAST(gross_amount AS DOUBLE) END) OVER (ORDER BY event_date ASC) AS cumulative_invested,
+                        SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(units AS DOUBLE) * CAST(price_per_unit AS DOUBLE) ELSE -CAST(units AS DOUBLE) * CAST(price_per_unit AS DOUBLE) END) OVER (ORDER BY event_date ASC) AS cumulative_valuation
+                    FROM projected_events
+                    GROUP BY event_date, event_type, gross_amount, units, price_per_unit
+                    ORDER BY event_date ASC
+                """;
+                List<NetWorthPoint> fallbackTrend = new ArrayList<>();
+                try (Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery(fallbackSql)) {
+                    while (rs.next()) {
+                        String d = rs.getString("event_date");
+                        double cVal = rs.getDouble("cumulative_valuation");
+                        double cInv = rs.getDouble("cumulative_invested");
+                        fallbackTrend.add(new NetWorthPoint(d, cVal, cInv));
+                    }
                 }
-            } catch (SQLException ex) {
-                System.err.println("Failed to fetch daily net worth trend: " + ex.getMessage());
+                if (!fallbackTrend.isEmpty()) {
+                    trend = fallbackTrend;
+                }
             }
+        } catch (Exception e) {
+            System.err.println("Failed to fetch daily net worth trend: " + e.getMessage());
         }
         return trend;
     }

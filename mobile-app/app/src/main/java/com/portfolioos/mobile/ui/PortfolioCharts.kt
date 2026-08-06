@@ -41,13 +41,42 @@ data class BucketAllocation(
 
 val SEBIBucketColors = mapOf(
     "Flexi Cap" to Color(0xFF06B6D4),                // Vibrant Cyan
-    "Large & Mid Cap" to Color(0xFFD0FF00),           // Electric Lime
-    "Mid Cap" to Color(0xFFA855F7),                   // Deep Purple
-    "Small Cap" to Color(0xFFF59E0B),                 // Amber Warn
-    "Specified Debt (50AA)" to Color(0xFFEF4444),     // Coral Red
-    "Gold & Silver" to Color(0xFFEAB308),             // Metallic Gold
-    "Arbitrage / Cash" to Color(0xFF10B981)          // Emerald Green
+    "Large & Midcap" to Color(0xFFD0FF00),           // Electric Lime
+    "Large & Mid Cap" to Color(0xFFD0FF00),          // Electric Lime
+    "Midcap" to Color(0xFFA855F7),                   // Deep Violet
+    "Mid Cap" to Color(0xFFA855F7),                  // Deep Violet
+    "Small Cap" to Color(0xFFF59E0B),                 // Amber Gold
+    "Microcap" to Color(0xFFFF007A),                 // Hot Neon Pink
+    "Factor Value Index" to Color(0xFF3B82F6),       // Royal Blue
+    "Factor Momentum Index" to Color(0xFF10B981),    // Emerald Green
+    "Equal Weight Index" to Color(0xFF8B5CF6),       // Soft Purple
+    "Sectoral/Thematic" to Color(0xFFEC4899),        // Vibrant Magenta
+    "Gold & Commodities" to Color(0xFFEAB308),       // Metallic Gold
+    "Gold & Silver" to Color(0xFFEAB308),            // Metallic Gold
+    "Debt & Liquid" to Color(0xFF6366F1),            // Indigo
+    "Specified Debt (50AA)" to Color(0xFFEF4444),    // Coral Red
+    "Arbitrage / Cash" to Color(0xFF14B8A6),         // Teal
+    "Core Equity" to Color(0xFF00F0FF),              // Neon Cyan
+    "EQUITY_CORE" to Color(0xFF00F0FF),
+    "EQUITY_LARGE_MID" to Color(0xFFD0FF00),
+    "EQUITY_SMALL_CAP" to Color(0xFFF59E0B),
+    "EQUITY_MID_CAP" to Color(0xFFA855F7),
+    "DEBT" to Color(0xFF6366F1),
+    "LIQUID_BUFFER" to Color(0xFF14B8A6),
+    "GOLD" to Color(0xFFEAB308)
 )
+
+fun getBucketColor(cat: String): Color {
+    val predefined = SEBIBucketColors[cat]
+    if (predefined != null) return predefined
+    val fallbackPalette = listOf(
+        Color(0xFF00F0FF), Color(0xFFD0FF00), Color(0xFFE040FB),
+        Color(0xFFF59E0B), Color(0xFF10B981), Color(0xFF3B82F6),
+        Color(0xFFEC4899), Color(0xFF6366F1), Color(0xFFEAB308)
+    )
+    val hashIdx = kotlin.math.abs(cat.hashCode()) % fallbackPalette.size
+    return fallbackPalette[hashIdx]
+}
 
 @Composable
 fun PortfolioAllocationBarChart(
@@ -64,7 +93,7 @@ fun PortfolioAllocationBarChart(
 
     val allocations = bucketMap.map { (cat, amount) ->
         val pct = (amount / totalInvested * 100).toFloat()
-        val color = SEBIBucketColors[cat] ?: Color(0xFF64748B)
+        val color = getBucketColor(cat)
         BucketAllocation(cat, amount, pct, color)
     }.sortedByDescending { it.percentage }
 
