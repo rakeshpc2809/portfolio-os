@@ -20,11 +20,11 @@ class RebalanceWaterfallEngineTest {
 
         // Core fund lot
         Lot coreLot = new Lot("L1", "NIFTY_LARGEMIDCAP_250", "Nifty LargeMidcap 250 Index Fund",
-            new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), acqOld);
+            acqOld, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
 
         // Legacy fund lot (NIFTY100_EW)
         Lot legacyLot = new Lot("L2", "NIFTY100_EW", "Nifty 100 Equal Weight Index Fund",
-            new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), acqOld);
+            acqOld, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
 
         Map<String, BigDecimal> navMap = Map.of(
             "NIFTY_LARGEMIDCAP_250", new BigDecimal("150"),
@@ -60,7 +60,7 @@ class RebalanceWaterfallEngineTest {
         LocalDate acqRecent = LocalDate.of(2026, 5, 1); // 3 months old -> STCG
 
         Lot recentLot = new Lot("L1", "NIFTY_LARGEMIDCAP_250", "Nifty LargeMidcap 250 Index Fund",
-            new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), acqRecent);
+            acqRecent, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
 
         Map<String, BigDecimal> navMap = Map.of(
             "NIFTY_LARGEMIDCAP_250", new BigDecimal("150")
@@ -91,7 +91,7 @@ class RebalanceWaterfallEngineTest {
         LocalDate acqRecent = LocalDate.of(2026, 5, 1); // 3 months old -> STCG
 
         Lot recentLot = new Lot("L1", "NIFTY_LARGEMIDCAP_250", "Nifty LargeMidcap 250 Index Fund",
-            new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), acqRecent);
+            acqRecent, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
 
         Map<String, BigDecimal> navMap = Map.of(
             "NIFTY_LARGEMIDCAP_250", new BigDecimal("150")
