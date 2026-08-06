@@ -114,23 +114,26 @@ document.addEventListener('DOMContentLoaded', () => {
       catEl.className = `live-tag cat-${category}`;
     }
 
-    let lotsHtml = lots.map(l => {
+    let lotsHtml = lots.map((l, lotIdx) => {
       const acqDate = l.acquisition_date || l.acquisitionDate;
-      const units = l.remaining_units || l.remainingUnits;
+      const units = parseFloat(l.remaining_units || l.remainingUnits || '0');
       const costPerUnit = parseFloat(l.cost_per_unit || l.costPerUnit || '0');
       const lotGain = parseFloat(l.unrealized_gain || l.unrealizedGain || '0');
       const daysHeld = l.holding_days !== undefined ? l.holding_days : l.holdingDays;
       const isLtcg = l.is_ltcg !== undefined ? l.is_ltcg : l.isLtcg;
 
       return `
-        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding:12px; border-radius:10px; display:flex; justify-content:space-between; align-items:center;">
+        <div class="drawer-lot-card">
           <div>
-            <div style="font-size:12px; font-weight:600; color:#fff;">Acquired ${acqDate} (${daysHeld}d held)</div>
-            <div style="font-size:11px; color:#94a3b8; margin-top:2px;" class="font-mono">${units} units @ ₹${costPerUnit.toFixed(2)}</div>
+            <div style="font-size:12px; font-weight:600; color:#fff;">Lot #${lotIdx + 1} · Acquired ${acqDate} (${daysHeld}d held)</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:3px;" class="font-mono">${units.toFixed(2)} units @ ₹${costPerUnit.toFixed(2)}</div>
           </div>
-          <div style="text-align:right;">
+          <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
             <div style="font-size:13px; font-weight:700; color:${lotGain >= 0 ? '#10b981' : '#ef4444'};" class="font-mono">${lotGain >= 0 ? '+' : ''}${formatINR(lotGain)}</div>
-            <span class="cat-badge ${isLtcg ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}" style="margin-top:2px; display:inline-block;">${isLtcg ? 'LTCG' : 'STCG'}</span>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <span class="cat-badge ${isLtcg ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}">${isLtcg ? 'LTCG Free' : 'STCG Locked'}</span>
+              <button type="button" class="drawer-action-btn" onclick="window.harvestLot('${holding.isin || ''}', '${assetName.replace(/'/g, "\\'")}', ${units}, ${costPerUnit})">Harvest ➔</button>
+            </div>
           </div>
         </div>
       `;
@@ -164,6 +167,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const backdrop = document.getElementById('holdingDetailDrawerBackdrop');
     if (drawer) drawer.classList.remove('open');
     if (backdrop) backdrop.classList.remove('open');
+  };
+
+  window.harvestLot = (isin, schemeName, units, costPerUnit) => {
+    window.closeHoldingDrawer();
+    window.openCmdPalette();
+    const input = document.getElementById('commandPaletteInput');
+    if (input) {
+      input.value = `rebalance ${Math.max(10000, Math.round(units * costPerUnit))}`;
+      window.submitAiPrompt();
+    }
   };
 
   window.submitAiPrompt = async () => {
