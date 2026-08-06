@@ -5,15 +5,14 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,12 +21,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.portfolioos.mobile.model.FlatHoldingDto
 import com.portfolioos.mobile.model.NetWorthPointDto
+import kotlin.math.roundToInt
 
 data class BucketAllocation(
     val bucketName: String,
@@ -38,48 +41,32 @@ data class BucketAllocation(
 
 val SEBIBucketColors = mapOf(
     "Flexi Cap" to Color(0xFF06B6D4),                // Vibrant Cyan
-    "Large & Midcap" to Color(0xFFA855F7),           // Electric Violet
-    "Midcap" to Color(0xFF3B82F6),                   // Royal Blue
-    "Small Cap" to Color(0xFF10B981),                // Emerald Green
-    "Microcap" to Color(0xFFEC4899),                 // Coral Pink
-    "Factor Value Index" to Color(0xFFF59E0B),       // Amber Gold
-    "Factor Momentum Index" to Color(0xFF6366F1),    // Indigo
-    "Equal Weight Index" to Color(0xFF14B8A6),       // Teal
-    "Sectoral/Thematic" to Color(0xFFF43F5E),        // Rose
-    "Gold & Commodities" to Color(0xFFEAB308),       // Gold
-    "Debt & Liquid" to Color(0xFF64748B)             // Slate
+    "Large & Mid Cap" to Color(0xFFD0FF00),           // Electric Lime
+    "Mid Cap" to Color(0xFFA855F7),                   // Deep Purple
+    "Small Cap" to Color(0xFFF59E0B),                 // Amber Warn
+    "Specified Debt (50AA)" to Color(0xFFEF4444),     // Coral Red
+    "Gold & Silver" to Color(0xFFEAB308),             // Metallic Gold
+    "Arbitrage / Cash" to Color(0xFF10B981)          // Emerald Green
 )
 
 @Composable
-fun DonutAllocationChart(
+fun PortfolioAllocationBarChart(
     holdings: List<FlatHoldingDto>,
     modifier: Modifier = Modifier
 ) {
-    val defaultColor = Color(0xFF94A3B8)
+    if (holdings.isEmpty()) return
 
-    val allocations = remember(holdings) {
-        val totalVal = holdings.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }.coerceAtLeast(1.0)
-        val grouped = holdings.groupBy { it.assetBucket.ifEmpty { "Others" } }
-        grouped.map { (bucket, list) ->
-            val bucketVal = list.sumOf { it.currentValue.takeIf { v -> v > 0 } ?: (it.totalUnits * it.avgCost) }
-            val pct = (bucketVal / totalVal * 100).toFloat()
-            BucketAllocation(
-                bucketName = bucket,
-                totalAmount = bucketVal,
-                percentage = pct,
-                color = SEBIBucketColors[bucket] ?: defaultColor
-            )
-        }.sortedByDescending { it.percentage }
-    }
+    val totalInvested = holdings.sumOf { it.currentValue }
+    if (totalInvested <= 0) return
 
-    val animProgress = remember { Animatable(0f) }
+    val bucketMap = holdings.groupBy { it.category }
+        .mapValues { entry -> entry.value.sumOf { it.currentValue } }
 
-    LaunchedEffect(holdings) {
-        animProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing)
-        )
-    }
+    val allocations = bucketMap.map { (cat, amount) ->
+        val pct = (amount / totalInvested * 100).toFloat()
+        val color = SEBIBucketColors[cat] ?: Color(0xFF64748B)
+        BucketAllocation(cat, amount, pct, color)
+    }.sortedByDescending { it.percentage }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
@@ -87,182 +74,98 @@ fun DonutAllocationChart(
         modifier = modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                text = "SEBI CATEGORY ALLOCATION",
-                color = Color(0xFF94A3B8),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Donut Canvas
-                Box(
-                    modifier = Modifier.size(130.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(
-                        modifier = Modifier
-                            .size(120.dp)
-                            .graphicsLayer()
-                    ) {
-                        val strokeWidth = 22.dp.toPx()
-                        var startAngle = -90f
-
-                        allocations.forEach { alloc ->
-                            val sweepAngle = (alloc.percentage / 100f) * 360f * animProgress.value
-                            drawArc(
-                                color = alloc.color,
-                                startAngle = startAngle,
-                                sweepAngle = sweepAngle,
-                                useCenter = false,
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
-                            )
-                            startAngle += sweepAngle
-                        }
-                    }
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${allocations.size}",
-                            color = Color.White,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            text = "Categories",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                Column {
+                    Text(
+                        text = "ASSET ALLOCATION BREAKDOWN",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "SEBI Fund Categorization Engine",
+                        color = Color(0xFFD0FF00),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                // Legend List
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    allocations.take(5).forEach { alloc ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(alloc.color)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = alloc.bucketName,
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Text(
-                                text = "%.1f%%".format(alloc.percentage),
-                                color = alloc.color,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = "₹${String.format("%,.0f", totalInvested)}",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace
+                )
             }
-        }
-    }
-}
 
-@Composable
-fun PerformanceBarChart(
-    holdings: List<FlatHoldingDto>,
-    modifier: Modifier = Modifier
-) {
-    val topHoldings = remember(holdings) {
-        holdings.sortedByDescending { it.xirr }.take(5)
-    }
-
-    val maxVal = remember(topHoldings) {
-        topHoldings.maxOfOrNull { kotlin.math.abs(it.xirr) }?.toFloat()?.coerceAtLeast(1f) ?: 10f
-    }
-
-    val animProgress = remember { Animatable(0f) }
-
-    LaunchedEffect(holdings) {
-        animProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
-        )
-    }
-
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
-        shape = RoundedCornerShape(20.dp),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                text = "TOP PERFORMING SCHEMES (XIRR)",
-                color = Color(0xFF94A3B8),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 1.sp
-            )
             Spacer(modifier = Modifier.height(16.dp))
 
-            topHoldings.forEach { holding ->
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = holding.fundName.ifEmpty { holding.isin },
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = "${if (holding.xirr >= 0) "+" else ""}${holding.xirr}%",
-                            color = if (holding.xirr >= 0) Color(0xFF10B981) else Color.Red,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    val barRatio = (kotlin.math.abs(holding.xirr).toFloat() / maxVal * animProgress.value).coerceIn(0.05f, 1f)
+            // Multi-segment Linear Progress Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF1E293B))
+            ) {
+                allocations.forEach { alloc ->
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF181F33))
+                            .fillMaxHeight()
+                            .weight(alloc.percentage.coerceAtLeast(0.1f))
+                            .background(alloc.color)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Category Legend Grid
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                allocations.chunked(2).forEach { rowAllocations ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(barRatio)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(
-                                    Brush.horizontalGradient(
-                                        colors = if (holding.xirr >= 0) listOf(Color(0xFF06B6D4), Color(0xFF10B981))
-                                        else listOf(Color(0xFFEF4444), Color(0xFFB91C1C))
+                        rowAllocations.forEach { alloc ->
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(alloc.color)
                                     )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = alloc.bucketName.take(16),
+                                        color = Color(0xFFCBD5E1),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                Text(
+                                    text = "${String.format("%.1f", alloc.percentage)}%",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
                                 )
-                        )
+                            }
+                        }
+                        if (rowAllocations.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
                 }
             }
         }
@@ -275,6 +178,8 @@ fun HistoricalNetWorthTrendChart(
     modifier: Modifier = Modifier
 ) {
     val animProgress = remember { Animatable(0f) }
+    val haptic = LocalHapticFeedback.current
+    var selectedIndex by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(trendPoints) {
         animProgress.animateTo(
@@ -309,6 +214,24 @@ fun HistoricalNetWorthTrendChart(
                         fontWeight = FontWeight.Bold
                     )
                 }
+                if (selectedIndex != null && selectedIndex!! in trendPoints.indices) {
+                    val pt = trendPoints[selectedIndex!!]
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = pt.date,
+                            color = Color(0xFF06B6D4),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "₹${String.format("%,.0f", pt.valuation)}",
+                            color = Color(0xFFD0FF00),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -339,53 +262,88 @@ fun HistoricalNetWorthTrendChart(
                         .fillMaxWidth()
                         .height(140.dp)
                 ) {
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer()
-                ) {
-                    val width = size.width
-                    val height = size.height
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer()
+                            .pointerInput(trendPoints) {
+                                detectDragGestures(
+                                    onDragStart = { offset ->
+                                        val stepX = size.width / (points.size - 1).coerceAtLeast(1)
+                                        val idx = (offset.x / stepX).roundToInt().coerceIn(0, trendPoints.size - 1)
+                                        if (idx != selectedIndex) {
+                                            selectedIndex = idx
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                    },
+                                    onDrag = { change, _ ->
+                                        change.consume()
+                                        val stepX = size.width / (points.size - 1).coerceAtLeast(1)
+                                        val idx = (change.position.x / stepX).roundToInt().coerceIn(0, trendPoints.size - 1)
+                                        if (idx != selectedIndex) {
+                                            selectedIndex = idx
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                    },
+                                    onDragEnd = { selectedIndex = null },
+                                    onDragCancel = { selectedIndex = null }
+                                )
+                            }
+                    ) {
+                        val width = size.width
+                        val height = size.height
 
-                    val stepX = width / (points.size - 1).coerceAtLeast(1)
-                    val path = androidx.compose.ui.graphics.Path()
-                    val fillPath = androidx.compose.ui.graphics.Path()
+                        val stepX = width / (points.size - 1).coerceAtLeast(1)
+                        val path = androidx.compose.ui.graphics.Path()
+                        val fillPath = androidx.compose.ui.graphics.Path()
 
-                    val startY = height - (points[0] * height * 0.7f * animProgress.value)
-                    path.moveTo(0f, startY)
-                    fillPath.moveTo(0f, height)
-                    fillPath.lineTo(0f, startY)
+                        val startY = height - (points[0] * height * 0.7f * animProgress.value)
+                        path.moveTo(0f, startY)
+                        fillPath.moveTo(0f, height)
+                        fillPath.lineTo(0f, startY)
 
-                    for (i in 1 until points.size) {
-                        val x = i * stepX
-                        val y = height - (points[i] * height * 0.7f * animProgress.value)
-                        val prevX = (i - 1) * stepX
-                        val prevY = height - (points[i - 1] * height * 0.7f * animProgress.value)
+                        for (i in 1 until points.size) {
+                            val x = i * stepX
+                            val y = height - (points[i] * height * 0.7f * animProgress.value)
+                            val prevX = (i - 1) * stepX
+                            val prevY = height - (points[i - 1] * height * 0.7f * animProgress.value)
 
-                        val controlX1 = prevX + (stepX / 2f)
-                        val controlY1 = prevY
-                        val controlX2 = prevX + (stepX / 2f)
-                        val controlY2 = y
+                            val controlX1 = prevX + (stepX / 2f)
+                            val controlY1 = prevY
+                            val controlX2 = prevX + (stepX / 2f)
+                            val controlY2 = y
 
-                        path.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
-                        fillPath.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
-                    }
+                            path.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
+                            fillPath.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
+                        }
 
-                    fillPath.lineTo(width, height)
-                    fillPath.close()
+                        fillPath.lineTo(width, height)
+                        fillPath.close()
 
-                    drawPath(
-                        path = fillPath,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFFD0FF00).copy(alpha = 0.35f), Color(0xFF00F0FF).copy(alpha = 0.02f))
+                        drawPath(
+                            path = fillPath,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color(0xFFD0FF00).copy(alpha = 0.35f), Color(0xFF00F0FF).copy(alpha = 0.02f))
+                            )
                         )
-                    )
 
-                    drawPath(
-                        path = path,
-                        color = Color(0xFFD0FF00),
-                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                    )
+                        drawPath(
+                            path = path,
+                            color = Color(0xFFD0FF00),
+                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                        )
+
+                        // Render active scrub cursor line
+                        if (selectedIndex != null && selectedIndex!! in points.indices) {
+                            val cx = selectedIndex!! * stepX
+                            drawLine(
+                                color = Color(0xFF06B6D4),
+                                start = androidx.compose.ui.geometry.Offset(cx, 0f),
+                                end = androidx.compose.ui.geometry.Offset(cx, height),
+                                strokeWidth = 2.dp.toPx()
+                            )
+                        }
+                    }
                 }
             }
         }

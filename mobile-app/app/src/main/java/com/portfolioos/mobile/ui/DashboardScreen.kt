@@ -61,8 +61,8 @@ fun DashboardScreen(
 ) {
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
-    var showUrlDialog by remember { mutableStateOf(false) }
-    var inputUrl by remember { mutableStateOf("") }
+    var showSimulatorBottomSheet by remember { mutableStateOf(false) }
+    var selectedHoldingForSimulator by remember { mutableStateOf<FlatHoldingDto?>(null) }
 
     val derivedInfo by remember(snapshot) {
         derivedStateOf { snapshot?.syncInfo }
@@ -182,20 +182,72 @@ fun DashboardScreen(
                     val radarSignals = snapshot.radarSignals ?: emptyList()
                     val taxLots = snapshot.taxLots ?: emptyList()
 
-                    // High-performance 120fps Horizontal Pager with zero per-frame transform overhead
-                    HorizontalPager(
-                        state = pagerState,
-                        beyondBoundsPageCount = 1,
+                    BoxWithConstraints(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                    ) { page ->
-                        when (page) {
-                            0 -> HoldingsView(snapshot, syncInfo, holdings)
-                            1 -> RadarSignalsView(radarSignals)
-                            2 -> GroupedTaxLotsView(taxLots, holdings)
-                            3 -> SimulatorView(holdings)
+                    ) {
+                        val isExpandedWidth = maxWidth >= 600.dp
+                        if (isExpandedWidth) {
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                Box(modifier = Modifier.weight(0.5f).fillMaxHeight()) {
+                                    HoldingsView(snapshot, syncInfo, holdings, onSimulateSale = { h ->
+                                        selectedHoldingForSimulator = h
+                                        showSimulatorBottomSheet = true
+                                    })
+                                }
+                                Box(modifier = Modifier.weight(0.5f).fillMaxHeight()) {
+                                    SimulatorView(holdings)
+                                }
+                            }
+                        } else {
+                            HorizontalPager(
+                                state = pagerState,
+                                beyondBoundsPageCount = 1,
+                                modifier = Modifier.fillMaxSize()
+                            ) { page ->
+                                when (page) {
+                                    0 -> HoldingsView(snapshot, syncInfo, holdings, onSimulateSale = { h ->
+                                        selectedHoldingForSimulator = h
+                                        showSimulatorBottomSheet = true
+                                    })
+                                    1 -> RadarSignalsView(radarSignals)
+                                    2 -> GroupedTaxLotsView(taxLots, holdings)
+                                    3 -> SimulatorView(holdings)
+                                }
+                            }
                         }
+                    }
+                }
+            }
+
+            if (showSimulatorBottomSheet && selectedHoldingForSimulator != null) {
+                ModalBottomSheet(
+                    onDismissRequest = { showSimulatorBottomSheet = false },
+                    containerColor = M3SurfaceCard,
+                    contentColor = Color.White
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp)
+                    ) {
+                        Text(
+                            text = "WHAT-IF TRADE SIMULATOR",
+                            color = M3NeonCyan,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = selectedHoldingForSimulator!!.fundName.ifEmpty { selectedHoldingForSimulator!!.isin },
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        SimulatorView(listOf(selectedHoldingForSimulator!!))
                     }
                 }
             }
@@ -382,7 +434,12 @@ fun ExpressiveNavPill(
 }
 
 @Composable
-fun HoldingsView(snapshot: com.portfolioos.mobile.model.SyncSnapshot?, syncInfo: com.portfolioos.mobile.model.SyncInfoDto?, holdings: List<FlatHoldingDto>) {
+fun HoldingsView(
+    snapshot: com.portfolioos.mobile.model.SyncSnapshot?,
+    syncInfo: com.portfolioos.mobile.model.SyncInfoDto?,
+    holdings: List<FlatHoldingDto>,
+    onSimulateSale: (FlatHoldingDto) -> Unit = {}
+) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -562,7 +619,7 @@ fun HoldingsView(snapshot: com.portfolioos.mobile.model.SyncSnapshot?, syncInfo:
 }
 
 @Composable
-fun M3HoldingCard(holding: FlatHoldingDto) {
+fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> Unit = {}) {
     Card(
         colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 8.dp, bottomEnd = 20.dp, bottomStart = 8.dp),
@@ -630,17 +687,28 @@ fun M3HoldingCard(holding: FlatHoldingDto) {
                         fontFamily = FontFamily.Monospace
                     )
                 }
-                Surface(
-                    color = M3SurfaceVariant,
-                    shape = RoundedCornerShape(100.dp)
-                ) {
-                    Text(
-                        text = holding.assetBucket,
-                        color = M3NeonCyan,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Surface(
+                        color = M3SurfaceVariant,
+                        shape = RoundedCornerShape(100.dp)
+                    ) {
+                        Text(
+                            text = holding.assetBucket,
+                            color = M3NeonCyan,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                    Button(
+                        onClick = { onSimulateSale(holding) },
+                        colors = ButtonDefaults.buttonColors(containerColor = M3NeonCyan.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(100.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text("Simulate ➔", color = M3NeonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
