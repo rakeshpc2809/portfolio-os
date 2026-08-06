@@ -139,6 +139,15 @@
           <div class="canvas-wrapper-small" id="categoryChart" style="height: 280px; width: 100%;"></div>
         </div>
 
+        <!-- Cashflow Sankey Flow Chart -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Holistic Cashflow & Tax Drag Flow</h2>
+            <span class="live-tag">SANKEY VISUALIZATION</span>
+          </div>
+          <div class="canvas-wrapper-large" id="sankeyChart" style="height: 340px; width: 100%;"></div>
+        </div>
+
         <!-- Open Holdings Table -->
         <div class="glass-card col-12">
           <div class="card-header">
@@ -330,6 +339,21 @@
     </div>
   </div>
 
-  <script type="module" src="./src/app.js?v=3.1.0"></script>
+  <!-- Slide-Out Holdings Detail Drawer -->
+  <div id="holdingDetailDrawerBackdrop" class="drawer-backdrop" onclick="window.closeHoldingDrawer && window.closeHoldingDrawer()"></div>
+  <aside id="holdingDetailDrawer" class="slide-drawer">
+    <div class="drawer-header">
+      <div>
+        <h3 id="drawerAssetTitle" class="drawer-title">Scheme Details</h3>
+        <span id="drawerAssetCategory" class="live-tag">EQUITY</span>
+      </div>
+      <button type="button" class="drawer-close-btn" onclick="window.closeHoldingDrawer && window.closeHoldingDrawer()">✕</button>
+    </div>
+    <div class="drawer-body" id="drawerBody">
+      <!-- Dynamically populated -->
+    </div>
+  </aside>
+
+  <script type="module" src="./src/app.js?v=3.2.0"></script>
 </body>
 </html>

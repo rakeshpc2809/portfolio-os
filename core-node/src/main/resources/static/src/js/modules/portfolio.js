@@ -62,53 +62,14 @@ export function renderHoldingsTable(holdings) {
     const sipBadge = isSip ? ' <span style="background:rgba(208,255,0,0.15); color:#d0ff00; border:1px solid rgba(208,255,0,0.3); font-size:10px; padding:2px 6px; border-radius:4px; margin-left:6px; font-weight:700;">🔄 Active SIP</span>' : '';
 
     html += `
-      <tr class="holding-row" onclick="toggleLotDetails('${idx}')">
+      <tr class="holding-row" onclick="window.openHoldingDrawer && window.openHoldingDrawer(${idx})">
         <td style="font-weight:600;">${assetName}${sipBadge}</td>
         <td><span class="cat-badge cat-${category}">${category.replace('_SPECIFIED_50AA', '')}</span></td>
         <td class="font-mono">${formatINR(inv)}</td>
         <td class="font-mono" style="font-weight:600;">${formatINR(cur)}</td>
         <td class="font-mono" style="${gainColor}">${gainSign}${formatINR(gain)} (${gainPct}%)</td>
         <td class="font-mono">${allocPct}%</td>
-        <td><button class="pill-btn">${lots.length} Lots ▼</button></td>
-      </tr>
-      <tr id="lotRow-${idx}" style="display: none;">
-        <td colspan="7" class="lot-expansion-td">
-          <table class="lot-subtable">
-            <thead>
-              <tr>
-                <th>Acq Date</th>
-                <th>Units</th>
-                <th>Cost Basis</th>
-                <th>Unrealized Gain</th>
-                <th>Days Held</th>
-                <th>Tax Term</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${lots.map(l => {
-                const acqDate = l.acquisition_date || l.acquisitionDate;
-                const units = l.remaining_units || l.remainingUnits;
-                const costPerUnit = parseFloat(l.cost_per_unit || l.costPerUnit || '0');
-                const lotGain = parseFloat(l.unrealized_gain || l.unrealizedGain || '0');
-                const daysHeld = l.holding_days !== undefined ? l.holding_days : l.holdingDays;
-                const daysLeft = l.days_to_ltcg !== undefined ? l.days_to_ltcg : l.daysToLtcg;
-                const isLtcg = l.is_ltcg !== undefined ? l.is_ltcg : l.isLtcg;
-
-                return `
-                <tr>
-                  <td>${acqDate}</td>
-                  <td class="font-mono">${units}</td>
-                  <td class="font-mono">${formatINR(costPerUnit * parseFloat(units || '0'))}</td>
-                  <td class="font-mono" style="${lotGain >= 0 ? 'color: #10b981;' : 'color: #ef4444;'}">
-                    ${lotGain >= 0 ? '+' : ''}${formatINR(lotGain)}
-                  </td>
-                  <td>${daysHeld}d</td>
-                  <td><span class="cat-badge ${isLtcg ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}">${isLtcg ? 'LTCG' : 'STCG (' + (daysLeft > 0 ? daysLeft + 'd left' : 'Always') + ')'}</span></td>
-                </tr>
-              `;}).join('')}
-            </tbody>
-          </table>
-        </td>
+        <td><button class="pill-btn" onclick="event.stopPropagation(); window.openHoldingDrawer && window.openHoldingDrawer(${idx});">Inspect ➔</button></td>
       </tr>
     `;
   });
@@ -450,3 +411,76 @@ export function renderBucketRebalance(data) {
     bucketGrid.innerHTML = html;
   }
 }
+
+export function renderCashflowSankey(containerId, holdingsData, bucketData) {
+  const container = document.getElementById(containerId);
+  if (!container || !window.echarts) return null;
+
+  let totalEquity = 0;
+  let totalLiquid = 0;
+  let totalGold = 0;
+  let totalTaxDrag = 0;
+
+  if (holdingsData && holdingsData.length > 0) {
+    holdingsData.forEach(h => {
+      const cur = parseFloat(h.current_value || h.currentValue) || 0;
+      const cat = h.category || '';
+      if (cat === 'EQUITY') totalEquity += cur;
+      else if (cat === 'GOLD_SILVER' || cat === 'SGB') totalGold += cur;
+      else totalLiquid += cur;
+    });
+  }
+
+  if (bucketData && bucketData.recommendations) {
+    bucketData.recommendations.forEach(r => {
+      totalTaxDrag += parseFloat(r.estimated_tax_drag || r.estimatedTaxDrag) || 0;
+    });
+  }
+
+  if (totalEquity === 0 && totalLiquid === 0 && totalGold === 0) {
+    totalEquity = 1250000;
+    totalLiquid = 350000;
+    totalGold = 175000;
+  }
+
+  const netEquity = Math.max(0, totalEquity - totalTaxDrag);
+
+  const nodes = [
+    { name: 'Portfolio Capital' },
+    { name: 'Equity Core' },
+    { name: 'Liquid Buffer' },
+    { name: 'Gold & Commodities' },
+    { name: 'Net Core Wealth' },
+    { name: 'Est Tax Liability' },
+    { name: 'Emergency Cash' }
+  ];
+
+  const links = [
+    { source: 'Portfolio Capital', target: 'Equity Core', value: totalEquity },
+    { source: 'Portfolio Capital', target: 'Liquid Buffer', value: totalLiquid },
+    { source: 'Portfolio Capital', target: 'Gold & Commodities', value: totalGold },
+    { source: 'Equity Core', target: 'Net Core Wealth', value: netEquity },
+    { source: 'Equity Core', target: 'Est Tax Liability', value: Math.max(10, totalTaxDrag) },
+    { source: 'Liquid Buffer', target: 'Emergency Cash', value: totalLiquid }
+  ];
+
+  const instance = window.echarts.init(container);
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'item', triggerOn: 'mousemove' },
+    series: [
+      {
+        type: 'sankey',
+        data: nodes,
+        links: links,
+        emphasis: { focus: 'adjacency' },
+        lineStyle: { color: 'gradient', curveness: 0.5, opacity: 0.45 },
+        label: { color: '#f8fafc', fontFamily: 'Inter', fontSize: 11, fontWeight: 'bold' },
+        itemStyle: { borderWidth: 1, borderColor: '#06b6d4' }
+      }
+    ]
+  };
+  instance.setOption(option);
+  return instance;
+}
+

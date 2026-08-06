@@ -1,152 +1,235 @@
-import { API_BASE, fetchJson, getAuthHeaders, DEFAULT_AUTH_TOKEN } from './js/api.js';
-import { state, setCurrentFy } from './js/state.js';
-import { showToast, formatINR } from './js/utils.js';
-import {
-  fetchTaxMetrics,
-  fetchRealizedLog,
-  fetchDecisionRadar
-} from './js/modules/tax.js';
+import { API_BASE, fetchJson } from './src/api.js';
+import { state } from './src/state.js';
+import { formatINR, showToast } from './src/utils.js';
 import {
   updatePortfolioSummary,
   renderHoldingsTable,
   renderAllocationChart,
   renderCategoryChart,
-  fetchConsolidationPreviewData,
-  fetchRebalancePreview,
-  fetchGoalSummary,
-  fetchFireSummary,
-  fetchBucketRebalance
-} from './js/modules/portfolio.js';
+  renderNetWorthTrendChart,
+  renderCashflowSankey,
+  renderBucketRebalance
+} from './src/js/modules/portfolio.js';
+import { renderTaxExemptionMeter, renderScheduleFaChecklist, renderTaxEventsTable } from './src/js/modules/tax.js';
+import { fetchDecisionRadar, renderDecisionRadar } from './src/js/modules/radar.js';
+
+const DEFAULT_AUTH_TOKEN = 'fintracker-cachyos-default-key-2026';
+
+async function initDashboard() {
+  try {
+    const summaryData = await fetchJson(`/portfolio/summary?fy=${state.currentFy}`);
+    updatePortfolioSummary(summaryData);
+
+    const holdings = await fetchJson(`/portfolio/holdings`);
+    state.holdings = holdings;
+    renderHoldingsTable(holdings);
+
+    const navTrendData = await fetchJson(`/portfolio/net-worth-trend`);
+    if (navTrendData && navTrendData.dates && navTrendData.values) {
+      if (state.charts.trendChart) state.charts.trendChart.dispose();
+      state.charts.trendChart = renderNetWorthTrendChart('netWorthTrendChart', navTrendData.dates, navTrendData.values);
+    }
+
+    const allocData = await fetchJson(`/portfolio/allocations`);
+    renderAllocationChart(allocData);
+
+    const catData = await fetchJson(`/portfolio/category-allocations`);
+    renderCategoryChart(catData);
+
+    const exemptionData = await fetchJson(`/tax/exemption-status?fy=${state.currentFy}`);
+    renderTaxExemptionMeter(exemptionData);
+
+    const bucketData = await fetchJson(`/rebalance/bucket?fy=${state.currentFy}`);
+    renderBucketRebalance(bucketData);
+
+    // Render Cashflow Sankey Flow Diagram
+    if (state.charts.sankeyChart) state.charts.sankeyChart.dispose();
+    state.charts.sankeyChart = renderCashflowSankey('sankeyChart', holdings, bucketData);
+
+    const faData = await fetchJson(`/tax/schedule-fa?fy=${state.currentFy}`);
+    renderScheduleFaChecklist(faData);
+
+    const eventsData = await fetchJson(`/tax/events?fy=${state.currentFy}`);
+    renderTaxEventsTable(eventsData);
+
+  } catch (err) {
+    console.error("Dashboard initialization failed:", err);
+    showToast("Error connecting to Core Node REST service.", "error");
+  }
+}
+
+async function fetchRebalancePreview(amount) {
+  try {
+    const preview = await fetchJson(`/rebalance/preview?amount=${amount}&fy=${state.currentFy}`);
+    const dragEl = document.getElementById('rebTaxDrag');
+    const rateEl = document.getElementById('rebEffRate');
+    const ltcgEl = document.getElementById('rebLtcgHarvested');
+
+    if (dragEl) dragEl.textContent = formatINR(parseFloat(preview.total_tax_drag || preview.totalTaxDrag || '0'));
+    if (rateEl) rateEl.textContent = `${preview.effective_tax_rate_pct || preview.effectiveTaxRatePct || '0.00'}%`;
+    if (ltcgEl) ltcgEl.textContent = formatINR(parseFloat(preview.ltcg_exemption_harvested || preview.ltcgExemptionHarvested || '0'));
+  } catch (err) {
+    console.error("Failed to fetch rebalance preview:", err);
+  }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Tab Switching Handler
-  const tabBtns = document.querySelectorAll('.tab-btn');
-  const tabContents = document.querySelectorAll('.tab-content');
+  initDashboard();
 
-  tabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = btn.getAttribute('data-tab');
-      tabBtns.forEach(b => b.classList.remove('active'));
-      tabContents.forEach(c => c.classList.remove('active'));
-
-      btn.classList.add('active');
-      const content = document.getElementById(`tab-${target}`);
-      if (content) content.classList.add('active');
-
-      setTimeout(() => {
-        if (state.charts.allocChart) state.charts.allocChart.resize();
-        if (state.charts.categoryChart) state.charts.categoryChart.resize();
-      }, 50);
-    });
-  });
-
-  const fySelect = document.getElementById('fySelect');
-  if (fySelect) {
-    setCurrentFy(fySelect.value);
-    fySelect.addEventListener('change', () => {
-      setCurrentFy(fySelect.value);
-      fetchTaxMetrics();
-      fetchRealizedLog();
-      fetchRebalancePreview();
-    });
-  }
-
-  fetchLiveMetrics();
-
-  // Command Palette Handler (Cmd + K / Ctrl + K / Slash)
-  const cmdPaletteModal = document.getElementById('commandPaletteModal');
-  const cmdInput = document.getElementById('commandPaletteInput');
-  const cmdResults = document.getElementById('commandPaletteResults');
-
-  function openCmdPalette() {
-    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
-    const input = document.getElementById('commandPaletteInput') || cmdInput;
-    if (!modal) return;
-
-    modal.style.display = 'flex';
-
-    if (input) {
-      setTimeout(() => {
-        input.focus();
-        input.select();
-      }, 50);
-    }
-  }
-
-  function closeCmdPalette() {
-    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
-    if (!modal) return;
-    modal.style.display = 'none';
-  }
-
-  window.openCmdPalette = openCmdPalette;
-  window.closeCmdPalette = closeCmdPalette;
-
-  // Event Delegation for Button, Close X, and Backdrop Click
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('#cmdKTriggerBtn, .cmd-k-btn')) {
-      e.preventDefault();
-      openCmdPalette();
-      return;
-    }
-
-    if (e.target.closest('#closeCmdPaletteBtn')) {
-      e.preventDefault();
-      closeCmdPalette();
-      return;
-    }
-
-    const modal = document.getElementById('commandPaletteModal') || cmdPaletteModal;
-    if (modal && e.target === modal) {
-      closeCmdPalette();
-    }
-  });
-
-  if (cmdPaletteModal) {
-    cmdPaletteModal.addEventListener('cancel', () => closeCmdPalette());
-  }
-
-  window.addEventListener('keydown', (e) => {
-    const key = e.key ? e.key.toLowerCase() : '';
-    const isInputActive = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
-
-    if (((e.metaKey || e.ctrlKey || e.altKey) && key === 'k') || (!isInputActive && key === '/')) {
-      e.preventDefault();
-      e.stopPropagation();
-      openCmdPalette();
-    }
-  }, true);
-
-  window.submitAiPrompt = function(queryOverride) {
+  window.openCmdPalette = () => {
+    const modal = document.getElementById('commandPaletteModal');
+    if (modal) modal.style.display = 'flex';
     const input = document.getElementById('commandPaletteInput');
-    const query = (queryOverride || (input ? input.value : '')).trim();
-    if (!query) return;
+    if (input) { input.focus(); input.select(); }
+  };
 
-    const cmdResults = document.getElementById('commandPaletteResults');
-    if (cmdResults) {
-      cmdResults.innerHTML = '<div style="padding:14px; color:#06b6d4; font-family:monospace; font-weight:bold;">🧠 AI Engine Thinking...</div>';
+  window.closeCmdPalette = () => {
+    const modal = document.getElementById('commandPaletteModal');
+    if (modal) modal.style.display = 'none';
+  };
+
+  window.openHoldingDrawer = (idx) => {
+    const holding = state.holdings[idx];
+    if (!holding) return;
+
+    const drawer = document.getElementById('holdingDetailDrawer');
+    const backdrop = document.getElementById('holdingDetailDrawerBackdrop');
+    const titleEl = document.getElementById('drawerAssetTitle');
+    const catEl = document.getElementById('drawerAssetCategory');
+    const bodyEl = document.getElementById('drawerBody');
+
+    if (!drawer || !backdrop || !bodyEl) return;
+
+    const assetName = holding.asset_name || holding.assetName || '';
+    const category = holding.category || 'EQUITY';
+    const inv = Math.round(parseFloat(holding.invested_value || holding.investedValue) || 0);
+    const cur = Math.round(parseFloat(holding.current_value || holding.currentValue) || 0);
+    const gain = Math.round(parseFloat(holding.unrealized_gain || holding.unrealizedGain) || 0);
+    const gainPct = holding.unrealized_gain_pct || holding.unrealizedGainPct || '0.00';
+    const lots = holding.lots || [];
+
+    if (titleEl) titleEl.textContent = assetName;
+    if (catEl) {
+      catEl.textContent = category.replace('_SPECIFIED_50AA', '');
+      catEl.className = `live-tag cat-${category}`;
     }
 
-    const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
-    const evtSource = new EventSource(`/api/v1/llm/stream?prompt=${encodeURIComponent(query)}&token=${encodeURIComponent(token)}`);
-    let outputText = '';
+    let lotsHtml = lots.map(l => {
+      const acqDate = l.acquisition_date || l.acquisitionDate;
+      const units = l.remaining_units || l.remainingUnits;
+      const costPerUnit = parseFloat(l.cost_per_unit || l.costPerUnit || '0');
+      const lotGain = parseFloat(l.unrealized_gain || l.unrealizedGain || '0');
+      const daysHeld = l.holding_days !== undefined ? l.holding_days : l.holdingDays;
+      const isLtcg = l.is_ltcg !== undefined ? l.is_ltcg : l.isLtcg;
 
-    evtSource.onmessage = function(event) {
-      outputText += event.data;
-      const resEl = document.getElementById('commandPaletteResults');
-      if (resEl) {
-        resEl.innerHTML = `
-          <div style="padding:14px; background:#0f172a; border:1px solid rgba(6,182,212,0.4); border-radius:10px; color:#f8fafc; font-size:13px; white-space:pre-wrap; font-family:'JetBrains Mono', monospace; line-height:1.6;">
-            <div style="color:#d0ff00; font-weight:bold; margin-bottom:8px; font-size:14px;">⚡ PORTFOLIO OS AI RESPONSE</div>
-            ${outputText}
+      return `
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding:12px; border-radius:10px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:12px; font-weight:600; color:#fff;">Acquired ${acqDate} (${daysHeld}d held)</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:2px;" class="font-mono">${units} units @ ₹${costPerUnit.toFixed(2)}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:13px; font-weight:700; color:${lotGain >= 0 ? '#10b981' : '#ef4444'};" class="font-mono">${lotGain >= 0 ? '+' : ''}${formatINR(lotGain)}</div>
+            <span class="cat-badge ${isLtcg ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}" style="margin-top:2px; display:inline-block;">${isLtcg ? 'LTCG' : 'STCG'}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    bodyEl.innerHTML = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:12px; border-radius:10px;">
+          <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Invested Cost</div>
+          <div style="font-size:16px; font-weight:700; color:#fff;" class="font-mono">${formatINR(inv)}</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:12px; border-radius:10px;">
+          <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Current Value</div>
+          <div style="font-size:16px; font-weight:700; color:#06b6d4;" class="font-mono">${formatINR(cur)}</div>
+        </div>
+      </div>
+      <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:12px; border-radius:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:12px; color:#94a3b8;">Total Unrealized Gain</span>
+        <strong style="font-size:15px; color:${gain >= 0 ? '#10b981' : '#ef4444'};" class="font-mono">${gain >= 0 ? '+' : ''}${formatINR(gain)} (${gainPct}%)</strong>
+      </div>
+      <h4 style="font-size:13px; font-weight:700; color:#06b6d4; margin-top:8px;">FIFO Open Tax Lots (${lots.length})</h4>
+      <div style="display:flex; flex-direction:column; gap:10px;">${lotsHtml || '<div style="color:#94a3b8; font-size:12px;">No open lots available.</div>'}</div>
+    `;
+
+    backdrop.classList.add('open');
+    drawer.classList.add('open');
+  };
+
+  window.closeHoldingDrawer = () => {
+    const drawer = document.getElementById('holdingDetailDrawer');
+    const backdrop = document.getElementById('holdingDetailDrawerBackdrop');
+    if (drawer) drawer.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+  };
+
+  window.submitAiPrompt = async () => {
+    const input = document.getElementById('commandPaletteInput');
+    const results = document.getElementById('commandPaletteResults');
+    if (!input || !results) return;
+
+    const promptText = input.value.trim();
+    if (!promptText) return;
+
+    const promptLower = promptText.toLowerCase();
+
+    // Raycast Action Interception for Rebalance & Waterfall
+    if (promptLower.includes("rebalance") || promptLower.includes("waterfall") || promptLower.includes("trim")) {
+      const match = promptText.match(/\d+/);
+      const amount = match ? parseInt(match[0]) : 50000;
+      results.innerHTML = `<div style="padding:12px; color:#06b6d4;">⚙️ Calculating Tax-Aware Waterfall for ₹${formatINR(amount)}...</div>`;
+
+      try {
+        const wf = await fetchJson(`/rebalance/waterfall?bucket=EQUITY_CORE&amount=${amount}&fy=${state.currentFy}`);
+        const stepsHtml = wf.steps.map(s => `
+          <div class="cmd-step-row">
+            <span><strong style="color:#d0ff00;">${s.tier}</strong>: ${s.asset_name || s.assetName}</span>
+            <span class="font-mono">₹ ${formatINR(parseFloat(s.proceeds))} (Tax: ₹ ${formatINR(parseFloat(s.tax_drag || s.taxDrag))})</span>
+          </div>
+        `).join('');
+
+        results.innerHTML = `
+          <div class="cmd-action-card">
+            <div class="cmd-action-header">
+              <span>⚡ Tax-Aware Rebalance Engine</span>
+              <span>Satisfied: ₹ ${formatINR(parseFloat(wf.satisfied_amount || wf.satisfiedAmount))}</span>
+            </div>
+            <div style="font-size:12px; color:#94a3b8;">Exemption Consumed: <strong style="color:#10b981;" class="font-mono">₹ ${formatINR(parseFloat(wf.ltcg_exemption_consumed || wf.ltcgExemptionConsumed))}</strong> · Tax Drag: <strong style="color:#06b6d4;" class="font-mono">₹ ${formatINR(parseFloat(wf.total_tax_drag || wf.totalTaxDrag))}</strong></div>
+            <div class="cmd-action-steps">${stepsHtml || '<div style="font-size:12px; color:#94a3b8;">No trim steps required.</div>'}</div>
           </div>
         `;
+        return;
+      } catch (err) {
+        console.error("Command palette waterfall action error:", err);
+      }
+    }
+
+    // Default SSE AI prompt stream
+    results.innerHTML = '<div style="padding:12px; color:#d0ff00; font-family:monospace;">⚡ Streaming response from Qwen LLM...</div><div id="cmdKOutput" style="white-space:pre-wrap; font-size:13px; font-family:monospace; color:#f8fafc; max-height:280px; overflow-y:auto; padding:10px; background:rgba(0,0,0,0.4); border-radius:8px; border:1px solid rgba(255,255,255,0.1);"></div>';
+    
+    const resEl = document.getElementById('cmdKOutput');
+    const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
+    const url = `${API_BASE}/llm/stream?prompt=${encodeURIComponent(promptText)}&token=${encodeURIComponent(token)}`;
+
+    const eventSource = new EventSource(url);
+    let outputText = '';
+
+    eventSource.onmessage = (event) => {
+      if (event.data) {
+        outputText += event.data;
+        if (resEl) {
+          resEl.textContent = outputText;
+          resEl.scrollTop = resEl.scrollHeight;
+        }
       }
     };
 
-    evtSource.onerror = function() {
-      evtSource.close();
-      const resEl = document.getElementById('commandPaletteResults');
+    eventSource.onerror = (err) => {
+      console.error("SSE stream error:", err);
+      eventSource.close();
       if (resEl && !outputText) {
         resEl.innerHTML = '<div style="padding:12px; color:#ef4444; font-family:monospace;">⚠️ Streaming failed. Verify connection or authentication token.</div>';
       }
@@ -163,39 +246,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  if (cmdResults) {
-    cmdResults.addEventListener('click', (e) => {
-      const item = e.target.closest('.cmd-item');
-      if (!item) return;
-      const action = item.getAttribute('data-action');
-      closeCmdPalette();
-
-      if (action === 'schedule-cg') {
-        window.open('/api/v1/tax/schedule-cg/export', '_blank');
-        showToast('Downloading Schedule CG Tax Report CSV...', 'success');
-      } else if (action === 'rebalance') {
-        fetchBucketRebalance();
-        showToast('Evaluating Portfolio Rebalance Rungs...', 'info');
-      } else if (action === 'whatif' || action === 'holdings') {
-        const hTab = document.querySelector('[data-tab="holdings"]');
-        if (hTab) hTab.click();
-      } else if (action === 'radar') {
-        fetchDecisionRadar();
-      }
-    });
+  const cmdTrigger = document.getElementById('cmdKTriggerBtn');
+  if (cmdTrigger) {
+    cmdTrigger.addEventListener('click', window.openCmdPalette);
   }
 
-  // Export ZIP button listener
-  const exportZipBtn = document.getElementById('exportZipBtn');
-  if (exportZipBtn) {
-    exportZipBtn.addEventListener('click', () => {
-      const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
-      window.location.href = `${API_BASE}/tax/export/itr2/zip?fy=${state.currentFy}&token=${encodeURIComponent(token)}`;
-      showToast(`Generating ITR-2 CSV Bundle (.zip) for ${state.currentFy}...`, 'success');
-    });
+  const closeCmdBtn = document.getElementById('closeCmdPaletteBtn');
+  if (closeCmdBtn) {
+    closeCmdBtn.addEventListener('click', window.closeCmdPalette);
   }
 
-  // Rebalance Slider listener
   const slider = document.getElementById('rebalanceSlider');
   const sliderVal = document.getElementById('rebalanceSliderVal');
   if (slider && sliderVal) {
@@ -205,100 +265,4 @@ document.addEventListener('DOMContentLoaded', () => {
       fetchRebalancePreview(val);
     });
   }
-
-  // File Upload listener
-  const fileInput = document.getElementById('fileUploadInput');
-  if (fileInput) {
-    fileInput.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      let password = '';
-      if (file.name.toLowerCase().endsWith('.pdf')) {
-        password = prompt("Enter password for encrypted CAS PDF (usually PAN in lowercase or PAN + DOB):") || '';
-      }
-
-      const formData = new FormData();
-      formData.append('file', file);
-      if (password) {
-        formData.append('password', password);
-      }
-
-      const uploadBtn = document.querySelector('.upload-btn');
-      try {
-        if (uploadBtn) uploadBtn.textContent = 'Parsing Statement...';
-
-        const res = await fetch(`${API_BASE}/statements/upload`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: formData
-        });
-
-        const result = await res.json().catch(() => null);
-
-        if (res.ok && result && (result.status === 'SUCCESS' || Array.isArray(result) || result.eventsIngested !== undefined)) {
-          const count = Array.isArray(result) ? result.length : (result.eventsIngested || 0);
-          showToast(`Statement ingested successfully (${count} events).`, 'success');
-          fetchLiveMetrics();
-        } else {
-          const msg = (result && result.message) ? result.message : 'Statement parsing failed or unauthorized.';
-          showToast(msg, 'error');
-        }
-      } catch (err) {
-        showToast(`Upload error: ${err.message}`, 'error');
-      } finally {
-        if (uploadBtn) uploadBtn.textContent = 'Upload CAS PDF / CSV';
-        fileInput.value = '';
-      }
-    });
-  }
-});
-
-async function fetchLiveMetrics() {
-  try {
-    const summary = await fetchJson(`${API_BASE}/portfolio/summary`).catch(() => null);
-    if (summary) {
-      updatePortfolioSummary(summary);
-    }
-
-    fetchTaxMetrics();
-
-    const allocations = await fetchJson(`${API_BASE}/portfolio/allocation`).catch(() => null);
-    if (allocations) {
-      renderAllocationChart(allocations);
-    }
-
-    const catAllocations = await fetchJson(`${API_BASE}/portfolio/category-allocation`).catch(() => null);
-    if (catAllocations) {
-      renderCategoryChart(catAllocations);
-    }
-
-    const holdings = await fetchJson(`${API_BASE}/portfolio/holdings`).catch(() => null);
-    if (holdings) {
-      renderHoldingsTable(holdings);
-    }
-
-    fetchDecisionRadar();
-    fetchRealizedLog();
-    fetchGoalSummary();
-    fetchFireSummary();
-    fetchBucketRebalance();
-    fetchConsolidationPreviewData();
-
-    const slider = document.getElementById('rebalanceSlider');
-    const amt = slider ? slider.value : 100000;
-    fetchRebalancePreview(amt);
-  } catch (err) {
-    console.log('Portfolio OS API starting up, retrying...');
-  }
-}
-
-// Global debounced resize listener for ECharts
-let resizeTimer = null;
-window.addEventListener('resize', () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    if (state.charts.allocChart) state.charts.allocChart.resize();
-    if (state.charts.categoryChart) state.charts.categoryChart.resize();
-  }, 150);
 });
