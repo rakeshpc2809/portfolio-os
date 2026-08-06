@@ -11,7 +11,7 @@ import java.util.List;
 public class XirrEngine {
 
     public double calculateXirr(List<CashFlow> cashFlows) {
-        if (cashFlows.size() < 2) return 0.0;
+        if (cashFlows == null || cashFlows.size() < 2) return 0.0;
 
         List<CashFlow> sorted = new ArrayList<>(cashFlows);
         sorted.sort(Comparator.comparing(CashFlow::date));
@@ -47,7 +47,7 @@ public class XirrEngine {
             amounts.add(cf.amount().doubleValue());
         }
 
-        // Newton-Raphson solver
+        // 1. Newton-Raphson solver
         double rate = 0.10;
         for (int iter = 0; iter < 100; iter++) {
             double f = npv(rate, dates, amounts);
@@ -57,19 +57,34 @@ public class XirrEngine {
                 double nextRate = rate - f / df;
                 if (Math.abs(nextRate - rate) < 1e-7) {
                     double result = nextRate * 100.0;
-                    if (Double.isNaN(result) || Double.isInfinite(result)) return 0.0;
-                    return Math.max(-99.0, result);
+                    if (!Double.isNaN(result) && !Double.isInfinite(result)) {
+                        return Math.max(-99.0, result);
+                    }
                 }
                 rate = nextRate;
             }
             if (rate <= -0.90) rate = -0.50;
         }
 
-        // Bracketed Bisection Fallback
-        double low = -0.50;
-        double high = 10.0;
+        // 2. Bracketed Bisection Fallback with Dynamic Search Bounds & Step Probing
+        double low = -0.95;
+        double high = 50.0;
         double flow = npv(low, dates, amounts);
         double fhigh = npv(high, dates, amounts);
+
+        if (flow * fhigh > 0) {
+            for (double probeLow = -0.90; probeLow <= 10.0; probeLow += 0.50) {
+                double f1 = npv(probeLow, dates, amounts);
+                double f2 = npv(probeLow + 0.50, dates, amounts);
+                if (f1 * f2 <= 0) {
+                    low = probeLow;
+                    high = probeLow + 0.50;
+                    flow = f1;
+                    fhigh = f2;
+                    break;
+                }
+            }
+        }
 
         if (flow * fhigh <= 0) {
             for (int i = 0; i < 100; i++) {
@@ -89,9 +104,19 @@ public class XirrEngine {
             return Math.max(-99.0, ((low + high) / 2.0) * 100.0);
         }
 
-        double rawResult = rate * 100.0;
-        if (Double.isNaN(rawResult) || Double.isInfinite(rawResult)) return 0.0;
-        return Math.max(-99.0, rawResult);
+        // 3. CAGR Fallback when root cannot be bracketed
+        if (totalInvested.compareTo(BigDecimal.ZERO) > 0 && totalDays > 0) {
+            double netReturn = totalRealizedOrCurrent.subtract(totalInvested).divide(totalInvested, 6, RoundingMode.HALF_UP).doubleValue();
+            double years = (double) totalDays / 365.25;
+            if (years > 0 && netReturn > -1.0) {
+                double cagr = (Math.pow(1.0 + netReturn, 1.0 / years) - 1.0) * 100.0;
+                if (!Double.isNaN(cagr) && !Double.isInfinite(cagr)) {
+                    return Math.max(-99.0, cagr);
+                }
+            }
+        }
+
+        return 0.0;
     }
 
     private double npv(double r, List<Double> dates, List<Double> amounts) {

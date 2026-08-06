@@ -283,12 +283,6 @@ fun HistoricalNetWorthTrendChart(
         )
     }
 
-    val rawVals = if (trendPoints.isEmpty()) listOf(100.0, 105.0, 110.0, 115.0, 120.0) else trendPoints.map { it.valuation }
-    val minVal = rawVals.minOrNull() ?: 1.0
-    val maxVal = rawVals.maxOrNull() ?: (minVal * 1.2)
-    val valRange = (maxVal - minVal).coerceAtLeast(1.0)
-    val points = rawVals.map { v -> ((v - minVal) / valRange * 0.70 + 0.25).toFloat() }
-
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
         shape = RoundedCornerShape(20.dp),
@@ -319,11 +313,32 @@ fun HistoricalNetWorthTrendChart(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(140.dp)
-            ) {
+            if (trendPoints.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No historical net worth data available.",
+                        color = Color(0xFF64748B),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            } else {
+                val rawVals = trendPoints.map { it.valuation }
+                val minVal = rawVals.minOrNull() ?: 1.0
+                val maxVal = rawVals.maxOrNull() ?: (minVal * 1.2)
+                val valRange = (maxVal - minVal).coerceAtLeast(1.0)
+                val points = rawVals.map { v -> ((v - minVal) / valRange * 0.70 + 0.25).toFloat() }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                ) {
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()

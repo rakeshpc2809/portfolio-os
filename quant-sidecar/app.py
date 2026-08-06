@@ -3,7 +3,7 @@ import tempfile
 import threading
 import logging
 from typing import List, Optional
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Depends
 import polars as pl
 import uvicorn
 
@@ -17,13 +17,19 @@ from flight_server import QuantFlightServer
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("quant-sidecar")
 
+EXPECTED_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN", "fintracker-cachyos-default-key-2026")
+
+def verify_auth_token(x_api_auth_token: Optional[str] = Header(None)):
+    if not x_api_auth_token or x_api_auth_token != EXPECTED_AUTH_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-Api-Auth-Token header")
+
 app = FastAPI(title="Portfolio OS Quant & Parser Sidecar", version="3.0.0")
 
 @app.get("/health")
 def health_check():
     return {"status": "UP", "engine": "Polars + FastAPI + Arrow Flight", "version": "3.0.0"}
 
-@app.post("/api/v1/parse", response_model=List[TaxEventSchema])
+@app.post("/api/v1/parse", response_model=List[TaxEventSchema], dependencies=[Depends(verify_auth_token)])
 async def parse_statement(
     file: UploadFile = File(...),
     password: Optional[str] = Form(None)
@@ -77,10 +83,8 @@ def run_flight_server():
         logger.error(f"Failed to start Flight server: {e}", exc_info=True)
 
 if __name__ == "__main__":
-    # Start Apache Arrow Flight RPC Server in a background daemon thread
     flight_thread = threading.Thread(target=run_flight_server, daemon=True)
     flight_thread.start()
     
-    # Run FastAPI server
     logger.info("Starting FastAPI HTTP Server on port 8000...")
     uvicorn.run(app, host="0.0.0.0", port=8000)

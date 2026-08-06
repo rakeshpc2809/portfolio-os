@@ -78,9 +78,9 @@ public class TaxClassifier {
 
                 if (acquisitionDate != null && acquisitionDate.isBefore(apr2023Cutoff)) {
                     if (disposalDate != null && !disposalDate.isBefore(jul2024Cutoff)) {
-                        yield holdingDays > 730 ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                        yield holdingDays >= 730 ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
                     } else {
-                        yield holdingDays > 1095 ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                        yield holdingDays >= 1095 ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
                     }
                 } else {
                     yield TaxTerm.SHORT_TERM;

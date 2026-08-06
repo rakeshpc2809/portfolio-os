@@ -54,8 +54,8 @@ public class LlmQueryController {
                 SimulationService.TradeSimulationRequest simReq = new SimulationService.TradeSimulationRequest(
                     "INF200K01229",
                     "Parag Parikh Flexi Cap Fund",
-                    100.0,
-                    165.0,
+                    new java.math.BigDecimal("100.0"),
+                    new java.math.BigDecimal("165.0"),
                     null,
                     promptLower.contains("sell") ? "DISPOSAL" : "ACQUISITION"
                 );

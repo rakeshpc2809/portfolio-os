@@ -217,17 +217,39 @@ public class DuckDbProjector {
     public List<NetWorthPoint> getDailyNetWorthTrend() {
         List<NetWorthPoint> trend = new ArrayList<>();
         try (Connection conn = getConnection()) {
-            String sql = "SELECT nav_date, SUM(nav) as total_nav FROM daily_nav_history GROUP BY nav_date ORDER BY nav_date ASC";
+            String sql = """
+                SELECT 
+                    nh.nav_date,
+                    SUM(CAST(pe.units AS DOUBLE) * nh.nav) AS total_valuation,
+                    SUM(CAST(pe.gross_amount AS DOUBLE)) AS total_invested
+                FROM nav_history nh
+                JOIN projected_events pe ON nh.asset_id = pe.asset_id
+                WHERE pe.event_date <= nh.nav_date
+                  AND pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT')
+                GROUP BY nh.nav_date
+                ORDER BY nh.nav_date ASC
+            """;
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {
                     String d = rs.getString("nav_date");
-                    double val = rs.getDouble("total_nav");
-                    trend.add(new NetWorthPoint(d, val, val * 0.9));
+                    double val = rs.getDouble("total_valuation");
+                    double inv = rs.getDouble("total_invested");
+                    trend.add(new NetWorthPoint(d, val, inv));
                 }
             }
         } catch (SQLException e) {
-            System.err.println("Failed to fetch daily net worth trend: " + e.getMessage());
+            try (Connection conn = getConnection();
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT nav_date, SUM(nav) as total_nav FROM nav_history GROUP BY nav_date ORDER BY nav_date ASC")) {
+                while (rs.next()) {
+                    String d = rs.getString("nav_date");
+                    double val = rs.getDouble("total_nav");
+                    trend.add(new NetWorthPoint(d, val, val));
+                }
+            } catch (SQLException ex) {
+                System.err.println("Failed to fetch daily net worth trend: " + ex.getMessage());
+            }
         }
         return trend;
     }

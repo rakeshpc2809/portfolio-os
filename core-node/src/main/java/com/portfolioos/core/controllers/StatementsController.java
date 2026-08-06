@@ -4,10 +4,9 @@ import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.ports.EventStorePort;
+import com.portfolioos.core.service.LedgerCacheService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
@@ -29,15 +28,21 @@ public class StatementsController {
 
     private final EventStorePort eventStore;
     private final DuckDbProjector duckDbProjector;
+    private final LedgerCacheService cacheService;
     private final RestClient restClient;
+    private final String authToken;
 
     public StatementsController(
         EventStorePort eventStore,
         DuckDbProjector duckDbProjector,
-        @Value("${quant-sidecar.url:http://quant-sidecar:8000}") String sidecarUrl
+        LedgerCacheService cacheService,
+        @Value("${quant-sidecar.url:http://quant-sidecar:8000}") String sidecarUrl,
+        @Value("${api.auth.token:fintracker-cachyos-default-key-2026}") String authToken
     ) {
         this.eventStore = eventStore;
         this.duckDbProjector = duckDbProjector;
+        this.cacheService = cacheService;
+        this.authToken = authToken;
         this.restClient = RestClient.builder().baseUrl(sidecarUrl).build();
     }
 
@@ -60,10 +65,8 @@ public class StatementsController {
         @RequestParam(value = "password", required = false) String password
     ) {
         try {
-            // Forward request to sidecar
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             
-            // Convert file to ByteArrayResource for multipart formatting
             ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
                 @Override
                 public String getFilename() {
@@ -76,9 +79,10 @@ public class StatementsController {
                 body.add("password", password);
             }
 
-            // POST to parser sidecar
+            // POST to parser sidecar with authentication header
             ResponseEntity<ParsedEventDto[]> response = restClient.post()
                 .uri("/api/v1/parse")
+                .header("X-Api-Auth-Token", authToken)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(body)
                 .retrieve()
@@ -114,6 +118,9 @@ public class StatementsController {
             // Re-project events in DuckDB
             List<TaxEvent> allEvents = eventStore.getAllEvents();
             duckDbProjector.projectEvents(allEvents);
+
+            // Immediately invalidate central cache so UI updates in real-time
+            cacheService.invalidateCache();
 
             return ResponseEntity.ok(dtoList);
         } catch (IOException e) {

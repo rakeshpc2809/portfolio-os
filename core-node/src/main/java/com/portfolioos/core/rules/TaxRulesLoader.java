@@ -107,4 +107,17 @@ public class TaxRulesLoader {
             throw new IllegalStateException(errorMsg, e);
         }
     }
+
+    public static String detectFiscalYear(java.time.LocalDate date) {
+        if (date == null) date = java.time.LocalDate.now();
+        int year = date.getYear();
+        int month = date.getMonthValue();
+        if (month >= 4) {
+            int nextYearShort = (year + 1) % 100;
+            return String.format("%d-%02d", year, nextYearShort);
+        } else {
+            int currYearShort = year % 100;
+            return String.format("%d-%02d", year - 1, currYearShort);
+        }
+    }
 }

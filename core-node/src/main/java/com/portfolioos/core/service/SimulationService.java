@@ -1,8 +1,9 @@
 package com.portfolioos.core.service;
 
 import com.portfolioos.core.matcher.FifoMatcher;
-import com.portfolioos.core.matcher.TaxClassifier;
 import com.portfolioos.core.model.*;
+import com.portfolioos.core.reporting.ExemptionTracker;
+import com.portfolioos.core.rules.TaxRulesLoader;
 import com.portfolioos.core.xirr.CashFlow;
 import com.portfolioos.core.xirr.XirrEngine;
 import org.springframework.stereotype.Service;
@@ -10,7 +11,6 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 @Service
@@ -26,8 +26,8 @@ public class SimulationService {
     public static record TradeSimulationRequest(
         String isin,
         String schemeName,
-        double units,
-        double pricePerUnit,
+        BigDecimal units,
+        BigDecimal pricePerUnit,
         String tradeDate,
         String tradeType // DISPOSAL or ACQUISITION
     ) {}
@@ -36,18 +36,18 @@ public class SimulationService {
         String isin,
         String schemeName,
         String tradeType,
-        double units,
-        double pricePerUnit,
-        double grossTradeAmount,
-        double grossCapitalGain,
-        double ltcgEquity,
-        double stcgEquity,
-        double debtGain,
-        double sec112aExemptionApplied,
-        double estimatedTaxLiability,
-        double postTradeNetWorth,
-        double postTradeInvestedCost,
-        double postTradeXirr,
+        BigDecimal units,
+        BigDecimal pricePerUnit,
+        BigDecimal grossTradeAmount,
+        BigDecimal grossCapitalGain,
+        BigDecimal ltcgEquity,
+        BigDecimal stcgEquity,
+        BigDecimal debtGain,
+        BigDecimal sec112aExemptionApplied,
+        BigDecimal estimatedTaxLiability,
+        BigDecimal postTradeNetWorth,
+        BigDecimal postTradeInvestedCost,
+        BigDecimal postTradeXirr,
         String taxSummaryNotice
     ) {}
 
@@ -60,8 +60,10 @@ public class SimulationService {
             ? LocalDate.parse(req.tradeDate())
             : LocalDate.now();
 
-        BigDecimal unitsBd = BigDecimal.valueOf(req.units()).setScale(4, RoundingMode.HALF_UP);
-        BigDecimal priceBd = BigDecimal.valueOf(req.pricePerUnit()).setScale(4, RoundingMode.HALF_UP);
+        String targetFy = TaxRulesLoader.detectFiscalYear(tradeDate);
+
+        BigDecimal unitsBd = req.units() != null ? req.units().setScale(4, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        BigDecimal priceBd = req.pricePerUnit() != null ? req.pricePerUnit().setScale(4, RoundingMode.HALF_UP) : BigDecimal.ZERO;
         BigDecimal grossAmount = unitsBd.multiply(priceBd).setScale(2, RoundingMode.HALF_UP);
 
         EventType type = "ACQUISITION".equalsIgnoreCase(req.tradeType()) ? EventType.ACQUISITION : EventType.DISPOSAL;
@@ -88,53 +90,57 @@ public class SimulationService {
         FifoMatcher matcher = new FifoMatcher();
         FifoMatcher.FifoResult simResult = matcher.processEvents(simEvents);
 
-        double ltcgEquity = 0.0;
-        double stcgEquity = 0.0;
-        double debtGain = 0.0;
-        double totalGain = 0.0;
+        BigDecimal ltcgEquity = BigDecimal.ZERO;
+        BigDecimal stcgEquity = BigDecimal.ZERO;
+        BigDecimal debtGain = BigDecimal.ZERO;
+        BigDecimal totalGain = BigDecimal.ZERO;
 
         if (type == EventType.DISPOSAL) {
             for (MatchedLot match : simResult.matchedLots()) {
                 if (match.disposalEventId().equals(simEvent.id())) {
                     AssetCategory category = match.assetCategory();
                     TaxTerm term = match.taxTerm();
-
                     BigDecimal gain = match.realizedGain();
-                    totalGain += gain.doubleValue();
+                    totalGain = totalGain.add(gain);
 
                     if (category == AssetCategory.EQUITY) {
                         if (term == TaxTerm.LONG_TERM) {
-                            ltcgEquity += gain.doubleValue();
+                            ltcgEquity = ltcgEquity.add(gain);
                         } else {
-                            stcgEquity += gain.doubleValue();
+                            stcgEquity = stcgEquity.add(gain);
                         }
                     } else {
-                        debtGain += gain.doubleValue();
+                        debtGain = debtGain.add(gain);
                     }
                 }
             }
         }
 
-        double previousLtcgRealized = 0.0;
-        for (MatchedLot match : state.fifoResult().matchedLots()) {
-            if (match.assetCategory() == AssetCategory.EQUITY && match.taxTerm() == TaxTerm.LONG_TERM) {
-                previousLtcgRealized += Math.max(0.0, match.realizedGain().doubleValue());
-            }
+        // Use ExemptionTracker bound to target fiscal year instead of lifetime accumulation
+        ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(state.fifoResult().matchedLots(), targetFy);
+        BigDecimal remainingExemptionLimit = new BigDecimal(exStatus.exemptionRemaining());
+
+        BigDecimal exemptionApplied = BigDecimal.ZERO;
+        BigDecimal taxableLtcg = BigDecimal.ZERO;
+
+        if (ltcgEquity.compareTo(BigDecimal.ZERO) > 0) {
+            exemptionApplied = ltcgEquity.min(remainingExemptionLimit);
+            taxableLtcg = ltcgEquity.subtract(exemptionApplied).max(BigDecimal.ZERO);
         }
 
-        double remainingExemptionLimit = Math.max(0.0, 125000.0 - previousLtcgRealized);
-        double exemptionApplied = Math.min(Math.max(0.0, ltcgEquity), remainingExemptionLimit);
-        double taxableLtcg = Math.max(0.0, ltcgEquity - exemptionApplied);
-        double estimatedTax = (taxableLtcg * 0.125) + (Math.max(0.0, stcgEquity) * 0.20) + (Math.max(0.0, debtGain) * 0.30);
+        BigDecimal ltcgTax = taxableLtcg.multiply(new BigDecimal("0.125")).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal stcgTax = stcgEquity.max(BigDecimal.ZERO).multiply(new BigDecimal("0.20")).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal debtTax = debtGain.max(BigDecimal.ZERO).multiply(new BigDecimal("0.30")).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal estimatedTax = ltcgTax.add(stcgTax).add(debtTax);
 
         // Compute post-trade net worth & XIRR
-        double postInvested = 0.0;
-        double postCurrentVal = 0.0;
+        BigDecimal postInvested = BigDecimal.ZERO;
+        BigDecimal postCurrentVal = BigDecimal.ZERO;
 
         for (Lot lot : simResult.openLots()) {
-            postInvested += lot.remainingUnits().multiply(lot.costPerUnit()).doubleValue();
+            postInvested = postInvested.add(lot.remainingUnits().multiply(lot.costPerUnit()));
             BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
-            postCurrentVal += lot.remainingUnits().multiply(nav).doubleValue();
+            postCurrentVal = postCurrentVal.add(lot.remainingUnits().multiply(nav));
         }
 
         List<CashFlow> cashFlows = new ArrayList<>();
@@ -144,31 +150,33 @@ public class SimulationService {
                 : ev.grossAmount();
             cashFlows.add(new CashFlow(ev.eventDate(), amt));
         }
-        if (postCurrentVal > 0) {
-            cashFlows.add(new CashFlow(tradeDate, BigDecimal.valueOf(postCurrentVal)));
+        if (postCurrentVal.compareTo(BigDecimal.ZERO) > 0) {
+            cashFlows.add(new CashFlow(tradeDate, postCurrentVal));
         }
 
-        double postXirr = xirrEngine.calculateXirr(cashFlows);
+        double postXirrVal = xirrEngine.calculateXirr(cashFlows);
+        BigDecimal postXirr = BigDecimal.valueOf(postXirrVal).setScale(2, RoundingMode.HALF_UP);
 
         String notice = (type == EventType.DISPOSAL)
-            ? String.format("Simulated Sale: Estimated Tax Drag ₹%,.2f (LTCG Exemption Used: ₹%,.2f)", estimatedTax, exemptionApplied)
-            : String.format("Simulated Purchase: Added ₹%,.2f investment to portfolio.", grossAmount.doubleValue());
+            ? String.format("Simulated Sale (FY %s): Estimated Tax Drag ₹%s (LTCG Exemption Used: ₹%s)",
+                targetFy, estimatedTax.setScale(2, RoundingMode.HALF_UP).toPlainString(), exemptionApplied.setScale(2, RoundingMode.HALF_UP).toPlainString())
+            : String.format("Simulated Purchase: Added ₹%s investment to portfolio.", grossAmount.setScale(2, RoundingMode.HALF_UP).toPlainString());
 
         return new TradeSimulationResult(
             isin,
             name,
             type.name(),
-            req.units(),
-            req.pricePerUnit(),
-            grossAmount.doubleValue(),
-            totalGain,
-            ltcgEquity,
-            stcgEquity,
-            debtGain,
-            exemptionApplied,
-            estimatedTax,
-            postCurrentVal,
-            postInvested,
+            unitsBd,
+            priceBd,
+            grossAmount,
+            totalGain.setScale(2, RoundingMode.HALF_UP),
+            ltcgEquity.setScale(2, RoundingMode.HALF_UP),
+            stcgEquity.setScale(2, RoundingMode.HALF_UP),
+            debtGain.setScale(2, RoundingMode.HALF_UP),
+            exemptionApplied.setScale(2, RoundingMode.HALF_UP),
+            estimatedTax.setScale(2, RoundingMode.HALF_UP),
+            postCurrentVal.setScale(2, RoundingMode.HALF_UP),
+            postInvested.setScale(2, RoundingMode.HALF_UP),
             postXirr,
             notice
         );
