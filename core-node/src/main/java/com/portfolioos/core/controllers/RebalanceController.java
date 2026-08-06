@@ -50,4 +50,13 @@ public class RebalanceController {
     public ResponseEntity<FireSummaryResponse> getFireSummary() {
         return ResponseEntity.ok(valuationService.getFireSummary());
     }
+
+    @GetMapping({"/rebalance/waterfall", "/portfolio/rebalance-waterfall"})
+    public ResponseEntity<WaterfallResponse> getRebalanceWaterfall(
+        @RequestParam(value = "bucket", defaultValue = "EQUITY_CORE") com.portfolioos.core.valuation.BucketEngine.Bucket bucket,
+        @RequestParam(value = "amount", defaultValue = "40000") BigDecimal amount,
+        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+    ) {
+        return ResponseEntity.ok(valuationService.getRebalanceWaterfall(bucket, amount, fy));
+    }
 }

@@ -32,6 +32,7 @@ public class RebalanceEngine {
     public record RebalancePreviewResult(
         BigDecimal targetRedemptionAmount,
         BigDecimal actualRedemptionAmount,
+        BigDecimal deferredAmount,
         BigDecimal totalEstimatedGain,
         BigDecimal totalTaxDrag,
         BigDecimal effectiveTaxRatePct,
@@ -46,6 +47,17 @@ public class RebalanceEngine {
         BigDecimal remainingExemption,
         String fiscalYear
     ) {
+        return calculateRebalancePreview(openLots, navMap, targetAmount, remainingExemption, fiscalYear, true);
+    }
+
+    public static RebalancePreviewResult calculateRebalancePreview(
+        List<Lot> openLots,
+        Map<String, BigDecimal> navMap,
+        BigDecimal targetAmount,
+        BigDecimal remainingExemption,
+        String fiscalYear,
+        boolean allowStcg
+    ) {
         TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
         BigDecimal remainingTarget = targetAmount;
         BigDecimal unusedExemption = remainingExemption;
@@ -57,7 +69,22 @@ public class RebalanceEngine {
         LocalDate today = LocalDate.now();
 
         // Sort: loss-making first (0), then long-term (1), then short-term (2)
-        List<Lot> sortedLots = new ArrayList<>(openLots);
+        List<Lot> candidateLots = new ArrayList<>(openLots);
+
+        if (!allowStcg) {
+            // Drop positive-gain short-term lots entirely
+            candidateLots = candidateLots.stream().filter(l -> {
+                BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+                BigDecimal gain = nav.subtract(l.costPerUnit());
+                if (gain.compareTo(BigDecimal.ZERO) < 0) return true; // Keep loss-making lots
+                AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
+                long threshold = getThresholdDays(cat, rules);
+                long holdingDays = ChronoUnit.DAYS.between(l.acquisitionDate(), today);
+                return threshold > 0 && holdingDays >= threshold; // Keep LTCG lots
+            }).toList();
+        }
+
+        List<Lot> sortedLots = new ArrayList<>(candidateLots);
         sortedLots.sort((l1, l2) -> {
             BigDecimal nav1 = navMap.getOrDefault(l1.assetId(), l1.costPerUnit());
             BigDecimal gainPerUnit1 = nav1.subtract(l1.costPerUnit());
@@ -107,7 +134,7 @@ public class RebalanceEngine {
                     unusedExemption = unusedExemption.subtract(exemptPortion).max(BigDecimal.ZERO);
                     taxDrag = taxableGain.multiply(rules.equityLtcgRate());
                 } else {
-                    BigDecimal stcgRate = (category == AssetCategory.EQUITY) ? rules.equityStcgRate() : new BigDecimal("0.30"); // slab default
+                    BigDecimal stcgRate = (category == AssetCategory.EQUITY) ? rules.equityStcgRate() : new BigDecimal("0.20");
                     taxDrag = gainSlice.multiply(stcgRate);
                 }
             }
@@ -136,9 +163,12 @@ public class RebalanceEngine {
             effTaxRate = totalTaxDrag.multiply(new BigDecimal("100")).divide(actualRedemption, 2, RoundingMode.HALF_UP);
         }
 
+        BigDecimal deferredAmount = targetAmount.subtract(actualRedemption).max(BigDecimal.ZERO);
+
         return new RebalancePreviewResult(
             targetAmount,
             actualRedemption,
+            deferredAmount,
             totalGain,
             totalTaxDrag,
             effTaxRate,

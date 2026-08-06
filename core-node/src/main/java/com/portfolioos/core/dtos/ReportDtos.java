@@ -217,4 +217,27 @@ public class ReportDtos {
         boolean isRebalanceWindowOpen,
         String nextScheduledWindow
     ) {}
+
+    public record WaterfallStepDto(
+        String tier,
+        String lotId,
+        String assetId,
+        String assetName,
+        String unitsSold,
+        String proceeds,
+        String realizedGain,
+        String taxTerm,
+        String taxDrag
+    ) {}
+
+    public record WaterfallResponse(
+        String bucket,
+        String targetAmount,
+        String satisfiedAmount,
+        String deferredAmount,
+        String deferralReason,
+        List<WaterfallStepDto> steps,
+        String totalTaxDrag,
+        String ltcgExemptionConsumed
+    ) {}
 }

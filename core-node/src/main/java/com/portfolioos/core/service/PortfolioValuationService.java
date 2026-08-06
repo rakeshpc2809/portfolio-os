@@ -397,4 +397,46 @@ public class PortfolioValuationService {
             result.nextScheduledWindow()
         );
     }
+
+    public WaterfallResponse getRebalanceWaterfall(BucketEngine.Bucket bucket, BigDecimal amount, String fy) {
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state.fifoResult().openLots();
+        List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
+        Map<String, BigDecimal> navMap = state.navMap();
+
+        List<Lot> bucketLots = openLots.stream().filter(l -> 
+            BucketEngine.classifyAssetToBucket(l.assetId(), l.assetName()) == bucket
+        ).toList();
+
+        ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
+        BigDecimal remExemption = new BigDecimal(exStatus.exemptionRemaining());
+
+        com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallResult result = 
+            com.portfolioos.core.valuation.RebalanceWaterfallEngine.buildTrimWaterfall(
+                bucket, amount, bucketLots, navMap, remExemption, false, LocalDate.now(), fy
+            );
+
+        List<WaterfallStepDto> stepDtos = result.steps().stream().map(s -> new WaterfallStepDto(
+            s.tier().name(),
+            s.lotId(),
+            s.assetId(),
+            s.assetName(),
+            s.unitsSold().toPlainString(),
+            fmt(s.proceeds()),
+            fmt(s.realizedGain()),
+            s.taxTerm(),
+            fmt(s.taxDrag())
+        )).toList();
+
+        return new WaterfallResponse(
+            bucket.name(),
+            fmt(result.targetAmount()),
+            fmt(result.satisfiedAmount()),
+            fmt(result.deferredAmount()),
+            result.deferralReason(),
+            stepDtos,
+            fmt(result.totalTaxDrag()),
+            fmt(result.ltcgExemptionConsumed())
+        );
+    }
 }

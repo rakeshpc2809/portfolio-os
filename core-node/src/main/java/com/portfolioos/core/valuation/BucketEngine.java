@@ -237,50 +237,71 @@ public class BucketEngine {
                 BigDecimal diffValue = status.currentValue().subtract(targetValue);
 
                 if (diffValue.compareTo(BigDecimal.ZERO) > 0) {
-                    Map<String, List<Lot>> bucketLots = bucketAssetLots.get(status.bucket());
-                    if (bucketLots.isEmpty()) continue;
-                    String firstAssetId = bucketLots.keySet().iterator().next();
-                    List<Lot> firstLots = bucketLots.get(firstAssetId);
-                    String assetName = firstLots.get(0).assetName();
-
-                    BigDecimal estTaxDrag = BigDecimal.ZERO;
-                    List<String> taxTerms = new ArrayList<>();
-                    BigDecimal nav = navMap.getOrDefault(firstAssetId, firstLots.get(0).costPerUnit());
-
-                    for (Lot lot : firstLots) {
-                        AssetCategory category = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
-                        long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), currentDate);
-                        boolean isLtcg = TaxClassifier.classifyTaxTerm(category, holdingDays, fiscalYear, true) == TaxTerm.LONG_TERM;
-                        BigDecimal gain = nav.subtract(lot.costPerUnit()).multiply(lot.remainingUnits()).max(BigDecimal.ZERO);
-
-                        if (gain.compareTo(BigDecimal.ZERO) > 0) {
-                            BigDecimal rate = isLtcg ? rules.equityLtcgRate() : rules.equityStcgRate();
-                            BigDecimal taxableGain = gain;
-                            if (isLtcg && exemptionRemaining.compareTo(BigDecimal.ZERO) > 0) {
-                                if (taxableGain.compareTo(exemptionRemaining) <= 0) {
-                                    exemptionRemaining = exemptionRemaining.subtract(taxableGain);
-                                    taxableGain = BigDecimal.ZERO;
-                                } else {
-                                    taxableGain = taxableGain.subtract(exemptionRemaining);
-                                    exemptionRemaining = BigDecimal.ZERO;
-                                }
-                            }
-                            estTaxDrag = estTaxDrag.add(taxableGain.multiply(rate));
-                            taxTerms.add(isLtcg ? "LTCG @ " + rules.equityLtcgRate().multiply(new BigDecimal("100")) + "% (Sec 112A exemption applied)" 
-                                                  : "STCG @ " + rules.equityStcgRate().multiply(new BigDecimal("100")) + "%");
+                    Map<String, List<Lot>> bucketLotsMap = bucketAssetLots.get(status.bucket());
+                    List<Lot> flatBucketLots = new ArrayList<>();
+                    if (bucketLotsMap != null) {
+                        for (List<Lot> lotList : bucketLotsMap.values()) {
+                            flatBucketLots.addAll(lotList);
                         }
                     }
 
-                    recommendations.add(new RebalanceRecommendation(
-                        firstAssetId,
-                        assetName,
-                        status.bucket(),
-                        "SELL",
-                        diffValue.abs(),
-                        isCalendarReviewDate ? "CALENDAR" : "DRIFT_ALERT",
-                        estTaxDrag.setScale(2, RoundingMode.HALF_UP),
-                        taxTerms.stream().distinct().collect(Collectors.joining(", "))
-                    ));
+                    if (!flatBucketLots.isEmpty()) {
+                        boolean urgent = drawdownStatus.drawdownPct().compareTo(new BigDecimal("15.0")) >= 0
+                            || status.driftPct().abs().compareTo(new BigDecimal("10.0")) >= 0;
+
+                        RebalanceWaterfallEngine.WaterfallResult waterfallResult =
+                            RebalanceWaterfallEngine.buildTrimWaterfall(
+                                status.bucket(),
+                                diffValue.abs(),
+                                flatBucketLots,
+                                navMap,
+                                exemptionRemaining,
+                                urgent,
+                                currentDate,
+                                fiscalYear
+                            );
+
+                        exemptionRemaining = exemptionRemaining.subtract(waterfallResult.ltcgExemptionConsumed()).max(BigDecimal.ZERO);
+
+                        if (waterfallResult.steps().isEmpty()) {
+                            recommendations.add(new RebalanceRecommendation(
+                                "DEFERRED_" + status.bucket().name(),
+                                "Deferred Trim (" + status.bucket().name() + ")",
+                                status.bucket(),
+                                "DEFER",
+                                diffValue.abs(),
+                                isCalendarReviewDate ? "CALENDAR" : "DRIFT_ALERT",
+                                BigDecimal.ZERO,
+                                waterfallResult.deferralReason() != null ? waterfallResult.deferralReason() : "No tax-efficient lots available"
+                            ));
+                        } else {
+                            for (RebalanceWaterfallEngine.WaterfallStep step : waterfallResult.steps()) {
+                                recommendations.add(new RebalanceRecommendation(
+                                    step.assetId(),
+                                    step.assetName(),
+                                    status.bucket(),
+                                    "SELL",
+                                    step.proceeds(),
+                                    isCalendarReviewDate ? "CALENDAR" : "DRIFT_ALERT",
+                                    step.taxDrag(),
+                                    "Tier: " + step.tier().name() + " (" + step.taxTerm() + ")"
+                                ));
+                            }
+
+                            if (waterfallResult.deferredAmount().compareTo(BigDecimal.ZERO) > 0) {
+                                recommendations.add(new RebalanceRecommendation(
+                                    "DEFERRED_" + status.bucket().name(),
+                                    "Partial Deferred Trim (" + status.bucket().name() + ")",
+                                    status.bucket(),
+                                    "DEFER",
+                                    waterfallResult.deferredAmount(),
+                                    isCalendarReviewDate ? "CALENDAR" : "DRIFT_ALERT",
+                                    BigDecimal.ZERO,
+                                    waterfallResult.deferralReason() != null ? waterfallResult.deferralReason() : "Partial STCG deferral"
+                                ));
+                            }
+                        }
+                    }
                 } else if (diffValue.compareTo(BigDecimal.ZERO) < 0) {
                     Map<String, List<Lot>> bucketLots = bucketAssetLots.get(status.bucket());
                     String firstAssetId = !bucketLots.isEmpty() ? bucketLots.keySet().iterator().next() : "BUY_" + status.bucket().name();

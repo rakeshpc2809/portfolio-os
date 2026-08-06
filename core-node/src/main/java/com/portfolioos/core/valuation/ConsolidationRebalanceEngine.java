@@ -66,12 +66,8 @@ public class ConsolidationRebalanceEngine {
     ) {
         TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
 
-        List<String> phaseOutKeywords = List.of("EQUAL", "MIDCAP150", "NIFTY100_EW", "MIDCAP_150");
-
         List<Lot> phaseOutLots = openLots.stream().filter(lot ->
-            phaseOutKeywords.stream().anyMatch(kw -> 
-                lot.assetId().toUpperCase().contains(kw) || lot.assetName().toUpperCase().contains(kw)
-            )
+            com.portfolioos.core.matcher.FundTierClassifier.isLegacyFund(lot.assetId(), lot.assetName())
         ).toList();
 
         BigDecimal totalProceeds = BigDecimal.ZERO;
