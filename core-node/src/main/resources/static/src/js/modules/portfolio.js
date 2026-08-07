@@ -361,6 +361,26 @@ export function renderFireSummary(data) {
   if (investableNw) investableNw.textContent = formatINR(fireInvestable);
   if (reqCorpus) reqCorpus.textContent = `₹ ${(parseFloat(requiredCorpus) / 10000000).toFixed(2)} Cr`;
   if (projCorpus) projCorpus.textContent = `₹ ${(parseFloat(projectedCorpus) / 10000000).toFixed(2)} Cr`;
+
+  const mcSuccess = data.monte_carlo_success_rate_pct || data.monteCarloSuccessRatePct;
+  const mcP10 = data.monte_carlo_tenth_percentile_corpus || data.monteCarloTenthPercentileCorpus;
+  const mcCard = document.getElementById('fireMonteCarloCard');
+  if (mcCard && mcSuccess) {
+    const p10Cr = mcP10 ? (parseFloat(mcP10) / 10000000).toFixed(2) : '0.00';
+    mcCard.innerHTML = `
+      <div style="font-size: 11px; font-weight: 600; color: #a855f7; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">10,000-Path Monte Carlo SORR Simulation</div>
+      <div style="display: flex; gap: 16px; align-items: center;">
+        <div>
+          <span style="font-size: 18px; font-weight: 700; color: #d0ff00;">${mcSuccess}%</span>
+          <span style="font-size: 11px; color: #94a3b8;"> Success Rate</span>
+        </div>
+        <div style="border-left: 1px solid rgba(255,255,255,0.1); padding-left: 16px;">
+          <span style="font-size: 14px; font-weight: 600; color: #f59e0b;">₹ ${p10Cr} Cr</span>
+          <span style="font-size: 11px; color: #94a3b8;"> (10th Percentile Floor)</span>
+        </div>
+      </div>
+    `;
+  }
 }
 
 export async function fetchBucketRebalance() {

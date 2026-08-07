@@ -167,7 +167,10 @@ public class ReportDtos {
         String status,
         String shortageOrSurplusAmount,
         boolean reviewDatePassed,
-        List<FireScenarioDto> scenarios
+        List<FireScenarioDto> scenarios,
+        double monteCarloSuccessRatePct,
+        String monteCarloMedianCorpus,
+        String monteCarloTenthPercentileCorpus
     ) {}
 
     public record RebalanceLotDto(

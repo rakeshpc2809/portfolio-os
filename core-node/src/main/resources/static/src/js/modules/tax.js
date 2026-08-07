@@ -54,39 +54,18 @@ export async function fetchDecisionRadar() {
   try {
     const opportunities = await fetchJson(`${API_BASE}/tax/harvest-opportunities`).catch(() => []);
     const ladder = await fetchJson(`${API_BASE}/tax/maturation-ladder`).catch(() => []);
-    const antigravityData = await fetchJson(`${API_BASE}/portfolio/antigravity`).catch(() => null);
 
-    renderDecisionRadar(opportunities, ladder, antigravityData);
+    renderDecisionRadar(opportunities, ladder);
   } catch (e) {
     console.error('Error fetching decision radar:', e);
   }
 }
 
-export function renderDecisionRadar(opportunities, ladder, antigravityData) {
+export function renderDecisionRadar(opportunities, ladder) {
   const listContainer = document.querySelector('.radar-list');
   if (!listContainer) return;
 
   let html = '';
-
-  const agAssets = antigravityData ? (antigravityData.antigravity_assets || antigravityData.antigravityAssets) : null;
-  const mktDd = antigravityData ? (antigravityData.market_drawdown_pct || antigravityData.marketDrawdownPct) : null;
-
-  if (agAssets && agAssets.length > 0) {
-    for (const ag of agAssets) {
-      const assetName = ag.asset_name || ag.assetName;
-      const twr = ag.twr_30d_pct || ag.twr30dPct;
-      html += `
-        <div class="radar-card info-border" style="border-left: 3px solid #06b6d4; background: rgba(6, 182, 212, 0.08);">
-          <div class="radar-icon info">🚀</div>
-          <div class="radar-content">
-            <div class="radar-title" style="color:#06b6d4;">ANTIGRAVITY DETECTED (${assetName})</div>
-            <div class="radar-desc">Beta: <strong>${ag.beta}</strong> | 30d TWR: <strong>+${twr}%</strong> during market drawdown (${mktDd}%). ${ag.recommendation}</div>
-          </div>
-          <span class="antigravity-badge">🚀 Low Beta + Alpha</span>
-        </div>
-      `;
-    }
-  }
 
   if (opportunities && opportunities.length > 0) {
     for (const opp of opportunities.slice(0, 2)) {

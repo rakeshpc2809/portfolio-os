@@ -1,8 +1,9 @@
+import json
 import pyarrow as pa
 import pyarrow.flight as flight
 import polars as pl
 import logging
-from quant.analytics_engine import compute_fund_analytics
+from quant.analytics_engine import compute_fund_analytics, run_monte_carlo_fire_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,31 @@ class QuantFlightServer(flight.FlightServerBase):
         self.host = host
         self.port = port
         logger.info(f"Initialized Apache Arrow Flight RPC server on {host}:{port}")
+
+    def do_action(self, context, action):
+        if action.type == "fire_simulation":
+            try:
+                params = json.loads(action.body.to_pybytes().decode('utf-8'))
+                daily_returns = params.get("daily_returns", [])
+                current_corpus = float(params.get("current_corpus", 1754783.21))
+                annual_expense = float(params.get("annual_expense", 600000.0))
+                years = int(params.get("years", 15))
+                num_sims = int(params.get("num_simulations", 10000))
+
+                result = run_monte_carlo_fire_simulation(
+                    daily_returns_list=daily_returns,
+                    current_corpus=current_corpus,
+                    annual_expense=annual_expense,
+                    years=years,
+                    num_simulations=num_sims
+                )
+                result_bytes = json.dumps(result).encode('utf-8')
+                return [flight.Result(result_bytes)]
+            except Exception as e:
+                logger.error(f"Error executing FIRE Monte Carlo action: {e}", exc_info=True)
+                err_res = json.dumps({"status": "ERROR", "message": str(e)}).encode('utf-8')
+                return [flight.Result(err_res)]
+        return []
 
     def do_exchange(self, context, descriptor, reader, writer):
         try:

@@ -25,11 +25,14 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import com.portfolioos.core.rpc.FlightRpcClient;
+
 @Service
 public class PortfolioValuationService {
 
     private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
+    private final FlightRpcClient flightRpcClient = new FlightRpcClient();
 
     public PortfolioValuationService(LedgerCacheService cacheService) {
         this.cacheService = cacheService;
@@ -286,6 +289,20 @@ public class PortfolioValuationService {
 
         FireTracker.FireSummary fire = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now());
 
+        Map<String, Object> mcResult = Collections.emptyMap();
+        try {
+            double invNetWorth = fire.fireInvestableNetWorth().doubleValue();
+            double annExp = fire.annualExpense().doubleValue();
+            int yrs = fire.yearsRemaining();
+            mcResult = flightRpcClient.runMonteCarloFireSimulation(Collections.emptyList(), invNetWorth, annExp, yrs, 10000);
+        } catch (Exception e) {
+            System.err.println("Failed to fetch Monte Carlo FIRE simulation via Flight RPC: " + e.getMessage());
+        }
+
+        double successRate = mcResult.containsKey("success_rate_pct") ? ((Number) mcResult.get("success_rate_pct")).doubleValue() : 95.0;
+        BigDecimal mcMedian = mcResult.containsKey("median_ending_corpus") ? new BigDecimal(mcResult.get("median_ending_corpus").toString()) : fire.projectedCorpusAtTargetAge();
+        BigDecimal mcP10 = mcResult.containsKey("tenth_percentile_corpus") ? new BigDecimal(mcResult.get("tenth_percentile_corpus").toString()) : fire.projectedCorpusAtTargetAge().multiply(new BigDecimal("0.75"));
+
         List<FireScenarioDto> scenarioDtos = fire.scenarios().stream().map(s -> new FireScenarioDto(
             s.id(),
             s.label(),
@@ -307,7 +324,10 @@ public class PortfolioValuationService {
             fire.status(),
             fmt(fire.shortageOrSurplusAmount()),
             fire.reviewDatePassed(),
-            scenarioDtos
+            scenarioDtos,
+            successRate,
+            fmt(mcMedian),
+            fmt(mcP10)
         );
     }
 

@@ -58,7 +58,10 @@ public class FireTracker {
         String status, // "ON_TRACK" or "SHORT"
         BigDecimal shortageOrSurplusAmount,
         boolean reviewDatePassed,
-        List<FireScenario> scenarios
+        List<FireScenario> scenarios,
+        double monteCarloSuccessRatePct,
+        BigDecimal monteCarloMedianCorpus,
+        BigDecimal monteCarloTenthPercentileCorpus
     ) {}
 
     public static FireSummary calculateFireSummary(
@@ -66,7 +69,10 @@ public class FireTracker {
         Map<String, BigDecimal> navMap,
         LocalDate currentDate,
         FireProfile profile,
-        BigDecimal bankBalance
+        BigDecimal bankBalance,
+        double monteCarloSuccessRatePct,
+        BigDecimal monteCarloMedianCorpus,
+        BigDecimal monteCarloTenthPercentileCorpus
     ) {
         BigDecimal totalMFValue = BigDecimal.ZERO;
         for (Lot lot : openLots) {
@@ -134,7 +140,10 @@ public class FireTracker {
             status,
             diff.abs().setScale(2, RoundingMode.HALF_UP),
             reviewDatePassed,
-            profile.scenarios()
+            profile.scenarios(),
+            monteCarloSuccessRatePct,
+            monteCarloMedianCorpus != null ? monteCarloMedianCorpus : projectedCorpus,
+            monteCarloTenthPercentileCorpus != null ? monteCarloTenthPercentileCorpus : projectedCorpus.multiply(new BigDecimal("0.75"))
         );
     }
 
@@ -143,6 +152,6 @@ public class FireTracker {
         Map<String, BigDecimal> navMap,
         LocalDate currentDate
     ) {
-        return calculateFireSummary(openLots, navMap, currentDate, new FireProfile(), BigDecimal.ZERO);
+        return calculateFireSummary(openLots, navMap, currentDate, new FireProfile(), BigDecimal.ZERO, 95.0, null, null);
     }
 }

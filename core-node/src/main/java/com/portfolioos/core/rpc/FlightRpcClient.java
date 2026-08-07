@@ -131,4 +131,32 @@ public class FlightRpcClient {
         }
         return out;
     }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> runMonteCarloFireSimulation(List<Double> dailyReturns, double currentCorpus, double annualExpense, int years, int numSimulations) {
+        try {
+            Location location = Location.forGrpcInsecure(host, port);
+            try (FlightClient client = FlightClient.builder(allocator, location).build()) {
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("daily_returns", dailyReturns != null ? dailyReturns : Collections.emptyList());
+                payload.put("current_corpus", currentCorpus);
+                payload.put("annual_expense", annualExpense);
+                payload.put("years", years);
+                payload.put("num_simulations", numSimulations);
+
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                byte[] bytes = mapper.writeValueAsBytes(payload);
+
+                Action action = new Action("fire_simulation", bytes);
+                Iterator<Result> results = client.doAction(action);
+                if (results.hasNext()) {
+                    Result res = results.next();
+                    return mapper.readValue(res.getBody(), Map.class);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Flight RPC Monte Carlo FIRE simulation error: " + e.getMessage());
+        }
+        return Collections.emptyMap();
+    }
 }
