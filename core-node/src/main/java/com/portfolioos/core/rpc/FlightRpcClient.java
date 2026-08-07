@@ -147,7 +147,8 @@ public class FlightRpcClient {
         List<String> hostsToTry = List.of(targetHost, "127.0.0.1", "localhost", "quant-sidecar");
         for (String h : hostsToTry) {
             try {
-                Location location = Location.forGrpcInsecure(h, port);
+                String ipHost = java.net.InetAddress.getByName(h).getHostAddress();
+                Location location = Location.forGrpcInsecure(ipHost, port);
                 try (FlightClient client = FlightClient.builder(allocator, location).build()) {
                     Map<String, Object> payload = new HashMap<>();
                     payload.put("daily_returns", dailyReturns != null ? dailyReturns : Collections.emptyList());

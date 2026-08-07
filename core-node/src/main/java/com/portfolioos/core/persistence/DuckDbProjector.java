@@ -272,21 +272,32 @@ public class DuckDbProjector {
     public List<Double> getHistoricalDailyReturns() {
         List<Double> returns = new ArrayList<>();
         try (Connection conn = getConnection()) {
-            String sql = "SELECT asset_id, nav FROM nav_history WHERE nav > 0 ORDER BY asset_id ASC, nav_date ASC";
+            String sql = "SELECT asset_id, nav_date, nav FROM nav_history WHERE nav > 0 ORDER BY asset_id ASC, nav_date ASC";
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(sql)) {
                 String prevAsset = null;
+                java.time.LocalDate prevDate = null;
                 double prevNav = -1.0;
                 while (rs.next()) {
                     String currAsset = rs.getString("asset_id");
+                    String dateStr = rs.getString("nav_date");
                     double currNav = rs.getDouble("nav");
-                    if (prevAsset != null && prevAsset.equals(currAsset) && prevNav > 0) {
-                        double ret = (currNav - prevNav) / prevNav;
-                        if (Math.abs(ret) < 0.15) {
-                            returns.add(ret);
+                    java.time.LocalDate currDate = null;
+                    try {
+                        currDate = java.time.LocalDate.parse(dateStr);
+                    } catch (Exception ignored) {}
+
+                    if (prevAsset != null && prevAsset.equals(currAsset) && prevNav > 0 && prevDate != null && currDate != null) {
+                        long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(prevDate, currDate);
+                        if (daysBetween >= 1 && daysBetween <= 5) {
+                            double ret = (currNav - prevNav) / prevNav;
+                            if (Math.abs(ret) < 0.08) {
+                                returns.add(ret);
+                            }
                         }
                     }
                     prevAsset = currAsset;
+                    prevDate = currDate;
                     prevNav = currNav;
                 }
             }
@@ -300,13 +311,17 @@ public class DuckDbProjector {
                     double currVal = trend.get(i).valuation();
                     if (prevVal > 0) {
                         double ret = (currVal - prevVal) / prevVal;
-                        if (Math.abs(ret) < 0.20) {
+                        if (Math.abs(ret) < 0.08) {
                             returns.add(ret);
                         }
                     }
                 }
             }
         }
+        System.out.println("Extracted " + returns.size() + " historical daily returns: min=" +
+            (returns.isEmpty() ? "N/A" : returns.stream().min(Double::compare).get()) + ", max=" +
+            (returns.isEmpty() ? "N/A" : returns.stream().max(Double::compare).get()) + ", avg=" +
+            (returns.isEmpty() ? "N/A" : returns.stream().mapToDouble(Double::doubleValue).average().getAsDouble()));
         return returns;
     }
 }

@@ -118,7 +118,7 @@ def run_monte_carlo_fire_simulation(
     retirement_duration_years=30,
     num_simulations=10000
 ):
-    is_empirical = daily_returns_list is not None and len(daily_returns_list) >= 10
+    is_empirical = daily_returns_list is not None and len(daily_returns_list) >= 100
     if not is_empirical:
         np.random.seed(42)
         returns = np.random.normal(loc=0.00045, scale=0.011, size=1260)
@@ -152,6 +152,8 @@ def run_monte_carlo_fire_simulation(
     for day in range(accumulation_days):
         corpuses = corpuses * (1.0 + sim_returns[:, day]) + daily_sip
 
+    retirement_corpuses = corpuses.copy()
+
     # Decumulation Phase (retirement spending)
     for day in range(accumulation_days, total_days):
         corpuses = corpuses * (1.0 + sim_returns[:, day]) - daily_expense
@@ -160,8 +162,8 @@ def run_monte_carlo_fire_simulation(
 
     surviving = ~failed
     success_rate = float(np.mean(surviving) * 100.0)
-    median_corpus = float(np.median(corpuses))
-    p10_corpus = float(np.percentile(corpuses, 10))
+    median_corpus = float(np.median(retirement_corpuses))
+    p10_corpus = float(np.percentile(retirement_corpuses, 10))
 
     return {
         "status": "OK",

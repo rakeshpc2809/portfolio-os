@@ -324,11 +324,23 @@ public class PortfolioValuationService {
         String ds = mcResult.containsKey("data_source") ? mcResult.get("data_source").toString() : "SYNTHETIC_MARKET_BENCHMARK";
         String dsLabel = mcResult.containsKey("data_source_label") ? mcResult.get("data_source_label").toString() : "Nifty 50 Historical Return Model (Cold Start)";
 
-        if (mcMedian.compareTo(BigDecimal.ZERO) > 0 && mcMedian.compareTo(fire.projectedCorpusAtTargetAge()) == 0) {
+        BigDecimal deterministicFv = fire.projectedCorpusAtTargetAge();
+        BigDecimal maxSanityBound = deterministicFv.multiply(new BigDecimal("10.0"));
+        BigDecimal minSanityBound = deterministicFv.multiply(new BigDecimal("0.05"));
+
+        if (mcMedian.compareTo(maxSanityBound) > 0 || (mcMedian.compareTo(BigDecimal.ZERO) > 0 && mcMedian.compareTo(minSanityBound) < 0)) {
+            System.err.println(String.format("CRITICAL MONTE CARLO SANITY BOUND ERROR: Simulation median (%s) violated sanity bounds relative to deterministic FV (%s). Rejecting result.",
+                mcMedian.toPlainString(), deterministicFv.toPlainString()));
+            successRate = 0.0;
+            mcMedian = deterministicFv;
+            mcP10 = deterministicFv.multiply(new BigDecimal("0.75"));
+            ds = "ERROR_SANITY_BOUND_REJECTED";
+            dsLabel = "Invalid Simulation Bounds (Rejected)";
+        } else if (mcMedian.compareTo(BigDecimal.ZERO) > 0 && mcMedian.compareTo(deterministicFv) == 0) {
             System.err.println("WARNING: Monte Carlo median ending corpus unexpectedly equal to deterministic FV baseline: " + mcMedian);
         } else {
             System.out.println(String.format("Monte Carlo Flight RPC Executed: success_rate=%.2f%%, mc_median=%s, deterministic_fv=%s, data_source=%s",
-                successRate, mcMedian.toPlainString(), fire.projectedCorpusAtTargetAge().toPlainString(), ds));
+                successRate, mcMedian.toPlainString(), deterministicFv.toPlainString(), ds));
         }
 
         List<FireScenarioDto> scenarioDtos = fire.scenarios().stream().map(s -> new FireScenarioDto(
