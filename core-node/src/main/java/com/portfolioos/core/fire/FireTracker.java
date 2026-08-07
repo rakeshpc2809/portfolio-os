@@ -76,8 +76,13 @@ public class FireTracker {
     ) {
         BigDecimal totalMFValue = BigDecimal.ZERO;
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
-            totalMFValue = totalMFValue.add(lot.remainingUnits().multiply(nav));
+            BigDecimal nav = navMap.get(lot.assetId());
+            if (nav == null) {
+                nav = lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ZERO;
+            }
+            if (lot.remainingUnits() != null && nav != null) {
+                totalMFValue = totalMFValue.add(lot.remainingUnits().multiply(nav));
+            }
         }
 
         BigDecimal totalNetWorth = totalMFValue.add(bankBalance).add(profile.epfBalance());

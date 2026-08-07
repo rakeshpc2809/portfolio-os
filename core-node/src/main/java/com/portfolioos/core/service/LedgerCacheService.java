@@ -10,6 +10,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -73,6 +74,16 @@ public class LedgerCacheService {
         if (current == null) {
             refreshCacheInBackground();
             current = stateHolder.get();
+        }
+        if (current == null) {
+            current = new CachedLedgerState(
+                Collections.emptyList(),
+                new FifoMatcher.FifoResult(Collections.emptyList(), Collections.emptyList()),
+                Collections.emptyMap(),
+                "",
+                System.currentTimeMillis(),
+                "INITIALIZING"
+            );
         }
         return current;
     }

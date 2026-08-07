@@ -139,30 +139,40 @@ public class FlightRpcClient {
 
     @SuppressWarnings("unchecked")
     public Map<String, Object> runMonteCarloFireSimulation(List<Double> dailyReturns, double currentCorpus, double annualExpense, double monthlyContribution, int yearsToRetirement, int numSimulations) {
-        try {
-            Location location = Location.forGrpcInsecure(host, port);
-            try (FlightClient client = FlightClient.builder(allocator, location).build()) {
-                Map<String, Object> payload = new HashMap<>();
-                payload.put("daily_returns", dailyReturns != null ? dailyReturns : Collections.emptyList());
-                payload.put("current_corpus", currentCorpus);
-                payload.put("annual_expense", annualExpense);
-                payload.put("monthly_contribution", monthlyContribution);
-                payload.put("years_to_retirement", yearsToRetirement);
-                payload.put("num_simulations", numSimulations);
-
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                byte[] bytes = mapper.writeValueAsBytes(payload);
-
-                Action action = new Action("fire_simulation", bytes);
-                Iterator<Result> results = client.doAction(action);
-                if (results.hasNext()) {
-                    Result res = results.next();
-                    return mapper.readValue(res.getBody(), Map.class);
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Flight RPC Monte Carlo FIRE simulation error: " + e.getMessage());
+        String targetHost = System.getenv("QUANT_SIDECAR_HOST");
+        if (targetHost == null || targetHost.isBlank()) {
+            targetHost = "127.0.0.1";
         }
+
+        List<String> hostsToTry = List.of(targetHost, "127.0.0.1", "localhost", "quant-sidecar");
+        for (String h : hostsToTry) {
+            try {
+                Location location = Location.forGrpcInsecure(h, port);
+                try (FlightClient client = FlightClient.builder(allocator, location).build()) {
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("daily_returns", dailyReturns != null ? dailyReturns : Collections.emptyList());
+                    payload.put("current_corpus", currentCorpus);
+                    payload.put("annual_expense", annualExpense);
+                    payload.put("monthly_contribution", monthlyContribution);
+                    payload.put("years_to_retirement", yearsToRetirement);
+                    payload.put("num_simulations", numSimulations);
+
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    byte[] bytes = mapper.writeValueAsBytes(payload);
+
+                    Action action = new Action("fire_simulation", bytes);
+                    Iterator<Result> results = client.doAction(action);
+                    if (results.hasNext()) {
+                        Result res = results.next();
+                        return mapper.readValue(res.getBody(), Map.class);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Flight RPC attempt for host " + h + " failed: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+        System.err.println("Flight RPC Monte Carlo FIRE simulation error: all host candidates failed");
         return Collections.emptyMap();
     }
 }

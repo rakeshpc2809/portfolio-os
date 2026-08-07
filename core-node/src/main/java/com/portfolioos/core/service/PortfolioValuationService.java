@@ -23,8 +23,10 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+import com.portfolioos.core.nav.MfApiNavDownloader;
 import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.rpc.FlightRpcClient;
 
@@ -302,14 +304,23 @@ public class PortfolioValuationService {
             double monthlyContrib = 75000.0; // Dynamic profile monthly contribution
             int yrs = fire.yearsRemaining();
             List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
+            if (dailyReturns.size() < 10 && !openLots.isEmpty()) {
+                Set<String> isins = openLots.stream().map(Lot::assetId).collect(Collectors.toSet());
+                CompletableFuture.runAsync(() -> {
+                    MfApiNavDownloader downloader = new MfApiNavDownloader();
+                    for (String isin : isins) {
+                        downloader.downloadHistoricalNavsForIsin(isin, duckDbProjector);
+                    }
+                });
+            }
             mcResult = flightRpcClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 10000);
         } catch (Exception e) {
             System.err.println("Failed to fetch Monte Carlo FIRE simulation via Flight RPC: " + e.getMessage());
         }
 
         double successRate = mcResult.containsKey("success_rate_pct") ? ((Number) mcResult.get("success_rate_pct")).doubleValue() : 0.0;
-        BigDecimal mcMedian = mcResult.containsKey("median_ending_corpus") ? new BigDecimal(mcResult.get("median_ending_corpus").toString()) : fire.projectedCorpusAtTargetAge();
-        BigDecimal mcP10 = mcResult.containsKey("tenth_percentile_corpus") ? new BigDecimal(mcResult.get("tenth_percentile_corpus").toString()) : fire.projectedCorpusAtTargetAge().multiply(new BigDecimal("0.75"));
+        BigDecimal mcMedian = mcResult.containsKey("median_ending_corpus") ? new BigDecimal(mcResult.get("median_ending_corpus").toString()) : BigDecimal.ZERO;
+        BigDecimal mcP10 = mcResult.containsKey("tenth_percentile_corpus") ? new BigDecimal(mcResult.get("tenth_percentile_corpus").toString()) : BigDecimal.ZERO;
         String ds = mcResult.containsKey("data_source") ? mcResult.get("data_source").toString() : "SYNTHETIC_MARKET_BENCHMARK";
         String dsLabel = mcResult.containsKey("data_source_label") ? mcResult.get("data_source_label").toString() : "Nifty 50 Historical Return Model (Cold Start)";
 

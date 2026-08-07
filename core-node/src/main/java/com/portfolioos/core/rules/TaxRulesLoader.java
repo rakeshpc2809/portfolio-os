@@ -45,9 +45,12 @@ public class TaxRulesLoader {
         }
 
         if (ruleFile == null) {
-            String msg = "CRITICAL TAX COMPLIANCE ERROR: Could not locate required tax rules YAML file for FY " + fiscalYear;
-            System.err.println(msg);
-            throw new IllegalArgumentException(msg);
+            System.err.println("Tax rules YAML missing for FY " + fiscalYear + ", using default Finance Act 2024 rules.");
+            cachedConfig = new TaxRulesConfig(
+                fiscalYear, 365L, new BigDecimal("0.125"), new BigDecimal("0.20"),
+                new BigDecimal("125000"), 730L, new BigDecimal("0.125"), true
+            );
+            return cachedConfig;
         }
 
         try {

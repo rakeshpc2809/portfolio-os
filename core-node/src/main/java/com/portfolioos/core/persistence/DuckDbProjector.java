@@ -271,15 +271,38 @@ public class DuckDbProjector {
 
     public List<Double> getHistoricalDailyReturns() {
         List<Double> returns = new ArrayList<>();
-        List<NetWorthPoint> trend = getDailyNetWorthTrend();
-        if (trend.size() >= 2) {
-            for (int i = 1; i < trend.size(); i++) {
-                double prevVal = trend.get(i - 1).valuation();
-                double currVal = trend.get(i).valuation();
-                if (prevVal > 0) {
-                    double ret = (currVal - prevVal) / prevVal;
-                    if (Math.abs(ret) < 0.20) {
-                        returns.add(ret);
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT asset_id, nav FROM nav_history WHERE nav > 0 ORDER BY asset_id ASC, nav_date ASC";
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                String prevAsset = null;
+                double prevNav = -1.0;
+                while (rs.next()) {
+                    String currAsset = rs.getString("asset_id");
+                    double currNav = rs.getDouble("nav");
+                    if (prevAsset != null && prevAsset.equals(currAsset) && prevNav > 0) {
+                        double ret = (currNav - prevNav) / prevNav;
+                        if (Math.abs(ret) < 0.15) {
+                            returns.add(ret);
+                        }
+                    }
+                    prevAsset = currAsset;
+                    prevNav = currNav;
+                }
+            }
+        } catch (Exception ignored) {}
+
+        if (returns.size() < 10) {
+            List<NetWorthPoint> trend = getDailyNetWorthTrend();
+            if (trend.size() >= 2) {
+                for (int i = 1; i < trend.size(); i++) {
+                    double prevVal = trend.get(i - 1).valuation();
+                    double currVal = trend.get(i).valuation();
+                    if (prevVal > 0) {
+                        double ret = (currVal - prevVal) / prevVal;
+                        if (Math.abs(ret) < 0.20) {
+                            returns.add(ret);
+                        }
                     }
                 }
             }
