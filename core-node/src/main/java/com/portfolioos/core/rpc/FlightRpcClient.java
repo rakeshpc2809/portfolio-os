@@ -144,11 +144,10 @@ public class FlightRpcClient {
             targetHost = "127.0.0.1";
         }
 
-        List<String> hostsToTry = List.of(targetHost, "127.0.0.1", "localhost", "quant-sidecar");
-        for (String h : hostsToTry) {
+        System.out.println("FlightRpcClient: Starting runMonteCarloFireSimulation call. TargetHost=" + targetHost);
+        for (String h : List.of(targetHost, "127.0.0.1", "localhost", "quant-sidecar")) {
             try {
-                String ipHost = java.net.InetAddress.getByName(h).getHostAddress();
-                Location location = Location.forGrpcInsecure(ipHost, port);
+                Location location = Location.forGrpcInsecure(h, port);
                 try (FlightClient client = FlightClient.builder(allocator, location).build()) {
                     Map<String, Object> payload = new HashMap<>();
                     payload.put("daily_returns", dailyReturns != null ? dailyReturns : Collections.emptyList());
@@ -173,7 +172,39 @@ public class FlightRpcClient {
                 e.printStackTrace();
             }
         }
-        System.err.println("Flight RPC Monte Carlo FIRE simulation error: all host candidates failed");
+        System.err.println("Flight RPC Monte Carlo FIRE simulation error: all host candidates failed. Triggering HTTP fallback...");
+        return runMonteCarloFireSimulationHttpFallback(dailyReturns, currentCorpus, annualExpense, monthlyContribution, yearsToRetirement, numSimulations);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> runMonteCarloFireSimulationHttpFallback(List<Double> dailyReturns, double currentCorpus, double annualExpense, double monthlyContribution, int yearsToRetirement, int numSimulations) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("daily_returns", dailyReturns != null ? dailyReturns : Collections.emptyList());
+            payload.put("current_corpus", currentCorpus);
+            payload.put("annual_expense", annualExpense);
+            payload.put("monthly_contribution", monthlyContribution);
+            payload.put("years_to_retirement", yearsToRetirement);
+            payload.put("num_simulations", numSimulations);
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String json = mapper.writeValueAsString(payload);
+
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create("http://127.0.0.1:8000/api/v1/simulate_fire"))
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+            java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                System.out.println("HTTP fallback succeeded for Monte Carlo FIRE simulation.");
+                return mapper.readValue(response.body(), Map.class);
+            }
+        } catch (Exception e) {
+            System.err.println("HTTP fallback for Monte Carlo FIRE simulation failed: " + e.getMessage());
+        }
         return Collections.emptyMap();
     }
 }

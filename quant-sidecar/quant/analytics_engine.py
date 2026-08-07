@@ -1,5 +1,8 @@
 import numpy as np
 import pandas as pd
+import logging
+
+logger = logging.getLogger("quant.analytics_engine")
 try:
     import quantstats as qs
 except ImportError:
@@ -121,7 +124,8 @@ def run_monte_carlo_fire_simulation(
     is_empirical = daily_returns_list is not None and len(daily_returns_list) >= 100
     if not is_empirical:
         np.random.seed(42)
-        returns = np.random.normal(loc=0.00045, scale=0.011, size=1260)
+        returns = np.random.normal(loc=0.00045, scale=0.011, size=10000)
+        returns = returns - returns.mean() + 0.00045
         data_source = "SYNTHETIC_MARKET_BENCHMARK"
         data_source_label = "Nifty 50 Historical Return Model (Cold Start)"
     else:
@@ -146,6 +150,8 @@ def run_monte_carlo_fire_simulation(
     sim_returns = returns[sampled_blocks].reshape(num_simulations, -1)[:, :total_days]
     daily_inflation = 0.06 / 252.0
     real_sim_returns = sim_returns - daily_inflation
+
+    logger.info(f"Realized simulation returns: daily_real_mean={real_sim_returns.mean():.6f}, annualized_real_mean={real_sim_returns.mean()*252:.4f}, annualized_std={real_sim_returns.std()*np.sqrt(252):.4f}")
 
     corpuses = np.full(num_simulations, float(current_corpus))
     failed = np.zeros(num_simulations, dtype=bool)

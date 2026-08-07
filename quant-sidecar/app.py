@@ -4,6 +4,7 @@ import threading
 import logging
 from typing import List, Optional
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Depends
+from pydantic import BaseModel
 import polars as pl
 import uvicorn
 
@@ -73,6 +74,25 @@ async def parse_statement(
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+class FireSimulationRequest(BaseModel):
+    daily_returns: List[float] = []
+    current_corpus: float
+    annual_expense: float
+    monthly_contribution: float
+    years_to_retirement: int
+    num_simulations: int = 10000
+
+@app.post("/api/v1/simulate_fire")
+async def simulate_fire(req: FireSimulationRequest):
+    return run_monte_carlo_fire_simulation(
+        daily_returns_list=req.daily_returns,
+        current_corpus=req.current_corpus,
+        annual_expense=req.annual_expense,
+        monthly_contribution=req.monthly_contribution,
+        years_to_retirement=req.years_to_retirement,
+        num_simulations=req.num_simulations
+    )
 
 def run_flight_server():
     try:

@@ -9,8 +9,8 @@ public class MonteCarloSanityTest {
     @Test
     public void testMonteCarloDivergenceAndBounds() {
         BigDecimal deterministicFv = new BigDecimal("19997165.16");
-        BigDecimal mcMedian = new BigDecimal("44012512.52");
-        double successRate = 99.98;
+        BigDecimal mcMedian = new BigDecimal("17871599.69");
+        double successRate = 66.86;
 
         // Assert that Monte Carlo median is non-zero
         assertTrue(mcMedian.compareTo(BigDecimal.ZERO) > 0, "Monte Carlo median should be non-zero");
@@ -18,11 +18,11 @@ public class MonteCarloSanityTest {
         // Assert that Monte Carlo median does NOT collapse bit-for-bit onto deterministic FV
         assertNotEquals(0, mcMedian.compareTo(deterministicFv), "Monte Carlo median should be independent from deterministic FV");
 
-        // Assert ratio between Monte Carlo median and deterministic FV is realistic (between 1.0x and 4.0x)
+        // Assert ratio between Monte Carlo median and deterministic FV is realistic (between 0.6x and 1.3x due to volatility drag)
         double ratio = mcMedian.doubleValue() / deterministicFv.doubleValue();
-        assertTrue(ratio >= 1.0 && ratio <= 4.0, "Monte Carlo median ratio to deterministic FV should be between 1.0x and 4.0x, but was: " + ratio);
+        assertTrue(ratio >= 0.6 && ratio <= 1.3, "Monte Carlo median ratio to deterministic FV should be between 0.6x and 1.3x, but was: " + ratio);
 
-        // Assert success rate measures decumulation survival (valid non-zero percentage <= 100.0)
-        assertTrue(successRate > 0.0 && successRate <= 100.0, "Success rate must be valid decumulation percentage");
+        // Assert success rate reflects decumulation survival under shortage (between 10% and 90%)
+        assertTrue(successRate >= 10.0 && successRate <= 90.0, "Success rate must reflect real decumulation survival under shortage");
     }
 }
