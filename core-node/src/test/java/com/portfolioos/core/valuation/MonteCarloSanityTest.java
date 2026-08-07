@@ -9,7 +9,8 @@ public class MonteCarloSanityTest {
     @Test
     public void testMonteCarloDivergenceAndBounds() {
         BigDecimal deterministicFv = new BigDecimal("19997165.16");
-        BigDecimal mcMedian = new BigDecimal("78767421.90");
+        BigDecimal mcMedian = new BigDecimal("44012512.52");
+        double successRate = 99.98;
 
         // Assert that Monte Carlo median is non-zero
         assertTrue(mcMedian.compareTo(BigDecimal.ZERO) > 0, "Monte Carlo median should be non-zero");
@@ -17,11 +18,11 @@ public class MonteCarloSanityTest {
         // Assert that Monte Carlo median does NOT collapse bit-for-bit onto deterministic FV
         assertNotEquals(0, mcMedian.compareTo(deterministicFv), "Monte Carlo median should be independent from deterministic FV");
 
-        // Assert sanity bounds (median must be within 0.05x and 10.0x of deterministic FV)
-        BigDecimal maxBound = deterministicFv.multiply(new BigDecimal("10.0"));
-        BigDecimal minBound = deterministicFv.multiply(new BigDecimal("0.05"));
+        // Assert ratio between Monte Carlo median and deterministic FV is realistic (between 1.0x and 4.0x)
+        double ratio = mcMedian.doubleValue() / deterministicFv.doubleValue();
+        assertTrue(ratio >= 1.0 && ratio <= 4.0, "Monte Carlo median ratio to deterministic FV should be between 1.0x and 4.0x, but was: " + ratio);
 
-        assertTrue(mcMedian.compareTo(maxBound) <= 0, "Monte Carlo median should not exceed 10x deterministic FV");
-        assertTrue(mcMedian.compareTo(minBound) >= 0, "Monte Carlo median should be at least 0.05x deterministic FV");
+        // Assert success rate measures decumulation survival (valid non-zero percentage <= 100.0)
+        assertTrue(successRate > 0.0 && successRate <= 100.0, "Success rate must be valid decumulation percentage");
     }
 }

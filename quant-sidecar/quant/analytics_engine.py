@@ -144,19 +144,21 @@ def run_monte_carlo_fire_simulation(
     offsets = np.arange(block_size)
     sampled_blocks = (start_indices[:, :, None] + offsets[None, None, :]) % n_returns
     sim_returns = returns[sampled_blocks].reshape(num_simulations, -1)[:, :total_days]
+    daily_inflation = 0.06 / 252.0
+    real_sim_returns = sim_returns - daily_inflation
 
     corpuses = np.full(num_simulations, float(current_corpus))
     failed = np.zeros(num_simulations, dtype=bool)
 
-    # Accumulation Phase (compounding + SIP contributions)
+    # Accumulation Phase (compounding + SIP contributions in real terms)
     for day in range(accumulation_days):
-        corpuses = corpuses * (1.0 + sim_returns[:, day]) + daily_sip
+        corpuses = corpuses * (1.0 + real_sim_returns[:, day]) + daily_sip
 
     retirement_corpuses = corpuses.copy()
 
-    # Decumulation Phase (retirement spending)
+    # Decumulation Phase (retirement spending in real terms)
     for day in range(accumulation_days, total_days):
-        corpuses = corpuses * (1.0 + sim_returns[:, day]) - daily_expense
+        corpuses = corpuses * (1.0 + real_sim_returns[:, day]) - daily_expense
         failed = failed | (corpuses <= 0)
         corpuses = np.maximum(corpuses, 0.0)
 
