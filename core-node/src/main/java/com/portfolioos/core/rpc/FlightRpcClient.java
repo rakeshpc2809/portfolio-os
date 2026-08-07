@@ -25,7 +25,12 @@ public class FlightRpcClient {
     private final BufferAllocator allocator;
 
     public FlightRpcClient() {
-        this("quant-sidecar", 8001);
+        this(
+            System.getenv("QUANT_SIDECAR_HOST") != null && !System.getenv("QUANT_SIDECAR_HOST").isEmpty()
+                ? System.getenv("QUANT_SIDECAR_HOST")
+                : "127.0.0.1",
+            8001
+        );
     }
 
     public FlightRpcClient(String host, int port) {
@@ -133,7 +138,7 @@ public class FlightRpcClient {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> runMonteCarloFireSimulation(List<Double> dailyReturns, double currentCorpus, double annualExpense, int years, int numSimulations) {
+    public Map<String, Object> runMonteCarloFireSimulation(List<Double> dailyReturns, double currentCorpus, double annualExpense, double monthlyContribution, int yearsToRetirement, int numSimulations) {
         try {
             Location location = Location.forGrpcInsecure(host, port);
             try (FlightClient client = FlightClient.builder(allocator, location).build()) {
@@ -141,7 +146,8 @@ public class FlightRpcClient {
                 payload.put("daily_returns", dailyReturns != null ? dailyReturns : Collections.emptyList());
                 payload.put("current_corpus", currentCorpus);
                 payload.put("annual_expense", annualExpense);
-                payload.put("years", years);
+                payload.put("monthly_contribution", monthlyContribution);
+                payload.put("years_to_retirement", yearsToRetirement);
                 payload.put("num_simulations", numSimulations);
 
                 com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();

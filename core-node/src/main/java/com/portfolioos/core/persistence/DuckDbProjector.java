@@ -268,4 +268,22 @@ public class DuckDbProjector {
         }
         return trend;
     }
+
+    public List<Double> getHistoricalDailyReturns() {
+        List<Double> returns = new ArrayList<>();
+        List<NetWorthPoint> trend = getDailyNetWorthTrend();
+        if (trend.size() >= 2) {
+            for (int i = 1; i < trend.size(); i++) {
+                double prevVal = trend.get(i - 1).valuation();
+                double currVal = trend.get(i).valuation();
+                if (prevVal > 0) {
+                    double ret = (currVal - prevVal) / prevVal;
+                    if (Math.abs(ret) < 0.20) {
+                        returns.add(ret);
+                    }
+                }
+            }
+        }
+        return returns;
+    }
 }

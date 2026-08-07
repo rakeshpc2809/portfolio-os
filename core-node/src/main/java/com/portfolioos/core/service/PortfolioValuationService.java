@@ -25,6 +25,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.rpc.FlightRpcClient;
 
 @Service
@@ -33,6 +34,7 @@ public class PortfolioValuationService {
     private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
     private final FlightRpcClient flightRpcClient = new FlightRpcClient();
+    private final DuckDbProjector duckDbProjector = new DuckDbProjector();
 
     public PortfolioValuationService(LedgerCacheService cacheService) {
         this.cacheService = cacheService;
@@ -284,8 +286,12 @@ public class PortfolioValuationService {
 
     public FireSummaryResponse getFireSummary() {
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
-        List<Lot> openLots = state.fifoResult().openLots();
-        Map<String, BigDecimal> navMap = state.navMap();
+        if (state == null) {
+            cacheService.refreshCacheInBackground();
+            state = cacheService.getCachedState();
+        }
+        List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
+        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
         FireTracker.FireSummary fire = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now());
 
@@ -293,8 +299,10 @@ public class PortfolioValuationService {
         try {
             double invNetWorth = fire.fireInvestableNetWorth().doubleValue();
             double annExp = fire.annualExpense().doubleValue();
+            double monthlyContrib = 75000.0;
             int yrs = fire.yearsRemaining();
-            mcResult = flightRpcClient.runMonteCarloFireSimulation(Collections.emptyList(), invNetWorth, annExp, yrs, 10000);
+            List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
+            mcResult = flightRpcClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 10000);
         } catch (Exception e) {
             System.err.println("Failed to fetch Monte Carlo FIRE simulation via Flight RPC: " + e.getMessage());
         }

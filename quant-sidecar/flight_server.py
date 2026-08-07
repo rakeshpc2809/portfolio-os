@@ -20,16 +20,18 @@ class QuantFlightServer(flight.FlightServerBase):
             try:
                 params = json.loads(action.body.to_pybytes().decode('utf-8'))
                 daily_returns = params.get("daily_returns", [])
-                current_corpus = float(params.get("current_corpus", 1754783.21))
-                annual_expense = float(params.get("annual_expense", 600000.0))
-                years = int(params.get("years", 15))
+                current_corpus = float(params.get("current_corpus", 1407122.81))
+                annual_expense = float(params.get("annual_expense", 720000.0))
+                monthly_contrib = float(params.get("monthly_contribution", 75000.0))
+                years_ret = int(params.get("years_to_retirement", 13))
                 num_sims = int(params.get("num_simulations", 10000))
 
                 result = run_monte_carlo_fire_simulation(
                     daily_returns_list=daily_returns,
                     current_corpus=current_corpus,
                     annual_expense=annual_expense,
-                    years=years,
+                    monthly_contribution=monthly_contrib,
+                    years_to_retirement=years_ret,
                     num_simulations=num_sims
                 )
                 result_bytes = json.dumps(result).encode('utf-8')

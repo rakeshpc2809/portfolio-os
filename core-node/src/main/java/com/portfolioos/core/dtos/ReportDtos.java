@@ -3,6 +3,8 @@ package com.portfolioos.core.dtos;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class ReportDtos {
 
     public record PortfolioSummaryResponse(
@@ -154,24 +156,33 @@ public class ReportDtos {
     ) {}
 
     public record FireSummaryResponse(
-        String activeScenarioLabel,
-        String monthlyExpenseToday,
-        String annualExpense,
-        String requiredCorpus,
-        String totalNetWorth,
-        String epfBalance,
-        String nonRetirementGoalAllocations,
-        String fireInvestableNetWorth,
-        String projectedCorpusAtTargetAge,
-        int yearsRemaining,
-        String status,
-        String shortageOrSurplusAmount,
-        boolean reviewDatePassed,
-        List<FireScenarioDto> scenarios,
-        double monteCarloSuccessRatePct,
-        String monteCarloMedianCorpus,
-        String monteCarloTenthPercentileCorpus
-    ) {}
+        @JsonProperty("active_scenario_label") String activeScenarioLabel,
+        @JsonProperty("monthly_expense_today") String monthlyExpenseToday,
+        @JsonProperty("annual_expense") String annualExpense,
+        @JsonProperty("required_corpus") String requiredCorpus,
+        @JsonProperty("total_net_worth") String totalNetWorth,
+        @JsonProperty("epf_balance") String epfBalance,
+        @JsonProperty("non_retirement_goal_allocations") String nonRetirementGoalAllocations,
+        @JsonProperty("fire_investable_net_worth") String fireInvestableNetWorth,
+        @JsonProperty("projected_corpus_at_target_age") String projectedCorpusAtTargetAge,
+        @JsonProperty("years_remaining") int yearsRemaining,
+        @JsonProperty("status") String status,
+        @JsonProperty("shortage_or_surplus_amount") String shortageOrSurplusAmount,
+        @JsonProperty("review_date_passed") boolean reviewDatePassed,
+        @JsonProperty("scenarios") List<FireScenarioDto> scenarios,
+        @JsonProperty("monte_carlo_success_rate_pct") double monteCarloSuccessRatePct,
+        @JsonProperty("monte_carlo_median_corpus") String monteCarloMedianCorpus,
+        @JsonProperty("monte_carlo_tenth_percentile_corpus") String monteCarloTenthPercentileCorpus
+    ) {
+        @JsonProperty("monte_carlo_success_rate_pct")
+        public double getMonteCarloSuccessRatePct() { return monteCarloSuccessRatePct; }
+
+        @JsonProperty("monte_carlo_median_corpus")
+        public String getMonteCarloMedianCorpus() { return monteCarloMedianCorpus; }
+
+        @JsonProperty("monte_carlo_tenth_percentile_corpus")
+        public String getMonteCarloTenthPercentileCorpus() { return monteCarloTenthPercentileCorpus; }
+    }
 
     public record RebalanceLotDto(
         String assetName,
