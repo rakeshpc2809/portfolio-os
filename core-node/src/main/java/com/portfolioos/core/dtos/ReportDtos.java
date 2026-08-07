@@ -172,7 +172,9 @@ public class ReportDtos {
         @JsonProperty("scenarios") List<FireScenarioDto> scenarios,
         @JsonProperty("monte_carlo_success_rate_pct") double monteCarloSuccessRatePct,
         @JsonProperty("monte_carlo_median_corpus") String monteCarloMedianCorpus,
-        @JsonProperty("monte_carlo_tenth_percentile_corpus") String monteCarloTenthPercentileCorpus
+        @JsonProperty("monte_carlo_tenth_percentile_corpus") String monteCarloTenthPercentileCorpus,
+        @JsonProperty("monte_carlo_data_source") String monteCarloDataSource,
+        @JsonProperty("monte_carlo_data_source_label") String monteCarloDataSourceLabel
     ) {
         @JsonProperty("monte_carlo_success_rate_pct")
         public double getMonteCarloSuccessRatePct() { return monteCarloSuccessRatePct; }
@@ -182,6 +184,12 @@ public class ReportDtos {
 
         @JsonProperty("monte_carlo_tenth_percentile_corpus")
         public String getMonteCarloTenthPercentileCorpus() { return monteCarloTenthPercentileCorpus; }
+
+        @JsonProperty("monte_carlo_data_source")
+        public String getMonteCarloDataSource() { return monteCarloDataSource; }
+
+        @JsonProperty("monte_carlo_data_source_label")
+        public String getMonteCarloDataSourceLabel() { return monteCarloDataSourceLabel; }
     }
 
     public record RebalanceLotDto(

@@ -118,11 +118,16 @@ def run_monte_carlo_fire_simulation(
     retirement_duration_years=30,
     num_simulations=10000
 ):
-    if daily_returns_list is None or len(daily_returns_list) < 10:
+    is_empirical = daily_returns_list is not None and len(daily_returns_list) >= 10
+    if not is_empirical:
         np.random.seed(42)
         returns = np.random.normal(loc=0.00045, scale=0.011, size=1260)
+        data_source = "SYNTHETIC_MARKET_BENCHMARK"
+        data_source_label = "Nifty 50 Historical Return Model (Cold Start)"
     else:
         returns = np.array(daily_returns_list)
+        data_source = "EMPIRICAL_PORTFOLIO"
+        data_source_label = "Empirical Portfolio Return History (15-Day Block Bootstrap)"
 
     n_returns = len(returns)
     total_years = max(1, years_to_retirement) + max(1, retirement_duration_years)
@@ -160,6 +165,8 @@ def run_monte_carlo_fire_simulation(
 
     return {
         "status": "OK",
+        "data_source": data_source,
+        "data_source_label": data_source_label,
         "num_simulations": num_simulations,
         "years_to_retirement": years_to_retirement,
         "retirement_duration_years": retirement_duration_years,

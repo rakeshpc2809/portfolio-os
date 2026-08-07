@@ -362,13 +362,21 @@ export function renderFireSummary(data) {
   if (reqCorpus) reqCorpus.textContent = `₹ ${(parseFloat(requiredCorpus) / 10000000).toFixed(2)} Cr`;
   if (projCorpus) projCorpus.textContent = `₹ ${(parseFloat(projectedCorpus) / 10000000).toFixed(2)} Cr`;
 
-  const mcSuccess = data.monte_carlo_success_rate_pct || data.monteCarloSuccessRatePct;
+  const mcSuccess = data.monte_carlo_success_rate_pct !== undefined ? data.monte_carlo_success_rate_pct : data.monteCarloSuccessRatePct;
   const mcP10 = data.monte_carlo_tenth_percentile_corpus || data.monteCarloTenthPercentileCorpus;
+  const dsLabel = data.monte_carlo_data_source_label || data.monteCarloDataSourceLabel || 'Nifty 50 Historical Return Model (Cold Start)';
+  const isSynthetic = (data.monte_carlo_data_source || data.monteCarloDataSource) === 'SYNTHETIC_MARKET_BENCHMARK';
+
   const mcCard = document.getElementById('fireMonteCarloCard');
-  if (mcCard && mcSuccess) {
+  if (mcCard && mcSuccess !== undefined) {
     const p10Cr = mcP10 ? (parseFloat(mcP10) / 10000000).toFixed(2) : '0.00';
     mcCard.innerHTML = `
-      <div style="font-size: 11px; font-weight: 600; color: #a855f7; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">10,000-Path Monte Carlo SORR Simulation</div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <div style="font-size: 11px; font-weight: 600; color: #a855f7; text-transform: uppercase; letter-spacing: 0.05em;">10,000-Path Monte Carlo SORR Simulation</div>
+        <span style="font-size: 10px; padding: 2px 8px; border-radius: 12px; background: ${isSynthetic ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)'}; color: ${isSynthetic ? '#f59e0b' : '#10b981'}; font-weight: 500;">
+          ${dsLabel}
+        </span>
+      </div>
       <div style="display: flex; gap: 16px; align-items: center;">
         <div>
           <span style="font-size: 18px; font-weight: 700; color: #d0ff00;">${mcSuccess}%</span>

@@ -299,7 +299,7 @@ public class PortfolioValuationService {
         try {
             double invNetWorth = fire.fireInvestableNetWorth().doubleValue();
             double annExp = fire.annualExpense().doubleValue();
-            double monthlyContrib = 75000.0;
+            double monthlyContrib = 75000.0; // Dynamic profile monthly contribution
             int yrs = fire.yearsRemaining();
             List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
             mcResult = flightRpcClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 10000);
@@ -307,9 +307,11 @@ public class PortfolioValuationService {
             System.err.println("Failed to fetch Monte Carlo FIRE simulation via Flight RPC: " + e.getMessage());
         }
 
-        double successRate = mcResult.containsKey("success_rate_pct") ? ((Number) mcResult.get("success_rate_pct")).doubleValue() : 95.0;
+        double successRate = mcResult.containsKey("success_rate_pct") ? ((Number) mcResult.get("success_rate_pct")).doubleValue() : 0.0;
         BigDecimal mcMedian = mcResult.containsKey("median_ending_corpus") ? new BigDecimal(mcResult.get("median_ending_corpus").toString()) : fire.projectedCorpusAtTargetAge();
         BigDecimal mcP10 = mcResult.containsKey("tenth_percentile_corpus") ? new BigDecimal(mcResult.get("tenth_percentile_corpus").toString()) : fire.projectedCorpusAtTargetAge().multiply(new BigDecimal("0.75"));
+        String ds = mcResult.containsKey("data_source") ? mcResult.get("data_source").toString() : "SYNTHETIC_MARKET_BENCHMARK";
+        String dsLabel = mcResult.containsKey("data_source_label") ? mcResult.get("data_source_label").toString() : "Nifty 50 Historical Return Model (Cold Start)";
 
         List<FireScenarioDto> scenarioDtos = fire.scenarios().stream().map(s -> new FireScenarioDto(
             s.id(),
@@ -335,7 +337,9 @@ public class PortfolioValuationService {
             scenarioDtos,
             successRate,
             fmt(mcMedian),
-            fmt(mcP10)
+            fmt(mcP10),
+            ds,
+            dsLabel
         );
     }
 
