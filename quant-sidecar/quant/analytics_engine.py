@@ -123,7 +123,6 @@ def run_monte_carlo_fire_simulation(
 ):
     is_empirical = daily_returns_list is not None and len(daily_returns_list) >= 100
     if not is_empirical:
-        np.random.seed(42)
         returns = np.random.normal(loc=0.00045, scale=0.011, size=10000)
         returns = returns - returns.mean() + 0.00045
         data_source = "SYNTHETIC_MARKET_BENCHMARK"
