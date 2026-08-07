@@ -11,8 +11,8 @@ class QuantFlightServer(flight.FlightServerBase):
     def __init__(self, host="0.0.0.0", port=8001, **kwargs):
         location = flight.Location.for_grpc_tcp(host, port)
         super(QuantFlightServer, self).__init__(location, **kwargs)
-        self.host = host
-        self.port = port
+        self._srv_host = host
+        self._srv_port = port
         logger.info(f"Initialized Apache Arrow Flight RPC server on {host}:{port}")
 
     def do_action(self, context, action):
