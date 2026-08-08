@@ -19,10 +19,13 @@ from quant.analytics_engine import run_monte_carlo_fire_simulation
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("quant-sidecar")
 
-EXPECTED_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN", "fintracker-cachyos-default-key-2026")
+import secrets
+
+EXPECTED_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 
 def verify_auth_token(x_api_auth_token: Optional[str] = Header(None)):
-    if not x_api_auth_token or x_api_auth_token != EXPECTED_AUTH_TOKEN:
+    token = EXPECTED_AUTH_TOKEN or "fintracker-cachyos-default-key-2026"
+    if not x_api_auth_token or not secrets.compare_digest(x_api_auth_token, token):
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-Api-Auth-Token header")
 
 app = FastAPI(title="Portfolio OS Quant & Parser Sidecar", version="3.0.0")

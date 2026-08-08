@@ -47,7 +47,7 @@ public class FireActionRuleEngineTest {
         assertEquals("125000.00", exFull.exemptionRemaining());
 
         List<FireActionRuleEngine.ActionRecommendationCard> cardsA = engine.evaluateRules(
-            null, false, pairwise, Collections.emptyList(), openLots, exFull
+            null, false, 33.15, 0.84, new BigDecimal("75000"), pairwise, Collections.emptyList(), openLots, exFull
         );
         FireActionRuleEngine.ActionRecommendationCard cardA = cardsA.stream()
             .filter(c -> "CARD_OVERLAP_ACTION".equals(c.cardId()))
@@ -78,7 +78,7 @@ public class FireActionRuleEngineTest {
         assertEquals("80000.00", exPartial.exemptionRemaining()); // ₹125,000 - ₹45,000 = ₹80,000
 
         List<FireActionRuleEngine.ActionRecommendationCard> cardsB = engine.evaluateRules(
-            null, false, pairwise, Collections.emptyList(), openLots, exPartial
+            null, false, 33.15, 0.84, new BigDecimal("75000"), pairwise, Collections.emptyList(), openLots, exPartial
         );
         FireActionRuleEngine.ActionRecommendationCard cardB = cardsB.stream()
             .filter(c -> "CARD_OVERLAP_ACTION".equals(c.cardId()))

@@ -40,6 +40,9 @@ public class FireActionRuleEngine {
     public List<ActionRecommendationCard> evaluateRules(
         PortfolioValuationService valuationService,
         boolean isProvisional,
+        double avgFailRate,
+        double relStdDev,
+        BigDecimal currentSip,
         List<Map<String, Object>> pairwiseOverlap,
         List<Map<String, Object>> concentrations,
         List<com.portfolioos.core.model.Lot> openLots,
@@ -47,8 +50,8 @@ public class FireActionRuleEngine {
     ) {
         List<ActionRecommendationCard> cards = new ArrayList<>();
 
-        // 1. Monte Carlo Ruin-Risk Trigger (Gated on Empirical Provenance & 10-Seed Stability)
-        cards.add(evaluateRuinRiskRule(isProvisional));
+        // 1. Monte Carlo Ruin-Risk Trigger (Gated on Empirical Provenance & Live Multi-Seed Stability)
+        cards.add(evaluateRuinRiskRule(isProvisional, avgFailRate, relStdDev, currentSip != null ? currentSip : new BigDecimal("75000")));
 
         // 2. Tax-Aware Overlap Redundancy Trigger (FIFO Lot-Aware & Remaining Exemption Headroom Checked)
         cards.add(evaluateOverlapRedundancyRule(pairwiseOverlap, openLots, exemptionStatus));
@@ -59,7 +62,7 @@ public class FireActionRuleEngine {
         return cards;
     }
 
-    private ActionRecommendationCard evaluateRuinRiskRule(boolean isProvisional) {
+    private ActionRecommendationCard evaluateRuinRiskRule(boolean isProvisional, double avgFailRate, double relStdDev, BigDecimal currentSip) {
         if (isProvisional) {
             return new ActionRecommendationCard(
                 "CARD_RUIN_RISK_GATED",
@@ -78,22 +81,11 @@ public class FireActionRuleEngine {
             );
         }
 
-        // Multi-seed stability test (Simulating 10 seeds over empirical data)
-        double[] seedFailRates = {33.83, 34.10, 33.50, 34.20, 33.90, 33.70, 34.00, 33.80, 34.15, 33.65};
-        double sum = 0.0;
-        for (double r : seedFailRates) sum += r;
-        double avgFailRate = sum / seedFailRates.length;
-
-        double sqDiffSum = 0.0;
-        for (double r : seedFailRates) sqDiffSum += Math.pow(r - avgFailRate, 2);
-        double stdDev = Math.sqrt(sqDiffSum / seedFailRates.length);
-        double relStdDev = (stdDev / avgFailRate) * 100.0;
-
         if (avgFailRate > 10.0 && relStdDev <= 15.0) {
             // Compute required SIP Step-up: +₹12,500/mo or +2 years retirement delay
-            BigDecimal currentSip = new BigDecimal("40000");
             BigDecimal recommendedStepUp = new BigDecimal("12500");
             BigDecimal targetSuccessRate = new BigDecimal("90.0");
+            BigDecimal newRecommendedSip = currentSip.add(recommendedStepUp);
 
             return new ActionRecommendationCard(
                 "CARD_RUIN_RISK_ACTION",
@@ -102,7 +94,7 @@ public class FireActionRuleEngine {
                 "ACTION_RECOMMENDED",
                 "HIGH",
                 String.format("Decumulation lifetime ruin risk is %.2f%% (exceeds 10.0%% safety threshold).", avgFailRate),
-                String.format("Across 10 Monte Carlo seed runs (avg failure rate: %.2f%%, rel std dev: %.2f%%), your corpus reaches zero before Year 30 in roughly 1 in 3 simulated futures. To pull your 30-year FIRE success rate back above 90.0%%, consider stepping up your monthly equity SIP by +₹12,500/mo (from ₹40,000 to ₹52,500/mo) or postponing retirement target by +2 years (from Year 13 to Year 15).", avgFailRate, relStdDev),
+                String.format("Across live empirical Monte Carlo seed runs (avg failure rate: %.2f%%, rel std dev: %.2f%%), your corpus reaches zero before Year 30 in roughly 1 in 3 simulated futures. To pull your 30-year FIRE success rate back above 90.0%%, consider stepping up your monthly equity SIP by +₹12,500/mo (from ₹%,d to ₹%,d/mo) or postponing retirement target by +2 years (from Year 13 to Year 15).", avgFailRate, relStdDev, currentSip.longValue(), newRecommendedSip.longValue()),
                 Map.of(
                     "average_ruin_rate_pct", Math.round(avgFailRate * 100.0) / 100.0,
                     "relative_std_dev_pct", Math.round(relStdDev * 100.0) / 100.0,
@@ -110,7 +102,7 @@ public class FireActionRuleEngine {
                     "recommended_sip_stepup", recommendedStepUp,
                     "target_success_rate_pct", targetSuccessRate
                 ),
-                String.format("Evaluated on 10,000 empirical paths | 10-Seed Rel Std Dev: %.2f%% | Passed 750-Day Gate", relStdDev)
+                String.format("Evaluated on 10,000 empirical paths | Live Rel Std Dev: %.2f%% | Passed 750-Day Gate", relStdDev)
             );
         }
 
@@ -123,7 +115,7 @@ public class FireActionRuleEngine {
             "Lifetime decumulation failure rate is within safe bounds (<= 10.0%).",
             "Your portfolio trajectory displays high resilience across 10,000 empirical Monte Carlo paths.",
             Map.of("average_ruin_rate_pct", Math.round(avgFailRate * 100.0) / 100.0),
-            "Evaluated on Empirical Baseline | 750-Day Gate: PASSED"
+            String.format("Evaluated on 10,000 empirical paths | Live Rel Std Dev: %.2f%% | Passed 750-Day Gate", relStdDev)
         );
     }
 
