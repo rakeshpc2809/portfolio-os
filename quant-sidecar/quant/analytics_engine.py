@@ -204,16 +204,25 @@ def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_
     var_b = float(np.var(b_rets)) if len(b_rets) > 1 else 0.0
     beta = round(cov / var_b, 3) if var_b > 0 else 1.0
 
-    rf_pct = 6.0
+    rf_pct = 6.50 # RBI 91-Day T-Bill Benchmark Rate
     alpha_ann = round(p_cagr - (rf_pct + beta * (b_cagr - rf_pct)), 2)
     tracking_err = round(float(np.std(p_rets - b_rets) * np.sqrt(252.0) * 100.0), 2)
     sharpe = round((p_cagr - rf_pct) / p_vol, 2) if p_vol > 0 else 0.0
     outperformance = round(p_cagr - b_cagr, 2)
 
+    sample_days = len(p_rets)
+    is_provisional = sample_days < 750
+    sample_status = "PROVISIONAL_SHORT_SAMPLE" if is_provisional else "MATURE_EMPIRICAL_SAMPLE"
+    data_source_label = f"Provisional Benchmark Metrics (Short Sample: {sample_days} Days < 3 Years)" if is_provisional else "Mature Benchmark Risk Metrics (3+ Years History)"
+
     return {
         "status": "OK",
         "benchmark_name": benchmark_name,
-        "sample_days": len(p_rets),
+        "sample_days": sample_days,
+        "is_provisional": is_provisional,
+        "sample_status": sample_status,
+        "data_source_label": data_source_label,
+        "risk_free_rate_pct": rf_pct,
         "portfolio_cagr_pct": round(p_cagr, 2),
         "benchmark_cagr_pct": round(b_cagr, 2),
         "portfolio_vol_pct": round(p_vol, 2),

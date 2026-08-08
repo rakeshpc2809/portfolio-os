@@ -151,33 +151,36 @@
         <!-- Benchmark Risk Radar -->
         <div class="glass-card col-12">
           <div class="card-header">
-            <h2>Benchmark Risk Radar & QuantStats Outperformance</h2>
-            <span class="live-tag">VS NIFTY 50 TRI</span>
+            <div>
+              <h2>Benchmark Risk Radar & QuantStats Outperformance</h2>
+              <span class="sub font-mono" id="benchmarkProvenanceSub" style="color: #cbd5e1; font-size: 0.8rem;">Provisional Benchmark Metrics (Short Sample: 363 Days &lt; 3 Years)</span>
+            </div>
+            <span class="live-tag warning-tag" id="benchmarkSampleBadge">PROVISIONAL (363 DAYS)</span>
           </div>
           <div class="fire-metrics-grid" style="grid-template-columns: repeat(5, 1fr);">
             <div class="fire-stat-box">
               <span class="lbl">Annualized Alpha</span>
-              <strong class="val font-mono highlight-cyan" id="benchmarkAlphaVal">+4.48%</strong>
+              <strong class="val font-mono highlight-cyan" id="benchmarkAlphaVal">+2.37%</strong>
               <span class="sub font-mono">Excess Return</span>
             </div>
             <div class="fire-stat-box">
               <span class="lbl">Portfolio Beta</span>
-              <strong class="val font-mono" id="benchmarkBetaVal">0.82</strong>
+              <strong class="val font-mono" id="benchmarkBetaVal">0.797</strong>
               <span class="sub font-mono">Vs Nifty 50 TRI</span>
             </div>
             <div class="fire-stat-box">
               <span class="lbl">Sharpe Ratio</span>
-              <strong class="val font-mono positive" id="benchmarkSharpeVal">0.41</strong>
-              <span class="sub font-mono">Risk-Adjusted</span>
+              <strong class="val font-mono" id="benchmarkSharpeVal">-0.07</strong>
+              <span class="sub font-mono" id="benchmarkSharpeSub">r_f = 6.5% T-Bill</span>
             </div>
             <div class="fire-stat-box">
               <span class="lbl">Tracking Error</span>
-              <strong class="val font-mono" id="benchmarkTrackingVal">4.98%</strong>
+              <strong class="val font-mono" id="benchmarkTrackingVal">4.48%</strong>
               <span class="sub font-mono">Annualized Vol</span>
             </div>
             <div class="fire-stat-box">
               <span class="lbl">Outperformance</span>
-              <strong class="val font-mono positive" id="benchmarkOutperformVal">+4.39%</strong>
+              <strong class="val font-mono positive" id="benchmarkOutperformVal">+3.03%</strong>
               <span class="sub font-mono">Net CAGR Delta</span>
             </div>
           </div>

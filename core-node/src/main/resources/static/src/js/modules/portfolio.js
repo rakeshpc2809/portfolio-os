@@ -512,3 +512,40 @@ export function renderCashflowSankey(containerId, holdingsData, bucketData) {
   return instance;
 }
 
+export async function loadBenchmarkAnalytics() {
+  try {
+    const res = await fetchJson(`${API_BASE}/analytics/benchmark?benchmark=NIFTY_50_TRI`);
+    if (res && res.status === 'OK') {
+      const elAlpha = document.querySelector('#benchmarkAlphaVal');
+      const elBeta = document.querySelector('#benchmarkBetaVal');
+      const elSharpe = document.querySelector('#benchmarkSharpeVal');
+      const elTracking = document.querySelector('#benchmarkTrackingVal');
+      const elOut = document.querySelector('#benchmarkOutperformVal');
+      const elBadge = document.querySelector('#benchmarkSampleBadge');
+      const elSub = document.querySelector('#benchmarkProvenanceSub');
+
+      if (elAlpha) elAlpha.textContent = `${res.alpha_pct > 0 ? '+' : ''}${res.alpha_pct}%`;
+      if (elBeta) elBeta.textContent = res.beta;
+      if (elSharpe) elSharpe.textContent = res.sharpe_ratio;
+      if (elTracking) elTracking.textContent = `${res.tracking_error_pct}%`;
+      if (elOut) elOut.textContent = `${res.outperformance_pct > 0 ? '+' : ''}${res.outperformance_pct}%`;
+
+      if (elBadge) {
+        if (res.is_provisional) {
+          elBadge.textContent = `PROVISIONAL (${res.sample_days} DAYS)`;
+          elBadge.className = 'live-tag warning-tag';
+        } else {
+          elBadge.textContent = `MATURE (${res.sample_days} DAYS)`;
+          elBadge.className = 'live-tag positive-tag';
+        }
+      }
+
+      if (elSub && res.data_source_label) {
+        elSub.textContent = res.data_source_label;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load benchmark analytics:', err);
+  }
+}
+
