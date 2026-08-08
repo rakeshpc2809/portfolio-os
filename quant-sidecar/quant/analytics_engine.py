@@ -121,12 +121,12 @@ def run_monte_carlo_fire_simulation(
     retirement_duration_years=30,
     num_simulations=10000
 ):
-    is_empirical = daily_returns_list is not None and len(daily_returns_list) >= 100
+    is_empirical = daily_returns_list is not None and len(daily_returns_list) >= 750
     if not is_empirical:
         returns = np.random.normal(loc=0.00045, scale=0.011, size=10000)
         returns = returns - returns.mean() + 0.00045
         data_source = "SYNTHETIC_MARKET_BENCHMARK"
-        data_source_label = "Nifty 50 Historical Return Model (Cold Start)"
+        data_source_label = "Nifty 50 Historical Return Model (Insufficient Empirical History < 3 Years)"
     else:
         returns = np.array(daily_returns_list)
         data_source = "EMPIRICAL_PORTFOLIO"
