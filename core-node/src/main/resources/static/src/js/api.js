@@ -1,6 +1,4 @@
-export const API_BASE = window.location.origin.includes('http') 
-  ? `${window.location.origin}/api/v1` 
-  : 'http://127.0.0.1:8080/api/v1';
+export const API_BASE = '/api/v1';
 
 export const DEFAULT_AUTH_TOKEN = 'fintracker-cachyos-default-key-2026';
 
@@ -13,8 +11,14 @@ export function getAuthHeaders(extraHeaders = {}) {
 }
 
 export async function fetchJson(url, options = {}) {
+  const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
+  let fullUrl = url.startsWith('http') || url.startsWith('/api/v1') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+  const separator = fullUrl.includes('?') ? '&' : '?';
+  if (!fullUrl.includes('token=')) {
+    fullUrl = `${fullUrl}${separator}token=${encodeURIComponent(token)}`;
+  }
   const headers = getAuthHeaders(options.headers || {});
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(fullUrl, { ...options, headers });
   if (!res.ok) {
     throw new Error(`HTTP error! status: ${res.status}`);
   }

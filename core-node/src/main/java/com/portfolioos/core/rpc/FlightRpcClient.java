@@ -190,10 +190,16 @@ public class FlightRpcClient {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             String json = mapper.writeValueAsString(payload);
 
+            String token = System.getenv("API_AUTH_TOKEN");
+            if (token == null || token.isBlank()) {
+                token = "fintracker-cachyos-default-key-2026";
+            }
+
             java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create("http://127.0.0.1:8000/api/v1/simulate_fire"))
                 .header("Content-Type", "application/json")
+                .header("X-Api-Auth-Token", token)
                 .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
                 .build();
 
@@ -218,10 +224,16 @@ public class FlightRpcClient {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             String json = mapper.writeValueAsString(payload);
 
+            String token = System.getenv("API_AUTH_TOKEN");
+            if (token == null || token.isBlank()) {
+                token = "fintracker-cachyos-default-key-2026";
+            }
+
             java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create("http://127.0.0.1:8000/api/v1/analytics/benchmark"))
                 .header("Content-Type", "application/json")
+                .header("X-Api-Auth-Token", token)
                 .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
                 .build();
 

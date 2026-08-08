@@ -145,4 +145,23 @@ public class ReportController {
     public ResponseEntity<Map<String, Object>> getMultiFundUpSetAnalytics() {
         return ResponseEntity.ok(valuationService.getMultiFundUpSetAnalytics());
     }
+
+    @GetMapping("/analytics/overlap/holdings-debug")
+    public ResponseEntity<Map<String, Object>> getAllFundHoldingsDebug() {
+        return ResponseEntity.ok(valuationService.getDuckDbProjector().getAllFundHoldingsDebug());
+    }
+
+    @PostMapping("/analytics/fire/simulate")
+    public ResponseEntity<Map<String, Object>> simulateFireScenario(@RequestBody Map<String, Object> body) {
+        Double monthlySip = body != null && body.get("monthly_sip") != null ? ((Number) body.get("monthly_sip")).doubleValue() : null;
+        Double annualExpense = body != null && body.get("annual_expense") != null ? ((Number) body.get("annual_expense")).doubleValue() : null;
+        Integer yearsRemaining = body != null && body.get("years_remaining") != null ? ((Number) body.get("years_remaining")).intValue() : null;
+
+        return ResponseEntity.ok(valuationService.simulateFireScenario(monthlySip, annualExpense, yearsRemaining));
+    }
+
+    @GetMapping({"/rules/action-recommendations", "/analytics/rules/actions"})
+    public ResponseEntity<List<com.portfolioos.core.rules.FireActionRuleEngine.ActionRecommendationCard>> getActionRecommendations() {
+        return ResponseEntity.ok(valuationService.getActionRecommendations());
+    }
 }

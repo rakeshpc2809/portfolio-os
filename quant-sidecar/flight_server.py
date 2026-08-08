@@ -19,11 +19,15 @@ class QuantFlightServer(flight.FlightServerBase):
         if action.type == "fire_simulation":
             try:
                 params = json.loads(action.body.to_pybytes().decode('utf-8'))
+                missing_keys = [k for k in ("current_corpus", "annual_expense", "monthly_contribution", "years_to_retirement") if k not in params]
+                if missing_keys:
+                    raise flight.FlightInvalidArgument(f"Missing required simulation parameters: {', '.join(missing_keys)}")
+
                 daily_returns = params.get("daily_returns", [])
-                current_corpus = float(params.get("current_corpus", 1407122.81))
-                annual_expense = float(params.get("annual_expense", 720000.0))
-                monthly_contrib = float(params.get("monthly_contribution", 75000.0))
-                years_ret = int(params.get("years_to_retirement", 13))
+                current_corpus = float(params["current_corpus"])
+                annual_expense = float(params["annual_expense"])
+                monthly_contrib = float(params["monthly_contribution"])
+                years_ret = int(params["years_to_retirement"])
                 num_sims = int(params.get("num_simulations", 10000))
 
                 result = run_monte_carlo_fire_simulation(
@@ -36,10 +40,11 @@ class QuantFlightServer(flight.FlightServerBase):
                 )
                 result_bytes = json.dumps(result).encode('utf-8')
                 return [flight.Result(result_bytes)]
+            except flight.FlightError:
+                raise
             except Exception as e:
                 logger.error(f"Error executing FIRE Monte Carlo action: {e}", exc_info=True)
-                err_res = json.dumps({"status": "ERROR", "message": str(e)}).encode('utf-8')
-                return [flight.Result(err_res)]
+                raise flight.FlightInternalError(f"FIRE simulation action failed: {str(e)}")
         return []
 
     def do_exchange(self, context, descriptor, reader, writer):
@@ -85,7 +90,7 @@ class QuantFlightServer(flight.FlightServerBase):
             writer.close()
         except Exception as e:
             logger.error(f"Error during Flight exchange processing: {e}", exc_info=True)
-            self._write_empty_response(writer)
+            raise flight.FlightInternalError(f"Flight exchange failed: {str(e)}")
 
     def _write_empty_response(self, writer):
         schema = pa.schema([

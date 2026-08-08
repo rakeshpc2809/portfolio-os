@@ -174,7 +174,8 @@ public class ReportDtos {
         @JsonProperty("monte_carlo_median_corpus") String monteCarloMedianCorpus,
         @JsonProperty("monte_carlo_tenth_percentile_corpus") String monteCarloTenthPercentileCorpus,
         @JsonProperty("monte_carlo_data_source") String monteCarloDataSource,
-        @JsonProperty("monte_carlo_data_source_label") String monteCarloDataSourceLabel
+        @JsonProperty("monte_carlo_data_source_label") String monteCarloDataSourceLabel,
+        @JsonProperty("fan_chart_trajectories") List<Object> fanChartTrajectories
     ) {
         @JsonProperty("monte_carlo_success_rate_pct")
         public double getMonteCarloSuccessRatePct() { return monteCarloSuccessRatePct; }

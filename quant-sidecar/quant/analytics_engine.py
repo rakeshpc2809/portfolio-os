@@ -143,9 +143,10 @@ def run_monte_carlo_fire_simulation(
     block_size = min(15, n_returns)
     n_blocks_needed = int(np.ceil(total_days / block_size))
 
-    start_indices = np.random.randint(0, n_returns, size=(num_simulations, n_blocks_needed))
+    max_start = max(1, n_returns - block_size + 1)
+    start_indices = np.random.randint(0, max_start, size=(num_simulations, n_blocks_needed))
     offsets = np.arange(block_size)
-    sampled_blocks = (start_indices[:, :, None] + offsets[None, None, :]) % n_returns
+    sampled_blocks = start_indices[:, :, None] + offsets[None, None, :]
     sim_returns = returns[sampled_blocks].reshape(num_simulations, -1)[:, :total_days]
     daily_inflation = 0.06 / 252.0
     real_sim_returns = sim_returns - daily_inflation
@@ -155,23 +156,45 @@ def run_monte_carlo_fire_simulation(
     corpuses = np.full(num_simulations, float(current_corpus))
     failed = np.zeros(num_simulations, dtype=bool)
 
-    # Accumulation Phase (compounding + SIP contributions in real terms)
-    for day in range(accumulation_days):
-        corpuses = corpuses * (1.0 + real_sim_returns[:, day]) + daily_sip
+    trajectories = []
+    trajectories.append({
+        "year": 0,
+        "p10": round(float(current_corpus), 2),
+        "p25": round(float(current_corpus), 2),
+        "p50": round(float(current_corpus), 2),
+        "p75": round(float(current_corpus), 2),
+        "p90": round(float(current_corpus), 2)
+    })
 
-    retirement_corpuses = corpuses.copy()
+    for y in range(1, total_years + 1):
+        day_start = (y - 1) * 252
+        day_end = min(y * 252, total_days)
 
-    # Decumulation Phase (retirement spending in real terms)
-    for day in range(accumulation_days, total_days):
-        corpuses = corpuses * (1.0 + real_sim_returns[:, day]) - daily_expense
-        failed = failed | (corpuses <= 0)
-        corpuses = np.maximum(corpuses, 0.0)
+        for day in range(day_start, day_end):
+            if day < accumulation_days:
+                corpuses = corpuses * (1.0 + real_sim_returns[:, day]) + daily_sip
+            else:
+                corpuses = corpuses * (1.0 + real_sim_returns[:, day]) - daily_expense
+                failed = failed | (corpuses <= 0)
+                corpuses = np.maximum(corpuses, 0.0)
+
+        trajectories.append({
+            "year": y,
+            "p10": round(float(np.percentile(corpuses, 10)), 2),
+            "p25": round(float(np.percentile(corpuses, 25)), 2),
+            "p50": round(float(np.median(corpuses)), 2),
+            "p75": round(float(np.percentile(corpuses, 75)), 2),
+            "p90": round(float(np.percentile(corpuses, 90)), 2)
+        })
 
     surviving = ~failed
     success_rate = float(np.mean(surviving) * 100.0)
-    median_corpus = float(np.median(retirement_corpuses))
-    p10_corpus = float(np.percentile(retirement_corpuses, 10))
+    ret_year_idx = min(years_to_retirement, len(trajectories) - 1)
+    ret_trajectory = trajectories[ret_year_idx]
+    median_corpus = ret_trajectory["p50"]
+    p10_corpus = ret_trajectory["p10"]
 
+    final_trajectory = trajectories[-1]
     return {
         "status": "OK",
         "data_source": data_source,
@@ -180,8 +203,12 @@ def run_monte_carlo_fire_simulation(
         "years_to_retirement": years_to_retirement,
         "retirement_duration_years": retirement_duration_years,
         "success_rate_pct": round(success_rate, 2),
+        "median_retirement_start_corpus": round(median_corpus, 2),
+        "median_final_ending_corpus": round(final_trajectory["p50"], 2),
+        "tenth_percentile_final_ending_corpus": round(final_trajectory["p10"], 2),
         "median_ending_corpus": round(median_corpus, 2),
-        "tenth_percentile_corpus": round(p10_corpus, 2)
+        "tenth_percentile_corpus": round(p10_corpus, 2),
+        "fan_chart_trajectories": trajectories
     }
 
 
@@ -211,15 +238,15 @@ def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_
     outperformance = round(p_cagr - b_cagr, 2)
 
     sample_days = len(p_rets)
-    # ARCHITECTURAL DESIGN RATIONALE (WARNING BADGE vs HARD BLOCK):
-    # Unlike Monte Carlo FIRE simulations (which resample returns across a 43-year lifetime horizon
-    # and compound short-sample noise 29x into severe simulation distortions), benchmark risk analytics
-    # (CAPM Alpha, Beta, Sharpe) compute static realized single-window statistics over aligned historical dates.
-    # Short history introduces standard error/noise, but ZERO compounding amplification.
-    # Therefore, a PROVISIONAL warning badge and visual UI styling (opacity/asterisk) is the methodologically
-    # appropriate intervention, rather than hard-blocking or substituting synthetic benchmark data.
     is_provisional = sample_days < 750
-    sample_status = "PROVISIONAL_SHORT_SAMPLE" if is_provisional else "MATURE_EMPIRICAL_SAMPLE"
+
+    # Sanity guard on Sharpe ratio: Extreme ratios (|Sharpe| > 3.5) on short samples (< 30 days) are statistically ungrounded
+    if sample_days < 30 or abs((p_cagr - rf_pct) / p_vol if p_vol > 0 else 0.0) > 3.5:
+        sharpe = 0.0
+        sample_status = "PROVISIONAL_UNSTABLE_SAMPLE" if is_provisional else "SANITY_BOUND_REJECTED"
+    else:
+        sample_status = "PROVISIONAL_SHORT_SAMPLE" if is_provisional else "MATURE_EMPIRICAL_SAMPLE"
+
     data_source_label = f"Provisional Benchmark Metrics (Short Sample: {sample_days} Days < 3 Years)" if is_provisional else "Mature Benchmark Risk Metrics (3+ Years History)"
 
     return {

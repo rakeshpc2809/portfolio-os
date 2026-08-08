@@ -91,7 +91,7 @@ class BenchmarkAnalyticsRequest(BaseModel):
     benchmark_returns: List[float]
     benchmark_name: str = "NIFTY_50_TRI"
 
-@app.post("/api/v1/simulate_fire")
+@app.post("/api/v1/simulate_fire", dependencies=[Depends(verify_auth_token)])
 async def simulate_fire(req: FireSimulationRequest):
     return run_monte_carlo_fire_simulation(
         daily_returns_list=req.daily_returns,
@@ -102,7 +102,7 @@ async def simulate_fire(req: FireSimulationRequest):
         num_simulations=req.num_simulations
     )
 
-@app.post("/api/v1/analytics/benchmark")
+@app.post("/api/v1/analytics/benchmark", dependencies=[Depends(verify_auth_token)])
 async def analyze_benchmark(req: BenchmarkAnalyticsRequest):
     return compute_benchmark_analytics(
         portfolio_returns=req.portfolio_returns,

@@ -320,7 +320,13 @@ public class PortfolioValuationService {
         }
 
         double successRate = mcResult.containsKey("success_rate_pct") ? ((Number) mcResult.get("success_rate_pct")).doubleValue() : 0.0;
-        BigDecimal mcMedian = mcResult.containsKey("median_ending_corpus") ? new BigDecimal(mcResult.get("median_ending_corpus").toString()) : BigDecimal.ZERO;
+        
+        // HORIZON ALIGNMENT RATIONALE:
+        // mcMedian represents the median simulated corpus at Year 13 (Target Retirement Age 45).
+        // It is checked against deterministicFv (which is also calculated at Target Retirement Age 45).
+        // We prefer 'median_retirement_start_corpus' explicitly, falling back to 'median_ending_corpus' for backward compatibility.
+        String mcKey = mcResult.containsKey("median_retirement_start_corpus") ? "median_retirement_start_corpus" : "median_ending_corpus";
+        BigDecimal mcMedian = mcResult.containsKey(mcKey) ? new BigDecimal(mcResult.get(mcKey).toString()) : BigDecimal.ZERO;
         BigDecimal mcP10 = mcResult.containsKey("tenth_percentile_corpus") ? new BigDecimal(mcResult.get("tenth_percentile_corpus").toString()) : BigDecimal.ZERO;
         String ds = mcResult.containsKey("data_source") ? mcResult.get("data_source").toString() : "SYNTHETIC_MARKET_BENCHMARK";
         String dsLabel = mcResult.containsKey("data_source_label") ? mcResult.get("data_source_label").toString() : "Nifty 50 Historical Return Model (Cold Start)";
@@ -351,6 +357,8 @@ public class PortfolioValuationService {
             s.active()
         )).toList();
 
+        List<Object> trajectories = mcResult.containsKey("fan_chart_trajectories") ? (List<Object>) mcResult.get("fan_chart_trajectories") : Collections.emptyList();
+
         return new FireSummaryResponse(
             fire.activeScenarioLabel(),
             fmt(fire.monthlyExpenseToday()),
@@ -370,7 +378,8 @@ public class PortfolioValuationService {
             fmt(mcMedian),
             fmt(mcP10),
             ds,
-            dsLabel
+            dsLabel,
+            trajectories
         );
     }
 
@@ -378,9 +387,8 @@ public class PortfolioValuationService {
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<Lot> openLots = state.fifoResult().openLots();
         Map<String, BigDecimal> navMap = state.navMap();
-
         BucketEngine.RebalanceEngineResult result = BucketEngine.evaluateRebalance(
-            openLots, navMap, LocalDate.now(), benchmarkCurrent, benchmarkRollingHigh, BucketEngine.DEFAULT_TARGETS, fy
+            openLots, state.fifoResult().matchedLots(), navMap, LocalDate.now(), benchmarkCurrent, benchmarkRollingHigh, BucketEngine.DEFAULT_TARGETS, fy
         );
 
         List<BucketStatusDto> statuses = result.bucketStatuses().stream().map(s -> new BucketStatusDto(
@@ -531,18 +539,21 @@ public class PortfolioValuationService {
 
         List<Map<String, Object>> concentrations = duckDbProjector.getPortfolioStockConcentrations(fundValuations);
 
-        List<String> indexFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9");
+        List<String> evalFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9", "INF879O01027", "INF204K01K15");
         List<Map<String, Object>> matrix = new ArrayList<>();
-        for (int i = 0; i < indexFundIds.size(); i++) {
-            for (int j = i + 1; j < indexFundIds.size(); j++) {
-                String fa = indexFundIds.get(i);
-                String fb = indexFundIds.get(j);
+        for (int i = 0; i < evalFundIds.size(); i++) {
+            for (int j = i + 1; j < evalFundIds.size(); j++) {
+                String fa = evalFundIds.get(i);
+                String fb = evalFundIds.get(j);
                 matrix.add(duckDbProjector.getPairwiseFundOverlap(fa, fb));
             }
         }
 
+        String coverageType = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists() ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";
+
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
+        response.put("holding_coverage_type", coverageType);
         response.put("pairwise_overlap", pairwise);
         response.put("pairwise_matrix", matrix);
         response.put("portfolio_top_stock_concentrations", concentrations);
@@ -551,13 +562,84 @@ public class PortfolioValuationService {
 
     public Map<String, Object> getMultiFundUpSetAnalytics() {
         new NseIndexConstituentDownloader().seedStandardIndexConstituents(duckDbProjector);
-        List<String> indexFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9");
-        List<Map<String, Object>> upset = duckDbProjector.getMultiFundIntersectionAnalytics(indexFundIds);
+        List<String> evalFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9", "INF879O01027", "INF204K01K15");
+        List<Map<String, Object>> upset = duckDbProjector.getMultiFundIntersectionAnalytics(evalFundIds);
+
+        String coverageType = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists() ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
+        response.put("holding_coverage_type", coverageType);
         response.put("upset_combinations", upset);
-        response.put("evaluated_funds", indexFundIds);
+        response.put("evaluated_funds", evalFundIds);
         return response;
+    }
+
+    public Map<String, Object> simulateFireScenario(Double customMonthlySip, Double customAnnualExpense, Integer customYearsToRetirement) {
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        if (state == null) {
+            cacheService.refreshCacheInBackground();
+            state = cacheService.getCachedState();
+        }
+        List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
+        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
+
+        FireTracker.FireSummary fire = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now());
+
+        double invNetWorth = fire.fireInvestableNetWorth().doubleValue();
+        double annExp = (customAnnualExpense != null && customAnnualExpense > 0) ? customAnnualExpense : fire.annualExpense().doubleValue();
+        double monthlyContrib = (customMonthlySip != null && customMonthlySip >= 0) ? customMonthlySip : 75000.0;
+        int yrs = (customYearsToRetirement != null && customYearsToRetirement > 0) ? customYearsToRetirement : fire.yearsRemaining();
+
+        List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
+
+        Map<String, Object> mcResult = flightRpcClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 10000);
+
+        Map<String, Object> response = new HashMap<>(mcResult);
+        response.put("custom_monthly_sip", monthlyContrib);
+        response.put("custom_annual_expense", annExp);
+        response.put("custom_years_remaining", yrs);
+        response.put("investable_net_worth", invNetWorth);
+        response.put("required_corpus", fire.requiredCorpus().doubleValue());
+        return response;
+    }
+
+    public List<com.portfolioos.core.rules.FireActionRuleEngine.ActionRecommendationCard> getActionRecommendations() {
+        com.portfolioos.core.rules.FireActionRuleEngine engine = new com.portfolioos.core.rules.FireActionRuleEngine();
+        List<String> evalFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9", "INF879O01027", "INF204K01K15");
+        List<Map<String, Object>> pairwise = new ArrayList<>();
+        for (int i = 0; i < evalFundIds.size(); i++) {
+            for (int j = i + 1; j < evalFundIds.size(); j++) {
+                pairwise.add(duckDbProjector.getPairwiseFundOverlap(evalFundIds.get(i), evalFundIds.get(j)));
+            }
+        }
+
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
+        Map<String, Double> fundValuations = new HashMap<>();
+        List<Lot> openLots = Collections.emptyList();
+        List<MatchedLot> matchedLots = Collections.emptyList();
+        if (state != null && state.fifoResult() != null) {
+            openLots = state.fifoResult().openLots();
+            matchedLots = state.fifoResult().matchedLots();
+            for (Lot lot : openLots) {
+                BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+                double currentVal = lot.remainingUnits().multiply(nav).doubleValue();
+                fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), 0.0) + currentVal);
+            }
+        }
+        List<Map<String, Object>> concentrations = duckDbProjector.getPortfolioStockConcentrations(fundValuations);
+
+        ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, "2026-27");
+
+        // Check empirical sufficiency
+        List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
+        boolean isProvisional = dailyReturns == null || dailyReturns.size() < 750;
+
+        return engine.evaluateRules(this, isProvisional, pairwise, concentrations, openLots, exStatus);
+    }
+
+    public DuckDbProjector getDuckDbProjector() {
+        return this.duckDbProjector;
     }
 }

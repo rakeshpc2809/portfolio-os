@@ -1,6 +1,6 @@
-import { API_BASE, fetchJson } from './src/api.js';
-import { state } from './src/state.js';
-import { formatINR, showToast } from './src/utils.js';
+import { API_BASE, fetchJson } from './js/api.js';
+import { state } from './js/state.js';
+import { formatINR, showToast } from './js/utils.js';
 import {
   updatePortfolioSummary,
   renderHoldingsTable,
@@ -8,50 +8,48 @@ import {
   renderCategoryChart,
   renderNetWorthTrendChart,
   renderCashflowSankey,
-  renderBucketRebalance
-} from './src/js/modules/portfolio.js';
-import { renderTaxExemptionMeter, renderScheduleFaChecklist, renderTaxEventsTable } from './src/js/modules/tax.js';
-import { fetchDecisionRadar, renderDecisionRadar } from './src/js/modules/radar.js';
+  renderBucketRebalance,
+  fetchFireSummary
+} from './js/modules/portfolio.js';
+import { updateExemptionMeter, updateReportMetrics, renderDecisionRadar, renderRealizedLogTable } from './js/modules/tax.js';
 
 const DEFAULT_AUTH_TOKEN = 'fintracker-cachyos-default-key-2026';
 
 async function initDashboard() {
   try {
-    const summaryData = await fetchJson(`/portfolio/summary?fy=${state.currentFy}`);
-    updatePortfolioSummary(summaryData);
+    const summaryData = await fetchJson(`/portfolio/summary?fy=${state.currentFy}`).catch(() => null);
+    if (summaryData) updatePortfolioSummary(summaryData);
 
-    const holdings = await fetchJson(`/portfolio/holdings`);
+    const holdings = await fetchJson(`/portfolio/holdings`).catch(() => []);
     state.holdings = holdings;
     renderHoldingsTable(holdings);
 
-    const navTrendData = await fetchJson(`/portfolio/net-worth-trend`);
+    const navTrendData = await fetchJson(`/portfolio/net-worth-trend`).catch(() => null);
     if (navTrendData && navTrendData.dates && navTrendData.values) {
       if (state.charts.trendChart) state.charts.trendChart.dispose();
       state.charts.trendChart = renderNetWorthTrendChart('netWorthTrendChart', navTrendData.dates, navTrendData.values);
     }
 
-    const allocData = await fetchJson(`/portfolio/allocations`);
-    renderAllocationChart(allocData);
+    const allocData = await fetchJson(`/portfolio/allocation`).catch(() => null);
+    if (allocData) renderAllocationChart(allocData);
 
-    const catData = await fetchJson(`/portfolio/category-allocations`);
-    renderCategoryChart(catData);
+    const catData = await fetchJson(`/portfolio/category-allocation`).catch(() => null);
+    if (catData) renderCategoryChart(catData);
 
-    const exemptionData = await fetchJson(`/tax/exemption-status?fy=${state.currentFy}`);
-    renderTaxExemptionMeter(exemptionData);
+    const exemptionData = await fetchJson(`/tax/exemption-status?fy=${state.currentFy}`).catch(() => null);
+    if (exemptionData) updateExemptionMeter(exemptionData);
 
-    const bucketData = await fetchJson(`/rebalance/bucket?fy=${state.currentFy}`);
-    renderBucketRebalance(bucketData);
+    const bucketData = await fetchJson(`/rebalance/bucket?fy=${state.currentFy}`).catch(() => null);
+    if (bucketData) renderBucketRebalance(bucketData);
 
     // Render Cashflow Sankey Flow Diagram
     if (state.charts.sankeyChart) state.charts.sankeyChart.dispose();
     state.charts.sankeyChart = renderCashflowSankey('sankeyChart', holdings, bucketData);
 
-    const faData = await fetchJson(`/tax/schedule-fa?fy=${state.currentFy}`);
-    renderScheduleFaChecklist(faData);
+    const eventsData = await fetchJson(`/tax/realized-log?fy=${state.currentFy}`).catch(() => null);
+    if (eventsData) renderRealizedLogTable(eventsData);
 
-    const eventsData = await fetchJson(`/tax/events?fy=${state.currentFy}`);
-    renderTaxEventsTable(eventsData);
-
+    fetchFireSummary();
   } catch (err) {
     console.error("Dashboard initialization failed:", err);
     showToast("Error connecting to Core Node REST service.", "error");
@@ -278,4 +276,21 @@ document.addEventListener('DOMContentLoaded', () => {
       fetchRebalancePreview(val);
     });
   }
+
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabName = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      btn.classList.add('active');
+      const targetContent = document.getElementById(`tab-${tabName}`);
+      if (targetContent) targetContent.classList.add('active');
+
+      if (tabName === 'fire') {
+        fetchFireSummary();
+      }
+    });
+  });
 });

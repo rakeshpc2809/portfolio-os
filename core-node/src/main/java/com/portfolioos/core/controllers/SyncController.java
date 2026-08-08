@@ -316,7 +316,7 @@ public class SyncController {
 
         // 4. Asset Allocation Drift Signal
         BucketEngine.RebalanceEngineResult bucketStatus = BucketEngine.evaluateRebalance(
-            openLots, navMap, today, new BigDecimal("24000.00"), new BigDecimal("25000.00"), BucketEngine.DEFAULT_TARGETS, fy
+            openLots, state.fifoResult().matchedLots(), navMap, today, new BigDecimal("24000.00"), new BigDecimal("25000.00"), BucketEngine.DEFAULT_TARGETS, fy
         );
 
         BucketEngine.BucketStatus driftedBucket = bucketStatus.bucketStatuses().stream()

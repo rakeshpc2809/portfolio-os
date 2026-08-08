@@ -31,7 +31,10 @@ public class SecurityInterceptor implements HandlerInterceptor {
             clientHeader = request.getParameter("token");
         }
 
-        if (!token.equals(clientHeader)) {
+        byte[] expectedBytes = token.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] clientBytes = clientHeader != null ? clientHeader.getBytes(java.nio.charset.StandardCharsets.UTF_8) : new byte[0];
+
+        if (!java.security.MessageDigest.isEqual(expectedBytes, clientBytes)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
             response.getWriter().write("{\"message\":\"Unauthorized: Missing or invalid X-Api-Auth-Token header or token parameter.\"}");

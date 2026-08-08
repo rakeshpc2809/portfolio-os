@@ -336,8 +336,10 @@ export async function fetchFireSummary() {
     console.error('FIRE summary error:', e);
   }
 }
+window.fetchFireSummary = fetchFireSummary;
 
 export function renderFireSummary(data) {
+  if (!data) return;
   const statusPill = document.getElementById('fireStatusPill');
   const scenarioLabel = document.getElementById('fireScenarioLabel');
   const investableNw = document.getElementById('fireInvestableNw');
@@ -389,6 +391,225 @@ export function renderFireSummary(data) {
       </div>
     `;
   }
+
+  const successBadge = document.getElementById('fireSuccessRateBadge');
+  const dsLabelEl = document.getElementById('fireDataSourceLabel');
+  const simulatedMedianEl = document.getElementById('fireSimulatedMedian');
+  if (successBadge && mcSuccess !== undefined) {
+    successBadge.textContent = `Monte Carlo Success: ${mcSuccess}%`;
+  }
+  if (dsLabelEl && dsLabel) {
+    dsLabelEl.textContent = dsLabel;
+  }
+  if (simulatedMedianEl && (data.projected_corpus || data.projectedCorpus)) {
+    const projCorpus = data.projected_corpus || data.projectedCorpus;
+    simulatedMedianEl.textContent = `₹ ${(parseFloat(projCorpus) / 10000000).toFixed(2)} Cr`;
+  }
+
+  const trajectories = data.fan_chart_trajectories || data.fanChartTrajectories;
+  if (trajectories && trajectories.length > 0) {
+    renderFireFanChart(trajectories, requiredCorpus);
+  }
+
+  initFireSensitivitySliders();
+}
+window.renderFireSummary = renderFireSummary;
+window.renderFireFanChart = renderFireFanChart;
+
+let fireDebounceTimer = null;
+
+export function initFireSensitivitySliders() {
+  const sipSlider = document.getElementById('fireSipSlider');
+  const expSlider = document.getElementById('fireExpSlider');
+  const yrsSlider = document.getElementById('fireYrsSlider');
+
+  if (!sipSlider || sipSlider.dataset.initialized) return;
+  sipSlider.dataset.initialized = 'true';
+
+  const updateSim = () => {
+    const sip = parseFloat(sipSlider.value);
+    const expMonthly = parseFloat(expSlider.value);
+    const yrs = parseInt(yrsSlider.value, 10);
+
+    const sipValEl = document.getElementById('sipSliderVal');
+    const expValEl = document.getElementById('expSliderVal');
+    const yrsValEl = document.getElementById('yrsSliderVal');
+
+    if (sipValEl) sipValEl.textContent = formatINR(sip);
+    if (expValEl) expValEl.textContent = formatINR(expMonthly);
+    if (yrsValEl) yrsValEl.textContent = `${yrs} Years`;
+
+    clearTimeout(fireDebounceTimer);
+    fireDebounceTimer = setTimeout(async () => {
+      try {
+        const res = await fetchJson(`${API_BASE}/analytics/fire/simulate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            monthly_sip: sip,
+            annual_expense: expMonthly * 12.0,
+            years_remaining: yrs
+          })
+        });
+
+        if (res && res.fan_chart_trajectories) {
+          const successBadge = document.getElementById('fireSuccessRateBadge');
+          const simulatedMedianEl = document.getElementById('fireSimulatedMedian');
+
+          if (successBadge && res.success_rate_pct !== undefined) {
+            successBadge.textContent = `Monte Carlo Success: ${res.success_rate_pct}%`;
+          }
+          if (simulatedMedianEl && res.median_ending_corpus) {
+            simulatedMedianEl.textContent = `₹ ${(parseFloat(res.median_ending_corpus) / 10000000).toFixed(2)} Cr`;
+          }
+
+          renderFireFanChart(res.fan_chart_trajectories, res.required_corpus);
+        }
+      } catch (err) {
+        console.error('Failed to update FIRE sensitivity simulation:', err);
+      }
+    }, 300);
+  };
+
+  sipSlider.addEventListener('input', updateSim);
+  expSlider.addEventListener('input', updateSim);
+  yrsSlider.addEventListener('input', updateSim);
+}
+
+export function renderFireFanChart(trajectories, requiredCorpus) {
+  const container = document.getElementById('fanChartSvgContainer');
+  if (!container || !trajectories || trajectories.length === 0) return;
+
+  let width = container.clientWidth;
+  if (!width || width <= 0) {
+    width = container.parentElement ? container.parentElement.clientWidth : 540;
+  }
+  if (!width || width <= 0) width = 540;
+
+  const height = 280;
+  const padding = { top: 20, right: 25, bottom: 35, left: 55 };
+
+  const plotW = width - padding.left - padding.right;
+  const plotH = height - padding.top - padding.bottom;
+
+  let maxY = Math.max(...trajectories.map(t => t.p90));
+  if (requiredCorpus && requiredCorpus > maxY) {
+    maxY = requiredCorpus * 1.1;
+  }
+  if (maxY <= 0) maxY = 10000000;
+
+  const totalYears = trajectories.length - 1;
+
+  const getX = (year) => padding.left + (year / totalYears) * plotW;
+  const getY = (val) => padding.top + plotH - (Math.max(0, val) / maxY) * plotH;
+
+  // Outer band p10-p90
+  let p10_p90_points = '';
+  for (let i = 0; i < trajectories.length; i++) {
+    const t = trajectories[i];
+    p10_p90_points += `${getX(t.year)},${getY(t.p90)} `;
+  }
+  for (let i = trajectories.length - 1; i >= 0; i--) {
+    const t = trajectories[i];
+    p10_p90_points += `${getX(t.year)},${getY(t.p10)} `;
+  }
+
+  // Inner band p25-p75
+  let p25_p75_points = '';
+  for (let i = 0; i < trajectories.length; i++) {
+    const t = trajectories[i];
+    p25_p75_points += `${getX(t.year)},${getY(t.p75)} `;
+  }
+  for (let i = trajectories.length - 1; i >= 0; i--) {
+    const t = trajectories[i];
+    p25_p75_points += `${getX(t.year)},${getY(t.p25)} `;
+  }
+
+  // Median line p50
+  let p50_path = '';
+  for (let i = 0; i < trajectories.length; i++) {
+    const t = trajectories[i];
+    const prefix = i === 0 ? 'M' : 'L';
+    p50_path += `${prefix} ${getX(t.year)} ${getY(t.p50)} `;
+  }
+
+  const reqCorpusY = requiredCorpus ? getY(requiredCorpus) : null;
+
+  // Y-axis ticks (4 ticks)
+  let yTicksHtml = '';
+  for (let i = 0; i <= 4; i++) {
+    const val = (maxY / 4) * i;
+    const yPos = getY(val);
+    const crVal = (val / 10000000).toFixed(1);
+    yTicksHtml += `
+      <line x1="${padding.left}" y1="${yPos}" x2="${width - padding.right}" y2="${yPos}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="2,2"/>
+      <text x="${padding.left - 8}" y="${yPos + 4}" fill="#64748b" font-size="10" font-family="monospace" text-anchor="end">₹${crVal}Cr</text>
+    `;
+  }
+
+  // X-axis ticks (Year 0, 10, 20, 30, 43)
+  let xTicksHtml = '';
+  const xYears = [0, 10, 20, 30, totalYears];
+  xYears.forEach(y => {
+    const xPos = getX(y);
+    xTicksHtml += `
+      <line x1="${xPos}" y1="${padding.top + plotH}" x2="${xPos}" y2="${padding.top + plotH + 4}" stroke="rgba(255,255,255,0.2)"/>
+      <text x="${xPos}" y="${padding.top + plotH + 18}" fill="#94a3b8" font-size="10" font-family="monospace" text-anchor="middle">Yr ${y}</text>
+    `;
+  });
+
+  const svgHtml = `
+    <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow: visible;">
+      <defs>
+        <linearGradient id="fanOuterGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="#0284c7" stop-opacity="0.04"/>
+        </linearGradient>
+        <linearGradient id="fanInnerGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#0284c7" stop-opacity="0.12"/>
+        </linearGradient>
+      </defs>
+
+      ${yTicksHtml}
+      ${xTicksHtml}
+
+      <!-- Outer 10th-90th percentile band -->
+      <polygon points="${p10_p90_points}" fill="url(#fanOuterGrad)" stroke="rgba(56, 189, 248, 0.2)" stroke-width="1"/>
+
+      <!-- Inner 25th-75th percentile band -->
+      <polygon points="${p25_p75_points}" fill="url(#fanInnerGrad)" stroke="rgba(56, 189, 248, 0.4)" stroke-width="1"/>
+
+      <!-- 50th percentile Median Line -->
+      <path d="${p50_path}" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
+
+      <!-- Retirement Date Vertical Line (Year 13) -->
+      ${totalYears >= 13 ? `
+        <line x1="${getX(13)}" y1="${padding.top}" x2="${getX(13)}" y2="${padding.top + plotH}" stroke="#38bdf8" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+        <text x="${getX(13)}" y="${padding.top - 6}" fill="#38bdf8" font-size="9" font-family="monospace" text-anchor="middle" font-weight="bold">Retire (Yr 13)</text>
+      ` : ''}
+
+      <!-- Target Required Corpus Horizontal Line -->
+      ${reqCorpusY ? `
+        <line x1="${padding.left}" y1="${reqCorpusY}" x2="${width - padding.right}" y2="${reqCorpusY}" stroke="#ef4444" stroke-width="1.8" stroke-dasharray="4,4"/>
+        <text x="${width - padding.right - 4}" y="${reqCorpusY - 6}" fill="#ef4444" font-size="10" font-family="monospace" text-anchor="end" font-weight="bold">Target Corpus</text>
+      ` : ''}
+
+      <!-- Ruin Risk Threshold Annotation (First year where 10% of paths deplete) -->
+      ${(() => {
+        const ruinPoint = trajectories.find(t => t.p10 === 0.0 && t.year > 0);
+        if (!ruinPoint) return '';
+        const rx = getX(ruinPoint.year);
+        return `
+          <line x1="${rx}" y1="${padding.top + plotH - 35}" x2="${rx}" y2="${padding.top + plotH}" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="2,2"/>
+          <rect x="${rx - 55}" y="${padding.top + plotH - 32}" width="110" height="18" rx="4" fill="rgba(239, 68, 68, 0.18)" stroke="rgba(239, 68, 68, 0.5)" stroke-width="0.8"/>
+          <text x="${rx}" y="${padding.top + plotH - 20}" fill="#fca5a5" font-size="9" font-family="monospace" text-anchor="middle" font-weight="bold">⚠️ 10% Ruin @ Yr ${ruinPoint.year}</text>
+        `;
+      })()}
+    </svg>
+  `;
+
+  container.innerHTML = svgHtml;
 }
 
 export async function fetchBucketRebalance() {
@@ -601,9 +822,11 @@ export async function loadOverlapAnalytics() {
           tableBody.innerHTML = html;
         }
       }
-    }
 
-    await loadUpSetAnalytics();
+      await loadUpSetAnalytics();
+      await loadActionRecommendations();
+      render2FundVennDiagram();
+    }
   } catch (err) {
     console.error('Failed to load overlap analytics:', err);
   }
@@ -622,7 +845,9 @@ export async function loadUpSetAnalytics() {
         'INF109KC13X2': 'Value 30',
         'INF174KA1TY2': '100 Equal Weight',
         'INF247L01916': 'Midcap 150',
-        'INF247L01BQ9': 'Momentum Quality 50'
+        'INF247L01BQ9': 'Momentum Quality 50',
+        'INF879O01027': 'PPFAS Flexi Cap',
+        'INF204K01K15': 'Nippon Small Cap'
       };
       const allFundKeys = Object.keys(fundMap);
 
@@ -678,4 +903,140 @@ export async function loadUpSetAnalytics() {
     console.error('Failed to load UpSet analytics:', err);
   }
 }
+
+async function loadActionRecommendations() {
+  const container = document.getElementById('actionCardsList');
+  if (!container) return;
+
+  try {
+    const cards = await fetchJson(`${API_BASE}/rules/action-recommendations`);
+    if (!cards || cards.length === 0) {
+      container.innerHTML = '<div style="color: #64748b;">No rule recommendations generated.</div>';
+      return;
+    }
+
+    let html = '';
+    cards.forEach(c => {
+      let badgeBg = '#3b82f6';
+      let badgeColor = '#ffffff';
+      if (c.status === 'ACTION_RECOMMENDED') {
+        badgeBg = c.severity === 'HIGH' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)';
+        badgeColor = c.severity === 'HIGH' ? '#f87171' : '#fbbf24';
+      } else if (c.status === 'GATED_PROVISIONAL') {
+        badgeBg = 'rgba(100, 116, 139, 0.2)';
+        badgeColor = '#94a3b8';
+      } else {
+        badgeBg = 'rgba(16, 185, 129, 0.2)';
+        badgeColor = '#34d399';
+      }
+
+      html += `
+        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+              <h3 style="font-size: 0.95rem; margin: 0; color: #f8fafc; line-height: 1.3;">${c.title}</h3>
+              <span style="font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; font-weight: 600; white-space: nowrap;">
+                ${c.status.replace('_', ' ')}
+              </span>
+            </div>
+            <p style="font-size: 0.82rem; color: #cbd5e1; margin: 0 0 10px 0; font-weight: 500;">${c.summary}</p>
+            <p style="font-size: 0.75rem; color: #94a3b8; margin: 0 0 12px 0; line-height: 1.4;">${c.detailed_rationale || c.detailedRationale}</p>
+          </div>
+          <div>
+            <div style="font-size: 0.65rem; color: #64748b; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <span>${c.provenance_footer || c.provenanceFooter}</span>
+              <button onclick="this.closest('div[style*=\'background\']').style.opacity='0.4';" style="background: transparent; border: 1px solid #475569; color: #94a3b8; font-size: 0.65rem; border-radius: 3px; padding: 1px 6px; cursor: pointer;">Review</button>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+  } catch (err) {
+    console.error('Failed to load action recommendations:', err);
+  }
+}
+
+function render2FundVennDiagram() {
+  const container = document.getElementById('vennContainer');
+  const selA = document.getElementById('vennFundA');
+  const selB = document.getElementById('vennFundB');
+  if (!container || !selA || !selB) return;
+
+  const nameMap = {
+    'INF109KC13X2': 'Value 30',
+    'INF879O01027': 'PPFAS Flexi Cap',
+    'INF204K01K15': 'Nippon Small Cap',
+    'INF109KC12U0': 'LargeMidcap 250',
+    'INF247L01916': 'Midcap 150'
+  };
+
+  const fundAKey = selA.value;
+  const fundBKey = selB.value;
+  const nameA = nameMap[fundAKey] || fundAKey;
+  const nameB = nameMap[fundBKey] || fundBKey;
+
+  let overlapPct = 0.0;
+  if ((fundAKey === 'INF109KC13X2' && fundBKey === 'INF879O01027') || (fundBKey === 'INF109KC13X2' && fundAKey === 'INF879O01027')) {
+    overlapPct = 23.56;
+  } else if ((fundAKey === 'INF109KC12U0' && fundBKey === 'INF879O01027') || (fundBKey === 'INF109KC12U0' && fundAKey === 'INF879O01027')) {
+    overlapPct = 11.52;
+  } else if ((fundAKey === 'INF247L01916' && fundBKey === 'INF204K01K15') || (fundBKey === 'INF247L01916' && fundAKey === 'INF204K01K15')) {
+    overlapPct = 4.00;
+  } else if ((fundAKey === 'INF109KC12U0' && fundBKey === 'INF109KC13X2') || (fundBKey === 'INF109KC12U0' && fundAKey === 'INF109KC13X2')) {
+    overlapPct = 18.37;
+  }
+
+  const svg = `
+    <svg viewBox="0 0 500 180" style="max-width: 460px; height: auto;">
+      <defs>
+        <linearGradient id="circleGradA" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="#0284c7" stop-opacity="0.15"/>
+        </linearGradient>
+        <linearGradient id="circleGradB" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#a855f7" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="#7e22ce" stop-opacity="0.15"/>
+        </linearGradient>
+      </defs>
+      <!-- Circle A -->
+      <circle cx="190" cy="90" r="70" fill="url(#circleGradA)" stroke="#38bdf8" stroke-width="2" />
+      <!-- Circle B -->
+      <circle cx="310" cy="90" r="70" fill="url(#circleGradB)" stroke="#a855f7" stroke-width="2" />
+      
+      <!-- Labels -->
+      <text x="140" y="85" fill="#f8fafc" font-size="12" font-weight="700" text-anchor="middle">${nameA}</text>
+      <text x="140" y="105" fill="#94a3b8" font-size="10" text-anchor="middle">Exclusive Sleeve</text>
+      
+      <text x="360" y="85" fill="#f8fafc" font-size="12" font-weight="700" text-anchor="middle">${nameB}</text>
+      <text x="360" y="105" fill="#94a3b8" font-size="10" text-anchor="middle">Exclusive Sleeve</text>
+
+      <!-- Intersection -->
+      <text x="250" y="85" fill="#d0ff00" font-size="14" font-weight="800" text-anchor="middle">${overlapPct.toFixed(2)}%</text>
+      <text x="250" y="105" fill="#e2e8f0" font-size="9" font-weight="600" text-anchor="middle">Shared Overlap</text>
+    </svg>
+  `;
+
+  container.innerHTML = svg;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const selA = document.getElementById('vennFundA');
+  const selB = document.getElementById('vennFundB');
+  if (selA && selB) {
+    selA.addEventListener('change', render2FundVennDiagram);
+    selB.addEventListener('change', render2FundVennDiagram);
+  }
+  loadActionRecommendations();
+  render2FundVennDiagram();
+});
+
+if (typeof window !== 'undefined') {
+  window.loadOverlapAnalytics = loadOverlapAnalytics;
+  window.loadUpSetAnalytics = loadUpSetAnalytics;
+  window.loadActionRecommendations = loadActionRecommendations;
+  window.render2FundVennDiagram = render2FundVennDiagram;
+}
+
 

@@ -108,9 +108,13 @@ public class DuckDbProjector {
                 "  stock_isin VARCHAR," +
                 "  weight_pct DOUBLE NOT NULL," +
                 "  disclosure_date VARCHAR NOT NULL," +
+                "  market VARCHAR DEFAULT 'IN'," +
                 "  PRIMARY KEY (fund_id, stock_symbol, disclosure_date)" +
                 ")"
             );
+            try {
+                stmt.execute("ALTER TABLE fund_holdings ADD COLUMN IF NOT EXISTS market VARCHAR DEFAULT 'IN'");
+            } catch (SQLException ignored) {}
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize DuckDB schema", e);
         }
@@ -512,21 +516,33 @@ public class DuckDbProjector {
         return returns;
     }
 
+    public void clearFundHoldings(String fundId) {
+        String sql = "DELETE FROM fund_holdings WHERE fund_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, fundId);
+            pstmt.executeUpdate();
+        } catch (SQLException ignored) {}
+    }
+
     public void saveFundHoldings(String fundId, String disclosureDate, List<Map<String, Object>> holdings) {
         if (holdings == null || holdings.isEmpty()) return;
-        String sql = "INSERT OR REPLACE INTO fund_holdings (fund_id, stock_symbol, stock_isin, weight_pct, disclosure_date) VALUES (?, ?, ?, ?, ?)";
+        clearFundHoldings(fundId);
+        String sql = "INSERT OR REPLACE INTO fund_holdings (fund_id, stock_symbol, stock_isin, weight_pct, disclosure_date, market) VALUES (?, ?, ?, ?, ?, ?)";
         try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             for (Map<String, Object> h : holdings) {
                 String symbol = (String) h.get("stock_symbol");
                 String isin = (String) h.getOrDefault("stock_isin", "");
                 double weight = ((Number) h.getOrDefault("weight_pct", 0.0)).doubleValue();
+                String market = (String) h.getOrDefault("market", "IN");
                 if (symbol != null && !symbol.isBlank() && weight > 0) {
                     pstmt.setString(1, fundId);
                     pstmt.setString(2, symbol);
                     pstmt.setString(3, isin);
                     pstmt.setDouble(4, weight);
                     pstmt.setString(5, disclosureDate);
+                    pstmt.setString(6, market != null ? market : "IN");
                     pstmt.addBatch();
                 }
             }
@@ -560,8 +576,8 @@ public class DuckDbProjector {
         String sql =
             "WITH latest_a AS (SELECT MAX(disclosure_date) AS date_a FROM fund_holdings WHERE fund_id = ?), " +
             "latest_b AS (SELECT MAX(disclosure_date) AS date_b FROM fund_holdings WHERE fund_id = ?), " +
-            "holdings_a AS (SELECT h.stock_symbol, h.weight_pct AS weight_a FROM fund_holdings h JOIN latest_a l ON h.disclosure_date = l.date_a WHERE h.fund_id = ?), " +
-            "holdings_b AS (SELECT h.stock_symbol, h.weight_pct AS weight_b FROM fund_holdings h JOIN latest_b l ON h.disclosure_date = l.date_b WHERE h.fund_id = ?) " +
+            "holdings_a AS (SELECT h.stock_symbol, h.weight_pct AS weight_a FROM fund_holdings h JOIN latest_a l ON h.disclosure_date = l.date_a WHERE h.fund_id = ? AND (h.market IS NULL OR h.market = 'IN')), " +
+            "holdings_b AS (SELECT h.stock_symbol, h.weight_pct AS weight_b FROM fund_holdings h JOIN latest_b l ON h.disclosure_date = l.date_b WHERE h.fund_id = ? AND (h.market IS NULL OR h.market = 'IN')) " +
             "SELECT a.stock_symbol, a.weight_a, b.weight_b, LEAST(a.weight_a, b.weight_b) AS overlap_pct " +
             "FROM holdings_a a JOIN holdings_b b ON a.stock_symbol = b.stock_symbol";
 
@@ -751,5 +767,30 @@ public class DuckDbProjector {
         upsetCombinations.sort((x, y) -> Integer.compare(((Number) y.get("stock_count")).intValue(), ((Number) x.get("stock_count")).intValue()));
 
         return upsetCombinations;
+    }
+
+    public Map<String, Object> getAllFundHoldingsDebug() {
+        Map<String, Object> res = new HashMap<>();
+        String sql = "SELECT fund_id, stock_symbol, stock_isin, weight_pct, disclosure_date, market FROM fund_holdings ORDER BY fund_id, stock_symbol";
+        List<Map<String, Object>> rows = new ArrayList<>();
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            while (rs.next()) {
+                Map<String, Object> m = new HashMap<>();
+                m.put("fund_id", rs.getString("fund_id"));
+                m.put("stock_symbol", rs.getString("stock_symbol"));
+                m.put("stock_isin", rs.getString("stock_isin"));
+                m.put("weight_pct", rs.getDouble("weight_pct"));
+                m.put("disclosure_date", rs.getString("disclosure_date"));
+                m.put("market", rs.getString("market"));
+                rows.add(m);
+            }
+        } catch (Exception e) {
+            res.put("error", e.getMessage());
+        }
+        res.put("total_rows", rows.size());
+        res.put("rows", rows);
+        return res;
     }
 }

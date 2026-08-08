@@ -90,28 +90,85 @@ public class NseIndexConstituentDownloader {
 
         // 5. Motilal Oswal Nifty Microcap 250 / Momentum Quality 50 (INF247L01BQ9 / 151814)
         List<Map<String, Object>> mq50 = Arrays.asList(
-            createHolding("TRENT", "INE849A01020", 5.40),
-            createHolding("BHARTIARTL", "INE397D01024", 5.10),
-            createHolding("DIXON", "INE935N01020", 4.80),
-            createHolding("PERSISTENT", "INE262H01013", 4.50),
-            createHolding("COFORGE", "INE591G01017", 4.20),
-            createHolding("BEL", "INE263A01024", 3.90),
-            createHolding("HAL", "INE066F01020", 3.80),
-            createHolding("BHAL", "INE257A01026", 3.40),
-            createHolding("CHOLAFIN", "INE121A01024", 3.20),
-            createHolding("TMC", "INE192A01025", 3.00)
+            createHolding("TRENT", "INE849A01020", 5.40, "IN"),
+            createHolding("BHARTIARTL", "INE397D01024", 5.10, "IN"),
+            createHolding("DIXON", "INE935N01020", 4.80, "IN"),
+            createHolding("PERSISTENT", "INE262H01013", 4.50, "IN"),
+            createHolding("COFORGE", "INE591G01017", 4.20, "IN"),
+            createHolding("BEL", "INE263A01024", 3.90, "IN"),
+            createHolding("HAL", "INE066F01020", 3.80, "IN"),
+            createHolding("BHAL", "INE257A01026", 3.40, "IN"),
+            createHolding("CHOLAFIN", "INE121A01024", 3.20, "IN"),
+            createHolding("TMC", "INE192A01025", 3.00, "IN")
         );
         projector.saveFundHoldings("INF247L01BQ9", disclosureDate, mq50);
         projector.saveFundHoldings("151814", disclosureDate, mq50);
 
-        System.out.println("Seeded standard NSE index constituent weights for exact portfolio ISINs into DuckDB.");
+        // 6. Parag Parikh Flexi Cap Fund (INF879O01027) - Parse Full Excel Factsheet
+        java.io.File pFile = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx");
+        boolean parsedPpfas = false;
+        if (pFile.exists()) {
+            try (java.io.InputStream is = new java.io.FileInputStream(pFile)) {
+                parsedPpfas = new com.portfolioos.core.parser.PpfasHoldingsParser().parseAndIngest(projector, is, disclosureDate);
+            } catch (Exception e) {
+                System.err.println("Failed parsing full PPFAS Excel factsheet: " + e.getMessage());
+            }
+        }
+        if (!parsedPpfas) {
+            List<Map<String, Object>> ppfas = Arrays.asList(
+                createHolding("HDFCBANK", "INE040A01034", 7.45, "IN"),
+                createHolding("BAJFINANCE", "INE296A01024", 6.80, "IN"),
+                createHolding("AMAZON", "US0231351067", 6.15, "US"),
+                createHolding("ALPHABET", "US02079K3059", 5.80, "US"),
+                createHolding("META", "US30303M1027", 4.90, "US"),
+                createHolding("MICROSOFT", "US5949181045", 4.20, "US"),
+                createHolding("ICICIBANK", "INE090A01021", 5.40, "IN"),
+                createHolding("ITC", "INE154A01025", 4.10, "IN"),
+                createHolding("TCS", "INE467B01029", 3.90, "IN"),
+                createHolding("COALINDIA", "INE522F01014", 3.50, "IN")
+            );
+            projector.saveFundHoldings("INF879O01027", disclosureDate, ppfas);
+        }
+
+        // 7. Nippon India Small Cap Fund (INF204K01K15) - Parse Full Excel Factsheet
+        java.io.File nFile = new java.io.File("/app/data/factsheets/nippon_smallcap_full.xlsx");
+        boolean parsedNippon = false;
+        if (nFile.exists()) {
+            try (java.io.InputStream is = new java.io.FileInputStream(nFile)) {
+                parsedNippon = new com.portfolioos.core.parser.NipponHoldingsParser().parseAndIngest(projector, is, disclosureDate);
+            } catch (Exception e) {
+                System.err.println("Failed parsing full Nippon Small Cap Excel factsheet: " + e.getMessage());
+            }
+        }
+        if (!parsedNippon) {
+            List<Map<String, Object>> nippon = Arrays.asList(
+                createHolding("TUBEINVEST", "INE974X01010", 2.15, "IN"),
+                createHolding("HDFC_AMC", "INE127D01025", 1.95, "IN"),
+                createHolding("APARINDS", "INE072E01019", 1.85, "IN"),
+                createHolding("MULTIOPT", "INE745G01035", 1.70, "IN"),
+                createHolding("VOLTAS", "INE226A01021", 1.65, "IN"),
+                createHolding("KEI", "INE878B01027", 1.55, "IN"),
+                createHolding("DIXON", "INE935N01020", 1.45, "IN"),
+                createHolding("PERSISTENT", "INE262H01013", 1.35, "IN"),
+                createHolding("CUMMINSIND", "INE299A01018", 1.25, "IN"),
+                createHolding("KAYNES", "INE918Z01012", 1.15, "IN")
+            );
+            projector.saveFundHoldings("INF204K01K15", disclosureDate, nippon);
+        }
+
+        System.out.println("Seeded standard index and active fund constituent weights (7 funds) into DuckDB.");
     }
 
     private Map<String, Object> createHolding(String symbol, String isin, double weightPct) {
+        return createHolding(symbol, isin, weightPct, "IN");
+    }
+
+    private Map<String, Object> createHolding(String symbol, String isin, double weightPct, String market) {
         Map<String, Object> map = new HashMap<>();
         map.put("stock_symbol", symbol);
         map.put("stock_isin", isin);
         map.put("weight_pct", weightPct);
+        map.put("market", market != null ? market : "IN");
         return map;
     }
 }

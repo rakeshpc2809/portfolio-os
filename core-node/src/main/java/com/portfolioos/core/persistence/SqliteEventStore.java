@@ -119,8 +119,12 @@ public class SqliteEventStore implements EventStorePort {
     }
 
     private String computeHash(String prevHash, TaxEvent event) {
-        String raw = prevHash + "|" + event.id() + "|" + event.assetId() + "|" + event.eventType().name() + "|" +
-                     event.eventDate().toString() + "|" + toCanonicalString(event.units()) + "|" +
+        String isinStr = event.isin() != null ? event.isin() : "";
+        String nameStr = event.assetName() != null ? event.assetName() : "";
+        BigDecimal price = event.pricePerUnit() != null ? event.pricePerUnit() : BigDecimal.ZERO;
+        String raw = prevHash + "|" + event.id() + "|" + event.assetId() + "|" + isinStr + "|" + nameStr + "|" +
+                     event.eventType().name() + "|" + event.eventDate().toString() + "|" +
+                     toCanonicalString(event.units()) + "|" + toCanonicalString(price) + "|" +
                      toCanonicalString(event.grossAmount()) + "|" + event.sourceDocumentId();
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
@@ -247,7 +251,7 @@ public class SqliteEventStore implements EventStorePort {
 
     @Override
     public boolean verifyLedgerIntegrity() {
-        String sql = "SELECT previous_hash, event_hash, id, asset_id, event_type, event_date, units, gross_amount, source_document_id FROM tax_events ORDER BY ingested_at ASC, id ASC";
+        String sql = "SELECT previous_hash, event_hash, id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id FROM tax_events ORDER BY ingested_at ASC, id ASC";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
@@ -261,16 +265,19 @@ public class SqliteEventStore implements EventStorePort {
                     return false;
                 }
 
+                String priceStr = rs.getString("price_per_unit");
+                BigDecimal price = (priceStr != null && !priceStr.isBlank()) ? new BigDecimal(priceStr) : BigDecimal.ZERO;
+
                 TaxEvent mockEvent = new TaxEvent(
                     rs.getString("id"),
                     rs.getString("asset_id"),
-                    "",
-                    null,
+                    rs.getString("asset_name"),
+                    rs.getString("isin"),
                     EventType.valueOf(rs.getString("event_type")),
                     LocalDate.parse(rs.getString("event_date")),
-                    rs.getBigDecimal("units"),
-                    BigDecimal.ZERO,
-                    rs.getBigDecimal("gross_amount"),
+                    new BigDecimal(rs.getString("units")),
+                    price,
+                    new BigDecimal(rs.getString("gross_amount")),
                     rs.getString("source_document_id"),
                     null
                 );
