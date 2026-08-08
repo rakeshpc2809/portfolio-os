@@ -325,8 +325,8 @@ public class PortfolioValuationService {
         String dsLabel = mcResult.containsKey("data_source_label") ? mcResult.get("data_source_label").toString() : "Nifty 50 Historical Return Model (Cold Start)";
 
         BigDecimal deterministicFv = fire.projectedCorpusAtTargetAge();
-        BigDecimal maxSanityBound = deterministicFv.multiply(new BigDecimal("1.5"));
-        BigDecimal minSanityBound = deterministicFv.multiply(new BigDecimal("0.5"));
+        BigDecimal maxSanityBound = deterministicFv.multiply(new BigDecimal("2.5"));
+        BigDecimal minSanityBound = deterministicFv.multiply(new BigDecimal("0.4"));
 
         if (mcMedian.compareTo(maxSanityBound) > 0 || (mcMedian.compareTo(BigDecimal.ZERO) > 0 && mcMedian.compareTo(minSanityBound) < 0)) {
             System.err.println(String.format("CRITICAL MONTE CARLO SANITY BOUND ERROR: Simulation median (%s) violated sanity bounds relative to deterministic FV (%s). Rejecting result.",

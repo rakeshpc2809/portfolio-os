@@ -281,34 +281,64 @@ public class DuckDbProjector {
     public List<Double> getHistoricalDailyReturns() {
         List<Double> returns = new ArrayList<>();
         try (Connection conn = getConnection()) {
-            String sql = "SELECT asset_id, nav_date, nav FROM nav_history WHERE nav > 0 ORDER BY asset_id ASC, nav_date ASC";
+            String sql = """
+                WITH daily_nav AS (
+                    SELECT asset_id, nav_date, nav
+                    FROM nav_history
+                    WHERE nav > 0
+                ),
+                holding_units AS (
+                    SELECT asset_id,
+                           SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(units AS DOUBLE) ELSE -CAST(units AS DOUBLE) END) as net_units
+                    FROM projected_events
+                    GROUP BY asset_id
+                    HAVING net_units > 0
+                ),
+                portfolio_daily_val AS (
+                    SELECT n.nav_date,
+                           SUM(h.net_units * n.nav) AS total_val,
+                           COUNT(DISTINCT n.asset_id) AS asset_count
+                    FROM daily_nav n
+                    JOIN holding_units h ON n.asset_id = h.asset_id
+                    GROUP BY n.nav_date
+                    HAVING asset_count >= 1
+                    ORDER BY n.nav_date ASC
+                ),
+                daily_changes AS (
+                    SELECT nav_date,
+                           total_val,
+                           LAG(nav_date) OVER (ORDER BY nav_date ASC) AS prev_date,
+                           LAG(total_val) OVER (ORDER BY nav_date ASC) AS prev_val
+                    FROM portfolio_daily_val
+                )
+                SELECT nav_date, prev_date, total_val, prev_val
+                FROM daily_changes
+                WHERE prev_val IS NOT NULL AND prev_val > 0;
+            """;
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(sql)) {
-                String prevAsset = null;
-                java.time.LocalDate prevDate = null;
-                double prevNav = -1.0;
                 while (rs.next()) {
-                    String currAsset = rs.getString("asset_id");
                     String dateStr = rs.getString("nav_date");
-                    double currNav = rs.getDouble("nav");
+                    String prevDateStr = rs.getString("prev_date");
+                    double currVal = rs.getDouble("total_val");
+                    double prevVal = rs.getDouble("prev_val");
                     java.time.LocalDate currDate = null;
+                    java.time.LocalDate prevDate = null;
                     try {
                         currDate = java.time.LocalDate.parse(dateStr);
+                        prevDate = java.time.LocalDate.parse(prevDateStr);
                     } catch (Exception ignored) {}
 
-                    if (prevAsset != null && prevAsset.equals(currAsset) && prevNav > 0 && prevDate != null && currDate != null) {
+                    if (currDate != null && prevDate != null && prevVal > 0) {
                         long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(prevDate, currDate);
                         if (daysBetween >= 1 && daysBetween <= 5) {
-                            double totalRet = (currNav - prevNav) / prevNav;
+                            double totalRet = (currVal - prevVal) / prevVal;
                             if (Math.abs(totalRet) < 0.08 * daysBetween) {
                                 double dailyRet = Math.pow(1.0 + totalRet, 1.0 / daysBetween) - 1.0;
                                 returns.add(dailyRet);
                             }
                         }
                     }
-                    prevAsset = currAsset;
-                    prevDate = currDate;
-                    prevNav = currNav;
                 }
             }
         } catch (Exception ignored) {}
