@@ -1035,9 +1035,7 @@ export async function loadUnifiedRebalancePlan(triggerType = 'INDUCED', manualAm
       };
     }
 
-    const res = await fetch(url, options);
-    if (!res.ok) return;
-    const plan = await res.json();
+    const plan = await fetchJson(url, options);
     renderUnifiedRebalancePlanUI(plan);
   } catch (err) {
     console.error('Failed to load Unified Rebalance Plan:', err);
@@ -1405,7 +1403,6 @@ function renderTacticalActionMatrix(plan) {
   };
 
   recalculateMetrics();
-}
 }
 
 document.addEventListener('DOMContentLoaded', () => {

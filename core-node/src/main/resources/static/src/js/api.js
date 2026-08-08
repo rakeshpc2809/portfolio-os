@@ -2,23 +2,43 @@ export const API_BASE = '/api/v1';
 
 export const DEFAULT_AUTH_TOKEN = 'fintracker-cachyos-default-key-2026';
 
+export function getAuthToken() {
+  let token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN;
+  if (!token || token === 'undefined' || token === 'null') {
+    token = DEFAULT_AUTH_TOKEN;
+    localStorage.setItem('API_AUTH_TOKEN', DEFAULT_AUTH_TOKEN);
+  }
+  return token;
+}
+
 export function getAuthHeaders(extraHeaders = {}) {
-  const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
   return {
     ...extraHeaders,
-    'X-Api-Auth-Token': token
+    'X-Api-Auth-Token': getAuthToken()
   };
 }
 
 export async function fetchJson(url, options = {}) {
-  const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
+  let token = getAuthToken();
   let fullUrl = url.startsWith('http') || url.startsWith('/api/v1') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
   const separator = fullUrl.includes('?') ? '&' : '?';
   if (!fullUrl.includes('token=')) {
     fullUrl = `${fullUrl}${separator}token=${encodeURIComponent(token)}`;
   }
-  const headers = getAuthHeaders(options.headers || {});
-  const res = await fetch(fullUrl, { ...options, headers });
+
+  const headers = { ...getAuthHeaders(options.headers || {}) };
+  let res = await fetch(fullUrl, { ...options, headers });
+
+  if (res.status === 401 && token !== DEFAULT_AUTH_TOKEN) {
+    // Stale token in localStorage -> reset to default & retry
+    console.warn('Received 401 Unauthorized with cached token, resetting to DEFAULT_AUTH_TOKEN and retrying...');
+    token = DEFAULT_AUTH_TOKEN;
+    localStorage.setItem('API_AUTH_TOKEN', DEFAULT_AUTH_TOKEN);
+    headers['X-Api-Auth-Token'] = DEFAULT_AUTH_TOKEN;
+    fullUrl = fullUrl.replace(/token=[^&]+/, `token=${encodeURIComponent(DEFAULT_AUTH_TOKEN)}`);
+    res = await fetch(fullUrl, { ...options, headers });
+  }
+
   if (!res.ok) {
     throw new Error(`HTTP error! status: ${res.status}`);
   }
