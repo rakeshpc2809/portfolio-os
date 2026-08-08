@@ -557,7 +557,7 @@ export async function loadBenchmarkAnalytics() {
 
 export async function loadOverlapAnalytics() {
   try {
-    const res = await fetchJson(`${API_BASE}/analytics/overlap?fundA=INF247L01BM8&fundB=INF247L01AX8`);
+    const res = await fetchJson(`${API_BASE}/analytics/overlap?fundA=INF109KC13X2&fundB=INF109KC12U0`);
     if (res && res.status === 'OK') {
       const pairwise = res.pairwise_overlap;
       const concentrations = res.portfolio_top_stock_concentrations;

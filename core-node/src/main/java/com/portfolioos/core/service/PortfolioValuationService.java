@@ -513,8 +513,8 @@ public class PortfolioValuationService {
     public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB) {
         new com.portfolioos.core.nav.NseIndexConstituentDownloader().seedStandardIndexConstituents(duckDbProjector);
 
-        String idA = (fundA != null && !fundA.isBlank()) ? fundA : "INF247L01BM8";
-        String idB = (fundB != null && !fundB.isBlank()) ? fundB : "INF247L01AX8";
+        String idA = (fundA != null && !fundA.isBlank()) ? fundA : "INF109KC13X2";
+        String idB = (fundB != null && !fundB.isBlank()) ? fundB : "INF109KC12U0";
 
         Map<String, Object> pairwise = duckDbProjector.getPairwiseFundOverlap(idA, idB);
 
@@ -530,9 +530,20 @@ public class PortfolioValuationService {
 
         List<Map<String, Object>> concentrations = duckDbProjector.getPortfolioStockConcentrations(fundValuations);
 
+        List<String> indexFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916");
+        List<Map<String, Object>> matrix = new ArrayList<>();
+        for (int i = 0; i < indexFundIds.size(); i++) {
+            for (int j = i + 1; j < indexFundIds.size(); j++) {
+                String fa = indexFundIds.get(i);
+                String fb = indexFundIds.get(j);
+                matrix.add(duckDbProjector.getPairwiseFundOverlap(fa, fb));
+            }
+        }
+
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
         response.put("pairwise_overlap", pairwise);
+        response.put("pairwise_matrix", matrix);
         response.put("portfolio_top_stock_concentrations", concentrations);
         return response;
     }

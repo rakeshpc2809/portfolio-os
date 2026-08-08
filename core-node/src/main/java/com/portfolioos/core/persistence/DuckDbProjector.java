@@ -597,10 +597,8 @@ public class DuckDbProjector {
         List<Map<String, Object>> concentrations = new ArrayList<>();
         if (fundValuations == null || fundValuations.isEmpty()) return concentrations;
 
-        double totalEquityValuation = fundValuations.values().stream().mapToDouble(Double::doubleValue).sum();
-        if (totalEquityValuation <= 0) return concentrations;
-
         Map<String, Double> stockRupeeMap = new HashMap<>();
+        double totalIngestedValuation = 0.0;
 
         for (Map.Entry<String, Double> entry : fundValuations.entrySet()) {
             String fundId = entry.getKey();
@@ -609,12 +607,14 @@ public class DuckDbProjector {
             String sql = "WITH latest AS (SELECT MAX(disclosure_date) AS max_d FROM fund_holdings WHERE fund_id = ?) " +
                          "SELECT h.stock_symbol, h.weight_pct FROM fund_holdings h JOIN latest l ON h.disclosure_date = l.max_d WHERE h.fund_id = ?";
 
+            boolean fundHasHoldings = false;
             try (Connection conn = getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(sql)) {
                 pstmt.setString(1, fundId);
                 pstmt.setString(2, fundId);
                 try (ResultSet rs = pstmt.executeQuery()) {
                     while (rs.next()) {
+                        fundHasHoldings = true;
                         String symbol = rs.getString("stock_symbol");
                         double weight = rs.getDouble("weight_pct");
                         double rupeeContrib = (weight / 100.0) * valuation;
@@ -624,12 +624,18 @@ public class DuckDbProjector {
             } catch (Exception e) {
                 System.err.println("Concentration query failed for fund " + fundId + ": " + e.getMessage());
             }
+
+            if (fundHasHoldings) {
+                totalIngestedValuation += valuation;
+            }
         }
+
+        if (totalIngestedValuation <= 0) return concentrations;
 
         for (Map.Entry<String, Double> entry : stockRupeeMap.entrySet()) {
             String symbol = entry.getKey();
             double rupees = entry.getValue();
-            double portfolioPct = (rupees / totalEquityValuation) * 100.0;
+            double portfolioPct = (rupees / totalIngestedValuation) * 100.0;
 
             Map<String, Object> item = new HashMap<>();
             item.put("stock_symbol", symbol);
