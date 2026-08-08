@@ -1088,7 +1088,7 @@ export function renderUnifiedRebalancePlanUI(plan) {
     windowEl.textContent = trigger.scheduled_window_label || trigger.scheduledWindowLabel || 'March 2027 Window';
   }
 
-  // 2. Render Header
+  // 2. Render Header & Drawdown Gauge
   const titleEl = document.getElementById('planHeadlineTitle');
   const metaEl = document.getElementById('planMetaTimestamp');
   if (titleEl && narrative) {
@@ -1099,57 +1099,60 @@ export function renderUnifiedRebalancePlanUI(plan) {
     metaEl.textContent = `Generated: ${new Date(genAt).toLocaleString()}`;
   }
 
-  // 3. Render Sell-Side Waterfall Diagram
-  const wfContainer = document.getElementById('waterfallVisualDiagram');
-  if (wfContainer && sellSide.waterfall) {
-    let html = '';
-    sellSide.waterfall.forEach((step, idx) => {
-      const skipReason = step.skipped_reason || step.skippedReason;
-      const isSkipped = !!skipReason;
-      const cardBg = isSkipped ? 'rgba(30, 41, 59, 0.4)' : 'rgba(15, 23, 42, 0.8)';
-      const borderColor = isSkipped ? '#475569' : '#38bdf8';
-      const textColor = isSkipped ? '#64748b' : '#f8fafc';
-      const tierLabel = step.tier_label || step.tierLabel || step.tier;
+  // Drawdown Tripwire Depth Gauge
+  const ddPct = drawdownCtx.current_drawdown_pct ?? drawdownCtx.currentDrawdownPct ?? 0;
+  const barEl = document.getElementById('gaugeProgressBar');
+  const markEl = document.getElementById('gaugeIndicatorMarker');
+  const statusEl = document.getElementById('gaugeStatusText');
+  const distEl = document.getElementById('gaugeNextDistance');
 
-      html += `
-        <div style="min-width: 220px; flex: 1; background: ${cardBg}; border: 1px solid ${borderColor}; border-radius: 6px; padding: 12px; position: relative;">
-          <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Step ${idx + 1}: ${tierLabel}</div>
-          <div style="font-size: 1.1rem; font-weight: 800; color: ${textColor}; margin: 6px 0;">
-            ${isSkipped ? '₹0' : '₹' + parseFloat(step.sold).toLocaleString('en-IN')}
-          </div>
-          ${isSkipped ? `<span style="font-size: 0.65rem; background: #334155; color: #cbd5e1; padding: 2px 6px; border-radius: 3px;">${skipReason}</span>` : ''}
-          ${step.lots && step.lots.length > 0 ? `
-            <div style="margin-top: 8px; font-size: 0.7rem; color: #38bdf8; cursor: pointer;" onclick="alert('Lot Details:\\n' + ${JSON.stringify(JSON.stringify(step.lots))})">
-              🔍 Inspect ${step.lots.length} Lot(s)
-            </div>
-          ` : ''}
-        </div>
-      `;
-      if (idx < sellSide.waterfall.length - 1) {
-        html += `<div style="color: #64748b; font-size: 1.2rem;">➔</div>`;
-      }
-    });
-
-    const taxSum = sellSide.tax_summary || sellSide.taxSummary || {};
-    const totReq = sellSide.total_required || sellSide.totalRequired || 60000;
-    const estTax = taxSum.total_tax_estimate ?? taxSum.totalTaxEstimate ?? 0;
-
-    html += `
-      <div style="color: #64748b; font-size: 1.2rem;">➔</div>
-      <div style="min-width: 180px; background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; border-radius: 6px; padding: 12px;">
-        <div style="font-size: 0.7rem; color: #34d399; font-weight: 700;">REBALANCE POOL</div>
-        <div style="font-size: 1.2rem; font-weight: 800; color: #10b981; margin-top: 4px;">
-          ₹${parseFloat(totReq).toLocaleString('en-IN')}
-        </div>
-        <div style="font-size: 0.65rem; color: #a7f3d0; margin-top: 4px;">
-          Est Tax: ₹${parseFloat(estTax).toLocaleString('en-IN')}
-        </div>
-      </div>
-    `;
-    wfContainer.innerHTML = html;
+  if (barEl && markEl) {
+    const gaugeWidth = Math.min(100, Math.max(0, (ddPct / 20.0) * 100));
+    barEl.style.width = `${gaugeWidth}%`;
+    markEl.style.left = `${gaugeWidth}%`;
+  }
+  if (statusEl) {
+    statusEl.textContent = `Current Drawdown: ${ddPct}%`;
+  }
+  if (distEl && drawdownCtx) {
+    const dist = drawdownCtx.next_tier_distance_pct ?? drawdownCtx.nextTierDistancePct ?? 0;
+    const nextT = drawdownCtx.next_tier ?? drawdownCtx.nextTier ?? 'TIER_10';
+    distEl.textContent = `${dist}% to ${nextT}`;
   }
 
-  // 4. Render Narrative Paragraphs
+  // 3. Exemption Headroom Burndown Bar
+  const taxSum = sellSide.tax_summary || sellSide.taxSummary || {};
+  const headroomBefore = taxSum.exemption_headroom_before ?? taxSum.exemptionHeadroomBefore ?? 125000;
+  const tradeExempt = taxSum.total_ltcg_exempt ?? taxSum.totalLtcgExempt ?? 0;
+  const taxableSpill = taxSum.total_stcg_taxable ?? taxSum.totalStcgTaxable ?? 0;
+  const headroomAfter = taxSum.exemption_headroom_after ?? taxSum.exemptionHeadroomAfter ?? 112580;
+  const priorUsed = Math.max(0, 125000 - headroomBefore);
+
+  const burnPriorEl = document.getElementById('burnUsedPrior');
+  const burnTradeEl = document.getElementById('burnTradeExempt');
+  const burnSpillEl = document.getElementById('burnTaxableSpill');
+  const burnRemTag = document.getElementById('burndownHeadroomRemaining');
+
+  if (burnPriorEl) burnPriorEl.style.width = `${(priorUsed / 125000) * 100}%`;
+  if (burnTradeEl) burnTradeEl.style.width = `${(tradeExempt / 125000) * 100}%`;
+  if (burnSpillEl) burnSpillEl.style.width = `${(taxableSpill / 125000) * 100}%`;
+  if (burnRemTag) burnRemTag.textContent = `Remaining Headroom: ₹${headroomAfter.toLocaleString('en-IN')}`;
+
+  const burnTextPrior = document.getElementById('burnTextPrior');
+  const burnTextTrade = document.getElementById('burnTextTrade');
+  const burnTextRem = document.getElementById('burnTextRem');
+
+  if (burnTextPrior) burnTextPrior.textContent = `Prior Used: ₹${priorUsed.toLocaleString('en-IN')}`;
+  if (burnTextTrade) burnTextTrade.textContent = `Trade Exempt: ₹${tradeExempt.toLocaleString('en-IN')}`;
+  if (burnTextRem) burnTextRem.textContent = `Remaining: ₹${headroomAfter.toLocaleString('en-IN')}`;
+
+  // 4. Render Capital Routing Micro-Sankey
+  renderRebalanceMicroSankey(sellSide, buySide);
+
+  // 5. Render Interactive Tactical Action Matrix (Granular Lot Override)
+  renderTacticalActionMatrix(plan);
+
+  // 6. Render Narrative Paragraphs
   const pContainer = document.getElementById('planReasoningParagraphs');
   if (pContainer && narrative.paragraphs) {
     pContainer.innerHTML = narrative.paragraphs.map(p => `
@@ -1157,29 +1160,252 @@ export function renderUnifiedRebalancePlanUI(plan) {
     `).join('');
   }
 
-  // 5. Render Buy-Side Allocation Grid
+  // 7. Render Buy-Side Allocation Grid
+  renderBuySideAllocationGrid(buySide);
+}
+
+function renderBuySideAllocationGrid(buySide, liveTotalOverride = null) {
   const buyGrid = document.getElementById('buySideAllocationGrid');
-  if (buyGrid && buySide.buckets) {
-    buyGrid.innerHTML = buySide.buckets.map(b => {
-      const tgt = b.target_pct ?? b.targetPct ?? 0;
-      const cur = b.current_pct ?? b.currentPct ?? 0;
-      const post = b.post_rebalance_pct ?? b.postRebalancePct ?? 0;
-      const alloc = b.amount_allocated ?? b.amountAllocated ?? 0;
+  if (!buyGrid || !buySide.buckets) return;
+
+  const totalPool = liveTotalOverride !== null ? liveTotalOverride : (buySide.total_to_invest ?? buySide.totalToInvest ?? 0);
+
+  buyGrid.innerHTML = buySide.buckets.map(b => {
+    const tgt = b.target_pct ?? b.targetPct ?? 0;
+    const cur = b.current_pct ?? b.currentPct ?? 0;
+    const post = b.post_rebalance_pct ?? b.postRebalancePct ?? 0;
+    const alloc = totalPool * (tgt / 100.0);
+
+    const fundsHtml = (b.fund_breakdown || b.fundBreakdown || []).map(f => {
+      const fName = f.fund_name || f.fundName || f.fund_id;
+      const fAlloc = alloc * (f.allocation_weight || (1.0 / (b.fund_breakdown || b.fundBreakdown || [1]).length));
       return `
-        <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px;">
-          <div style="font-size: 0.8rem; font-weight: 700; color: #38bdf8;">${b.bucket.replace('_', ' ')}</div>
-          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-top: 6px; color: #94a3b8;">
-            <span>Target: ${tgt}%</span>
-            <span>Current: ${cur}%</span>
-            <span style="color: #34d399; font-weight: 700;">Post: ${post}%</span>
-          </div>
-          <div style="margin-top: 8px; font-size: 0.95rem; font-weight: 800; color: #f8fafc;">
-            +₹${parseFloat(alloc).toLocaleString('en-IN')}
-          </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #cbd5e1; margin-top: 4px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 3px;">
+          <span>• ${fName}</span>
+          <span style="font-weight: 700; color: #34d399;">+₹${Math.round(fAlloc).toLocaleString('en-IN')}</span>
         </div>
       `;
     }).join('');
+
+    return `
+      <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px;">
+        <div style="font-size: 0.8rem; font-weight: 700; color: #38bdf8;">${b.bucket.replace('_', ' ')}</div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-top: 6px; color: #94a3b8;">
+          <span>Target: ${tgt}%</span>
+          <span>Current: ${cur}%</span>
+          <span style="color: #34d399; font-weight: 700;">Post: ${post}%</span>
+        </div>
+        <div style="margin-top: 8px; font-size: 0.95rem; font-weight: 800; color: #f8fafc;">
+          +₹${Math.round(alloc).toLocaleString('en-IN')}
+        </div>
+        <div style="margin-top: 6px;">
+          ${fundsHtml}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderRebalanceMicroSankey(sellSide, buySide) {
+  const container = document.getElementById('rebalanceSankeyChart');
+  if (!container || typeof echarts === 'undefined') return;
+
+  let chart = echarts.getInstanceByDom(container);
+  if (!chart) {
+    chart = echarts.init(container);
   }
+
+  const nodes = [{ name: 'Pooled Capital' }];
+  const links = [];
+
+  // Sell Side Sources
+  (sellSide.waterfall || []).forEach(tier => {
+    const soldAmt = parseFloat(tier.sold || 0);
+    if (soldAmt > 0) {
+      const name = tier.tier_label || tier.tierLabel || tier.tier;
+      nodes.push({ name: name });
+      links.push({ source: name, target: 'Pooled Capital', value: soldAmt });
+    }
+  });
+
+  const taxSum = sellSide.tax_summary || sellSide.taxSummary || {};
+  const estTax = parseFloat(taxSum.total_tax_estimate ?? taxSum.totalTaxEstimate ?? 0);
+  if (estTax > 0) {
+    nodes.push({ name: 'Tax Friction' });
+    links.push({ source: 'Pooled Capital', target: 'Tax Friction', value: estTax });
+  }
+
+  // Buy Side Targets
+  (buySide.buckets || []).forEach(b => {
+    const alloc = parseFloat(b.amount_allocated || b.amountAllocated || 0);
+    if (alloc > 0) {
+      const name = b.bucket.replace('_', ' ');
+      nodes.push({ name: name });
+      links.push({ source: 'Pooled Capital', target: name, value: alloc });
+    }
+  });
+
+  if (links.length === 0) {
+    container.innerHTML = '<div style="text-align: center; color: #64748b; padding-top: 80px;">No capital flow required for active drawdown state</div>';
+    return;
+  }
+
+  const option = {
+    tooltip: { trigger: 'item', triggerOn: 'mousemove' },
+    series: [{
+      type: 'sankey',
+      data: nodes,
+      links: links,
+      emphasis: { focus: 'adjacency' },
+      lineStyle: { color: 'gradient', curveness: 0.5 },
+      label: { color: '#f8fafc', fontSize: 11 }
+    }]
+  };
+
+  chart.setOption(option, true);
+}
+
+function renderTacticalActionMatrix(plan) {
+  const tbody = document.getElementById('matrixLotTableBody');
+  if (!tbody || !plan || !plan.sell_side) return;
+
+  const sellSide = plan.sell_side;
+  const buySide = plan.buy_side || {};
+  const allLots = [];
+
+  (sellSide.waterfall || []).forEach(tier => {
+    (tier.lots || []).forEach(lot => {
+      allLots.push({ ...lot, tierLabel: tier.tier_label || tier.tierLabel });
+    });
+  });
+
+  if (allLots.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="9" style="text-align: center; color: #64748b; padding: 20px;">
+          No open lots selected for trade — portfolio drawdown (4.0%) below 10% threshold.
+        </td>
+      </tr>
+    `;
+    document.getElementById('matrixLiveProceeds').textContent = '₹0';
+    document.getElementById('matrixLiveTaxDrag').textContent = '₹0';
+    return;
+  }
+
+  const selectedLotIds = new Set(allLots.map(l => l.lot_id || l.lotId));
+
+  function recalculateMetrics() {
+    let liveProceeds = 0;
+    let liveTax = 0;
+
+    allLots.forEach(lot => {
+      const id = lot.lot_id || lot.lotId;
+      const rowEl = document.getElementById(`matrix-row-${id}`);
+      if (selectedLotIds.has(id)) {
+        liveProceeds += parseFloat(lot.sale_proceeds || lot.saleProceeds || 0);
+        liveTax += parseFloat(lot.tax_impact?.tax_amount || lot.taxImpact?.taxAmount || 0);
+        if (rowEl) {
+          rowEl.style.opacity = '1';
+          rowEl.style.filter = 'none';
+        }
+      } else {
+        if (rowEl) {
+          rowEl.style.opacity = '0.35';
+          rowEl.style.filter = 'grayscale(100%)';
+        }
+      }
+    });
+
+    const liveProcEl = document.getElementById('matrixLiveProceeds');
+    const liveTaxEl = document.getElementById('matrixLiveTaxDrag');
+
+    if (liveProcEl) liveProcEl.textContent = `₹${Math.round(liveProceeds).toLocaleString('en-IN')}`;
+    if (liveTaxEl) liveTaxEl.textContent = `₹${Math.round(liveTax).toLocaleString('en-IN')}`;
+
+    // Reactive buy-side allocation scaling
+    renderBuySideAllocationGrid(buySide, liveProceeds);
+  }
+
+  tbody.innerHTML = allLots.map(lot => {
+    const id = lot.lot_id || lot.lotId;
+    const name = lot.fund_name || lot.fundName;
+    const acq = lot.acquisition_date || lot.acquisitionDate;
+    const days = lot.holding_days || lot.holdingDays;
+    const proceeds = parseFloat(lot.sale_proceeds || lot.saleProceeds || 0);
+    const cost = parseFloat(lot.cost_basis || lot.costBasis || 0);
+    const gain = parseFloat(lot.realized_gain || lot.realizedGain || 0);
+    const regime = lot.tax_impact?.regime || lot.taxImpact?.regime || 'SEC_112A_EXEMPT';
+    const tax = parseFloat(lot.tax_impact?.tax_amount || lot.taxImpact?.taxAmount || 0);
+
+    let regimeBadge = `<span class="cat-badge cat-EQUITY">EXEMPT</span>`;
+    if (regime === 'SLAB_RATE_STCG') {
+      regimeBadge = `<span class="cat-badge cat-DEBT_SPECIFIED_50AA">STCG (20%)</span>`;
+    } else if (regime === 'SEC_112A_TAXABLE_12_5') {
+      regimeBadge = `<span class="cat-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b;">LTCG (12.5%)</span>`;
+    }
+
+    return `
+      <tr id="matrix-row-${id}" style="border-bottom: 1px solid rgba(255,255,255,0.06); transition: all 0.2s ease;">
+        <td style="text-align: center;">
+          <input type="checkbox" class="matrix-lot-cb" data-lot-id="${id}" checked style="accent-color: #06b6d4; cursor: pointer;">
+        </td>
+        <td style="font-weight: 600; color: #f8fafc;">${name}</td>
+        <td style="color: #94a3b8; font-size: 0.75rem;">${acq}</td>
+        <td style="color: #94a3b8; font-size: 0.75rem;">${days}d</td>
+        <td style="color: #cbd5e1;">₹${Math.round(cost).toLocaleString('en-IN')}</td>
+        <td style="font-weight: 700; color: #10b981;">₹${Math.round(proceeds).toLocaleString('en-IN')}</td>
+        <td style="color: #38bdf8;">+₹${Math.round(gain).toLocaleString('en-IN')}</td>
+        <td>${regimeBadge}</td>
+        <td style="color: ${tax > 0 ? '#ef4444' : '#34d399'}; font-weight: 700;">₹${Math.round(tax).toLocaleString('en-IN')}</td>
+      </tr>
+    `;
+  }).join('');
+
+  // Attach Checkbox Change Listeners
+  document.querySelectorAll('.matrix-lot-cb').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const id = e.target.getAttribute('data-lot-id');
+      if (e.target.checked) {
+        selectedLotIds.add(id);
+      } else {
+        selectedLotIds.delete(id);
+      }
+      recalculateMetrics();
+    });
+  });
+
+  const selectAllCb = document.getElementById('matrixSelectAllLots');
+  if (selectAllCb) {
+    selectAllCb.checked = true;
+    selectAllCb.onclick = (e) => {
+      const isChecked = e.target.checked;
+      document.querySelectorAll('.matrix-lot-cb').forEach(cb => {
+        cb.checked = isChecked;
+        const id = cb.getAttribute('data-lot-id');
+        if (isChecked) selectedLotIds.add(id);
+        else selectedLotIds.delete(id);
+      });
+      recalculateMetrics();
+    };
+  }
+
+  const btnExecute = document.getElementById('btnExecuteTradeOverride');
+  if (btnExecute) {
+    btnExecute.onclick = () => {
+      alert(`⚡ Trade Execution Override Confirmed!\n\nSelected Lots: ${selectedLotIds.size} of ${allLots.length}\nExecuting trade payload back to core-node engine.`);
+    };
+  }
+
+  // Keyboard shortcut: Ctrl + Enter to execute override
+  window.onkeydown = (e) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault();
+      if (btnExecute) btnExecute.click();
+    }
+  };
+
+  recalculateMetrics();
+}
 }
 
 document.addEventListener('DOMContentLoaded', () => {
