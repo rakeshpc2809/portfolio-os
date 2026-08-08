@@ -282,44 +282,58 @@ public class DuckDbProjector {
         List<Double> returns = new ArrayList<>();
         try (Connection conn = getConnection()) {
             String sql = """
-                WITH held_units AS (
+                WITH nav_dates AS (
+                    SELECT DISTINCT nav_date
+                    FROM nav_history
+                    WHERE nav > 0
+                ),
+                unit_changes AS (
                     SELECT asset_id,
-                           SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(units AS DOUBLE) ELSE -CAST(units AS DOUBLE) END) as net_units
+                           event_date,
+                           SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(units AS DOUBLE) ELSE -CAST(units AS DOUBLE) END) AS change_units
                     FROM projected_events
-                    GROUP BY asset_id
-                    HAVING net_units > 0
+                    GROUP BY asset_id, event_date
+                ),
+                asset_daily_units AS (
+                    SELECT n.nav_date,
+                           u.asset_id,
+                           SUM(u.change_units) AS units_held
+                    FROM nav_dates n
+                    JOIN unit_changes u ON u.event_date <= n.nav_date
+                    GROUP BY n.nav_date, u.asset_id
+                    HAVING units_held > 0
                 ),
                 fund_daily_returns AS (
                     SELECT asset_id,
                            nav_date,
                            nav,
-                           LAG(nav_date) OVER (PARTITION BY asset_id ORDER BY nav_date ASC) as prev_date,
-                           LAG(nav) OVER (PARTITION BY asset_id ORDER BY nav_date ASC) as prev_nav
+                           LAG(nav_date) OVER (PARTITION BY asset_id ORDER BY nav_date ASC) AS prev_date,
+                           LAG(nav) OVER (PARTITION BY asset_id ORDER BY nav_date ASC) AS prev_nav
                     FROM nav_history
                     WHERE nav > 0
                 ),
-                valid_fund_returns AS (
+                valid_weighted_returns AS (
                     SELECT f.asset_id,
                            f.nav_date,
                            f.prev_date,
-                           h.net_units * f.prev_nav AS weight,
+                           du.units_held * f.prev_nav AS weight,
                            (f.nav - f.prev_nav) / f.prev_nav AS fund_ret
                     FROM fund_daily_returns f
-                    JOIN held_units h ON f.asset_id = h.asset_id
-                    WHERE f.prev_nav > 0 AND f.prev_date IS NOT NULL
+                    JOIN asset_daily_units du ON f.asset_id = du.asset_id AND du.nav_date = f.prev_date
+                    WHERE f.prev_nav > 0 AND f.prev_date IS NOT NULL AND du.units_held > 0
                 ),
-                weighted_portfolio_returns AS (
+                daily_portfolio_returns AS (
                     SELECT nav_date,
                            prev_date,
                            SUM(weight * fund_ret) / SUM(weight) AS blended_ret,
-                           COUNT(*) AS active_funds
-                    FROM valid_fund_returns
+                           COUNT(DISTINCT asset_id) AS active_assets
+                    FROM valid_weighted_returns
                     GROUP BY nav_date, prev_date
                     HAVING SUM(weight) > 0
                     ORDER BY nav_date ASC
                 )
-                SELECT nav_date, prev_date, blended_ret, active_funds
-                FROM weighted_portfolio_returns;
+                SELECT nav_date, prev_date, blended_ret, active_assets
+                FROM daily_portfolio_returns;
             """;
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(sql)) {
