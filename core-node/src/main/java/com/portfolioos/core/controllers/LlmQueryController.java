@@ -92,7 +92,8 @@ public class LlmQueryController {
             return chatClient.prompt()
                 .user(prompt)
                 .stream()
-                .content();
+                .content()
+                .onErrorResume(e -> Flux.just("⚠️ Local Ollama LLM Service Unreachable (http://127.0.0.1:11434): " + e.getMessage() + ". Please start ollama or use structural analytics."));
         } catch (Exception e) {
             return Flux.just("⚠️ Streaming error: " + e.getMessage());
         }
