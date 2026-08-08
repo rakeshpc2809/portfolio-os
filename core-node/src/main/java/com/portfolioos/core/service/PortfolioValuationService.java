@@ -87,6 +87,21 @@ public class PortfolioValuationService {
         );
     }
 
+    public NetWorthTrendResponse getNetWorthTrend() {
+        List<DuckDbProjector.NetWorthPoint> rawTrend = duckDbProjector.getDailyNetWorthTrend();
+        List<String> dates = new ArrayList<>();
+        List<Double> values = new ArrayList<>();
+        List<Double> investedValues = new ArrayList<>();
+
+        for (DuckDbProjector.NetWorthPoint p : rawTrend) {
+            dates.add(p.date());
+            values.add(p.valuation());
+            investedValues.add(p.invested());
+        }
+
+        return new NetWorthTrendResponse(dates, values, investedValues);
+    }
+
     public List<HoldingDetailDto> getHoldings() {
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<Lot> openLots = state.fifoResult().openLots();

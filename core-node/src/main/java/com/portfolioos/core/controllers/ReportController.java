@@ -38,6 +38,11 @@ public class ReportController {
         return ResponseEntity.ok(valuationService.getPortfolioSummary(fy));
     }
 
+    @GetMapping({"/reports/trend", "/portfolio/net-worth-trend"})
+    public ResponseEntity<NetWorthTrendResponse> getNetWorthTrend() {
+        return ResponseEntity.ok(valuationService.getNetWorthTrend());
+    }
+
     @GetMapping({"/reports/holdings", "/portfolio/holdings"})
     public ResponseEntity<List<HoldingDetailDto>> getHoldings() {
         return ResponseEntity.ok(valuationService.getHoldings());

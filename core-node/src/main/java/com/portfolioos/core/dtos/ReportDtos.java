@@ -16,6 +16,12 @@ public class ReportDtos {
         int staleNavCount
     ) {}
 
+    public record NetWorthTrendResponse(
+        @JsonProperty("dates") List<String> dates,
+        @JsonProperty("values") List<Double> values,
+        @JsonProperty("invested_values") List<Double> investedValues
+    ) {}
+
     public record AssetAllocationEntry(
         String assetId,
         String assetName,
