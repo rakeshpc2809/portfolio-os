@@ -555,3 +555,55 @@ export async function loadBenchmarkAnalytics() {
   }
 }
 
+export async function loadOverlapAnalytics() {
+  try {
+    const res = await fetchJson(`${API_BASE}/analytics/overlap?fundA=INF247L01BM8&fundB=INF247L01AX8`);
+    if (res && res.status === 'OK') {
+      const pairwise = res.pairwise_overlap;
+      const concentrations = res.portfolio_top_stock_concentrations;
+
+      const elPairwise = document.querySelector('#pairwiseOverlapVal');
+      const elCount = document.querySelector('#commonStockCountSub');
+      const elBadge = document.querySelector('#overlapDateBadge');
+      const tableBody = document.querySelector('#topStockConcentrationTable tbody');
+
+      if (elPairwise && pairwise) {
+        elPairwise.textContent = `${pairwise.overlap_percentage}%`;
+      }
+
+      if (elCount && pairwise && pairwise.common_stocks) {
+        const topSymbols = pairwise.common_stocks.slice(0, 4).map(s => s.stock_symbol).join(', ');
+        elCount.textContent = `Common Holdings: ${pairwise.common_stock_count} Stocks (${topSymbols})`;
+      }
+
+      if (elBadge && pairwise) {
+        if (pairwise.date_mismatch) {
+          elBadge.textContent = 'DATE MISMATCH';
+          elBadge.className = 'live-tag warning-tag';
+        } else {
+          elBadge.textContent = 'SNAPSHOT ALIGNED';
+          elBadge.className = 'live-tag positive-tag';
+        }
+      }
+
+      if (tableBody && concentrations) {
+        if (concentrations.length === 0) {
+          tableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#64748b;">No stock concentrations calculated.</td></tr>`;
+        } else {
+          let html = '';
+          concentrations.forEach(item => {
+            html += `<tr>
+              <td><strong>${item.stock_symbol}</strong></td>
+              <td>${formatINR(item.rupee_exposure)}</td>
+              <td><span class="metric-delta positive">${item.portfolio_percentage}%</span></td>
+            </tr>`;
+          });
+          tableBody.innerHTML = html;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load overlap analytics:', err);
+  }
+}
+

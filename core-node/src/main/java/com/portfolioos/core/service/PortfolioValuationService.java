@@ -509,4 +509,31 @@ public class PortfolioValuationService {
         List<Double> bReturns = (List<Double>) aligned.getOrDefault("benchmark_returns", java.util.Collections.emptyList());
         return flightRpcClient.computeBenchmarkAnalytics(pReturns, bReturns, targetBenchmark);
     }
+
+    public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB) {
+        new com.portfolioos.core.nav.NseIndexConstituentDownloader().seedStandardIndexConstituents(duckDbProjector);
+
+        String idA = (fundA != null && !fundA.isBlank()) ? fundA : "INF247L01BM8";
+        String idB = (fundB != null && !fundB.isBlank()) ? fundB : "INF247L01AX8";
+
+        Map<String, Object> pairwise = duckDbProjector.getPairwiseFundOverlap(idA, idB);
+
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        Map<String, BigDecimal> navMap = state.navMap();
+        Map<String, Double> fundValuations = new HashMap<>();
+
+        for (Lot lot : state.fifoResult().openLots()) {
+            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            double currentVal = lot.remainingUnits().multiply(nav).doubleValue();
+            fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), 0.0) + currentVal);
+        }
+
+        List<Map<String, Object>> concentrations = duckDbProjector.getPortfolioStockConcentrations(fundValuations);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "OK");
+        response.put("pairwise_overlap", pairwise);
+        response.put("portfolio_top_stock_concentrations", concentrations);
+        return response;
+    }
 }

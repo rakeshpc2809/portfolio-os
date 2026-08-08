@@ -100,6 +100,17 @@ public class DuckDbProjector {
                 "  PRIMARY KEY (benchmark_id, nav_date)" +
                 ")"
             );
+
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS fund_holdings (" +
+                "  fund_id VARCHAR NOT NULL," +
+                "  stock_symbol VARCHAR NOT NULL," +
+                "  stock_isin VARCHAR," +
+                "  weight_pct DOUBLE NOT NULL," +
+                "  disclosure_date VARCHAR NOT NULL," +
+                "  PRIMARY KEY (fund_id, stock_symbol, disclosure_date)" +
+                ")"
+            );
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize DuckDB schema", e);
         }
@@ -499,5 +510,136 @@ public class DuckDbProjector {
             (returns.isEmpty() ? "N/A" : returns.stream().max(Double::compare).get()) + ", avg=" +
             (returns.isEmpty() ? "N/A" : returns.stream().mapToDouble(Double::doubleValue).average().getAsDouble()));
         return returns;
+    }
+
+    public void saveFundHoldings(String fundId, String disclosureDate, List<Map<String, Object>> holdings) {
+        if (holdings == null || holdings.isEmpty()) return;
+        String sql = "INSERT OR REPLACE INTO fund_holdings (fund_id, stock_symbol, stock_isin, weight_pct, disclosure_date) VALUES (?, ?, ?, ?, ?)";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            for (Map<String, Object> h : holdings) {
+                String symbol = (String) h.get("stock_symbol");
+                String isin = (String) h.getOrDefault("stock_isin", "");
+                double weight = ((Number) h.getOrDefault("weight_pct", 0.0)).doubleValue();
+                if (symbol != null && !symbol.isBlank() && weight > 0) {
+                    pstmt.setString(1, fundId);
+                    pstmt.setString(2, symbol);
+                    pstmt.setString(3, isin);
+                    pstmt.setDouble(4, weight);
+                    pstmt.setString(5, disclosureDate);
+                    pstmt.addBatch();
+                }
+            }
+            pstmt.executeBatch();
+        } catch (SQLException e) {
+            System.err.println("Failed to save fund holdings for " + fundId + ": " + e.getMessage());
+        }
+    }
+
+    public Map<String, Object> getPairwiseFundOverlap(String fundA, String fundB) {
+        Map<String, Object> result = new HashMap<>();
+        String sql =
+            "WITH latest_a AS (SELECT MAX(disclosure_date) AS date_a FROM fund_holdings WHERE fund_id = ?), " +
+            "latest_b AS (SELECT MAX(disclosure_date) AS date_b FROM fund_holdings WHERE fund_id = ?), " +
+            "holdings_a AS (SELECT h.stock_symbol, h.weight_pct AS weight_a, h.disclosure_date AS date_a FROM fund_holdings h JOIN latest_a l ON h.disclosure_date = l.date_a WHERE h.fund_id = ?), " +
+            "holdings_b AS (SELECT h.stock_symbol, h.weight_pct AS weight_b, h.disclosure_date AS date_b FROM fund_holdings h JOIN latest_b l ON h.disclosure_date = l.date_b WHERE h.fund_id = ?) " +
+            "SELECT a.stock_symbol, a.weight_a, b.weight_b, LEAST(a.weight_a, b.weight_b) AS overlap_pct, a.date_a, b.date_b " +
+            "FROM holdings_a a JOIN holdings_b b ON a.stock_symbol = b.stock_symbol";
+
+        double totalOverlap = 0.0;
+        String dateA = "";
+        String dateB = "";
+        List<Map<String, Object>> commonStocks = new ArrayList<>();
+
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, fundA);
+            pstmt.setString(2, fundB);
+            pstmt.setString(3, fundA);
+            pstmt.setString(4, fundB);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String symbol = rs.getString("stock_symbol");
+                    double weightA = rs.getDouble("weight_a");
+                    double weightB = rs.getDouble("weight_b");
+                    double overlap = rs.getDouble("overlap_pct");
+                    dateA = rs.getString("date_a");
+                    dateB = rs.getString("date_b");
+
+                    totalOverlap += overlap;
+                    Map<String, Object> stock = new HashMap<>();
+                    stock.put("stock_symbol", symbol);
+                    stock.put("weight_a", Math.round(weightA * 100.0) / 100.0);
+                    stock.put("weight_b", Math.round(weightB * 100.0) / 100.0);
+                    stock.put("overlap_pct", Math.round(overlap * 100.0) / 100.0);
+                    commonStocks.add(stock);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Pairwise overlap calculation failed for " + fundA + " vs " + fundB + ": " + e.getMessage());
+        }
+
+        commonStocks.sort((x, y) -> Double.compare(((Number) y.get("overlap_pct")).doubleValue(), ((Number) x.get("overlap_pct")).doubleValue()));
+
+        result.put("fund_a", fundA);
+        result.put("fund_b", fundB);
+        result.put("date_a", dateA);
+        result.put("date_b", dateB);
+        result.put("date_mismatch", !dateA.isEmpty() && !dateB.isEmpty() && !dateA.equals(dateB));
+        result.put("overlap_percentage", Math.round(totalOverlap * 100.0) / 100.0);
+        result.put("common_stock_count", commonStocks.size());
+        result.put("common_stocks", commonStocks);
+        return result;
+    }
+
+    public List<Map<String, Object>> getPortfolioStockConcentrations(Map<String, Double> fundValuations) {
+        List<Map<String, Object>> concentrations = new ArrayList<>();
+        if (fundValuations == null || fundValuations.isEmpty()) return concentrations;
+
+        double totalEquityValuation = fundValuations.values().stream().mapToDouble(Double::doubleValue).sum();
+        if (totalEquityValuation <= 0) return concentrations;
+
+        Map<String, Double> stockRupeeMap = new HashMap<>();
+
+        for (Map.Entry<String, Double> entry : fundValuations.entrySet()) {
+            String fundId = entry.getKey();
+            double valuation = entry.getValue();
+
+            String sql = "WITH latest AS (SELECT MAX(disclosure_date) AS max_d FROM fund_holdings WHERE fund_id = ?) " +
+                         "SELECT h.stock_symbol, h.weight_pct FROM fund_holdings h JOIN latest l ON h.disclosure_date = l.max_d WHERE h.fund_id = ?";
+
+            try (Connection conn = getConnection();
+                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, fundId);
+                pstmt.setString(2, fundId);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        String symbol = rs.getString("stock_symbol");
+                        double weight = rs.getDouble("weight_pct");
+                        double rupeeContrib = (weight / 100.0) * valuation;
+                        stockRupeeMap.put(symbol, stockRupeeMap.getOrDefault(symbol, 0.0) + rupeeContrib);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Concentration query failed for fund " + fundId + ": " + e.getMessage());
+            }
+        }
+
+        for (Map.Entry<String, Double> entry : stockRupeeMap.entrySet()) {
+            String symbol = entry.getKey();
+            double rupees = entry.getValue();
+            double portfolioPct = (rupees / totalEquityValuation) * 100.0;
+
+            Map<String, Object> item = new HashMap<>();
+            item.put("stock_symbol", symbol);
+            item.put("rupee_exposure", Math.round(rupees));
+            item.put("portfolio_percentage", Math.round(portfolioPct * 100.0) / 100.0);
+            concentrations.add(item);
+        }
+
+        concentrations.sort((x, y) -> Double.compare(((Number) y.get("rupee_exposure")).doubleValue(), ((Number) x.get("rupee_exposure")).doubleValue()));
+
+        return concentrations.stream().limit(10).toList();
     }
 }

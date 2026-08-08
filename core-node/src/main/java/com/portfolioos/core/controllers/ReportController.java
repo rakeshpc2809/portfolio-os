@@ -132,4 +132,12 @@ public class ReportController {
     ) {
         return ResponseEntity.ok(valuationService.getBenchmarkAnalytics(benchmark));
     }
+
+    @GetMapping("/analytics/overlap")
+    public ResponseEntity<Map<String, Object>> getPortfolioOverlapAnalytics(
+        @RequestParam(value = "fundA", defaultValue = "INF247L01BM8") String fundA,
+        @RequestParam(value = "fundB", defaultValue = "INF247L01AX8") String fundB
+    ) {
+        return ResponseEntity.ok(valuationService.getPortfolioOverlapAnalytics(fundA, fundB));
+    }
 }
