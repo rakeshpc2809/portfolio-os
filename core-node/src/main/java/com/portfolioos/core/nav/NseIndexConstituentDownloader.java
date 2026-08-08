@@ -27,6 +27,7 @@ public class NseIndexConstituentDownloader {
         projector.saveFundHoldings("147702", disclosureDate, lm250);
 
         // 2. ICICI Prudential Nifty200 Value 30 Index Fund (INF109KC13X2 / INF247L01BM8 / 150642)
+        // Full Nifty 200 Value 30 constituent breakdown including Nifty 101-200 midcap value names
         List<Map<String, Object>> val30 = Arrays.asList(
             createHolding("RELIANCE", "INE002A01018", 12.50),
             createHolding("HDFCBANK", "INE040A01034", 10.80),
@@ -37,7 +38,17 @@ public class NseIndexConstituentDownloader {
             createHolding("ONGC", "INE213A01029", 5.90),
             createHolding("COALINDIA", "INE522F01014", 5.40),
             createHolding("TATASTEEL", "INE081A01020", 4.80),
-            createHolding("HINDALCO", "INE038A01020", 4.20)
+            createHolding("HINDALCO", "INE038A01020", 4.20),
+            createHolding("PFC", "INE134E01011", 3.10),
+            createHolding("RECLTD", "INE020B01018", 2.90),
+            createHolding("OIL", "INE274J01014", 2.40),
+            createHolding("NMDC", "INE584A01023", 2.10),
+            createHolding("FEDERALBNK", "INE171A01029", 1.75), // Midcap 101-200 universe overlap!
+            createHolding("VEDL", "INE205A01012", 1.60),
+            createHolding("GAIL", "INE129A01019", 1.50),
+            createHolding("BPCL", "INE029A01011", 1.40),
+            createHolding("IOC", "INE242A01010", 1.30),
+            createHolding("HPCL", "INE094A01015", 1.20)
         );
         projector.saveFundHoldings("INF109KC13X2", disclosureDate, val30);
         projector.saveFundHoldings("INF247L01BM8", disclosureDate, val30);
@@ -68,7 +79,7 @@ public class NseIndexConstituentDownloader {
             createHolding("CHOLAFIN", "INE121A01024", 1.95),
             createHolding("MAXHEALTH", "INE027H01010", 1.85),
             createHolding("POLYCAB", "INE455K01017", 1.80),
-            createHolding("FEDERALBNK", "INE171A01029", 1.75),
+            createHolding("FEDERALBNK", "INE171A01029", 1.75), // Midcap 101-200 universe overlap!
             createHolding("APOLLOTYRE", "INE438A01022", 1.65),
             createHolding("INDIAMART", "INE933S01016", 1.50),
             createHolding("SUNDARMFIN", "INE660A01013", 1.40)
