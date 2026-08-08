@@ -663,4 +663,93 @@ public class DuckDbProjector {
 
         return concentrations.stream().limit(10).toList();
     }
+
+    public List<Map<String, Object>> getMultiFundIntersectionAnalytics(List<String> fundIds) {
+        List<Map<String, Object>> upsetCombinations = new ArrayList<>();
+        if (fundIds == null || fundIds.isEmpty()) return upsetCombinations;
+
+        StringBuilder inClause = new StringBuilder();
+        for (int i = 0; i < fundIds.size(); i++) {
+            if (i > 0) inClause.append(",");
+            inClause.append("?");
+        }
+
+        String sql =
+            "WITH latest AS ( " +
+            "    SELECT fund_id, MAX(disclosure_date) AS max_d FROM fund_holdings WHERE fund_id IN (" + inClause + ") GROUP BY fund_id " +
+            "), " +
+            "aligned AS ( " +
+            "    SELECT h.fund_id, h.stock_symbol, h.weight_pct " +
+            "    FROM fund_holdings h JOIN latest l ON h.fund_id = l.fund_id AND h.disclosure_date = l.max_d " +
+            ") " +
+            "SELECT stock_symbol, ARRAY_AGG(fund_id ORDER BY fund_id) as fund_set, COUNT(fund_id) as set_size, MIN(weight_pct) as min_w, SUM(weight_pct) as sum_w " +
+            "FROM aligned GROUP BY stock_symbol ORDER BY set_size DESC, stock_symbol";
+
+        Map<String, List<Map<String, Object>>> groupedCombos = new HashMap<>();
+
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            for (int i = 0; i < fundIds.size(); i++) {
+                pstmt.setString(i + 1, fundIds.get(i));
+            }
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String symbol = rs.getString("stock_symbol");
+                    Object arrObj = rs.getObject("fund_set");
+                    double minW = rs.getDouble("min_w");
+                    double sumW = rs.getDouble("sum_w");
+
+                    List<String> fList = new ArrayList<>();
+                    if (arrObj instanceof java.sql.Array arr) {
+                        Object inner = arr.getArray();
+                        if (inner instanceof Object[] objArr) {
+                            for (Object o : objArr) if (o != null) fList.add(o.toString());
+                        }
+                    } else if (arrObj instanceof List<?> list) {
+                        for (Object o : list) if (o != null) fList.add(o.toString());
+                    } else if (arrObj instanceof Object[] objArr) {
+                        for (Object o : objArr) if (o != null) fList.add(o.toString());
+                    } else if (arrObj != null) {
+                        fList.add(arrObj.toString());
+                    }
+
+                    Collections.sort(fList);
+                    String comboKey = String.join(",", fList);
+
+                    Map<String, Object> stockItem = new HashMap<>();
+                    stockItem.put("stock_symbol", symbol);
+                    stockItem.put("min_weight", Math.round(minW * 100.0) / 100.0);
+                    stockItem.put("total_weight", Math.round(sumW * 100.0) / 100.0);
+
+                    groupedCombos.computeIfAbsent(comboKey, k -> new ArrayList<>()).add(stockItem);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("UpSet analytics query failed: " + e.getMessage());
+        }
+
+        for (Map.Entry<String, List<Map<String, Object>>> entry : groupedCombos.entrySet()) {
+            String comboKey = entry.getKey();
+            List<Map<String, Object>> stocks = entry.getValue();
+            List<String> participatingFunds = Arrays.asList(comboKey.split(","));
+
+            double totalOverlapWeight = 0.0;
+            for (Map<String, Object> s : stocks) {
+                totalOverlapWeight += ((Number) s.get("min_weight")).doubleValue();
+            }
+
+            Map<String, Object> comboObj = new HashMap<>();
+            comboObj.put("combination_key", comboKey);
+            comboObj.put("participating_funds", participatingFunds);
+            comboObj.put("stock_count", stocks.size());
+            comboObj.put("total_overlap_weight", Math.round(totalOverlapWeight * 100.0) / 100.0);
+            comboObj.put("stocks", stocks);
+
+            upsetCombinations.add(comboObj);
+        }
+
+        upsetCombinations.sort((x, y) -> Integer.compare(((Number) y.get("stock_count")).intValue(), ((Number) x.get("stock_count")).intValue()));
+
+        return upsetCombinations;
+    }
 }

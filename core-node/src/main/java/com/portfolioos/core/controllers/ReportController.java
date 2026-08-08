@@ -140,4 +140,9 @@ public class ReportController {
     ) {
         return ResponseEntity.ok(valuationService.getPortfolioOverlapAnalytics(fundA, fundB));
     }
+
+    @GetMapping("/analytics/overlap/upset")
+    public ResponseEntity<Map<String, Object>> getMultiFundUpSetAnalytics() {
+        return ResponseEntity.ok(valuationService.getMultiFundUpSetAnalytics());
+    }
 }

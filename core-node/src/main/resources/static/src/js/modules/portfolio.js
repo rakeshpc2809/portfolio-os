@@ -602,8 +602,79 @@ export async function loadOverlapAnalytics() {
         }
       }
     }
+
+    await loadUpSetAnalytics();
   } catch (err) {
     console.error('Failed to load overlap analytics:', err);
+  }
+}
+
+export async function loadUpSetAnalytics() {
+  const container = document.querySelector('#upsetContainer');
+  if (!container) return;
+
+  try {
+    const res = await fetchJson(`${API_BASE}/analytics/overlap/upset`);
+    if (res && res.status === 'OK' && res.upset_combinations) {
+      const combos = res.upset_combinations;
+      const fundMap = {
+        'INF109KC12U0': 'LargeMidcap 250',
+        'INF109KC13X2': 'Value 30',
+        'INF174KA1TY2': '100 Equal Weight',
+        'INF247L01916': 'Midcap 150',
+        'INF247L01BQ9': 'Momentum Quality 50'
+      };
+      const allFundKeys = Object.keys(fundMap);
+
+      if (combos.length === 0) {
+        container.innerHTML = `<div style="text-align:center; color:#64748b;">No multi-set intersections found.</div>`;
+        return;
+      }
+
+      const maxCount = Math.max(...combos.map(c => c.stock_count));
+
+      let html = `<div style="display: flex; gap: 20px; font-family: monospace; font-size: 0.78rem;">`;
+      html += `<div style="display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; font-weight: 600; color: #94a3b8; padding-bottom: 22px;">`;
+      allFundKeys.forEach(key => {
+        html += `<div style="height: 18px; line-height: 18px; text-align: right; white-space: nowrap;">${fundMap[key]}</div>`;
+      });
+      html += `</div>`;
+
+      html += `<div style="display: flex; gap: 14px; overflow-x: auto; padding-bottom: 6px;">`;
+
+      combos.forEach(c => {
+        const participating = c.participating_funds;
+        const stockList = c.stocks.map(s => s.stock_symbol).join(', ');
+
+        const barPct = Math.round((c.stock_count / maxCount) * 100);
+
+        html += `<div style="display: flex; flex-direction: column; items: center; min-width: 55px;" title="Intersection Stocks (${c.stock_count}): ${stockList}">`;
+
+        html += `<div style="height: 60px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; margin-bottom: 8px; width: 100%;">`;
+        html += `<span style="font-size: 0.72rem; color: #38bdf8; font-weight: bold; margin-bottom: 2px;">${c.stock_count}</span>`;
+        html += `<div style="width: 14px; height: ${Math.max(barPct * 0.45, 4)}px; background: linear-gradient(180deg, #38bdf8, #0284c7); border-radius: 3px;"></div>`;
+        html += `</div>`;
+
+        html += `<div style="display: flex; flex-direction: column; gap: 8px; align-items: center;">`;
+        allFundKeys.forEach(fKey => {
+          const isActive = participating.includes(fKey);
+          if (isActive) {
+            html += `<div style="width: 18px; height: 18px; border-radius: 50%; background: #38bdf8; box-shadow: 0 0 6px rgba(56, 189, 248, 0.6);"></div>`;
+          } else {
+            html += `<div style="width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);"></div>`;
+          }
+        });
+        html += `</div>`;
+
+        html += `<div style="font-size: 0.65rem; color: #64748b; margin-top: 6px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px;">${c.total_overlap_weight}%</div>`;
+        html += `</div>`;
+      });
+
+      html += `</div></div>`;
+      container.innerHTML = html;
+    }
+  } catch (err) {
+    console.error('Failed to load UpSet analytics:', err);
   }
 }
 

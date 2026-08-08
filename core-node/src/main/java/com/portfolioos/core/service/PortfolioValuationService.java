@@ -16,6 +16,7 @@ import com.portfolioos.core.valuation.ConsolidationRebalanceEngine;
 import com.portfolioos.core.valuation.RebalanceEngine;
 import com.portfolioos.core.xirr.CashFlow;
 import com.portfolioos.core.xirr.XirrEngine;
+import com.portfolioos.core.nav.NseIndexConstituentDownloader;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -545,6 +546,18 @@ public class PortfolioValuationService {
         response.put("pairwise_overlap", pairwise);
         response.put("pairwise_matrix", matrix);
         response.put("portfolio_top_stock_concentrations", concentrations);
+        return response;
+    }
+
+    public Map<String, Object> getMultiFundUpSetAnalytics() {
+        new NseIndexConstituentDownloader().seedStandardIndexConstituents(duckDbProjector);
+        List<String> indexFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9");
+        List<Map<String, Object>> upset = duckDbProjector.getMultiFundIntersectionAnalytics(indexFundIds);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "OK");
+        response.put("upset_combinations", upset);
+        response.put("evaluated_funds", indexFundIds);
         return response;
     }
 }
