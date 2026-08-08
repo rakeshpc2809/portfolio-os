@@ -530,7 +530,7 @@ public class PortfolioValuationService {
 
         List<Map<String, Object>> concentrations = duckDbProjector.getPortfolioStockConcentrations(fundValuations);
 
-        List<String> indexFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916");
+        List<String> indexFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9");
         List<Map<String, Object>> matrix = new ArrayList<>();
         for (int i = 0; i < indexFundIds.size(); i++) {
             for (int j = i + 1; j < indexFundIds.size(); j++) {
