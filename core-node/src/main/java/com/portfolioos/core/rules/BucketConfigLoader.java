@@ -192,15 +192,15 @@ public class BucketConfigLoader {
             case "EQUITY_CORE" -> {
                 return List.of(
                     new PreferredFundConfig("INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", 0.50),
-                    new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 0.50)
+                    new PreferredFundConfig("INF879O01027", "Parag Parikh Flexi Cap Fund", 0.50)
                 );
             }
             case "EQUITY_SATELLITE" -> {
                 return List.of(
-                    new PreferredFundConfig("INF879O01027", "Parag Parikh Flexi Cap Fund", 0.30),
-                    new PreferredFundConfig("INF204K01K15", "Nippon India Small Cap Fund", 0.30),
-                    new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 0.20),
-                    new PreferredFundConfig("INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund", 0.20)
+                    new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 0.25),
+                    new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 0.25),
+                    new PreferredFundConfig("INF204K01K15", "Nippon India Small Cap Fund", 0.25),
+                    new PreferredFundConfig("INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund", 0.25)
                 );
             }
             case "GOLD_SILVER" -> {
