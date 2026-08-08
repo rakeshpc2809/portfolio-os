@@ -538,17 +538,34 @@ public class DuckDbProjector {
 
     public Map<String, Object> getPairwiseFundOverlap(String fundA, String fundB) {
         Map<String, Object> result = new HashMap<>();
+        String dateSql = "SELECT " +
+            "(SELECT MAX(disclosure_date) FROM fund_holdings WHERE fund_id = ?) AS date_a, " +
+            "(SELECT MAX(disclosure_date) FROM fund_holdings WHERE fund_id = ?) AS date_b";
+
+        String dateA = "";
+        String dateB = "";
+
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(dateSql)) {
+            pstmt.setString(1, fundA);
+            pstmt.setString(2, fundB);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    dateA = rs.getString("date_a") != null ? rs.getString("date_a") : "";
+                    dateB = rs.getString("date_b") != null ? rs.getString("date_b") : "";
+                }
+            }
+        } catch (Exception ignored) {}
+
         String sql =
             "WITH latest_a AS (SELECT MAX(disclosure_date) AS date_a FROM fund_holdings WHERE fund_id = ?), " +
             "latest_b AS (SELECT MAX(disclosure_date) AS date_b FROM fund_holdings WHERE fund_id = ?), " +
-            "holdings_a AS (SELECT h.stock_symbol, h.weight_pct AS weight_a, h.disclosure_date AS date_a FROM fund_holdings h JOIN latest_a l ON h.disclosure_date = l.date_a WHERE h.fund_id = ?), " +
-            "holdings_b AS (SELECT h.stock_symbol, h.weight_pct AS weight_b, h.disclosure_date AS date_b FROM fund_holdings h JOIN latest_b l ON h.disclosure_date = l.date_b WHERE h.fund_id = ?) " +
-            "SELECT a.stock_symbol, a.weight_a, b.weight_b, LEAST(a.weight_a, b.weight_b) AS overlap_pct, a.date_a, b.date_b " +
+            "holdings_a AS (SELECT h.stock_symbol, h.weight_pct AS weight_a FROM fund_holdings h JOIN latest_a l ON h.disclosure_date = l.date_a WHERE h.fund_id = ?), " +
+            "holdings_b AS (SELECT h.stock_symbol, h.weight_pct AS weight_b FROM fund_holdings h JOIN latest_b l ON h.disclosure_date = l.date_b WHERE h.fund_id = ?) " +
+            "SELECT a.stock_symbol, a.weight_a, b.weight_b, LEAST(a.weight_a, b.weight_b) AS overlap_pct " +
             "FROM holdings_a a JOIN holdings_b b ON a.stock_symbol = b.stock_symbol";
 
         double totalOverlap = 0.0;
-        String dateA = "";
-        String dateB = "";
         List<Map<String, Object>> commonStocks = new ArrayList<>();
 
         try (Connection conn = getConnection();
@@ -564,8 +581,6 @@ public class DuckDbProjector {
                     double weightA = rs.getDouble("weight_a");
                     double weightB = rs.getDouble("weight_b");
                     double overlap = rs.getDouble("overlap_pct");
-                    dateA = rs.getString("date_a");
-                    dateB = rs.getString("date_b");
 
                     totalOverlap += overlap;
                     Map<String, Object> stock = new HashMap<>();
