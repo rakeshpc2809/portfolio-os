@@ -383,7 +383,7 @@ public class SyncController {
 
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
             openLots, matchedLots, navMap, LocalDate.now(), new BigDecimal("24000.00"), new BigDecimal("25000.00"),
-            com.portfolioos.core.valuation.BucketEngine.DEFAULT_TARGETS, "2026-27", triggerType, null
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), "2026-27", triggerType, null
         );
         return ResponseEntity.ok(plan);
     }
@@ -400,8 +400,38 @@ public class SyncController {
 
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
             openLots, matchedLots, navMap, LocalDate.now(), new BigDecimal("24000.00"), new BigDecimal("25000.00"),
-            com.portfolioos.core.valuation.BucketEngine.DEFAULT_TARGETS, "2026-27", "MANUAL_LUMPSUM", amount
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), "2026-27", "MANUAL_LUMPSUM", amount
         );
         return ResponseEntity.ok(plan);
+    }
+
+    @GetMapping("/config/bucket-targets")
+    public ResponseEntity<com.portfolioos.core.rules.BucketConfigLoader.BucketRulesConfig> getBucketTargetsSync() {
+        return ResponseEntity.ok(com.portfolioos.core.rules.BucketConfigLoader.loadConfig());
+    }
+
+    @PutMapping("/config/bucket-targets")
+    public ResponseEntity<?> updateBucketTargetsSync(@RequestBody Map<String, Object> req) {
+        try {
+            String effectiveFrom = (String) req.getOrDefault("effectiveFrom", req.get("effective_from"));
+            List<Map<String, Object>> targetsList = (List<Map<String, Object>>) req.get("targets");
+
+            if (targetsList == null || targetsList.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Missing 'targets' array in request body"));
+            }
+
+            List<com.portfolioos.core.rules.BucketConfigLoader.BucketTargetConfig> newTargets = targetsList.stream().map(tMap -> new com.portfolioos.core.rules.BucketConfigLoader.BucketTargetConfig(
+                (String) tMap.get("bucket"),
+                ((Number) tMap.get("targetPct") != null ? (Number) tMap.get("targetPct") : (Number) tMap.get("target_pct")).doubleValue(),
+                ((Number) tMap.get("bandPct") != null ? (Number) tMap.get("bandPct") : (Number) tMap.get("band_pct")).doubleValue()
+            )).toList();
+
+            com.portfolioos.core.rules.BucketConfigLoader.updateBucketTargets(newTargets, effectiveFrom);
+            return ResponseEntity.ok(com.portfolioos.core.rules.BucketConfigLoader.loadConfig());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to update bucket targets: " + e.getMessage()));
+        }
     }
 }

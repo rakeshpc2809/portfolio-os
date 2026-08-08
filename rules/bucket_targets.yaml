@@ -1,0 +1,32 @@
+---
+versions:
+- version_id: "v1.0"
+  effective_from: "2024-01-01"
+  targets:
+  - bucket: "EQUITY_CORE"
+    target_pct: 50.0
+    band_pct: 5.0
+  - bucket: "EQUITY_SATELLITE"
+    target_pct: 20.0
+    band_pct: 5.0
+  - bucket: "GOLD_SILVER"
+    target_pct: 15.0
+    band_pct: 5.0
+  - bucket: "LIQUID_BUFFER"
+    target_pct: 15.0
+    band_pct: 5.0
+- version_id: "v2.0"
+  effective_from: "2026-08-08"
+  targets:
+  - bucket: "EQUITY_CORE"
+    target_pct: 55.0
+    band_pct: 5.0
+  - bucket: "EQUITY_SATELLITE"
+    target_pct: 20.0
+    band_pct: 5.0
+  - bucket: "GOLD_SILVER"
+    target_pct: 10.0
+    band_pct: 5.0
+  - bucket: "LIQUID_BUFFER"
+    target_pct: 15.0
+    band_pct: 5.0

@@ -3,15 +3,15 @@ package com.portfolioos.core.service;
 import com.portfolioos.core.dtos.RebalancePlanDtos.*;
 import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.MatchedLot;
-import com.portfolioos.core.model.TaxTerm;
 import com.portfolioos.core.reporting.ExemptionTracker;
+import com.portfolioos.core.rules.BucketConfigLoader;
 import com.portfolioos.core.valuation.BucketEngine;
-import com.portfolioos.core.valuation.RebalanceWaterfallEngine;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 public class RebalancePlanEngine {
@@ -23,7 +23,7 @@ public class RebalancePlanEngine {
         LocalDate currentDate,
         BigDecimal benchmarkCurrent,
         BigDecimal benchmarkRollingHigh,
-        List<BucketEngine.BucketTarget> targets,
+        List<BucketEngine.BucketTarget> customTargets,
         String fiscalYear,
         String requestedTriggerType, // SCHEDULED, INDUCED, MANUAL_LUMPSUM
         BigDecimal manualLumpsumAmount
@@ -31,12 +31,31 @@ public class RebalancePlanEngine {
         String planId = UUID.randomUUID().toString();
         String generatedAt = currentDate.atStartOfDay().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
-        // 1. Drawdown Context & Trigger Evaluation
-        BigDecimal high = benchmarkRollingHigh != null && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0 ? benchmarkRollingHigh : new BigDecimal("25000.00");
-        BigDecimal curr = benchmarkCurrent != null && benchmarkCurrent.compareTo(BigDecimal.ZERO) > 0 ? benchmarkCurrent : new BigDecimal("24000.00");
+        // 1. Get Point-in-Time Bucket Targets
+        List<BucketEngine.BucketTarget> activeTargets = (customTargets != null && !customTargets.isEmpty()) ? customTargets : BucketConfigLoader.getActiveBucketTargets(currentDate);
+        BucketConfigLoader.BucketTargetVersion activeVersion = BucketConfigLoader.getActiveVersion(currentDate);
+
+        // 2. Compute Live Portfolio Valuation & Drawdown Context
+        BigDecimal liveCorpus = BigDecimal.ZERO;
+        Map<String, BigDecimal> fundValuations = new HashMap<>();
+
+        if (openLots != null) {
+            for (Lot lot : openLots) {
+                BigDecimal nav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
+                liveCorpus = liveCorpus.add(val);
+                fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
+            }
+        }
+
+        BigDecimal high = (benchmarkRollingHigh != null && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0) ? benchmarkRollingHigh : liveCorpus.multiply(new BigDecimal("1.08")).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal curr = (benchmarkCurrent != null && benchmarkCurrent.compareTo(BigDecimal.ZERO) > 0) ? benchmarkCurrent : liveCorpus;
         
+        if (high.compareTo(BigDecimal.ZERO) == 0) high = new BigDecimal("100000.00");
+        if (curr.compareTo(BigDecimal.ZERO) == 0) curr = high;
+
         double ddPct = high.subtract(curr).divide(high, 4, RoundingMode.HALF_UP).doubleValue() * 100.0;
-        ddPct = Math.max(0.0, ddPct);
+        ddPct = Math.max(0.0, Math.round(ddPct * 10.0) / 10.0);
 
         String armedTier = ddPct >= 20.0 ? "TIER_20" : (ddPct >= 15.0 ? "TIER_15" : (ddPct >= 10.0 ? "TIER_10" : "NONE"));
         String nextTier = ddPct < 10.0 ? "TIER_10" : (ddPct < 15.0 ? "TIER_15" : (ddPct < 20.0 ? "TIER_20" : "MAX_TIER_REACHED"));
@@ -44,7 +63,7 @@ public class RebalancePlanEngine {
         double nextTierDistancePct = Math.max(0.0, Math.round((nextTierTargetPct - ddPct) * 10.0) / 10.0);
 
         DrawdownContextDto drawdownCtx = new DrawdownContextDto(
-            Math.round(ddPct * 10.0) / 10.0,
+            ddPct,
             high,
             "2026-05-12",
             curr,
@@ -72,7 +91,7 @@ public class RebalancePlanEngine {
         ExemptionTracker.ExemptionStatus exBefore = ExemptionTracker.calculateExemptionStatus(matchedLots != null ? matchedLots : List.of(), fiscalYear);
         BigDecimal headroomBefore = new BigDecimal(exBefore.exemptionRemaining());
 
-        // 2. Sell Side Waterfall & Buy Side Allocations
+        // 3. Dynamic Sell Side Sourcing from Live Open Lots
         boolean isLumpsum = "MANUAL_LUMPSUM".equals(triggerType);
         BigDecimal totalPool;
         SellSidePlanDto sellSide = null;
@@ -80,15 +99,15 @@ public class RebalancePlanEngine {
         if (isLumpsum) {
             totalPool = manualLumpsumAmount != null && manualLumpsumAmount.compareTo(BigDecimal.ZERO) > 0 ? manualLumpsumAmount : new BigDecimal("50000.00");
         } else {
-            // Run Waterfall Engine
-            BigDecimal poolNeeded = new BigDecimal("60000.00");
+            BigDecimal poolNeeded = liveCorpus.multiply(new BigDecimal("0.05")).setScale(2, RoundingMode.HALF_UP);
+            if (poolNeeded.compareTo(new BigDecimal("10000.00")) < 0) poolNeeded = new BigDecimal("60000.00");
             totalPool = poolNeeded;
 
-            // Generate waterfall tiers
-            List<WaterfallTierDto> tiers = new ArrayList<>();
+            List<WaterfallTierDto> waterfallTiers = new ArrayList<>();
+            BigDecimal poolRemaining = poolNeeded;
 
             // Tier 1: Arbitrage Buffer
-            tiers.add(new WaterfallTierDto(
+            waterfallTiers.add(new WaterfallTierDto(
                 "ARBITRAGE_BUFFER",
                 "Arbitrage Buffer",
                 BigDecimal.ZERO,
@@ -97,146 +116,154 @@ public class RebalancePlanEngine {
                 List.of()
             ));
 
-            // Tier 2: Legacy Fund Lots (e.g. Nifty100 EW / Midcap 150)
-            RebalanceLotImpactDto legacyLot1 = new RebalanceLotImpactDto(
-                "LOT_LEGACY_1",
-                "INF174KA1TY2",
-                "Nifty100 Equal Weight",
-                "2023-11-02",
-                1010,
-                new BigDecimal("120.5"),
-                new BigDecimal("18000.00"),
-                new BigDecimal("22500.00"),
-                new BigDecimal("4500.00"),
-                "LONG_TERM",
-                new LotTaxImpactDto("SEC_112A_EXEMPT", new BigDecimal("4500.00"), BigDecimal.ZERO, BigDecimal.ZERO)
-            );
-            RebalanceLotImpactDto legacyLot2 = new RebalanceLotImpactDto(
-                "LOT_LEGACY_2",
-                "INF247L01916",
-                "Nifty Midcap 150",
-                "2024-02-18",
-                902,
-                new BigDecimal("200.0"),
-                new BigDecimal("20000.00"),
-                new BigDecimal("22500.00"),
-                new BigDecimal("2500.00"),
-                "LONG_TERM",
-                new LotTaxImpactDto("SEC_112A_EXEMPT", new BigDecimal("2500.00"), BigDecimal.ZERO, BigDecimal.ZERO)
-            );
+            // Sourcing from live open lots
+            BigDecimal totalGain = BigDecimal.ZERO;
+            BigDecimal totalLtcgExempt = BigDecimal.ZERO;
+            BigDecimal totalStcgTaxable = BigDecimal.ZERO;
+            BigDecimal totalTaxEstimate = BigDecimal.ZERO;
+            BigDecimal currentHeadroom = headroomBefore;
 
-            tiers.add(new WaterfallTierDto(
+            List<RebalanceLotImpactDto> soldLots = new ArrayList<>();
+            BigDecimal soldLegacyAmount = BigDecimal.ZERO;
+
+            if (openLots != null) {
+                for (Lot lot : openLots) {
+                    if (poolRemaining.compareTo(BigDecimal.ZERO) <= 0) break;
+
+                    BigDecimal nav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                    BigDecimal lotVal = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
+                    if (lotVal.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                    BigDecimal lotSoldVal = lotVal.min(poolRemaining);
+                    BigDecimal unitsSold = lotSoldVal.divide(nav, 4, RoundingMode.HALF_UP);
+                    BigDecimal costBasis = unitsSold.multiply(lot.costPerUnit() != null ? lot.costPerUnit() : nav).setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal gain = lotSoldVal.subtract(costBasis).max(BigDecimal.ZERO);
+
+                    long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate() != null ? lot.acquisitionDate() : currentDate.minusDays(400), currentDate);
+                    boolean isLongTerm = holdingDays > 365;
+                    String taxTerm = isLongTerm ? "LONG_TERM" : "SHORT_TERM";
+
+                    String regime;
+                    BigDecimal exempt = BigDecimal.ZERO;
+                    BigDecimal taxable = BigDecimal.ZERO;
+                    BigDecimal tax = BigDecimal.ZERO;
+
+                    if (isLongTerm) {
+                        exempt = gain.min(currentHeadroom);
+                        taxable = gain.subtract(exempt).max(BigDecimal.ZERO);
+                        tax = taxable.multiply(new BigDecimal("0.125")).setScale(2, RoundingMode.HALF_UP);
+                        regime = exempt.compareTo(BigDecimal.ZERO) > 0 && taxable.compareTo(BigDecimal.ZERO) == 0 ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5";
+                        currentHeadroom = currentHeadroom.subtract(exempt).max(BigDecimal.ZERO);
+                        totalLtcgExempt = totalLtcgExempt.add(exempt);
+                    } else {
+                        taxable = gain;
+                        tax = taxable.multiply(new BigDecimal("0.20")).setScale(2, RoundingMode.HALF_UP);
+                        regime = "SLAB_RATE_STCG";
+                        totalStcgTaxable = totalStcgTaxable.add(taxable);
+                    }
+
+                    totalGain = totalGain.add(gain);
+                    totalTaxEstimate = totalTaxEstimate.add(tax);
+
+                    RebalanceLotImpactDto lotImpact = new RebalanceLotImpactDto(
+                        lot.lotId() != null ? lot.lotId() : UUID.randomUUID().toString(),
+                        lot.assetId() != null ? lot.assetId() : "UNKNOWN",
+                        lot.assetName() != null ? lot.assetName() : "Equity Fund",
+                        lot.acquisitionDate() != null ? lot.acquisitionDate().toString() : "2024-01-01",
+                        holdingDays,
+                        unitsSold,
+                        costBasis,
+                        lotSoldVal,
+                        gain,
+                        taxTerm,
+                        new LotTaxImpactDto(regime, exempt, taxable, tax)
+                    );
+
+                    soldLots.add(lotImpact);
+                    soldLegacyAmount = soldLegacyAmount.add(lotSoldVal);
+                    poolRemaining = poolRemaining.subtract(lotSoldVal);
+                }
+            }
+
+            // Add Tier 2: Legacy / Open Fund Lots
+            waterfallTiers.add(new WaterfallTierDto(
                 "LEGACY_FUND",
-                "Legacy Fund Lots",
-                new BigDecimal("45000.00"),
-                new BigDecimal("45000.00"),
-                null,
-                List.of(legacyLot1, legacyLot2)
+                "Legacy & Open Fund Lots",
+                soldLegacyAmount,
+                soldLegacyAmount,
+                soldLegacyAmount.compareTo(BigDecimal.ZERO) == 0 ? "NO_TRIMMABLE_LOTS" : null,
+                soldLots
             ));
 
-            // Tier 3: Core Fund Lots
-            RebalanceLotImpactDto coreLot = new RebalanceLotImpactDto(
-                "LOT_CORE_1",
-                "INF109KC12U0",
-                "Nifty LargeMidcap 250",
-                "2026-01-15",
-                205,
-                new BigDecimal("45.2"),
-                new BigDecimal("12750.00"),
-                new BigDecimal("15000.00"),
-                new BigDecimal("22500.00"),
-                "SHORT_TERM",
-                new LotTaxImpactDto("SLAB_RATE_STCG", BigDecimal.ZERO, new BigDecimal("2250.00"), new BigDecimal("2250.00"))
-            );
-
-            tiers.add(new WaterfallTierDto(
+            // Add Tier 3: Core Fund Lots
+            waterfallTiers.add(new WaterfallTierDto(
                 "CORE_FUND",
                 "Core Fund Lots",
-                new BigDecimal("15000.00"),
-                new BigDecimal("15000.00"),
-                null,
-                List.of(coreLot)
+                poolRemaining,
+                poolRemaining,
+                poolRemaining.compareTo(BigDecimal.ZERO) == 0 ? "COVERED_BY_PRIOR_TIERS" : null,
+                List.of()
             ));
-
-            BigDecimal totalGain = new BigDecimal("9250.00");
-            BigDecimal totalLtcgExempt = new BigDecimal("7000.00");
-            BigDecimal totalStcgTaxable = new BigDecimal("2250.00");
-            BigDecimal totalTax = new BigDecimal("2250.00");
-            BigDecimal headroomAfter = headroomBefore.subtract(totalLtcgExempt).max(BigDecimal.ZERO);
 
             TaxSummaryDto taxSummary = new TaxSummaryDto(
                 totalGain,
                 totalLtcgExempt,
                 totalStcgTaxable,
-                totalTax,
+                totalTaxEstimate,
                 headroomBefore,
-                headroomAfter
+                headroomBefore.subtract(totalLtcgExempt).max(BigDecimal.ZERO)
             );
 
-            sellSide = new SellSidePlanDto(poolNeeded, tiers, taxSummary);
+            sellSide = new SellSidePlanDto(poolNeeded, waterfallTiers, taxSummary);
         }
 
-        // 3. Buy Side Allocations
+        // 4. Dynamic Buy Side Allocations per Active Targets
         List<RebalanceBucketAllocationDto> buyBuckets = new ArrayList<>();
         
-        buyBuckets.add(new RebalanceBucketAllocationDto(
-            "EQUITY_CORE",
-            50.0,
-            46.2,
-            49.8,
-            totalPool.multiply(new BigDecimal("0.5333")).setScale(2, RoundingMode.HALF_UP),
-            List.of(
-                new FundAllocationDto("INF109KC12U0", "Nifty LargeMidcap 250", totalPool.multiply(new BigDecimal("0.30")).setScale(2, RoundingMode.HALF_UP)),
-                new FundAllocationDto("INF109KC13X2", "Nifty200 Value 30", totalPool.multiply(new BigDecimal("0.2333")).setScale(2, RoundingMode.HALF_UP))
-            )
-        ));
+        for (BucketEngine.BucketTarget target : activeTargets) {
+            String bucketName = target.bucket().name();
+            double targetPct = target.targetPct().doubleValue();
+            
+            // Calculate current % allocation from live corpus
+            double currentPct = (liveCorpus.compareTo(BigDecimal.ZERO) > 0) ? 
+                Math.round((liveCorpus.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP).doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct;
+            
+            double postPct = Math.round((currentPct + (totalPool.doubleValue() / (liveCorpus.doubleValue() + totalPool.doubleValue())) * (targetPct / 100.0) * 100.0) * 10.0) / 10.0;
+            BigDecimal amountAllocated = totalPool.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
-        buyBuckets.add(new RebalanceBucketAllocationDto(
-            "EQUITY_SATELLITE",
-            20.0,
-            22.1,
-            21.4,
-            totalPool.multiply(new BigDecimal("0.1667")).setScale(2, RoundingMode.HALF_UP),
-            List.of(
-                new FundAllocationDto("INF247L01BQ9", "Nifty500 Momentum Quality 50", totalPool.multiply(new BigDecimal("0.1667")).setScale(2, RoundingMode.HALF_UP))
-            )
-        ));
-
-        buyBuckets.add(new RebalanceBucketAllocationDto(
-            "GOLD_SILVER",
-            15.0,
-            15.8,
-            15.6,
-            totalPool.multiply(new BigDecimal("0.1333")).setScale(2, RoundingMode.HALF_UP),
-            List.of()
-        ));
-
-        buyBuckets.add(new RebalanceBucketAllocationDto(
-            "LIQUID_BUFFER",
-            15.0,
-            15.9,
-            13.2,
-            totalPool.multiply(new BigDecimal("0.1667")).setScale(2, RoundingMode.HALF_UP),
-            List.of()
-        ));
+            buyBuckets.add(new RebalanceBucketAllocationDto(
+                bucketName,
+                targetPct,
+                currentPct,
+                postPct,
+                amountAllocated,
+                List.of(new FundAllocationDto(bucketName + "_INDEX", bucketName.replace("_", " ") + " Fund", amountAllocated))
+            ));
+        }
 
         BuySidePlanDto buySide = new BuySidePlanDto(totalPool, isLumpsum, buyBuckets);
 
-        // 4. Reasoning Narrative Block
+        // 5. Dynamic Templated Narrative
         List<String> paragraphs = new ArrayList<>();
         String headline;
+
         if (isLumpsum) {
-            headline = String.format("Manual Lump-Sum Inflow (₹%,d) — Redeploying per Target Allocation", totalPool.longValue());
+            headline = String.format("Manual Lump-Sum Inflow (₹%,d) — Redeploying per Target Allocation (Config %s)", totalPool.longValue(), activeVersion.versionId());
             paragraphs.add(String.format("Entered manual capital inflow of ₹%,d for deployment.", totalPool.longValue()));
             paragraphs.add(String.format("Current portfolio drawdown is %.1f%% below rolling high of ₹%,d (15%% drawdown tier not yet crossed).", ddPct, high.longValue()));
-            paragraphs.add("Capital is routed directly into under-allocated Equity Core (50% target) and Satellite (20% target) buckets without triggering any asset sales.");
+            paragraphs.add(String.format("Target allocations reference Config Version %s (effective from %s).", activeVersion.versionId(), activeVersion.effectiveFrom()));
         } else {
             headline = String.format("%s triggered — trimming legacy funds first to preserve tax efficiency", reasonLabel);
-            paragraphs.add(String.format("Triggered by a %.1f%% portfolio drawdown from rolling high of ₹%,d (recorded 2026-05-12).", ddPct, high.longValue()));
-            paragraphs.add("Per your rebalance waterfall priority, arbitrage buffer was checked first — currently ₹0, fully deployed in a prior tier.");
-            paragraphs.add("Legacy fund lots were trimmed next as a lower-conviction, tax-efficient source: both lots are long-term holdings, realizing ₹0 tax under Sec 112A exemption.");
-            paragraphs.add("Remaining ₹15,000 was sourced from a short-term Core Fund lot, incurring ₹2,250 STCG at slab rate.");
-            paragraphs.add("Total realized tax for this rebalance: ₹2,250. Remaining FY exemption headroom after this trade: ₹1,18,000.");
+            paragraphs.add(String.format("Triggered by a %.1f%% portfolio drawdown from rolling high of ₹%,d.", ddPct, high.longValue()));
+            paragraphs.add("Per your rebalance waterfall priority, arbitrage buffer was checked first (currently fully deployed).");
+            if (sellSide != null && sellSide.taxSummary() != null) {
+                TaxSummaryDto ts = sellSide.taxSummary();
+                paragraphs.add(String.format("Trimming open lots realized ₹%,d total gain (₹%,d LTCG exempt under Sec 112A, ₹%,d STCG taxable).", 
+                    ts.totalRealizedGain().longValue(), ts.totalLtcgExempt().longValue(), ts.totalStcgTaxable().longValue()));
+                paragraphs.add(String.format("Total estimated tax for this rebalance: ₹%,d. Remaining FY exemption headroom after trade: ₹%,d.", 
+                    ts.totalTaxEstimate().longValue(), ts.exemptionHeadroomAfter().longValue()));
+            }
+            paragraphs.add(String.format("Target allocations reference Config Version %s (effective from %s).", activeVersion.versionId(), activeVersion.effectiveFrom()));
         }
 
         ReasoningNarrativeDto narrative = new ReasoningNarrativeDto(
