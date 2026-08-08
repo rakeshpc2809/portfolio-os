@@ -262,7 +262,7 @@ public class RebalancePlanEngine {
             
             BigDecimal amountAllocated = totalPool.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
-            List<FundAllocationDto> realFunds = resolveRealFundBreakdown(target.bucket(), amountAllocated);
+            List<FundAllocationDto> realFunds = resolveRealFundBreakdown(target.bucket(), amountAllocated, activeVersion);
 
             buyBuckets.add(new RebalanceBucketAllocationDto(
                 bucketName,
@@ -327,32 +327,40 @@ public class RebalancePlanEngine {
         );
     }
 
-    private static List<FundAllocationDto> resolveRealFundBreakdown(BucketEngine.Bucket bucket, BigDecimal totalAmount) {
+    private static List<FundAllocationDto> resolveRealFundBreakdown(BucketEngine.Bucket bucket, BigDecimal totalAmount, BucketConfigLoader.BucketTargetVersion activeVersion) {
         if (totalAmount == null || totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return List.of();
         }
 
-        List<FundAllocationDto> funds = new ArrayList<>();
-        switch (bucket) {
-            case EQUITY_CORE -> {
-                BigDecimal half = totalAmount.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
-                BigDecimal rem = totalAmount.subtract(half);
-                funds.add(new FundAllocationDto("INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", half));
-                funds.add(new FundAllocationDto("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", rem));
-            }
-            case EQUITY_SATELLITE -> {
-                BigDecimal half = totalAmount.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
-                BigDecimal rem = totalAmount.subtract(half);
-                funds.add(new FundAllocationDto("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", half));
-                funds.add(new FundAllocationDto("INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund", rem));
-            }
-            case GOLD_SILVER -> {
-                funds.add(new FundAllocationDto("INF247L01908", "Motilal Oswal Gold and Silver Passive Fund of Funds", totalAmount));
-            }
-            case LIQUID_BUFFER -> {
-                funds.add(new FundAllocationDto("INF209K01157", "Invesco India Arbitrage Fund", totalAmount));
+        List<BucketConfigLoader.PreferredFundConfig> prefFunds = List.of();
+        if (activeVersion != null && activeVersion.targets() != null) {
+            for (BucketConfigLoader.BucketTargetConfig tc : activeVersion.targets()) {
+                if (bucket.name().equals(tc.bucket())) {
+                    prefFunds = tc.preferredFunds();
+                    break;
+                }
             }
         }
+
+        if (prefFunds == null || prefFunds.isEmpty()) {
+            prefFunds = BucketConfigLoader.getDefaultPreferredFundsForBucket(bucket.name());
+        }
+
+        List<FundAllocationDto> funds = new ArrayList<>();
+        BigDecimal remaining = totalAmount;
+
+        for (int i = 0; i < prefFunds.size(); i++) {
+            BucketConfigLoader.PreferredFundConfig pf = prefFunds.get(i);
+            BigDecimal alloc;
+            if (i == prefFunds.size() - 1) {
+                alloc = remaining;
+            } else {
+                alloc = totalAmount.multiply(BigDecimal.valueOf(pf.allocationWeight())).setScale(2, RoundingMode.HALF_UP);
+                remaining = remaining.subtract(alloc);
+            }
+            funds.add(new FundAllocationDto(pf.fundId(), pf.fundName(), alloc));
+        }
+
         return funds;
     }
 }

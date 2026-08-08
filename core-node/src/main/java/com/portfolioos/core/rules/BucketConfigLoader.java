@@ -12,10 +12,17 @@ import java.util.*;
 
 public class BucketConfigLoader {
 
+    public record PreferredFundConfig(
+        String fundId,
+        String fundName,
+        double allocationWeight
+    ) {}
+
     public record BucketTargetConfig(
         String bucket,
         double targetPct,
-        double bandPct
+        double bandPct,
+        List<PreferredFundConfig> preferredFunds
     ) {}
 
     public record BucketTargetVersion(
@@ -60,11 +67,25 @@ public class BucketConfigLoader {
                 List<BucketTargetConfig> targetConfigs = new ArrayList<>();
 
                 for (Map<String, Object> tMap : tList) {
-                    targetConfigs.add(new BucketTargetConfig(
-                        (String) tMap.get("bucket"),
-                        ((Number) tMap.get("target_pct")).doubleValue(),
-                        ((Number) tMap.get("band_pct")).doubleValue()
-                    ));
+                    String bName = (String) tMap.get("bucket");
+                    double tPct = ((Number) tMap.get("target_pct")).doubleValue();
+                    double bPct = ((Number) tMap.get("band_pct")).doubleValue();
+
+                    List<PreferredFundConfig> prefFunds = new ArrayList<>();
+                    if (tMap.containsKey("preferred_funds")) {
+                        List<Map<String, Object>> pfList = (List<Map<String, Object>>) tMap.get("preferred_funds");
+                        for (Map<String, Object> pfMap : pfList) {
+                            prefFunds.add(new PreferredFundConfig(
+                                (String) pfMap.get("fund_id"),
+                                (String) pfMap.get("fund_name"),
+                                ((Number) pfMap.get("allocation_weight")).doubleValue()
+                            ));
+                        }
+                    } else {
+                        prefFunds = getDefaultPreferredFundsForBucket(bName);
+                    }
+
+                    targetConfigs.add(new BucketTargetConfig(bName, tPct, bPct, prefFunds));
                 }
                 parsedVersions.add(new BucketTargetVersion(vId, effFrom, targetConfigs));
             }
@@ -86,7 +107,6 @@ public class BucketConfigLoader {
 
         String targetDateStr = (date != null ? date : LocalDate.now()).toString();
         
-        // Find latest version with effectiveFrom <= targetDateStr
         BucketTargetVersion activeVer = config.versions().stream()
             .filter(v -> v.effectiveFrom().compareTo(targetDateStr) <= 0)
             .max(Comparator.comparing(BucketTargetVersion::effectiveFrom))
@@ -166,6 +186,37 @@ public class BucketConfigLoader {
         }
     }
 
+    public static List<PreferredFundConfig> getDefaultPreferredFundsForBucket(String bucketName) {
+        if (bucketName == null) return List.of();
+        switch (bucketName) {
+            case "EQUITY_CORE" -> {
+                return List.of(
+                    new PreferredFundConfig("INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", 0.50),
+                    new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 0.50)
+                );
+            }
+            case "EQUITY_SATELLITE" -> {
+                return List.of(
+                    new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 0.50),
+                    new PreferredFundConfig("INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund", 0.50)
+                );
+            }
+            case "GOLD_SILVER" -> {
+                return List.of(
+                    new PreferredFundConfig("INF247L01908", "Motilal Oswal Gold and Silver Passive Fund of Funds", 1.00)
+                );
+            }
+            case "LIQUID_BUFFER" -> {
+                return List.of(
+                    new PreferredFundConfig("INF209K01157", "Invesco India Arbitrage Fund", 1.00)
+                );
+            }
+            default -> {
+                return List.of();
+            }
+        }
+    }
+
     private static File findConfigFile() {
         String rulesDirEnv = System.getenv("RULES_DIR");
         List<File> locations = new ArrayList<>();
@@ -185,10 +236,10 @@ public class BucketConfigLoader {
 
     private static BucketRulesConfig createDefaultConfig() {
         List<BucketTargetConfig> defaults = List.of(
-            new BucketTargetConfig("EQUITY_CORE", 50.0, 5.0),
-            new BucketTargetConfig("EQUITY_SATELLITE", 20.0, 5.0),
-            new BucketTargetConfig("GOLD_SILVER", 15.0, 5.0),
-            new BucketTargetConfig("LIQUID_BUFFER", 15.0, 5.0)
+            new BucketTargetConfig("EQUITY_CORE", 50.0, 5.0, getDefaultPreferredFundsForBucket("EQUITY_CORE")),
+            new BucketTargetConfig("EQUITY_SATELLITE", 20.0, 5.0, getDefaultPreferredFundsForBucket("EQUITY_SATELLITE")),
+            new BucketTargetConfig("GOLD_SILVER", 15.0, 5.0, getDefaultPreferredFundsForBucket("GOLD_SILVER")),
+            new BucketTargetConfig("LIQUID_BUFFER", 15.0, 5.0, getDefaultPreferredFundsForBucket("LIQUID_BUFFER"))
         );
         return new BucketRulesConfig(List.of(
             new BucketTargetVersion("v1.0", "2024-01-01", defaults)
@@ -218,6 +269,19 @@ public class BucketConfigLoader {
                     tMap.put("bucket", tc.bucket());
                     tMap.put("target_pct", tc.targetPct());
                     tMap.put("band_pct", tc.bandPct());
+
+                    if (tc.preferredFunds() != null && !tc.preferredFunds().isEmpty()) {
+                        List<Map<String, Object>> pfList = new ArrayList<>();
+                        for (PreferredFundConfig pf : tc.preferredFunds()) {
+                            Map<String, Object> pfMap = new LinkedHashMap<>();
+                            pfMap.put("fund_id", pf.fundId());
+                            pfMap.put("fund_name", pf.fundName());
+                            pfMap.put("allocation_weight", pf.allocationWeight());
+                            pfList.add(pfMap);
+                        }
+                        tMap.put("preferred_funds", pfList);
+                    }
+
                     tList.add(tMap);
                 }
                 vMap.put("targets", tList);

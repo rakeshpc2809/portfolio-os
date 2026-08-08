@@ -6,27 +6,105 @@ versions:
   - bucket: "EQUITY_CORE"
     target_pct: 50.0
     band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF109KC12U0"
+      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+      allocation_weight: 0.5
+    - fund_id: "INF109KC13X2"
+      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
+      allocation_weight: 0.5
   - bucket: "EQUITY_SATELLITE"
     target_pct: 20.0
     band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF754K01TN5"
+      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
+      allocation_weight: 0.5
+    - fund_id: "INF247L01BQ9"
+      fund_name: "Motilal Oswal Nifty Microcap 250 Index Fund"
+      allocation_weight: 0.5
   - bucket: "GOLD_SILVER"
     target_pct: 15.0
     band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF247L01908"
+      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
+      allocation_weight: 1.0
   - bucket: "LIQUID_BUFFER"
     target_pct: 15.0
     band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF209K01157"
+      fund_name: "Invesco India Arbitrage Fund"
+      allocation_weight: 1.0
 - version_id: "v2.0"
   effective_from: "2026-08-08"
   targets:
   - bucket: "EQUITY_CORE"
     target_pct: 55.0
     band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF109KC12U0"
+      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+      allocation_weight: 0.5
+    - fund_id: "INF109KC13X2"
+      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
+      allocation_weight: 0.5
   - bucket: "EQUITY_SATELLITE"
     target_pct: 20.0
     band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF754K01TN5"
+      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
+      allocation_weight: 0.5
+    - fund_id: "INF247L01BQ9"
+      fund_name: "Motilal Oswal Nifty Microcap 250 Index Fund"
+      allocation_weight: 0.5
   - bucket: "GOLD_SILVER"
     target_pct: 10.0
     band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF247L01908"
+      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
+      allocation_weight: 1.0
   - bucket: "LIQUID_BUFFER"
     target_pct: 15.0
     band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF209K01157"
+      fund_name: "Invesco India Arbitrage Fund"
+      allocation_weight: 1.0
+- version_id: "v3.0"
+  effective_from: "2026-08-08"
+  targets:
+  - bucket: "EQUITY_CORE"
+    target_pct: 50.0
+    band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF109KC12U0"
+      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+      allocation_weight: 0.6
+    - fund_id: "INF109KC13X2"
+      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
+      allocation_weight: 0.4
+  - bucket: "EQUITY_SATELLITE"
+    target_pct: 20.0
+    band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF754K01TN5"
+      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
+      allocation_weight: 1.0
+  - bucket: "GOLD_SILVER"
+    target_pct: 15.0
+    band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF247L01908"
+      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
+      allocation_weight: 1.0
+  - bucket: "LIQUID_BUFFER"
+    target_pct: 15.0
+    band_pct: 5.0
+    preferred_funds:
+    - fund_id: "INF209K01157"
+      fund_name: "Invesco India Arbitrage Fund"
+      allocation_weight: 1.0

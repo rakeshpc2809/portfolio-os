@@ -420,11 +420,26 @@ public class SyncController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Missing 'targets' array in request body"));
             }
 
-            List<com.portfolioos.core.rules.BucketConfigLoader.BucketTargetConfig> newTargets = targetsList.stream().map(tMap -> new com.portfolioos.core.rules.BucketConfigLoader.BucketTargetConfig(
-                (String) tMap.get("bucket"),
-                ((Number) tMap.get("targetPct") != null ? (Number) tMap.get("targetPct") : (Number) tMap.get("target_pct")).doubleValue(),
-                ((Number) tMap.get("bandPct") != null ? (Number) tMap.get("bandPct") : (Number) tMap.get("band_pct")).doubleValue()
-            )).toList();
+            List<com.portfolioos.core.rules.BucketConfigLoader.BucketTargetConfig> newTargets = targetsList.stream().map(tMap -> {
+                String bName = (String) tMap.get("bucket");
+                double tPct = ((Number) tMap.get("targetPct") != null ? (Number) tMap.get("targetPct") : (Number) tMap.get("target_pct")).doubleValue();
+                double bPct = ((Number) tMap.get("bandPct") != null ? (Number) tMap.get("bandPct") : (Number) tMap.get("band_pct")).doubleValue();
+
+                List<com.portfolioos.core.rules.BucketConfigLoader.PreferredFundConfig> prefFunds = new ArrayList<>();
+                if (tMap.containsKey("preferredFunds") || tMap.containsKey("preferred_funds")) {
+                    List<Map<String, Object>> pfList = (List<Map<String, Object>>) tMap.getOrDefault("preferredFunds", tMap.get("preferred_funds"));
+                    for (Map<String, Object> pfMap : pfList) {
+                        prefFunds.add(new com.portfolioos.core.rules.BucketConfigLoader.PreferredFundConfig(
+                            (String) pfMap.get("fundId"),
+                            (String) pfMap.get("fundName"),
+                            ((Number) pfMap.get("allocationWeight")).doubleValue()
+                        ));
+                    }
+                } else {
+                    prefFunds = com.portfolioos.core.rules.BucketConfigLoader.getDefaultPreferredFundsForBucket(bName);
+                }
+                return new com.portfolioos.core.rules.BucketConfigLoader.BucketTargetConfig(bName, tPct, bPct, prefFunds);
+            }).toList();
 
             com.portfolioos.core.rules.BucketConfigLoader.updateBucketTargets(newTargets, effectiveFrom);
             return ResponseEntity.ok(com.portfolioos.core.rules.BucketConfigLoader.loadConfig());
