@@ -1021,6 +1021,167 @@ function render2FundVennDiagram() {
   container.innerHTML = svg;
 }
 
+export async function loadUnifiedRebalancePlan(triggerType = 'INDUCED', manualAmount = null) {
+  try {
+    let url = `/api/v1/sync/rebalance/plan?trigger=${encodeURIComponent(triggerType)}`;
+    let options = { method: 'GET' };
+
+    if (triggerType === 'MANUAL_LUMPSUM') {
+      url = `/api/v1/sync/rebalance/simulate-lumpsum`;
+      options = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: manualAmount || 50000.0 })
+      };
+    }
+
+    const res = await fetch(url, options);
+    if (!res.ok) return;
+    const plan = await res.json();
+    renderUnifiedRebalancePlanUI(plan);
+  } catch (err) {
+    console.error('Failed to load Unified Rebalance Plan:', err);
+  }
+}
+
+export function renderUnifiedRebalancePlanUI(plan) {
+  if (!plan) return;
+
+  const trigger = plan.trigger || {};
+  const drawdownCtx = trigger.drawdown_context || trigger.drawdownContext || {};
+  const sellSide = plan.sell_side || plan.sellSide || {};
+  const buySide = plan.buy_side || plan.buySide || {};
+  const narrative = plan.reasoning_narrative || plan.reasoningNarrative || {};
+
+  // 1. Render Status Strip
+  const badgeEl = document.getElementById('rebalanceTriggerBadge');
+  const ddPctEl = document.getElementById('stripDrawdownPct');
+  const highEl = document.getElementById('stripRollingHigh');
+  const windowEl = document.getElementById('stripReconWindow');
+
+  if (badgeEl && trigger) {
+    badgeEl.textContent = trigger.reason_label || trigger.reasonLabel || 'REBALANCE TRIGGERED';
+    if (trigger.type === 'INDUCED') {
+      badgeEl.style.background = 'rgba(239, 68, 68, 0.2)';
+      badgeEl.style.color = '#f87171';
+      badgeEl.style.borderColor = '#ef4444';
+    } else if (trigger.type === 'SCHEDULED') {
+      badgeEl.style.background = 'rgba(56, 189, 248, 0.2)';
+      badgeEl.style.color = '#38bdf8';
+      badgeEl.style.borderColor = '#0284c7';
+    } else {
+      badgeEl.style.background = 'rgba(168, 85, 247, 0.2)';
+      badgeEl.style.color = '#c084fc';
+      badgeEl.style.borderColor = '#a855f7';
+    }
+  }
+
+  if (ddPctEl && drawdownCtx) {
+    const dd = drawdownCtx.current_drawdown_pct ?? drawdownCtx.currentDrawdownPct ?? 0;
+    ddPctEl.textContent = `${dd}%`;
+  }
+  if (highEl && drawdownCtx) {
+    const rh = drawdownCtx.rolling_high_value ?? drawdownCtx.rollingHighValue ?? 2500000;
+    highEl.textContent = `₹ ${(rh / 100000).toFixed(2)}L`;
+  }
+  if (windowEl && trigger) {
+    windowEl.textContent = trigger.scheduled_window_label || trigger.scheduledWindowLabel || 'March 2027 Window';
+  }
+
+  // 2. Render Header
+  const titleEl = document.getElementById('planHeadlineTitle');
+  const metaEl = document.getElementById('planMetaTimestamp');
+  if (titleEl && narrative) {
+    titleEl.textContent = narrative.headline || 'Unified Rebalance Plan';
+  }
+  const genAt = plan.generated_at || plan.generatedAt;
+  if (metaEl && genAt) {
+    metaEl.textContent = `Generated: ${new Date(genAt).toLocaleString()}`;
+  }
+
+  // 3. Render Sell-Side Waterfall Diagram
+  const wfContainer = document.getElementById('waterfallVisualDiagram');
+  if (wfContainer && sellSide.waterfall) {
+    let html = '';
+    sellSide.waterfall.forEach((step, idx) => {
+      const skipReason = step.skipped_reason || step.skippedReason;
+      const isSkipped = !!skipReason;
+      const cardBg = isSkipped ? 'rgba(30, 41, 59, 0.4)' : 'rgba(15, 23, 42, 0.8)';
+      const borderColor = isSkipped ? '#475569' : '#38bdf8';
+      const textColor = isSkipped ? '#64748b' : '#f8fafc';
+      const tierLabel = step.tier_label || step.tierLabel || step.tier;
+
+      html += `
+        <div style="min-width: 220px; flex: 1; background: ${cardBg}; border: 1px solid ${borderColor}; border-radius: 6px; padding: 12px; position: relative;">
+          <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Step ${idx + 1}: ${tierLabel}</div>
+          <div style="font-size: 1.1rem; font-weight: 800; color: ${textColor}; margin: 6px 0;">
+            ${isSkipped ? '₹0' : '₹' + parseFloat(step.sold).toLocaleString('en-IN')}
+          </div>
+          ${isSkipped ? `<span style="font-size: 0.65rem; background: #334155; color: #cbd5e1; padding: 2px 6px; border-radius: 3px;">${skipReason}</span>` : ''}
+          ${step.lots && step.lots.length > 0 ? `
+            <div style="margin-top: 8px; font-size: 0.7rem; color: #38bdf8; cursor: pointer;" onclick="alert('Lot Details:\\n' + ${JSON.stringify(JSON.stringify(step.lots))})">
+              🔍 Inspect ${step.lots.length} Lot(s)
+            </div>
+          ` : ''}
+        </div>
+      `;
+      if (idx < sellSide.waterfall.length - 1) {
+        html += `<div style="color: #64748b; font-size: 1.2rem;">➔</div>`;
+      }
+    });
+
+    const taxSum = sellSide.tax_summary || sellSide.taxSummary || {};
+    const totReq = sellSide.total_required || sellSide.totalRequired || 60000;
+    const estTax = taxSum.total_tax_estimate ?? taxSum.totalTaxEstimate ?? 0;
+
+    html += `
+      <div style="color: #64748b; font-size: 1.2rem;">➔</div>
+      <div style="min-width: 180px; background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; border-radius: 6px; padding: 12px;">
+        <div style="font-size: 0.7rem; color: #34d399; font-weight: 700;">REBALANCE POOL</div>
+        <div style="font-size: 1.2rem; font-weight: 800; color: #10b981; margin-top: 4px;">
+          ₹${parseFloat(totReq).toLocaleString('en-IN')}
+        </div>
+        <div style="font-size: 0.65rem; color: #a7f3d0; margin-top: 4px;">
+          Est Tax: ₹${parseFloat(estTax).toLocaleString('en-IN')}
+        </div>
+      </div>
+    `;
+    wfContainer.innerHTML = html;
+  }
+
+  // 4. Render Narrative Paragraphs
+  const pContainer = document.getElementById('planReasoningParagraphs');
+  if (pContainer && narrative.paragraphs) {
+    pContainer.innerHTML = narrative.paragraphs.map(p => `
+      <p style="margin: 0 0 6px 0; font-size: 0.8rem; line-height: 1.4;">• ${p}</p>
+    `).join('');
+  }
+
+  // 5. Render Buy-Side Allocation Grid
+  const buyGrid = document.getElementById('buySideAllocationGrid');
+  if (buyGrid && buySide.buckets) {
+    buyGrid.innerHTML = buySide.buckets.map(b => {
+      const tgt = b.target_pct ?? b.targetPct ?? 0;
+      const cur = b.current_pct ?? b.currentPct ?? 0;
+      const post = b.post_rebalance_pct ?? b.postRebalancePct ?? 0;
+      const alloc = b.amount_allocated ?? b.amountAllocated ?? 0;
+      return `
+        <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px;">
+          <div style="font-size: 0.8rem; font-weight: 700; color: #38bdf8;">${b.bucket.replace('_', ' ')}</div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-top: 6px; color: #94a3b8;">
+            <span>Target: ${tgt}%</span>
+            <span>Current: ${cur}%</span>
+            <span style="color: #34d399; font-weight: 700;">Post: ${post}%</span>
+          </div>
+          <div style="margin-top: 8px; font-size: 0.95rem; font-weight: 800; color: #f8fafc;">
+            +₹${parseFloat(alloc).toLocaleString('en-IN')}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const selA = document.getElementById('vennFundA');
   const selB = document.getElementById('vennFundB');
@@ -1028,8 +1189,28 @@ document.addEventListener('DOMContentLoaded', () => {
     selA.addEventListener('change', render2FundVennDiagram);
     selB.addEventListener('change', render2FundVennDiagram);
   }
+  
+  const btnViewPlan = document.getElementById('btnViewRebalancePlan');
+  const btnLumpsum = document.getElementById('btnSimulateLumpsum');
+  
+  if (btnViewPlan) {
+    btnViewPlan.addEventListener('click', () => loadUnifiedRebalancePlan('INDUCED'));
+  }
+  if (btnLumpsum) {
+    btnLumpsum.addEventListener('click', () => {
+      const amtStr = prompt('Enter manual lump-sum amount to simulate (₹):', '50000');
+      if (amtStr) {
+        const amt = parseFloat(amtStr);
+        if (!isNaN(amt) && amt > 0) {
+          loadUnifiedRebalancePlan('MANUAL_LUMPSUM', amt);
+        }
+      }
+    });
+  }
+
   loadActionRecommendations();
   render2FundVennDiagram();
+  loadUnifiedRebalancePlan('INDUCED');
 });
 
 if (typeof window !== 'undefined') {
@@ -1037,6 +1218,8 @@ if (typeof window !== 'undefined') {
   window.loadUpSetAnalytics = loadUpSetAnalytics;
   window.loadActionRecommendations = loadActionRecommendations;
   window.render2FundVennDiagram = render2FundVennDiagram;
+  window.loadUnifiedRebalancePlan = loadUnifiedRebalancePlan;
 }
+
 
 

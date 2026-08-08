@@ -371,4 +371,37 @@ public class SyncController {
             "my-fintracker-core"
         ));
     }
+
+    @GetMapping("/rebalance/plan")
+    public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> getRebalancePlan(
+        @RequestParam(value = "trigger", required = false, defaultValue = "INDUCED") String triggerType
+    ) {
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
+        List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
+        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
+
+        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
+            openLots, matchedLots, navMap, LocalDate.now(), new BigDecimal("24000.00"), new BigDecimal("25000.00"),
+            com.portfolioos.core.valuation.BucketEngine.DEFAULT_TARGETS, "2026-27", triggerType, null
+        );
+        return ResponseEntity.ok(plan);
+    }
+
+    @PostMapping("/rebalance/simulate-lumpsum")
+    public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> simulateLumpsum(
+        @RequestBody Map<String, Object> req
+    ) {
+        BigDecimal amount = req.containsKey("amount") ? new BigDecimal(req.get("amount").toString()) : new BigDecimal("50000.00");
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
+        List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
+        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
+
+        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
+            openLots, matchedLots, navMap, LocalDate.now(), new BigDecimal("24000.00"), new BigDecimal("25000.00"),
+            com.portfolioos.core.valuation.BucketEngine.DEFAULT_TARGETS, "2026-27", "MANUAL_LUMPSUM", amount
+        );
+        return ResponseEntity.ok(plan);
+    }
 }
