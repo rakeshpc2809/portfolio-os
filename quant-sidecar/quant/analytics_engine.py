@@ -183,3 +183,44 @@ def run_monte_carlo_fire_simulation(
         "median_ending_corpus": round(median_corpus, 2),
         "tenth_percentile_corpus": round(p10_corpus, 2)
     }
+
+
+def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_name="NIFTY_50_TRI"):
+    p_rets = np.array(portfolio_returns, dtype=float)
+    b_rets = np.array(benchmark_returns, dtype=float)
+
+    if len(p_rets) == 0 or len(b_rets) == 0 or len(p_rets) != len(b_rets):
+        return {
+            "status": "ERROR",
+            "message": "Mismatch or empty return series for benchmark analytics"
+        }
+
+    p_cagr = float(p_rets.mean() * 252.0 * 100.0)
+    b_cagr = float(b_rets.mean() * 252.0 * 100.0)
+    p_vol = float(p_rets.std() * np.sqrt(252.0) * 100.0)
+    b_vol = float(b_rets.std() * np.sqrt(252.0) * 100.0)
+
+    cov = float(np.cov(p_rets, b_rets)[0][1]) if len(p_rets) > 1 else 0.0
+    var_b = float(np.var(b_rets)) if len(b_rets) > 1 else 0.0
+    beta = round(cov / var_b, 3) if var_b > 0 else 1.0
+
+    rf_pct = 6.0
+    alpha_ann = round(p_cagr - (rf_pct + beta * (b_cagr - rf_pct)), 2)
+    tracking_err = round(float(np.std(p_rets - b_rets) * np.sqrt(252.0) * 100.0), 2)
+    sharpe = round((p_cagr - rf_pct) / p_vol, 2) if p_vol > 0 else 0.0
+    outperformance = round(p_cagr - b_cagr, 2)
+
+    return {
+        "status": "OK",
+        "benchmark_name": benchmark_name,
+        "sample_days": len(p_rets),
+        "portfolio_cagr_pct": round(p_cagr, 2),
+        "benchmark_cagr_pct": round(b_cagr, 2),
+        "portfolio_vol_pct": round(p_vol, 2),
+        "benchmark_vol_pct": round(b_vol, 2),
+        "alpha_pct": alpha_ann,
+        "beta": beta,
+        "sharpe_ratio": sharpe,
+        "tracking_error_pct": tracking_err,
+        "outperformance_pct": outperformance
+    }

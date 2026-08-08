@@ -501,4 +501,12 @@ public class PortfolioValuationService {
             fmt(result.ltcgExemptionConsumed())
         );
     }
+
+    public Map<String, Object> getBenchmarkAnalytics(String benchmarkId) {
+        String targetBenchmark = (benchmarkId != null && !benchmarkId.isBlank()) ? benchmarkId : "NIFTY_50_TRI";
+        Map<String, Object> aligned = duckDbProjector.getAlignedPortfolioAndBenchmarkReturns(targetBenchmark);
+        List<Double> pReturns = (List<Double>) aligned.getOrDefault("portfolio_returns", java.util.Collections.emptyList());
+        List<Double> bReturns = (List<Double>) aligned.getOrDefault("benchmark_returns", java.util.Collections.emptyList());
+        return flightRpcClient.computeBenchmarkAnalytics(pReturns, bReturns, targetBenchmark);
+    }
 }

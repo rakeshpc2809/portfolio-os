@@ -207,4 +207,31 @@ public class FlightRpcClient {
         }
         return Collections.emptyMap();
     }
+
+    public Map<String, Object> computeBenchmarkAnalytics(List<Double> portfolioReturns, List<Double> benchmarkReturns, String benchmarkName) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("portfolio_returns", portfolioReturns != null ? portfolioReturns : Collections.emptyList());
+            payload.put("benchmark_returns", benchmarkReturns != null ? benchmarkReturns : Collections.emptyList());
+            payload.put("benchmark_name", benchmarkName != null ? benchmarkName : "NIFTY_50_TRI");
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String json = mapper.writeValueAsString(payload);
+
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create("http://127.0.0.1:8000/api/v1/analytics/benchmark"))
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+            java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                return mapper.readValue(response.body(), Map.class);
+            }
+        } catch (Exception e) {
+            System.err.println("Benchmark analytics request failed: " + e.getMessage());
+        }
+        return Collections.emptyMap();
+    }
 }

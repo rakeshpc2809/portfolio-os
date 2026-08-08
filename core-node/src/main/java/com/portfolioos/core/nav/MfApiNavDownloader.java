@@ -108,6 +108,38 @@ public class MfApiNavDownloader {
         }
     }
 
+    public void downloadBenchmarkData(String benchmarkId, long schemeCode, DuckDbProjector projector) {
+        try {
+            String navUrl = "https://api.mfapi.in/mf/" + schemeCode;
+            HttpRequest navReq = HttpRequest.newBuilder()
+                .uri(URI.create(navUrl))
+                .timeout(Duration.ofSeconds(30))
+                .GET()
+                .build();
+
+            HttpResponse<String> navResp = httpClient.send(navReq, HttpResponse.BodyHandlers.ofString());
+            if (navResp.statusCode() != 200) return;
+
+            JsonNode navTree = objectMapper.readTree(navResp.body());
+            JsonNode dataNode = navTree.get("data");
+            if (dataNode == null || !dataNode.isArray()) return;
+
+            Map<String, Double> levels = new HashMap<>();
+            for (JsonNode row : dataNode) {
+                try {
+                    String dateStr = row.get("date").asText();
+                    double navVal = Double.parseDouble(row.get("nav").asText());
+                    LocalDate date = LocalDate.parse(dateStr, DD_MM_YYYY);
+                    levels.put(date.toString(), navVal);
+                } catch (Exception ignored) {}
+            }
+            projector.saveBenchmarkLevels(benchmarkId, levels);
+            System.out.println("Successfully ingested " + levels.size() + " benchmark level records for " + benchmarkId + " (Scheme " + schemeCode + ")");
+        } catch (Exception e) {
+            System.err.println("MFAPI benchmark download error for " + benchmarkId + ": " + e.getMessage());
+        }
+    }
+
     public static void main(String[] args) {
         DuckDbProjector projector = new DuckDbProjector();
         MfApiNavDownloader downloader = new MfApiNavDownloader();
@@ -121,6 +153,8 @@ public class MfApiNavDownloader {
         for (String isin : isins) {
             downloader.downloadHistoricalNavsForIsin(isin, projector);
         }
+        downloader.downloadBenchmarkData("NIFTY_50_TRI", 120716, projector);
+        downloader.downloadBenchmarkData("NIFTY_500_TRI", 147648, projector);
         projector.checkpoint();
         System.out.println("MfApiNavDownloader verification complete.");
     }

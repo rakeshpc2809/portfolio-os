@@ -76,6 +76,8 @@ async def parse_statement(
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
+from quant.analytics_engine import run_monte_carlo_fire_simulation, compute_benchmark_analytics
+
 class FireSimulationRequest(BaseModel):
     daily_returns: List[float] = []
     current_corpus: float
@@ -83,6 +85,11 @@ class FireSimulationRequest(BaseModel):
     monthly_contribution: float
     years_to_retirement: int
     num_simulations: int = 10000
+
+class BenchmarkAnalyticsRequest(BaseModel):
+    portfolio_returns: List[float]
+    benchmark_returns: List[float]
+    benchmark_name: str = "NIFTY_50_TRI"
 
 @app.post("/api/v1/simulate_fire")
 async def simulate_fire(req: FireSimulationRequest):
@@ -93,6 +100,14 @@ async def simulate_fire(req: FireSimulationRequest):
         monthly_contribution=req.monthly_contribution,
         years_to_retirement=req.years_to_retirement,
         num_simulations=req.num_simulations
+    )
+
+@app.post("/api/v1/analytics/benchmark")
+async def analyze_benchmark(req: BenchmarkAnalyticsRequest):
+    return compute_benchmark_analytics(
+        portfolio_returns=req.portfolio_returns,
+        benchmark_returns=req.benchmark_returns,
+        benchmark_name=req.benchmark_name
     )
 
 def run_flight_server():

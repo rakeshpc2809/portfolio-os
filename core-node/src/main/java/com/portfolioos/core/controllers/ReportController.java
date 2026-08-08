@@ -125,4 +125,11 @@ public class ReportController {
             .contentType(MediaType.parseMediaType("text/csv"))
             .body(csv);
     }
+
+    @GetMapping("/analytics/benchmark")
+    public ResponseEntity<Map<String, Object>> getBenchmarkAnalytics(
+        @RequestParam(value = "benchmark", defaultValue = "NIFTY_50_TRI") String benchmark
+    ) {
+        return ResponseEntity.ok(valuationService.getBenchmarkAnalytics(benchmark));
+    }
 }

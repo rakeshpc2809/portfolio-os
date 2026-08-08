@@ -91,9 +91,141 @@ public class DuckDbProjector {
                 "  PRIMARY KEY (asset_id, nav_date)" +
                 ")"
             );
+
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS benchmark_history (" +
+                "  benchmark_id VARCHAR NOT NULL," +
+                "  nav_date VARCHAR NOT NULL," +
+                "  level DOUBLE NOT NULL," +
+                "  PRIMARY KEY (benchmark_id, nav_date)" +
+                ")"
+            );
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize DuckDB schema", e);
         }
+    }
+
+    public void saveBenchmarkLevels(String benchmarkId, Map<String, Double> dateToLevel) {
+        if (dateToLevel == null || dateToLevel.isEmpty()) return;
+        String sql = "INSERT OR REPLACE INTO benchmark_history (benchmark_id, nav_date, level) VALUES (?, ?, ?)";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            int batchSize = 0;
+            for (Map.Entry<String, Double> entry : dateToLevel.entrySet()) {
+                pstmt.setString(1, benchmarkId);
+                pstmt.setString(2, entry.getKey());
+                pstmt.setDouble(3, entry.getValue());
+                pstmt.addBatch();
+                batchSize++;
+                if (batchSize % 1000 == 0) {
+                    pstmt.executeBatch();
+                }
+            }
+            if (batchSize % 1000 != 0) {
+                pstmt.executeBatch();
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to save benchmark levels: " + e.getMessage());
+        }
+    }
+
+    public Map<String, Object> getAlignedPortfolioAndBenchmarkReturns(String benchmarkId) {
+        List<Double> portfolioReturns = new ArrayList<>();
+        List<Double> benchmarkReturns = new ArrayList<>();
+        try (Connection conn = getConnection()) {
+            String sql = """
+                WITH nav_dates AS (
+                    SELECT DISTINCT nav_date FROM nav_history WHERE nav > 0
+                ),
+                unit_changes AS (
+                    SELECT asset_id, event_date,
+                           SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(units AS DOUBLE) ELSE -CAST(units AS DOUBLE) END) AS change_units
+                    FROM projected_events
+                    GROUP BY asset_id, event_date
+                ),
+                asset_daily_units AS (
+                    SELECT n.nav_date, u.asset_id, SUM(u.change_units) AS units_held
+                    FROM nav_dates n
+                    JOIN unit_changes u ON u.event_date <= n.nav_date
+                    GROUP BY n.nav_date, u.asset_id
+                    HAVING units_held > 0
+                ),
+                fund_daily_returns AS (
+                    SELECT asset_id, nav_date, nav,
+                           LAG(nav_date) OVER (PARTITION BY asset_id ORDER BY nav_date ASC) AS prev_date,
+                           LAG(nav) OVER (PARTITION BY asset_id ORDER BY nav_date ASC) AS prev_nav
+                    FROM nav_history WHERE nav > 0
+                ),
+                valid_weighted_returns AS (
+                    SELECT f.asset_id, f.nav_date, f.prev_date,
+                           du.units_held * f.prev_nav AS weight,
+                           (f.nav - f.prev_nav) / f.prev_nav AS fund_ret
+                    FROM fund_daily_returns f
+                    JOIN asset_daily_units du ON f.asset_id = du.asset_id AND du.nav_date = f.prev_date
+                    WHERE f.prev_nav > 0 AND f.prev_date IS NOT NULL AND du.units_held > 0
+                ),
+                daily_portfolio_returns AS (
+                    SELECT nav_date, prev_date,
+                           SUM(weight * fund_ret) / SUM(weight) AS blended_ret
+                    FROM valid_weighted_returns
+                    GROUP BY nav_date, prev_date
+                    HAVING SUM(weight) > 0
+                ),
+                benchmark_daily_returns AS (
+                    SELECT nav_date, level,
+                           LAG(nav_date) OVER (ORDER BY nav_date ASC) AS prev_date,
+                           LAG(level) OVER (ORDER BY nav_date ASC) AS prev_level
+                    FROM benchmark_history
+                    WHERE benchmark_id = ? AND level > 0
+                ),
+                valid_benchmark_returns AS (
+                    SELECT nav_date, prev_date,
+                           (level - prev_level) / prev_level AS b_ret
+                    FROM benchmark_daily_returns
+                    WHERE prev_level > 0 AND prev_date IS NOT NULL
+                )
+                SELECT p.nav_date, p.prev_date, p.blended_ret, b.b_ret
+                FROM daily_portfolio_returns p
+                JOIN valid_benchmark_returns b ON p.nav_date = b.nav_date AND p.prev_date = b.prev_date
+                ORDER BY p.nav_date ASC;
+            """;
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, benchmarkId);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        String dateStr = rs.getString("nav_date");
+                        String prevDateStr = rs.getString("prev_date");
+                        double pRet = rs.getDouble("blended_ret");
+                        double bRet = rs.getDouble("b_ret");
+                        java.time.LocalDate currDate = null;
+                        java.time.LocalDate prevDate = null;
+                        try {
+                            currDate = java.time.LocalDate.parse(dateStr);
+                            prevDate = java.time.LocalDate.parse(prevDateStr);
+                        } catch (Exception ignored) {}
+
+                        if (currDate != null && prevDate != null) {
+                            long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(prevDate, currDate);
+                            if (daysBetween >= 1 && daysBetween <= 5) {
+                                if (Math.abs(pRet) < 0.08 * daysBetween && Math.abs(bRet) < 0.08 * daysBetween) {
+                                    double pDaily = Math.pow(1.0 + pRet, 1.0 / daysBetween) - 1.0;
+                                    double bDaily = Math.pow(1.0 + bRet, 1.0 / daysBetween) - 1.0;
+                                    portfolioReturns.add(pDaily);
+                                    benchmarkReturns.add(bDaily);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error fetching aligned benchmark returns: " + e.getMessage());
+        }
+
+        Map<String, Object> res = new HashMap<>();
+        res.put("portfolio_returns", portfolioReturns);
+        res.put("benchmark_returns", benchmarkReturns);
+        return res;
     }
 
     public void checkpoint() {
