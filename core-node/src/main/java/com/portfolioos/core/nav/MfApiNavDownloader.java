@@ -19,33 +19,60 @@ public class MfApiNavDownloader {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private static final DateTimeFormatter DD_MM_YYYY = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+    private final Map<String, Long> isinToSchemeCodeMap = new HashMap<>();
+    private boolean isMasterListLoaded = false;
 
     public MfApiNavDownloader() {
         this.httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
+            .connectTimeout(Duration.ofSeconds(30))
             .build();
         this.objectMapper = new ObjectMapper();
     }
 
-    public void downloadHistoricalNavsForIsin(String isin, DuckDbProjector projector) {
-        if (isin == null || isin.isBlank()) return;
+    private synchronized void loadMasterListIfNecessary() {
+        if (isMasterListLoaded) return;
         try {
-            // Search scheme code by ISIN
-            String searchUrl = "https://api.mfapi.in/mf/search?q=" + isin;
-            HttpRequest searchReq = HttpRequest.newBuilder()
-                .uri(URI.create(searchUrl))
-                .timeout(Duration.ofSeconds(5))
+            String masterUrl = "https://api.mfapi.in/mf";
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(masterUrl))
+                .timeout(Duration.ofSeconds(30))
                 .GET()
                 .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 200) {
+                JsonNode array = objectMapper.readTree(resp.body());
+                if (array.isArray()) {
+                    for (JsonNode item : array) {
+                        long code = item.get("schemeCode").asLong();
+                        JsonNode ig = item.get("isinGrowth");
+                        JsonNode idiv = item.get("isinDivReinvestment");
+                        if (ig != null && !ig.isNull() && !ig.asText().isBlank()) {
+                            isinToSchemeCodeMap.put(ig.asText().trim(), code);
+                        }
+                        if (idiv != null && !idiv.isNull() && !idiv.asText().isBlank()) {
+                            isinToSchemeCodeMap.put(idiv.asText().trim(), code);
+                        }
+                    }
+                    isMasterListLoaded = true;
+                    System.out.println("MfApiNavDownloader: Loaded master scheme list with " + isinToSchemeCodeMap.size() + " ISIN mappings.");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to load MFAPI master scheme list: " + e.getMessage());
+        }
+    }
 
-            HttpResponse<String> searchResp = httpClient.send(searchReq, HttpResponse.BodyHandlers.ofString());
-            if (searchResp.statusCode() != 200) return;
+    public void downloadHistoricalNavsForIsin(String isin, DuckDbProjector projector) {
+        if (isin == null || isin.isBlank()) return;
+        loadMasterListIfNecessary();
 
-            JsonNode searchTree = objectMapper.readTree(searchResp.body());
-            if (!searchTree.isArray() || searchTree.isEmpty()) return;
+        Long schemeCode = isinToSchemeCodeMap.get(isin.trim());
+        if (schemeCode == null) {
+            System.err.println("No MFAPI scheme code found for ISIN " + isin);
+            return;
+        }
 
-            long schemeCode = searchTree.get(0).get("schemeCode").asLong();
-
+        try {
             // Fetch daily NAV history
             String navUrl = "https://api.mfapi.in/mf/" + schemeCode;
             HttpRequest navReq = HttpRequest.newBuilder()
@@ -61,7 +88,7 @@ public class MfApiNavDownloader {
             JsonNode dataNode = navTree.get("data");
             if (dataNode == null || !dataNode.isArray()) return;
 
-            Map<String, BigDecimal> navBatch = new HashMap<>();
+            int count = 0;
             for (JsonNode row : dataNode) {
                 try {
                     String dateStr = row.get("date").asText();
@@ -72,11 +99,29 @@ public class MfApiNavDownloader {
                         Set.of(isin),
                         date
                     );
+                    count++;
                 } catch (Exception ignored) {}
             }
-            System.out.println("Successfully backfilled MFAPI historical NAVs for ISIN " + isin);
+            System.out.println("Successfully backfilled " + count + " MFAPI historical NAV records for ISIN " + isin + " (Scheme " + schemeCode + ")");
         } catch (Exception e) {
             System.err.println("MFAPI historical NAV backfill error for ISIN " + isin + ": " + e.getMessage());
         }
+    }
+
+    public static void main(String[] args) {
+        DuckDbProjector projector = new DuckDbProjector();
+        MfApiNavDownloader downloader = new MfApiNavDownloader();
+        List<String> isins = List.of(
+            "INF754K01TN5", "INF109K018C5", "INF109K016B1", "INF109KC12U0", "INF109KC13X2",
+            "INF109K018M4", "INF205K01KR8", "INF174KA1TY2", "INF769K01ED6", "INF247L01916",
+            "INF247L01BQ9", "INF247L01BM8", "INF204K01H36", "INF204K01K15", "INF204K01G52",
+            "INF879O01027", "INF200K01UJ5", "INF200K01RA0", "INF277K011O1"
+        );
+        System.out.println("Starting MfApiNavDownloader verification across 19 holdings ISINs...");
+        for (String isin : isins) {
+            downloader.downloadHistoricalNavsForIsin(isin, projector);
+        }
+        projector.checkpoint();
+        System.out.println("MfApiNavDownloader verification complete.");
     }
 }

@@ -96,6 +96,15 @@ public class DuckDbProjector {
         }
     }
 
+    public void checkpoint() {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("CHECKPOINT;");
+        } catch (SQLException e) {
+            System.err.println("DuckDB checkpoint error: " + e.getMessage());
+        }
+    }
+
     public void projectEvents(List<TaxEvent> events) {
         if (events == null || events.isEmpty()) return;
 
@@ -290,9 +299,10 @@ public class DuckDbProjector {
                     if (prevAsset != null && prevAsset.equals(currAsset) && prevNav > 0 && prevDate != null && currDate != null) {
                         long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(prevDate, currDate);
                         if (daysBetween >= 1 && daysBetween <= 5) {
-                            double ret = (currNav - prevNav) / prevNav;
-                            if (Math.abs(ret) < 0.08) {
-                                returns.add(ret);
+                            double totalRet = (currNav - prevNav) / prevNav;
+                            if (Math.abs(totalRet) < 0.08 * daysBetween) {
+                                double dailyRet = Math.pow(1.0 + totalRet, 1.0 / daysBetween) - 1.0;
+                                returns.add(dailyRet);
                             }
                         }
                     }
@@ -303,21 +313,7 @@ public class DuckDbProjector {
             }
         } catch (Exception ignored) {}
 
-        if (returns.size() < 10) {
-            List<NetWorthPoint> trend = getDailyNetWorthTrend();
-            if (trend.size() >= 2) {
-                for (int i = 1; i < trend.size(); i++) {
-                    double prevVal = trend.get(i - 1).valuation();
-                    double currVal = trend.get(i).valuation();
-                    if (prevVal > 0) {
-                        double ret = (currVal - prevVal) / prevVal;
-                        if (Math.abs(ret) < 0.08) {
-                            returns.add(ret);
-                        }
-                    }
-                }
-            }
-        }
+
         System.out.println("Extracted " + returns.size() + " historical daily returns: min=" +
             (returns.isEmpty() ? "N/A" : returns.stream().min(Double::compare).get()) + ", max=" +
             (returns.isEmpty() ? "N/A" : returns.stream().max(Double::compare).get()) + ", avg=" +

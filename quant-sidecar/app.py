@@ -13,6 +13,7 @@ from parsers.broker_csv_parser import BrokerCsvParser
 from parsers.sip_detector import detect_and_tag_sips
 from parsers.models import TaxEventSchema
 from flight_server import QuantFlightServer
+from quant.analytics_engine import run_monte_carlo_fire_simulation
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
