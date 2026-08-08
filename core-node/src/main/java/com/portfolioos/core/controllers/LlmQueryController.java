@@ -1,12 +1,17 @@
 package com.portfolioos.core.controllers;
 
+import com.portfolioos.core.dtos.ReportDtos.*;
 import com.portfolioos.core.llm.SqlGeneratorService;
 import com.portfolioos.core.llm.TaxRagService;
+import com.portfolioos.core.service.PortfolioValuationService;
 import com.portfolioos.core.service.SimulationService;
+import com.portfolioos.core.service.TaxOptimizationService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/llm")
@@ -15,17 +20,23 @@ public class LlmQueryController {
     private final SqlGeneratorService sqlService;
     private final TaxRagService taxRagService;
     private final SimulationService simulationService;
+    private final PortfolioValuationService valuationService;
+    private final TaxOptimizationService taxService;
     private final ChatClient.Builder chatClientBuilder;
 
     public LlmQueryController(
         SqlGeneratorService sqlService,
         TaxRagService taxRagService,
         SimulationService simulationService,
+        PortfolioValuationService valuationService,
+        TaxOptimizationService taxService,
         ChatClient.Builder chatClientBuilder
     ) {
         this.sqlService = sqlService;
         this.taxRagService = taxRagService;
         this.simulationService = simulationService;
+        this.valuationService = valuationService;
+        this.taxService = taxService;
         this.chatClientBuilder = chatClientBuilder;
     }
 
@@ -38,6 +49,40 @@ public class LlmQueryController {
         Object dataPayload,
         String status
     ) {}
+
+    private String buildPortfolioSystemPrompt() {
+        try {
+            PortfolioSummaryResponse summary = valuationService.getPortfolioSummary("2026-27");
+            List<HoldingDetailDto> holdings = valuationService.getHoldings();
+            com.portfolioos.core.reporting.ExemptionTracker.ExemptionStatus exemption = taxService.getExemptionStatus("2026-27");
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("You are an expert AI Portfolio & Tax Advisor for Portfolio OS.\n");
+            sb.append("Below is the user's REAL, VERIFIED live portfolio snapshot as of FY 2026-27:\n\n");
+            sb.append("--- PORTFOLIO SUMMARY ---\n");
+            sb.append("• Total Net Worth: ₹").append(summary.totalCurrentValue()).append("\n");
+            sb.append("• Total Invested Cost: ₹").append(summary.totalInvested()).append("\n");
+            sb.append("• Total Unrealized Gain: ₹").append(summary.totalUnrealizedGain()).append("\n");
+            sb.append("• Money-Weighted XIRR: ").append(summary.xirrPercentage()).append("\n");
+            sb.append("• Active Scheme Count: ").append(summary.activeHoldingCount()).append("\n\n");
+
+            sb.append("--- OPEN HOLDINGS & SCHEME ALLOCATION ---\n");
+            for (HoldingDetailDto h : holdings) {
+                sb.append(String.format("• %s (%s): Invested ₹%s | Value ₹%s | Gain ₹%s (%s%%) | Alloc %s%%\n",
+                    h.assetName(), h.category(), h.investedValue(), h.currentValue(), h.unrealizedGain(), h.unrealizedGainPct(), h.allocationPct()));
+            }
+            sb.append("\n");
+
+            sb.append("--- TAX & EXEMPTION HEADROOM ---\n");
+            sb.append("• FY 2026-27 Sec 112A LTCG Exemption Headroom Remaining: ₹").append(exemption.exemptionRemaining()).append("\n");
+            sb.append("• Realized Taxable LTCG in FY 2026-27: ₹").append(exemption.taxableLtcg()).append("\n\n");
+
+            sb.append("CRITICAL: Answer user queries strictly using these exact verified numbers. Be concise, mathematically accurate, and professional.");
+            return sb.toString();
+        } catch (Exception e) {
+            return "You are an AI assistant for Portfolio OS. Answer portfolio questions concisely.";
+        }
+    }
 
     @PostMapping("/query")
     public LlmQueryResponse handleQuery(@RequestBody LlmQueryRequest req) {
@@ -88,12 +133,14 @@ public class LlmQueryController {
             return Flux.just("Please provide a valid prompt.");
         }
         try {
+            String systemPrompt = buildPortfolioSystemPrompt();
             ChatClient chatClient = chatClientBuilder.build();
             return chatClient.prompt()
+                .system(systemPrompt)
                 .user(prompt)
                 .stream()
                 .content()
-                .onErrorResume(e -> Flux.just("⚠️ Local Ollama LLM Service Unreachable (http://127.0.0.1:11434): " + e.getMessage() + ". Please start ollama or use structural analytics."));
+                .onErrorResume(e -> Flux.just("⚠️ Local Ollama LLM Service Error: " + e.getMessage()));
         } catch (Exception e) {
             return Flux.just("⚠️ Streaming error: " + e.getMessage());
         }
