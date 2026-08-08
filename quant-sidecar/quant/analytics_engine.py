@@ -211,6 +211,13 @@ def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_
     outperformance = round(p_cagr - b_cagr, 2)
 
     sample_days = len(p_rets)
+    # ARCHITECTURAL DESIGN RATIONALE (WARNING BADGE vs HARD BLOCK):
+    # Unlike Monte Carlo FIRE simulations (which resample returns across a 43-year lifetime horizon
+    # and compound short-sample noise 29x into severe simulation distortions), benchmark risk analytics
+    # (CAPM Alpha, Beta, Sharpe) compute static realized single-window statistics over aligned historical dates.
+    # Short history introduces standard error/noise, but ZERO compounding amplification.
+    # Therefore, a PROVISIONAL warning badge and visual UI styling (opacity/asterisk) is the methodologically
+    # appropriate intervention, rather than hard-blocking or substituting synthetic benchmark data.
     is_provisional = sample_days < 750
     sample_status = "PROVISIONAL_SHORT_SAMPLE" if is_provisional else "MATURE_EMPIRICAL_SAMPLE"
     data_source_label = f"Provisional Benchmark Metrics (Short Sample: {sample_days} Days < 3 Years)" if is_provisional else "Mature Benchmark Risk Metrics (3+ Years History)"

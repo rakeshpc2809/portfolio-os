@@ -524,11 +524,17 @@ export async function loadBenchmarkAnalytics() {
       const elBadge = document.querySelector('#benchmarkSampleBadge');
       const elSub = document.querySelector('#benchmarkProvenanceSub');
 
-      if (elAlpha) elAlpha.textContent = `${res.alpha_pct > 0 ? '+' : ''}${res.alpha_pct}%`;
-      if (elBeta) elBeta.textContent = res.beta;
-      if (elSharpe) elSharpe.textContent = res.sharpe_ratio;
-      if (elTracking) elTracking.textContent = `${res.tracking_error_pct}%`;
-      if (elOut) elOut.textContent = `${res.outperformance_pct > 0 ? '+' : ''}${res.outperformance_pct}%`;
+      const star = res.is_provisional ? '*' : '';
+      if (elAlpha) elAlpha.textContent = `${res.alpha_pct > 0 ? '+' : ''}${res.alpha_pct}%${star}`;
+      if (elBeta) elBeta.textContent = `${res.beta}${star}`;
+      if (elSharpe) elSharpe.textContent = `${res.sharpe_ratio}${star}`;
+      if (elTracking) elTracking.textContent = `${res.tracking_error_pct}%${star}`;
+      if (elOut) elOut.textContent = `${res.outperformance_pct > 0 ? '+' : ''}${res.outperformance_pct}%${star}`;
+
+      const cardGrid = document.querySelector('#benchmarkMetricsGrid');
+      if (cardGrid) {
+        cardGrid.style.opacity = res.is_provisional ? '0.82' : '1.0';
+      }
 
       if (elBadge) {
         if (res.is_provisional) {
