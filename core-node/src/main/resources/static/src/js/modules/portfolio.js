@@ -644,11 +644,12 @@ export async function loadUpSetAnalytics() {
 
       combos.forEach(c => {
         const participating = c.participating_funds;
+        const participatingNames = participating.map(k => fundMap[k] || k);
         const stockList = c.stocks.map(s => s.stock_symbol).join(', ');
 
         const barPct = Math.round((c.stock_count / maxCount) * 100);
 
-        html += `<div style="display: flex; flex-direction: column; items: center; min-width: 55px;" title="Intersection Stocks (${c.stock_count}): ${stockList}">`;
+        html += `<div style="display: flex; flex-direction: column; items: center; min-width: 55px;" title="Intersection Set: [${participatingNames.join(' + ')}]\nShared Stocks (${c.stock_count}): ${stockList}\nWeighted Overlap: ${c.total_overlap_weight}%">`;
 
         html += `<div style="height: 60px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; margin-bottom: 8px; width: 100%;">`;
         html += `<span style="font-size: 0.72rem; color: #38bdf8; font-weight: bold; margin-bottom: 2px;">${c.stock_count}</span>`;
