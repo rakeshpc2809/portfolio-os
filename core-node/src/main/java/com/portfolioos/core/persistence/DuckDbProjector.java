@@ -282,46 +282,51 @@ public class DuckDbProjector {
         List<Double> returns = new ArrayList<>();
         try (Connection conn = getConnection()) {
             String sql = """
-                WITH daily_nav AS (
-                    SELECT asset_id, nav_date, nav
-                    FROM nav_history
-                    WHERE nav > 0
-                ),
-                holding_units AS (
+                WITH held_units AS (
                     SELECT asset_id,
                            SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(units AS DOUBLE) ELSE -CAST(units AS DOUBLE) END) as net_units
                     FROM projected_events
                     GROUP BY asset_id
                     HAVING net_units > 0
                 ),
-                portfolio_daily_val AS (
-                    SELECT n.nav_date,
-                           SUM(h.net_units * n.nav) AS total_val,
-                           COUNT(DISTINCT n.asset_id) AS asset_count
-                    FROM daily_nav n
-                    JOIN holding_units h ON n.asset_id = h.asset_id
-                    GROUP BY n.nav_date
-                    HAVING asset_count >= 1
-                    ORDER BY n.nav_date ASC
+                fund_daily_returns AS (
+                    SELECT asset_id,
+                           nav_date,
+                           nav,
+                           LAG(nav_date) OVER (PARTITION BY asset_id ORDER BY nav_date ASC) as prev_date,
+                           LAG(nav) OVER (PARTITION BY asset_id ORDER BY nav_date ASC) as prev_nav
+                    FROM nav_history
+                    WHERE nav > 0
                 ),
-                daily_changes AS (
+                valid_fund_returns AS (
+                    SELECT f.asset_id,
+                           f.nav_date,
+                           f.prev_date,
+                           h.net_units * f.prev_nav AS weight,
+                           (f.nav - f.prev_nav) / f.prev_nav AS fund_ret
+                    FROM fund_daily_returns f
+                    JOIN held_units h ON f.asset_id = h.asset_id
+                    WHERE f.prev_nav > 0 AND f.prev_date IS NOT NULL
+                ),
+                weighted_portfolio_returns AS (
                     SELECT nav_date,
-                           total_val,
-                           LAG(nav_date) OVER (ORDER BY nav_date ASC) AS prev_date,
-                           LAG(total_val) OVER (ORDER BY nav_date ASC) AS prev_val
-                    FROM portfolio_daily_val
+                           prev_date,
+                           SUM(weight * fund_ret) / SUM(weight) AS blended_ret,
+                           COUNT(*) AS active_funds
+                    FROM valid_fund_returns
+                    GROUP BY nav_date, prev_date
+                    HAVING SUM(weight) > 0
+                    ORDER BY nav_date ASC
                 )
-                SELECT nav_date, prev_date, total_val, prev_val
-                FROM daily_changes
-                WHERE prev_val IS NOT NULL AND prev_val > 0;
+                SELECT nav_date, prev_date, blended_ret, active_funds
+                FROM weighted_portfolio_returns;
             """;
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {
                     String dateStr = rs.getString("nav_date");
                     String prevDateStr = rs.getString("prev_date");
-                    double currVal = rs.getDouble("total_val");
-                    double prevVal = rs.getDouble("prev_val");
+                    double ret = rs.getDouble("blended_ret");
                     java.time.LocalDate currDate = null;
                     java.time.LocalDate prevDate = null;
                     try {
@@ -329,12 +334,11 @@ public class DuckDbProjector {
                         prevDate = java.time.LocalDate.parse(prevDateStr);
                     } catch (Exception ignored) {}
 
-                    if (currDate != null && prevDate != null && prevVal > 0) {
+                    if (currDate != null && prevDate != null) {
                         long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(prevDate, currDate);
                         if (daysBetween >= 1 && daysBetween <= 5) {
-                            double totalRet = (currVal - prevVal) / prevVal;
-                            if (Math.abs(totalRet) < 0.08 * daysBetween) {
-                                double dailyRet = Math.pow(1.0 + totalRet, 1.0 / daysBetween) - 1.0;
+                            if (Math.abs(ret) < 0.08 * daysBetween) {
+                                double dailyRet = Math.pow(1.0 + ret, 1.0 / daysBetween) - 1.0;
                                 returns.add(dailyRet);
                             }
                         }
