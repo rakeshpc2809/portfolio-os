@@ -5,7 +5,8 @@ import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.TaxEvent;
 
 import java.math.BigDecimal;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class ReconciliationGate {
 
@@ -17,6 +18,25 @@ public class ReconciliationGate {
         String errorMessage
     ) {}
 
+    public record AssetReconciliationResult(
+        String assetId,
+        boolean isMatched,
+        BigDecimal calculatedUnits,
+        BigDecimal declaredUnits,
+        BigDecimal delta
+    ) {}
+
+    public record MultiAssetReconciliationResult(
+        boolean allMatched,
+        List<AssetReconciliationResult> assetResults,
+        String summaryMessage
+    ) {}
+
+    /**
+     * @deprecated Naive event delta summation cannot process multiplicative ratio events (SPLIT, MERGER).
+     * Use {@link #validateStatementPerAsset(FifoMatcher.FifoResult, Map)} instead.
+     */
+    @Deprecated
     public static ReconciliationResult validateStatement(List<TaxEvent> events, BigDecimal declaredClosingUnits) {
         BigDecimal calculatedClosingUnits = BigDecimal.ZERO;
         for (TaxEvent event : events) {
@@ -28,13 +48,16 @@ public class ReconciliationGate {
 
         String errorMessage = null;
         if (!isMatched) {
-            errorMessage = "Reconciliation Gate Failure: Calculated closing units (" + calculatedClosingUnits +
+            errorMessage = "Reconciliation Gate Failure (Naive): Calculated closing units (" + calculatedClosingUnits +
                            ") does not match declared closing units (" + declaredClosingUnits + "). Delta: " + delta;
         }
 
         return new ReconciliationResult(isMatched, calculatedClosingUnits, declaredClosingUnits, delta, errorMessage);
     }
 
+    /**
+     * Validates aggregate total portfolio closing units post-FIFO execution.
+     */
     public static ReconciliationResult validateStatement(FifoMatcher.FifoResult fifoResult, BigDecimal declaredClosingUnits) {
         BigDecimal calculatedClosingUnits = fifoResult.openLots().stream()
             .map(Lot::remainingUnits)
@@ -50,5 +73,46 @@ public class ReconciliationGate {
         }
 
         return new ReconciliationResult(isMatched, calculatedClosingUnits, declaredClosingUnits, delta, errorMessage);
+    }
+
+    /**
+     * Validates closing units PER ASSET post-FIFO execution against declared AMC statement balances per asset.
+     * Prevents cross-fund unit discrepancy masking.
+     */
+    public static MultiAssetReconciliationResult validateStatementPerAsset(
+        FifoMatcher.FifoResult fifoResult,
+        Map<String, BigDecimal> declaredAssetBalances
+    ) {
+        Map<String, BigDecimal> calculatedMap = fifoResult.openLots().stream()
+            .collect(Collectors.groupingBy(
+                Lot::assetId,
+                Collectors.reducing(BigDecimal.ZERO, Lot::remainingUnits, BigDecimal::add)
+            ));
+
+        Set<String> allAssetIds = new HashSet<>(calculatedMap.keySet());
+        if (declaredAssetBalances != null) {
+            allAssetIds.addAll(declaredAssetBalances.keySet());
+        }
+
+        List<AssetReconciliationResult> assetResults = new ArrayList<>();
+        boolean allMatched = true;
+
+        for (String assetId : allAssetIds) {
+            BigDecimal calcUnits = calculatedMap.getOrDefault(assetId, BigDecimal.ZERO);
+            BigDecimal declUnits = declaredAssetBalances != null ? declaredAssetBalances.getOrDefault(assetId, BigDecimal.ZERO) : BigDecimal.ZERO;
+            BigDecimal delta = calcUnits.subtract(declUnits).abs();
+            boolean isMatched = delta.compareTo(new BigDecimal("0.0001")) < 0;
+
+            if (!isMatched) {
+                allMatched = false;
+            }
+            assetResults.add(new AssetReconciliationResult(assetId, isMatched, calcUnits, declUnits, delta));
+        }
+
+        String summary = allMatched
+            ? "✓ All " + assetResults.size() + " asset balances matched declared statement units perfectly."
+            : "⚠️ Reconciliation Gate Failure: " + assetResults.stream().filter(a -> !a.isMatched()).count() + " asset balance discrepancies detected.";
+
+        return new MultiAssetReconciliationResult(allMatched, assetResults, summary);
     }
 }
