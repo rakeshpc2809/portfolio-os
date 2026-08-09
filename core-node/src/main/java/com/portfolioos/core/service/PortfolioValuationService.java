@@ -699,12 +699,15 @@ public class PortfolioValuationService {
             BigDecimal valuation = fundValuations.getOrDefault(isin, BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
             String category = TaxClassifier.detectCategory(isin, rawName).name();
 
+            String holdingStatus = active ? "ACTIVE_SIP" : (valuation.compareTo(BigDecimal.ZERO) > 0 ? "LEGACY_HOLDING" : "FULLY_EXITED");
+
             Map<String, Object> fundObj = new HashMap<>();
             fundObj.put("isin", isin);
             fundObj.put("name", name);
             fundObj.put("raw_name", rawName);
             fundObj.put("category", category);
             fundObj.put("active", active);
+            fundObj.put("holding_status", holdingStatus);
             fundObj.put("current_valuation", valuation);
             funds.add(fundObj);
         }
@@ -717,8 +720,8 @@ public class PortfolioValuationService {
 
     private static String cleanSchemeName(String raw) {
         if (raw == null || raw.isBlank()) return "Unknown Fund";
-        return raw.replaceAll("(?i)\\s*-\\s*Direct\\s+Plan.*", "")
-                  .replaceAll("(?i)\\s*-\\s*Direct\\s+Growth.*", "")
+        return raw.replaceAll("(?i)\\s*-?\\s*Direct\\s+Plan.*", "")
+                  .replaceAll("(?i)\\s*-?\\s*Direct\\s+Growth.*", "")
                   .replaceAll("(?i)\\s*\\(Non\\s+Demat\\)", "")
                   .replaceAll("(?i)GROWTH PLAN GROWTH OPTION", "")
                   .replaceAll("(?i)DIRECT GROWTH PLAN", "")
