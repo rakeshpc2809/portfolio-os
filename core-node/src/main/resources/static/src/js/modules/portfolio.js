@@ -780,6 +780,8 @@ export async function populateFundDropdowns() {
   try {
     const res = await fetchJson(`${API_BASE}/funds/registry`);
     if (res && res.status === 'OK' && res.funds) {
+      // Clear static FUND_REGISTRY and populate from live ingested tax_events response
+      Object.keys(FUND_REGISTRY).forEach(key => delete FUND_REGISTRY[key]);
       res.funds.forEach(f => {
         if (f.isin && f.name) {
           FUND_REGISTRY[f.isin] = f.name;
@@ -787,7 +789,7 @@ export async function populateFundDropdowns() {
       });
     }
   } catch (err) {
-    console.warn('Failed to load live fund registry from backend, using static registry:', err);
+    console.warn('Failed to load live fund registry from backend, using fallback:', err);
   }
 
   const currentA = selA.value || 'INF879O01027';

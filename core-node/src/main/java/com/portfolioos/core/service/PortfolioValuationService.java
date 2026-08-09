@@ -669,30 +669,19 @@ public class PortfolioValuationService {
             state = cacheService.getCachedState();
         }
         List<Lot> openLots = (state != null && state.fifoResult() != null) ? state.fifoResult().openLots() : Collections.emptyList();
+        List<TaxEvent> events = (state != null && state.events() != null) ? state.events() : Collections.emptyList();
         Map<String, BigDecimal> navMap = (state != null && state.navMap() != null) ? state.navMap() : Collections.emptyMap();
         Set<String> activeAssetIds = FundTierClassifier.findActiveAssetIds(openLots, LocalDate.now());
 
-        Map<String, String> knownNames = new HashMap<>();
-        knownNames.put("INF879O01027", "PPFAS Flexi Cap");
-        knownNames.put("INF109KC13X2", "Value 30");
-        knownNames.put("INF109KC12U0", "LargeMidcap 250");
-        knownNames.put("INF204K01K15", "Nippon Small Cap");
-        knownNames.put("INF754K01TN5", "Edelweiss Nifty500 MQ50");
-        knownNames.put("INF174KA1TY2", "Kotak 100 Equal Weight");
-        knownNames.put("INF247L01916", "Motilal Midcap 150");
-        knownNames.put("INF247L01BQ9", "Motilal Microcap 250");
-        knownNames.put("INF247L01BM8", "Motilal Gold & Silver FoF");
+        // Extract ground-truth scheme names directly from ingested tax_events
+        Map<String, String> dynamicNames = new HashMap<>();
+        Map<String, String> assetCategories = new HashMap<>();
 
-        Map<String, String> knownCategories = new HashMap<>();
-        knownCategories.put("INF879O01027", "Core");
-        knownCategories.put("INF109KC13X2", "Alpha & Beta");
-        knownCategories.put("INF109KC12U0", "Core");
-        knownCategories.put("INF204K01K15", "Satellite");
-        knownCategories.put("INF754K01TN5", "Alpha & Beta");
-        knownCategories.put("INF174KA1TY2", "Core");
-        knownCategories.put("INF247L01916", "Satellite");
-        knownCategories.put("INF247L01BQ9", "Satellite");
-        knownCategories.put("INF247L01BM8", "Accumulator");
+        for (TaxEvent event : events) {
+            if (event.assetId() != null && event.assetName() != null && !event.assetName().isBlank()) {
+                dynamicNames.putIfAbsent(event.assetId(), cleanSchemeName(event.assetName()));
+            }
+        }
 
         Map<String, BigDecimal> fundValuations = new HashMap<>();
         for (Lot lot : openLots) {
@@ -702,12 +691,12 @@ public class PortfolioValuationService {
         }
 
         List<Map<String, Object>> funds = new ArrayList<>();
-        for (Map.Entry<String, String> entry : knownNames.entrySet()) {
+        for (Map.Entry<String, String> entry : dynamicNames.entrySet()) {
             String isin = entry.getKey();
             String name = entry.getValue();
             boolean active = activeAssetIds.contains(isin);
             BigDecimal valuation = fundValuations.getOrDefault(isin, BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-            String category = knownCategories.getOrDefault(isin, "Core");
+            String category = TaxClassifier.detectCategory(isin, name).name();
 
             Map<String, Object> fundObj = new HashMap<>();
             fundObj.put("isin", isin);
@@ -722,6 +711,28 @@ public class PortfolioValuationService {
         response.put("status", "OK");
         response.put("funds", funds);
         return response;
+    }
+
+    private static String cleanSchemeName(String raw) {
+        if (raw == null || raw.isBlank()) return "Unknown Fund";
+        String clean = raw.replaceAll("(?i)\\s*-\\s*Direct\\s+Plan.*", "")
+                         .replaceAll("(?i)\\s*-\\s*Direct\\s+Growth.*", "")
+                         .replaceAll("(?i)\\s*\\(Non\\s+Demat\\)", "")
+                         .replaceAll("(?i)GROWTH PLAN GROWTH OPTION", "")
+                         .replaceAll("(?i)DIRECT GROWTH PLAN", "")
+                         .trim();
+
+        if (clean.equalsIgnoreCase("Parag Parikh Flexi Cap Fund")) return "PPFAS Flexi Cap";
+        if (clean.equalsIgnoreCase("ICICI Prudential Nifty200 Value 30 Index Fund")) return "Value 30";
+        if (clean.equalsIgnoreCase("ICICI Prudential Nifty LargeMidcap 250 Index Fund")) return "LargeMidcap 250";
+        if (clean.equalsIgnoreCase("NIPPON INDIA SMALL CAP FUND")) return "Nippon Small Cap";
+        if (clean.equalsIgnoreCase("Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund")) return "Edelweiss Nifty500 MQ50";
+        if (clean.equalsIgnoreCase("Kotak Nifty 100 Equal Weight Index Fund")) return "Kotak 100 Equal Weight";
+        if (clean.equalsIgnoreCase("Motilal Oswal Nifty Midcap 150 Index Fund")) return "Motilal Midcap 150";
+        if (clean.equalsIgnoreCase("Motilal Oswal Nifty Microcap 250 Index Fund")) return "Motilal Microcap 250";
+        if (clean.equalsIgnoreCase("Motilal Oswal Gold and Silver Passive Fund of Funds")) return "Motilal Gold & Silver FoF";
+
+        return clean;
     }
 
     public DuckDbProjector getDuckDbProjector() {
