@@ -48,6 +48,7 @@ public class FireTracker {
     public record FireSummary(
         String activeScenarioLabel,
         BigDecimal monthlyExpenseToday,
+        BigDecimal monthlyContribution,
         BigDecimal annualExpense,
         BigDecimal requiredCorpus,
         BigDecimal totalNetWorth,
@@ -135,6 +136,7 @@ public class FireTracker {
         return new FireSummary(
             activeScenario.label(),
             activeScenario.monthlyExpenseToday(),
+            profile.monthlyContribution(),
             annualExpense,
             requiredCorpus,
             totalNetWorth.setScale(2, RoundingMode.HALF_UP),

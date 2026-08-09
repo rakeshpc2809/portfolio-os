@@ -605,7 +605,7 @@ public class PortfolioValuationService {
         double annExp = (customAnnualExpense != null && customAnnualExpense > 0) ? customAnnualExpense : fire.annualExpense().doubleValue();
         double monthlyContrib = (customMonthlySip != null && customMonthlySip >= 0) 
             ? customMonthlySip 
-            : new com.portfolioos.core.fire.FireTracker.FireProfile().monthlyContribution().doubleValue();
+            : fire.monthlyContribution().doubleValue();
         int yrs = (customYearsToRetirement != null && customYearsToRetirement > 0) ? customYearsToRetirement : fire.yearsRemaining();
 
         List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();

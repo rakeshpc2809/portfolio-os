@@ -32,28 +32,7 @@ public class ReconciliationGate {
         String summaryMessage
     ) {}
 
-    /**
-     * @deprecated Naive event delta summation cannot process multiplicative ratio events (SPLIT, MERGER).
-     * Use {@link #validateStatementPerAsset(FifoMatcher.FifoResult, Map)} instead.
-     */
-    @Deprecated
-    public static ReconciliationResult validateStatement(List<TaxEvent> events, BigDecimal declaredClosingUnits) {
-        BigDecimal calculatedClosingUnits = BigDecimal.ZERO;
-        for (TaxEvent event : events) {
-            calculatedClosingUnits = calculatedClosingUnits.add(event.unitDelta());
-        }
 
-        BigDecimal delta = calculatedClosingUnits.subtract(declaredClosingUnits).abs();
-        boolean isMatched = delta.compareTo(new BigDecimal("0.0001")) < 0;
-
-        String errorMessage = null;
-        if (!isMatched) {
-            errorMessage = "Reconciliation Gate Failure (Naive): Calculated closing units (" + calculatedClosingUnits +
-                           ") does not match declared closing units (" + declaredClosingUnits + "). Delta: " + delta;
-        }
-
-        return new ReconciliationResult(isMatched, calculatedClosingUnits, declaredClosingUnits, delta, errorMessage);
-    }
 
     /**
      * Validates aggregate total portfolio closing units post-FIFO execution.
