@@ -693,14 +693,16 @@ public class PortfolioValuationService {
         List<Map<String, Object>> funds = new ArrayList<>();
         for (Map.Entry<String, String> entry : dynamicNames.entrySet()) {
             String isin = entry.getKey();
-            String name = entry.getValue();
+            String rawName = entry.getValue();
+            String name = cleanSchemeName(rawName);
             boolean active = activeAssetIds.contains(isin);
             BigDecimal valuation = fundValuations.getOrDefault(isin, BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-            String category = TaxClassifier.detectCategory(isin, name).name();
+            String category = TaxClassifier.detectCategory(isin, rawName).name();
 
             Map<String, Object> fundObj = new HashMap<>();
             fundObj.put("isin", isin);
             fundObj.put("name", name);
+            fundObj.put("raw_name", rawName);
             fundObj.put("category", category);
             fundObj.put("active", active);
             fundObj.put("current_valuation", valuation);
@@ -715,24 +717,12 @@ public class PortfolioValuationService {
 
     private static String cleanSchemeName(String raw) {
         if (raw == null || raw.isBlank()) return "Unknown Fund";
-        String clean = raw.replaceAll("(?i)\\s*-\\s*Direct\\s+Plan.*", "")
-                         .replaceAll("(?i)\\s*-\\s*Direct\\s+Growth.*", "")
-                         .replaceAll("(?i)\\s*\\(Non\\s+Demat\\)", "")
-                         .replaceAll("(?i)GROWTH PLAN GROWTH OPTION", "")
-                         .replaceAll("(?i)DIRECT GROWTH PLAN", "")
-                         .trim();
-
-        if (clean.equalsIgnoreCase("Parag Parikh Flexi Cap Fund")) return "PPFAS Flexi Cap";
-        if (clean.equalsIgnoreCase("ICICI Prudential Nifty200 Value 30 Index Fund")) return "Value 30";
-        if (clean.equalsIgnoreCase("ICICI Prudential Nifty LargeMidcap 250 Index Fund")) return "LargeMidcap 250";
-        if (clean.equalsIgnoreCase("NIPPON INDIA SMALL CAP FUND")) return "Nippon Small Cap";
-        if (clean.equalsIgnoreCase("Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund")) return "Edelweiss Nifty500 MQ50";
-        if (clean.equalsIgnoreCase("Kotak Nifty 100 Equal Weight Index Fund")) return "Kotak 100 Equal Weight";
-        if (clean.equalsIgnoreCase("Motilal Oswal Nifty Midcap 150 Index Fund")) return "Motilal Midcap 150";
-        if (clean.equalsIgnoreCase("Motilal Oswal Nifty Microcap 250 Index Fund")) return "Motilal Microcap 250";
-        if (clean.equalsIgnoreCase("Motilal Oswal Gold and Silver Passive Fund of Funds")) return "Motilal Gold & Silver FoF";
-
-        return clean;
+        return raw.replaceAll("(?i)\\s*-\\s*Direct\\s+Plan.*", "")
+                  .replaceAll("(?i)\\s*-\\s*Direct\\s+Growth.*", "")
+                  .replaceAll("(?i)\\s*\\(Non\\s+Demat\\)", "")
+                  .replaceAll("(?i)GROWTH PLAN GROWTH OPTION", "")
+                  .replaceAll("(?i)DIRECT GROWTH PLAN", "")
+                  .trim();
     }
 
     public DuckDbProjector getDuckDbProjector() {
