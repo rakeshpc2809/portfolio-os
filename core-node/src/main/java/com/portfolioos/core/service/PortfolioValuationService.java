@@ -677,11 +677,11 @@ public class PortfolioValuationService {
         knownNames.put("INF109KC13X2", "Value 30");
         knownNames.put("INF109KC12U0", "LargeMidcap 250");
         knownNames.put("INF204K01K15", "Nippon Small Cap");
-        knownNames.put("INF754K01TN5", "Edelweiss Multicap MQ50");
-        knownNames.put("INF174KA1TY2", "100 Equal Weight");
-        knownNames.put("INF247L01916", "Midcap 150");
+        knownNames.put("INF754K01TN5", "Edelweiss Nifty500 MQ50");
+        knownNames.put("INF174KA1TY2", "Kotak 100 Equal Weight");
+        knownNames.put("INF247L01916", "Motilal Midcap 150");
         knownNames.put("INF247L01BQ9", "Motilal Microcap 250");
-        knownNames.put("INF247L01BM8", "Gold & Silver FoF");
+        knownNames.put("INF247L01BM8", "Motilal Gold & Silver FoF");
 
         Map<String, String> knownCategories = new HashMap<>();
         knownCategories.put("INF879O01027", "Core");
