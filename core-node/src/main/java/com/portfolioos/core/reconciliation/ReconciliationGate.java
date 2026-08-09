@@ -1,5 +1,7 @@
 package com.portfolioos.core.reconciliation;
 
+import com.portfolioos.core.matcher.FifoMatcher;
+import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.TaxEvent;
 
 import java.math.BigDecimal;
@@ -27,6 +29,23 @@ public class ReconciliationGate {
         String errorMessage = null;
         if (!isMatched) {
             errorMessage = "Reconciliation Gate Failure: Calculated closing units (" + calculatedClosingUnits +
+                           ") does not match declared closing units (" + declaredClosingUnits + "). Delta: " + delta;
+        }
+
+        return new ReconciliationResult(isMatched, calculatedClosingUnits, declaredClosingUnits, delta, errorMessage);
+    }
+
+    public static ReconciliationResult validateStatement(FifoMatcher.FifoResult fifoResult, BigDecimal declaredClosingUnits) {
+        BigDecimal calculatedClosingUnits = fifoResult.openLots().stream()
+            .map(Lot::remainingUnits)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal delta = calculatedClosingUnits.subtract(declaredClosingUnits).abs();
+        boolean isMatched = delta.compareTo(new BigDecimal("0.0001")) < 0;
+
+        String errorMessage = null;
+        if (!isMatched) {
+            errorMessage = "Reconciliation Gate Failure: Post-FIFO calculated closing units (" + calculatedClosingUnits +
                            ") does not match declared closing units (" + declaredClosingUnits + "). Delta: " + delta;
         }
 

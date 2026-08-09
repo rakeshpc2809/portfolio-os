@@ -116,12 +116,14 @@ fun SimulatorView(holdings: List<FlatHoldingDto>) {
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
         Button(
             onClick = {
-                val units = unitsText.toDoubleOrNull() ?: 100.0
-                val price = priceText.toDoubleOrNull() ?: 150.0
+                val units = unitsText.toDoubleOrNull()
+                val price = priceText.toDoubleOrNull()
+                if (units == null || units <= 0.0 || price == null || price <= 0.0) {
+                    resultText = "⚠️ Validation Error: Please enter valid positive numbers for Units and Price/NAV."
+                    return@Button
+                }
                 isLoading = true
                 scope.launch {
                     try {

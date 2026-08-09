@@ -6,6 +6,7 @@ import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.model.TaxTerm;
+import com.portfolioos.core.rules.TaxRulesLoader;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -96,7 +97,7 @@ public class FifoMatcher {
                         boolean isListed = TaxClassifier.isListed(event.assetId(), event.assetName());
 
                         TaxTerm taxTerm = isSgbMaturity ? TaxTerm.EXEMPT 
-                            : TaxClassifier.classifyTaxTerm(category, holdingDays, "2026-27", isListed, currentLot.acquisitionDate(), event.eventDate());
+                            : TaxClassifier.classifyTaxTerm(category, holdingDays, TaxRulesLoader.detectFiscalYear(event.eventDate()), isListed, currentLot.acquisitionDate(), event.eventDate());
 
                         matchedLots.add(new MatchedLot(
                             UUID.randomUUID().toString(),

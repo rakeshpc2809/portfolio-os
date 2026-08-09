@@ -20,7 +20,7 @@ public record TaxEvent(
     public BigDecimal unitDelta() {
         return switch (eventType) {
             case DISPOSAL, SGB_MATURITY -> units.negate();
-            case SGB_INTEREST -> BigDecimal.ZERO;
+            case SGB_INTEREST, SPLIT, MERGER -> BigDecimal.ZERO;
             default -> units;
         };
     }

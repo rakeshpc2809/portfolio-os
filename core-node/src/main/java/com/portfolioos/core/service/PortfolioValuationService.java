@@ -603,7 +603,9 @@ public class PortfolioValuationService {
 
         double invNetWorth = fire.fireInvestableNetWorth().doubleValue();
         double annExp = (customAnnualExpense != null && customAnnualExpense > 0) ? customAnnualExpense : fire.annualExpense().doubleValue();
-        double monthlyContrib = (customMonthlySip != null && customMonthlySip >= 0) ? customMonthlySip : 75000.0;
+        double monthlyContrib = (customMonthlySip != null && customMonthlySip >= 0) 
+            ? customMonthlySip 
+            : new com.portfolioos.core.fire.FireTracker.FireProfile().monthlyContribution().doubleValue();
         int yrs = (customYearsToRetirement != null && customYearsToRetirement > 0) ? customYearsToRetirement : fire.yearsRemaining();
 
         List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
@@ -645,7 +647,8 @@ public class PortfolioValuationService {
         }
         List<Map<String, Object>> concentrations = duckDbProjector.getPortfolioStockConcentrations(fundValuations);
 
-        ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, "2026-27");
+        String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
+        ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, currentFy);
 
         // Check empirical sufficiency and fetch live Monte Carlo ruin rate & rel std dev
         List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();

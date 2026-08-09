@@ -20,7 +20,7 @@ public class FireTracker {
     ) {}
 
     public static class FireProfile {
-        private final int currentAge = 32;
+        private final LocalDate birthDate = LocalDate.of(1994, 8, 28);
         private final int targetRetirementAge = 45;
         private final BigDecimal swrPercent = new BigDecimal("3.0");
         private final BigDecimal epfBalance = BigDecimal.ZERO;
@@ -33,7 +33,8 @@ public class FireTracker {
             new FireScenario("scen_2", "Expanded Expense Target", new BigDecimal("90000.00"), false)
         );
 
-        public int currentAge() { return currentAge; }
+        public LocalDate birthDate() { return birthDate; }
+        public int currentAge() { return java.time.Period.between(birthDate, LocalDate.now()).getYears(); }
         public int targetRetirementAge() { return targetRetirementAge; }
         public BigDecimal swrPercent() { return swrPercent; }
         public BigDecimal epfBalance() { return epfBalance; }

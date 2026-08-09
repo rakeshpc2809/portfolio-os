@@ -12,6 +12,8 @@ import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.reporting.ExemptionTracker;
 import com.portfolioos.core.reporting.Itr2CsvExporter;
 import com.portfolioos.core.reporting.TaxReportExporter;
+import com.portfolioos.core.rules.TaxRulesConfig;
+import com.portfolioos.core.rules.TaxRulesLoader;
 import com.portfolioos.core.valuation.HarvestAdvisor;
 import org.springframework.stereotype.Service;
 
@@ -43,23 +45,26 @@ public class TaxOptimizationService {
     public ExemptionTracker.ExemptionStatus getExemptionStatus(String fy) {
         List<TaxEvent> allEvents = eventStore.getAllEvents();
         List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents).matchedLots();
-        return ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
+        String currentFy = (fy != null && !fy.isBlank()) ? fy : TaxRulesLoader.detectFiscalYear(LocalDate.now());
+        return ExemptionTracker.calculateExemptionStatus(matchedLots, currentFy);
     }
 
     public TaxReportExporter.Itr2ScheduleCgReport generateItr2Report(String fy) {
         List<TaxEvent> allEvents = eventStore.getAllEvents();
         List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents).matchedLots();
-        return TaxReportExporter.generateItr2Report(matchedLots, fy);
+        String currentFy = (fy != null && !fy.isBlank()) ? fy : TaxRulesLoader.detectFiscalYear(LocalDate.now());
+        return TaxReportExporter.generateItr2Report(matchedLots, currentFy);
     }
 
     public List<HarvestOpportunityDto> getHarvestOpportunities() {
         List<TaxEvent> allEvents = eventStore.getAllEvents();
         List<Lot> openLots = fifoMatcher.processEvents(allEvents).openLots();
         Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        String currentFy = TaxRulesLoader.detectFiscalYear(LocalDate.now());
 
         // Assume zero exemption used so far for simple harvest opportunity advice
         HarvestAdvisor.TaxHarvestResult plan = HarvestAdvisor.generateHarvestPlan(
-            openLots, navMap, BigDecimal.ZERO, "2026-27"
+            openLots, navMap, BigDecimal.ZERO, currentFy
         );
 
         return plan.recommendations().stream().map(opp -> new HarvestOpportunityDto(
@@ -76,13 +81,17 @@ public class TaxOptimizationService {
         List<Lot> openLots = fifoMatcher.processEvents(allEvents).openLots();
         Map<String, BigDecimal> navMap = amfiSync.getNavMap();
         LocalDate today = LocalDate.now();
+        String currentFy = TaxRulesLoader.detectFiscalYear(today);
+        TaxRulesConfig rules = TaxRulesLoader.loadRules(currentFy);
 
         List<MaturationLadderDto> ladder = new ArrayList<>();
 
         for (Lot lot : openLots) {
             AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
             boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
-            long reqDays = (cat == AssetCategory.EQUITY || isListed) ? 365L : 730L;
+            long reqDays = (cat == AssetCategory.EQUITY || isListed) 
+                ? rules.equityLtcgThresholdDays() 
+                : rules.goldInternationalThresholdDays();
             long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
 
             if (holdingDays < reqDays) {
