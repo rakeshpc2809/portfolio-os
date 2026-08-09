@@ -35,7 +35,9 @@ public class ReconciliationGate {
 
 
     /**
-     * Validates aggregate total portfolio closing units post-FIFO execution.
+     * Validates whole-portfolio aggregate closing units across all open lots post-FIFO execution.
+     * WARNING: Sums units across all funds in the portfolio. For single-fund or multi-fund CAS statement balance
+     * verification, use {@link #validateStatementPerAsset(FifoMatcher.FifoResult, Map)} to prevent cross-fund discrepancy masking.
      */
     public static ReconciliationResult validateStatement(FifoMatcher.FifoResult fifoResult, BigDecimal declaredClosingUnits) {
         BigDecimal calculatedClosingUnits = fifoResult.openLots().stream()
