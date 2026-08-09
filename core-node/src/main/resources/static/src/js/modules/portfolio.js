@@ -776,35 +776,103 @@ export async function loadBenchmarkAnalytics() {
   }
 }
 
-export async function loadOverlapAnalytics() {
+const FUND_REGISTRY = {
+  'INF879O01027': 'PPFAS Flexi Cap',
+  'INF109KC13X2': 'Value 30',
+  'INF247L01BQ9': 'Edelweiss Multi Cap MQ50',
+  'INF109KC12U0': 'LargeMidcap 250',
+  'INF204K01K15': 'Nippon Small Cap',
+  'INF174KA1TY2': 'Motilal Gold & Silver FoF',
+  'INF247L01916': 'Motilal Microcap 250'
+};
+
+export function populateFundDropdowns() {
+  const selA = document.getElementById('vennFundA');
+  const selB = document.getElementById('vennFundB');
+  if (!selA || !selB) return;
+
+  const currentA = selA.value || 'INF879O01027';
+  const currentB = selB.value || 'INF109KC13X2';
+
+  let optionsHtml = '';
+  Object.keys(FUND_REGISTRY).forEach(key => {
+    optionsHtml += `<option value="${key}">${FUND_REGISTRY[key]}</option>`;
+  });
+
+  selA.innerHTML = optionsHtml;
+  selB.innerHTML = optionsHtml;
+
+  selA.value = currentA;
+  selB.value = currentB;
+}
+
+let activeOverlapRequestId = 0;
+
+export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride = null) {
+  const currentRequestId = ++activeOverlapRequestId;
+
+  const selA = document.getElementById('vennFundA');
+  const selB = document.getElementById('vennFundB');
+
+  const fundAKey = fundAOverride || (selA ? selA.value : 'INF879O01027');
+  const fundBKey = fundBOverride || (selB ? selB.value : 'INF109KC13X2');
+
+  const nameA = FUND_REGISTRY[fundAKey] || fundAKey;
+  const nameB = FUND_REGISTRY[fundBKey] || fundBKey;
+
+  const elPairName = document.querySelector('#overlapPairName');
+  const elPairwise = document.querySelector('#pairwiseOverlapVal');
+  const elCount = document.querySelector('#commonStockCountSub');
+  const elBadge = document.querySelector('#overlapDateBadge');
+  const tableBody = document.querySelector('#topStockConcentrationTable tbody');
+  const container = document.getElementById('vennContainer');
+
+  if (elPairName) {
+    elPairName.textContent = `${nameA} vs ${nameB}`;
+  }
+
+  // Same Fund Selected Case
+  if (fundAKey === fundBKey) {
+    if (elPairwise) elPairwise.textContent = '100.00%';
+    if (elCount) elCount.textContent = `Identical Fund Selected (100% Stock Overlap)`;
+    if (elBadge) {
+      elBadge.textContent = 'SAME FUND (100%)';
+      elBadge.className = 'live-tag positive-tag';
+    }
+    renderVennSvg(container, nameA, nameB, 100.00);
+    return;
+  } else {
+    if (elPairwise) elPairwise.textContent = '...';
+    if (elCount) elCount.textContent = 'Calculating live stock overlap...';
+  }
+
   try {
-    const res = await fetchJson(`${API_BASE}/analytics/overlap?fundA=INF109KC13X2&fundB=INF109KC12U0`);
+    const res = await fetchJson(`${API_BASE}/analytics/overlap?fundA=${encodeURIComponent(fundAKey)}&fundB=${encodeURIComponent(fundBKey)}`);
+    if (currentRequestId !== activeOverlapRequestId) return; // Stale fetch race guard
+
     if (res && res.status === 'OK') {
       const pairwise = res.pairwise_overlap;
       const concentrations = res.portfolio_top_stock_concentrations;
 
-      const elPairwise = document.querySelector('#pairwiseOverlapVal');
-      const elCount = document.querySelector('#commonStockCountSub');
-      const elBadge = document.querySelector('#overlapDateBadge');
-      const tableBody = document.querySelector('#topStockConcentrationTable tbody');
+      if (fundAKey !== fundBKey && pairwise) {
+        if (elPairwise) elPairwise.textContent = `${pairwise.overlap_percentage}%`;
 
-      if (elPairwise && pairwise) {
-        elPairwise.textContent = `${pairwise.overlap_percentage}%`;
-      }
-
-      if (elCount && pairwise && pairwise.common_stocks) {
-        const topSymbols = pairwise.common_stocks.slice(0, 4).map(s => s.stock_symbol).join(', ');
-        elCount.textContent = `Common Holdings: ${pairwise.common_stock_count} Stocks (${topSymbols})`;
-      }
-
-      if (elBadge && pairwise) {
-        if (pairwise.date_mismatch) {
-          elBadge.textContent = 'DATE MISMATCH';
-          elBadge.className = 'live-tag warning-tag';
-        } else {
-          elBadge.textContent = 'SNAPSHOT ALIGNED';
-          elBadge.className = 'live-tag positive-tag';
+        if (elCount && pairwise.common_stocks) {
+          const topSymbols = pairwise.common_stocks.slice(0, 4).map(s => s.stock_symbol).join(', ');
+          elCount.textContent = `Common Holdings: ${pairwise.common_stock_count} Stocks (${topSymbols})`;
         }
+
+        if (elBadge) {
+          if (pairwise.date_mismatch) {
+            elBadge.textContent = 'DATE MISMATCH';
+            elBadge.className = 'live-tag warning-tag';
+          } else {
+            elBadge.textContent = 'SNAPSHOT ALIGNED';
+            elBadge.className = 'live-tag positive-tag';
+          }
+        }
+
+        renderVennSvg(container, nameA, nameB, pairwise.overlap_percentage);
       }
 
       if (tableBody && concentrations) {
@@ -825,11 +893,59 @@ export async function loadOverlapAnalytics() {
 
       await loadUpSetAnalytics();
       await loadActionRecommendations();
-      render2FundVennDiagram();
+    } else {
+      throw new Error(res ? res.message : 'Invalid API response');
     }
   } catch (err) {
+    if (currentRequestId !== activeOverlapRequestId) return;
     console.error('Failed to load overlap analytics:', err);
+    if (elPairwise) elPairwise.textContent = '—';
+    if (elCount) elCount.textContent = '⚠️ Overlap Fetch Failed (Check Backend Service)';
+    if (elBadge) {
+      elBadge.textContent = 'OFFLINE';
+      elBadge.className = 'live-tag warning-tag';
+    }
+    if (container) {
+      container.innerHTML = `<div style="text-align: center; color: #f87171; padding: 12px;">⚠️ Failed to load overlap graph from backend.</div>`;
+    }
   }
+}
+
+function renderVennSvg(container, nameA, nameB, overlapPct) {
+  if (!container) return;
+  const numOverlap = typeof overlapPct === 'number' ? overlapPct : parseFloat(overlapPct) || 0;
+
+  const svg = `
+    <svg viewBox="0 0 500 180" style="max-width: 460px; height: auto;">
+      <defs>
+        <linearGradient id="circleGradA" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="#0284c7" stop-opacity="0.15"/>
+        </linearGradient>
+        <linearGradient id="circleGradB" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#a855f7" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="#7e22ce" stop-opacity="0.15"/>
+        </linearGradient>
+      </defs>
+      <!-- Circle A -->
+      <circle cx="190" cy="90" r="70" fill="url(#circleGradA)" stroke="#38bdf8" stroke-width="2" />
+      <!-- Circle B -->
+      <circle cx="310" cy="90" r="70" fill="url(#circleGradB)" stroke="#a855f7" stroke-width="2" />
+      
+      <!-- Labels -->
+      <text x="140" y="85" fill="#f8fafc" font-size="12" font-weight="700" text-anchor="middle">${nameA}</text>
+      <text x="140" y="105" fill="#94a3b8" font-size="10" text-anchor="middle">Exclusive Sleeve</text>
+      
+      <text x="360" y="85" fill="#f8fafc" font-size="12" font-weight="700" text-anchor="middle">${nameB}</text>
+      <text x="360" y="105" fill="#94a3b8" font-size="10" text-anchor="middle">Exclusive Sleeve</text>
+
+      <!-- Intersection -->
+      <text x="250" y="85" fill="#d0ff00" font-size="14" font-weight="800" text-anchor="middle">${numOverlap.toFixed(2)}%</text>
+      <text x="250" y="105" fill="#e2e8f0" font-size="9" font-weight="600" text-anchor="middle">Shared Overlap</text>
+    </svg>
+  `;
+
+  container.innerHTML = svg;
 }
 
 export async function loadUpSetAnalytics() {
@@ -901,10 +1017,13 @@ export async function loadUpSetAnalytics() {
     }
   } catch (err) {
     console.error('Failed to load UpSet analytics:', err);
+    if (container) {
+      container.innerHTML = `<div style="text-align: center; color: #f87171; padding: 8px;">⚠️ UpSet Analytics Unavailable</div>`;
+    }
   }
 }
 
-async function loadActionRecommendations() {
+export async function loadActionRecommendations() {
   const container = document.getElementById('actionCardsList');
   if (!container) return;
 
@@ -955,70 +1074,20 @@ async function loadActionRecommendations() {
     container.innerHTML = html;
   } catch (err) {
     console.error('Failed to load action recommendations:', err);
+    if (container) {
+      container.innerHTML = `<div style="color: #f87171;">⚠️ Action Recommendations Unavailable</div>`;
+    }
   }
 }
 
 function render2FundVennDiagram() {
-  const container = document.getElementById('vennContainer');
   const selA = document.getElementById('vennFundA');
   const selB = document.getElementById('vennFundB');
-  if (!container || !selA || !selB) return;
-
-  const nameMap = {
-    'INF109KC13X2': 'Value 30',
-    'INF879O01027': 'PPFAS Flexi Cap',
-    'INF204K01K15': 'Nippon Small Cap',
-    'INF109KC12U0': 'LargeMidcap 250',
-    'INF247L01916': 'Midcap 150'
-  };
-
-  const fundAKey = selA.value;
-  const fundBKey = selB.value;
-  const nameA = nameMap[fundAKey] || fundAKey;
-  const nameB = nameMap[fundBKey] || fundBKey;
-
-  let overlapPct = 0.0;
-  if ((fundAKey === 'INF109KC13X2' && fundBKey === 'INF879O01027') || (fundBKey === 'INF109KC13X2' && fundAKey === 'INF879O01027')) {
-    overlapPct = 23.56;
-  } else if ((fundAKey === 'INF109KC12U0' && fundBKey === 'INF879O01027') || (fundBKey === 'INF109KC12U0' && fundAKey === 'INF879O01027')) {
-    overlapPct = 11.52;
-  } else if ((fundAKey === 'INF247L01916' && fundBKey === 'INF204K01K15') || (fundBKey === 'INF247L01916' && fundAKey === 'INF204K01K15')) {
-    overlapPct = 4.00;
-  } else if ((fundAKey === 'INF109KC12U0' && fundBKey === 'INF109KC13X2') || (fundBKey === 'INF109KC12U0' && fundAKey === 'INF109KC13X2')) {
-    overlapPct = 18.37;
+  if (selA && selB) {
+    loadOverlapAnalytics(selA.value, selB.value);
+  } else {
+    loadOverlapAnalytics();
   }
-
-  const svg = `
-    <svg viewBox="0 0 500 180" style="max-width: 460px; height: auto;">
-      <defs>
-        <linearGradient id="circleGradA" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.3"/>
-          <stop offset="100%" stop-color="#0284c7" stop-opacity="0.15"/>
-        </linearGradient>
-        <linearGradient id="circleGradB" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#a855f7" stop-opacity="0.3"/>
-          <stop offset="100%" stop-color="#7e22ce" stop-opacity="0.15"/>
-        </linearGradient>
-      </defs>
-      <!-- Circle A -->
-      <circle cx="190" cy="90" r="70" fill="url(#circleGradA)" stroke="#38bdf8" stroke-width="2" />
-      <!-- Circle B -->
-      <circle cx="310" cy="90" r="70" fill="url(#circleGradB)" stroke="#a855f7" stroke-width="2" />
-      
-      <!-- Labels -->
-      <text x="140" y="85" fill="#f8fafc" font-size="12" font-weight="700" text-anchor="middle">${nameA}</text>
-      <text x="140" y="105" fill="#94a3b8" font-size="10" text-anchor="middle">Exclusive Sleeve</text>
-      
-      <text x="360" y="85" fill="#f8fafc" font-size="12" font-weight="700" text-anchor="middle">${nameB}</text>
-      <text x="360" y="105" fill="#94a3b8" font-size="10" text-anchor="middle">Exclusive Sleeve</text>
-
-      <!-- Intersection -->
-      <text x="250" y="85" fill="#d0ff00" font-size="14" font-weight="800" text-anchor="middle">${overlapPct.toFixed(2)}%</text>
-      <text x="250" y="105" fill="#e2e8f0" font-size="9" font-weight="600" text-anchor="middle">Shared Overlap</text>
-    </svg>
-  `;
-
-  container.innerHTML = svg;
 }
 
 export async function loadUnifiedRebalancePlan(triggerType = 'INDUCED', manualAmount = null) {
@@ -1406,6 +1475,7 @@ function renderTacticalActionMatrix(plan) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  populateFundDropdowns();
   const selA = document.getElementById('vennFundA');
   const selB = document.getElementById('vennFundB');
   if (selA && selB) {
