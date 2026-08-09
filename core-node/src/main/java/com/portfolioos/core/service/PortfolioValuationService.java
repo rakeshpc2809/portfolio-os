@@ -5,6 +5,7 @@ import com.portfolioos.core.fire.FireTracker;
 import com.portfolioos.core.goals.GoalTracker;
 import com.portfolioos.core.model.AssetCategory;
 import com.portfolioos.core.matcher.FifoMatcher;
+import com.portfolioos.core.matcher.FundTierClassifier;
 import com.portfolioos.core.matcher.TaxClassifier;
 import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.MatchedLot;
@@ -659,6 +660,68 @@ public class PortfolioValuationService {
         BigDecimal currentSip = new BigDecimal("75000");
 
         return engine.evaluateRules(this, isProvisional, avgFailRate, relStdDev, currentSip, pairwise, concentrations, openLots, exStatus);
+    }
+
+    public Map<String, Object> getFundRegistry() {
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        if (state == null) {
+            cacheService.refreshCacheInBackground();
+            state = cacheService.getCachedState();
+        }
+        List<Lot> openLots = (state != null && state.fifoResult() != null) ? state.fifoResult().openLots() : Collections.emptyList();
+        Map<String, BigDecimal> navMap = (state != null && state.navMap() != null) ? state.navMap() : Collections.emptyMap();
+        Set<String> activeAssetIds = FundTierClassifier.findActiveAssetIds(openLots, LocalDate.now());
+
+        Map<String, String> knownNames = new HashMap<>();
+        knownNames.put("INF879O01027", "PPFAS Flexi Cap");
+        knownNames.put("INF109KC13X2", "Value 30");
+        knownNames.put("INF109KC12U0", "LargeMidcap 250");
+        knownNames.put("INF204K01K15", "Nippon Small Cap");
+        knownNames.put("INF754K01TN5", "Edelweiss Multicap MQ50");
+        knownNames.put("INF174KA1TY2", "100 Equal Weight");
+        knownNames.put("INF247L01916", "Midcap 150");
+        knownNames.put("INF247L01BQ9", "Motilal Microcap 250");
+        knownNames.put("INF247L01BM8", "Gold & Silver FoF");
+
+        Map<String, String> knownCategories = new HashMap<>();
+        knownCategories.put("INF879O01027", "Core");
+        knownCategories.put("INF109KC13X2", "Alpha & Beta");
+        knownCategories.put("INF109KC12U0", "Core");
+        knownCategories.put("INF204K01K15", "Satellite");
+        knownCategories.put("INF754K01TN5", "Alpha & Beta");
+        knownCategories.put("INF174KA1TY2", "Core");
+        knownCategories.put("INF247L01916", "Satellite");
+        knownCategories.put("INF247L01BQ9", "Satellite");
+        knownCategories.put("INF247L01BM8", "Accumulator");
+
+        Map<String, BigDecimal> fundValuations = new HashMap<>();
+        for (Lot lot : openLots) {
+            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ZERO);
+            BigDecimal val = lot.remainingUnits() != null ? lot.remainingUnits().multiply(nav) : BigDecimal.ZERO;
+            fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
+        }
+
+        List<Map<String, Object>> funds = new ArrayList<>();
+        for (Map.Entry<String, String> entry : knownNames.entrySet()) {
+            String isin = entry.getKey();
+            String name = entry.getValue();
+            boolean active = activeAssetIds.contains(isin);
+            BigDecimal valuation = fundValuations.getOrDefault(isin, BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            String category = knownCategories.getOrDefault(isin, "Core");
+
+            Map<String, Object> fundObj = new HashMap<>();
+            fundObj.put("isin", isin);
+            fundObj.put("name", name);
+            fundObj.put("category", category);
+            fundObj.put("active", active);
+            fundObj.put("current_valuation", valuation);
+            funds.add(fundObj);
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "OK");
+        response.put("funds", funds);
+        return response;
     }
 
     public DuckDbProjector getDuckDbProjector() {

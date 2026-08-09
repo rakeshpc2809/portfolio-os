@@ -156,6 +156,11 @@ public class ReportController {
         return ResponseEntity.ok(valuationService.getDuckDbProjector().getAllFundHoldingsDebug());
     }
 
+    @GetMapping("/funds/registry")
+    public ResponseEntity<Map<String, Object>> getFundRegistry() {
+        return ResponseEntity.ok(valuationService.getFundRegistry());
+    }
+
     @PostMapping("/analytics/fire/simulate")
     public ResponseEntity<Map<String, Object>> simulateFireScenario(@RequestBody Map<String, Object> body) {
         Double monthlySip = body != null && body.get("monthly_sip") != null ? ((Number) body.get("monthly_sip")).doubleValue() : null;

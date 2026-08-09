@@ -1,6 +1,8 @@
 import { API_BASE, fetchJson } from '../api.js';
 import { state } from '../state.js';
 import { formatINR } from '../utils.js';
+import { FUND_REGISTRY, getActionBadgeStyle } from '../constants.js';
+import { setText, setHtml, setBadgeStyle, setErrorState } from '../domUtils.js';
 
 export function updatePortfolioSummary(summary) {
   const netWorthVal = document.querySelector('.net-worth-val');
@@ -737,61 +739,56 @@ export async function loadBenchmarkAnalytics() {
   try {
     const res = await fetchJson(`${API_BASE}/analytics/benchmark?benchmark=NIFTY_50_TRI`);
     if (res && res.status === 'OK') {
-      const elAlpha = document.querySelector('#benchmarkAlphaVal');
-      const elBeta = document.querySelector('#benchmarkBetaVal');
-      const elSharpe = document.querySelector('#benchmarkSharpeVal');
-      const elTracking = document.querySelector('#benchmarkTrackingVal');
-      const elOut = document.querySelector('#benchmarkOutperformVal');
-      const elBadge = document.querySelector('#benchmarkSampleBadge');
-      const elSub = document.querySelector('#benchmarkProvenanceSub');
-
       const star = res.is_provisional ? '*' : '';
-      if (elAlpha) elAlpha.textContent = `${res.alpha_pct > 0 ? '+' : ''}${res.alpha_pct}%${star}`;
-      if (elBeta) elBeta.textContent = `${res.beta}${star}`;
-      if (elSharpe) elSharpe.textContent = `${res.sharpe_ratio}${star}`;
-      if (elTracking) elTracking.textContent = `${res.tracking_error_pct}%${star}`;
-      if (elOut) elOut.textContent = `${res.outperformance_pct > 0 ? '+' : ''}${res.outperformance_pct}%${star}`;
+      setText('#benchmarkAlphaVal', `${res.alpha_pct > 0 ? '+' : ''}${res.alpha_pct}%${star}`);
+      setText('#benchmarkBetaVal', `${res.beta}${star}`);
+      setText('#benchmarkSharpeVal', `${res.sharpe_ratio}${star}`);
+      setText('#benchmarkTrackingVal', `${res.tracking_error_pct}%${star}`);
+      setText('#benchmarkOutperformVal', `${res.outperformance_pct > 0 ? '+' : ''}${res.outperformance_pct}%${star}`);
 
       const cardGrid = document.querySelector('#benchmarkMetricsGrid');
       if (cardGrid) {
         cardGrid.style.opacity = res.is_provisional ? '0.82' : '1.0';
       }
 
-      if (elBadge) {
-        if (res.is_provisional) {
-          elBadge.textContent = `PROVISIONAL (${res.sample_days} DAYS)`;
-          elBadge.className = 'live-tag warning-tag';
-        } else {
-          elBadge.textContent = `MATURE (${res.sample_days} DAYS)`;
-          elBadge.className = 'live-tag positive-tag';
-        }
+      if (res.is_provisional) {
+        setBadgeStyle('#benchmarkSampleBadge', `PROVISIONAL (${res.sample_days} DAYS)`, 'live-tag warning-tag');
+      } else {
+        setBadgeStyle('#benchmarkSampleBadge', `MATURE (${res.sample_days} DAYS)`, 'live-tag positive-tag');
       }
 
-      if (elSub && res.data_source_label) {
-        elSub.textContent = res.data_source_label;
+      if (res.data_source_label) {
+        setText('#benchmarkProvenanceSub', res.data_source_label);
       }
     }
   } catch (err) {
     console.error('Failed to load benchmark analytics:', err);
+    setErrorState('#benchmarkAlphaVal', '—');
+    setErrorState('#benchmarkBetaVal', '—');
+    setErrorState('#benchmarkSharpeVal', '—');
+    setErrorState('#benchmarkTrackingVal', '—');
+    setErrorState('#benchmarkOutperformVal', '—');
+    setBadgeStyle('#benchmarkSampleBadge', 'OFFLINE', 'live-tag warning-tag');
   }
 }
 
-export const FUND_REGISTRY = {
-  'INF879O01027': 'PPFAS Flexi Cap',
-  'INF109KC13X2': 'Value 30',
-  'INF109KC12U0': 'LargeMidcap 250',
-  'INF204K01K15': 'Nippon Small Cap',
-  'INF754K01TN5': 'Edelweiss Multicap MQ50',
-  'INF174KA1TY2': '100 Equal Weight',
-  'INF247L01916': 'Midcap 150',
-  'INF247L01BQ9': 'Motilal Microcap 250',
-  'INF247L01BM8': 'Gold & Silver FoF'
-};
-
-export function populateFundDropdowns() {
+export async function populateFundDropdowns() {
   const selA = document.getElementById('vennFundA');
   const selB = document.getElementById('vennFundB');
   if (!selA || !selB) return;
+
+  try {
+    const res = await fetchJson(`${API_BASE}/funds/registry`);
+    if (res && res.status === 'OK' && res.funds) {
+      res.funds.forEach(f => {
+        if (f.isin && f.name) {
+          FUND_REGISTRY[f.isin] = f.name;
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to load live fund registry from backend, using static registry:', err);
+  }
 
   const currentA = selA.value || 'INF879O01027';
   const currentB = selB.value || 'INF109KC13X2';
@@ -822,30 +819,21 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
   const nameA = FUND_REGISTRY[fundAKey] || fundAKey;
   const nameB = FUND_REGISTRY[fundBKey] || fundBKey;
 
-  const elPairName = document.querySelector('#overlapPairName');
-  const elPairwise = document.querySelector('#pairwiseOverlapVal');
-  const elCount = document.querySelector('#commonStockCountSub');
-  const elBadge = document.querySelector('#overlapDateBadge');
   const tableBody = document.querySelector('#topStockConcentrationTable tbody');
   const container = document.getElementById('vennContainer');
 
-  if (elPairName) {
-    elPairName.textContent = `${nameA} vs ${nameB}`;
-  }
+  setText('#overlapPairName', `${nameA} vs ${nameB}`);
 
-  // Same Fund Selected Case (Strict ISIN string comparison)
+  // Same Fund Selected Case (Strict raw ISIN string comparison)
   if (fundAKey === fundBKey) {
-    if (elPairwise) elPairwise.textContent = '100.00%';
-    if (elCount) elCount.textContent = `Identical Fund Selected (100% Stock Overlap)`;
-    if (elBadge) {
-      elBadge.textContent = 'SAME FUND (100%)';
-      elBadge.className = 'live-tag positive-tag';
-    }
+    setText('#pairwiseOverlapVal', '100.00%');
+    setText('#commonStockCountSub', 'Identical Fund Selected (100% Stock Overlap)');
+    setBadgeStyle('#overlapDateBadge', 'SAME FUND (100%)', 'live-tag positive-tag');
     renderVennSvg(container, nameA, nameB, 100.00);
     return;
   } else {
-    if (elPairwise) elPairwise.textContent = '...';
-    if (elCount) elCount.textContent = 'Calculating live stock overlap...';
+    setText('#pairwiseOverlapVal', '...');
+    setText('#commonStockCountSub', 'Calculating live stock overlap...');
   }
 
   try {
@@ -857,30 +845,31 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
       const concentrations = res.portfolio_top_stock_concentrations;
 
       if (fundAKey !== fundBKey && pairwise) {
-        if (elPairwise) elPairwise.textContent = `${pairwise.overlap_percentage}%`;
-
-        if (elCount && pairwise.common_stocks) {
-          const topSymbols = pairwise.common_stocks.slice(0, 4).map(s => s.stock_symbol).join(', ');
+        if (pairwise.common_stock_count === 0) {
+          // Genuine 0% Overlap between 2 distinct funds
+          setText('#pairwiseOverlapVal', '0.00%');
+          setText('#commonStockCountSub', 'Common Holdings: 0 Stocks (No Shared Holdings)');
+          setBadgeStyle('#overlapDateBadge', 'NO SHARED HOLDINGS', 'live-tag neutral-tag');
+          renderVennSvg(container, nameA, nameB, 0.00);
+        } else {
+          // Genuine > 0% Overlap
+          setText('#pairwiseOverlapVal', `${pairwise.overlap_percentage}%`);
+          const topSymbols = (pairwise.common_stocks || []).slice(0, 4).map(s => s.stock_symbol).join(', ');
           const extraStr = topSymbols ? ` (${topSymbols})` : '';
-          elCount.textContent = `Common Holdings: ${pairwise.common_stock_count} Stocks${extraStr}`;
-        }
+          setText('#commonStockCountSub', `Common Holdings: ${pairwise.common_stock_count} Stocks${extraStr}`);
 
-        if (elBadge) {
           if (pairwise.date_mismatch) {
-            elBadge.textContent = 'DATE MISMATCH';
-            elBadge.className = 'live-tag warning-tag';
+            setBadgeStyle('#overlapDateBadge', 'DATE MISMATCH', 'live-tag warning-tag');
           } else {
-            elBadge.textContent = 'SNAPSHOT ALIGNED';
-            elBadge.className = 'live-tag positive-tag';
+            setBadgeStyle('#overlapDateBadge', 'SNAPSHOT ALIGNED', 'live-tag positive-tag');
           }
+          renderVennSvg(container, nameA, nameB, pairwise.overlap_percentage);
         }
-
-        renderVennSvg(container, nameA, nameB, pairwise.overlap_percentage);
       }
 
       if (tableBody && concentrations) {
         if (concentrations.length === 0) {
-          tableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#64748b;">No stock concentrations calculated.</td></tr>`;
+          setHtml(tableBody, `<tr><td colspan="3" style="text-align:center; color:#64748b;">No stock concentrations calculated.</td></tr>`);
         } else {
           let html = '';
           concentrations.forEach(item => {
@@ -890,7 +879,7 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
               <td><span class="metric-delta positive">${item.portfolio_percentage}%</span></td>
             </tr>`;
           });
-          tableBody.innerHTML = html;
+          setHtml(tableBody, html);
         }
       }
 
@@ -902,14 +891,11 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
   } catch (err) {
     if (currentRequestId !== activeOverlapRequestId) return;
     console.error('Failed to load overlap analytics:', err);
-    if (elPairwise) elPairwise.textContent = '—';
-    if (elCount) elCount.textContent = '⚠️ Overlap Fetch Failed (Check Backend Service)';
-    if (elBadge) {
-      elBadge.textContent = 'OFFLINE';
-      elBadge.className = 'live-tag warning-tag';
-    }
+    setErrorState('#pairwiseOverlapVal', '—');
+    setText('#commonStockCountSub', '⚠️ Overlap Fetch Failed (Check Backend Service)');
+    setBadgeStyle('#overlapDateBadge', 'OFFLINE', 'live-tag warning-tag');
     if (container) {
-      container.innerHTML = `<div style="text-align: center; color: #f87171; padding: 12px;">⚠️ Failed to load overlap graph from backend.</div>`;
+      setHtml(container, `<div style="text-align: center; color: #f87171; padding: 12px;">⚠️ Failed to load overlap graph from backend.</div>`);
     }
   }
 }
