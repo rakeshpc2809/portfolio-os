@@ -1,5 +1,6 @@
 package com.portfolioos.core.controllers;
 
+import com.portfolioos.core.common.PortfolioConstants;
 import com.portfolioos.core.dtos.SyncDtos.*;
 import com.portfolioos.core.fire.FireTracker;
 import com.portfolioos.core.goals.GoalTracker;
@@ -249,8 +250,8 @@ public class SyncController {
                     }
 
                     double ddThreshold = switch (bucket) {
-                        case "Debt & Liquid" -> 0.05;
-                        case "Core Equity", "Flexi Cap", "Large & Midcap", "Equal Weight Index", "Gold & Commodities" -> 0.15;
+                        case "Debt & Liquid" -> PortfolioConstants.DRAWDOWN_TIER_1_PCT / 100.0;
+                        case "Core Equity", "Flexi Cap", "Large & Midcap", "Equal Weight Index", "Gold & Commodities" -> PortfolioConstants.DRAWDOWN_TIER_2_PCT / 100.0;
                         default -> 0.25; // Small Cap, Microcap, Sectoral, Midcap, Factor Value/Momentum
                     };
 

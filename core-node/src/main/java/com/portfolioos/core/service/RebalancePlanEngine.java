@@ -1,5 +1,6 @@
 package com.portfolioos.core.service;
 
+import com.portfolioos.core.fire.FireTracker;
 import com.portfolioos.core.dtos.RebalancePlanDtos.*;
 import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.MatchedLot;
@@ -114,7 +115,10 @@ public class RebalancePlanEngine {
         SellSidePlanDto sellSide = null;
 
         if (isLumpsum) {
-            totalPool = manualLumpsumAmount != null && manualLumpsumAmount.compareTo(BigDecimal.ZERO) > 0 ? manualLumpsumAmount : new BigDecimal("50000.00");
+            if (manualLumpsumAmount == null || manualLumpsumAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Lump-sum rebalance simulation requires a valid positive manualLumpsumAmount.");
+            }
+            totalPool = manualLumpsumAmount;
         } else if (isInduced && "NONE".equals(armedTier)) {
             // No induced trigger active -> Zero sell amount required
             totalPool = BigDecimal.ZERO;
@@ -130,7 +134,8 @@ public class RebalancePlanEngine {
         } else {
             // Induced armed tier OR Scheduled reconstitution
             BigDecimal poolNeeded = liveCorpus.multiply(new BigDecimal("0.05")).setScale(2, RoundingMode.HALF_UP);
-            if (poolNeeded.compareTo(new BigDecimal("10000.00")) < 0) poolNeeded = new BigDecimal("60000.00");
+            BigDecimal targetMonthlyExpense = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now()).monthlyExpenseToday();
+            if (poolNeeded.compareTo(new BigDecimal("10000.00")) < 0) poolNeeded = targetMonthlyExpense;
             totalPool = poolNeeded;
 
             List<WaterfallTierDto> waterfallTiers = new ArrayList<>();

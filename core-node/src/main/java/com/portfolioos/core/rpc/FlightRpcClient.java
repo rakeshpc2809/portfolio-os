@@ -192,7 +192,10 @@ public class FlightRpcClient {
 
             String token = System.getenv("API_AUTH_TOKEN");
             if (token == null || token.isBlank()) {
-                token = "fintracker-cachyos-default-key-2026";
+                token = System.getProperty("API_AUTH_TOKEN");
+            }
+            if (token == null || token.isBlank()) {
+                throw new IllegalStateException("Missing required environment variable 'API_AUTH_TOKEN'. FlightRpcClient refuses unauthenticated RPC call.");
             }
 
             java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
@@ -226,7 +229,10 @@ public class FlightRpcClient {
 
             String token = System.getenv("API_AUTH_TOKEN");
             if (token == null || token.isBlank()) {
-                token = "fintracker-cachyos-default-key-2026";
+                token = System.getProperty("API_AUTH_TOKEN");
+            }
+            if (token == null || token.isBlank()) {
+                throw new IllegalStateException("Missing required environment variable 'API_AUTH_TOKEN'. FlightRpcClient refuses unauthenticated RPC call.");
             }
 
             java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();

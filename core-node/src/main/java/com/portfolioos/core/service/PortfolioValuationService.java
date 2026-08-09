@@ -318,7 +318,7 @@ public class PortfolioValuationService {
         try {
             double invNetWorth = fire.fireInvestableNetWorth().doubleValue();
             double annExp = fire.annualExpense().doubleValue();
-            double monthlyContrib = 75000.0; // Dynamic profile monthly contribution
+            double monthlyContrib = fire.monthlyContribution().doubleValue();
             int yrs = fire.yearsRemaining();
             List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
             if (dailyReturns.size() < 10 && !openLots.isEmpty()) {
@@ -555,7 +555,9 @@ public class PortfolioValuationService {
 
         List<Map<String, Object>> concentrations = duckDbProjector.getPortfolioStockConcentrations(fundValuations);
 
-        List<String> evalFundIds = Arrays.asList("INF879O01027", "INF109KC13X2", "INF109KC12U0", "INF204K01K15", "INF754K01TN5", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9", "INF247L01BM8");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> regFunds = (List<Map<String, Object>>) getFundRegistry().getOrDefault("funds", Collections.emptyList());
+        List<String> evalFundIds = regFunds.stream().map(f -> (String) f.get("isin")).filter(Objects::nonNull).collect(Collectors.toList());
         List<Map<String, Object>> matrix = new ArrayList<>();
         for (int i = 0; i < evalFundIds.size(); i++) {
             for (int j = i + 1; j < evalFundIds.size(); j++) {
@@ -578,7 +580,9 @@ public class PortfolioValuationService {
 
     public Map<String, Object> getMultiFundUpSetAnalytics() {
         new NseIndexConstituentDownloader().seedStandardIndexConstituents(duckDbProjector);
-        List<String> evalFundIds = Arrays.asList("INF879O01027", "INF109KC13X2", "INF109KC12U0", "INF204K01K15", "INF754K01TN5", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9", "INF247L01BM8");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> regFunds = (List<Map<String, Object>>) getFundRegistry().getOrDefault("funds", Collections.emptyList());
+        List<String> evalFundIds = regFunds.stream().map(f -> (String) f.get("isin")).filter(Objects::nonNull).collect(Collectors.toList());
         List<Map<String, Object>> upset = duckDbProjector.getMultiFundIntersectionAnalytics(evalFundIds);
 
         String coverageType = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists() ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";
@@ -624,7 +628,9 @@ public class PortfolioValuationService {
 
     public List<com.portfolioos.core.rules.FireActionRuleEngine.ActionRecommendationCard> getActionRecommendations() {
         com.portfolioos.core.rules.FireActionRuleEngine engine = new com.portfolioos.core.rules.FireActionRuleEngine();
-        List<String> evalFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9", "INF879O01027", "INF204K01K15");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> regFunds = (List<Map<String, Object>>) getFundRegistry().getOrDefault("funds", Collections.emptyList());
+        List<String> evalFundIds = regFunds.stream().map(f -> (String) f.get("isin")).filter(Objects::nonNull).collect(Collectors.toList());
         List<Map<String, Object>> pairwise = new ArrayList<>();
         for (int i = 0; i < evalFundIds.size(); i++) {
             for (int j = i + 1; j < evalFundIds.size(); j++) {
@@ -657,7 +663,8 @@ public class PortfolioValuationService {
 
         double avgFailRate = 33.15; // 100.0 - 66.85% success rate on empirical baseline
         double relStdDev = 0.84;    // 10-seed relative std dev
-        BigDecimal currentSip = new BigDecimal("75000");
+        FireTracker.FireSummary fire = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now());
+        BigDecimal currentSip = fire.monthlyContribution();
 
         return engine.evaluateRules(this, isProvisional, avgFailRate, relStdDev, currentSip, pairwise, concentrations, openLots, exStatus);
     }

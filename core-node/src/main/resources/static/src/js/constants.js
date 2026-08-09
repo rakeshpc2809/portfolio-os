@@ -1,14 +1,4 @@
-export const FUND_REGISTRY = {
-  'INF879O01027': 'PPFAS Flexi Cap',
-  'INF109KC13X2': 'Value 30',
-  'INF109KC12U0': 'LargeMidcap 250',
-  'INF204K01K15': 'Nippon Small Cap',
-  'INF754K01TN5': 'Edelweiss Nifty500 MQ50',
-  'INF174KA1TY2': 'Kotak 100 Equal Weight',
-  'INF247L01916': 'Motilal Midcap 150',
-  'INF247L01BQ9': 'Motilal Microcap 250',
-  'INF247L01BM8': 'Motilal Gold & Silver FoF'
-};
+export const FUND_REGISTRY = {};
 
 export const BADGE_STYLES = {
   ACTION_RECOMMENDED: {
