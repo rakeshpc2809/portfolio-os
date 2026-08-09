@@ -554,7 +554,7 @@ public class PortfolioValuationService {
 
         List<Map<String, Object>> concentrations = duckDbProjector.getPortfolioStockConcentrations(fundValuations);
 
-        List<String> evalFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9", "INF879O01027", "INF204K01K15");
+        List<String> evalFundIds = Arrays.asList("INF879O01027", "INF109KC13X2", "INF109KC12U0", "INF204K01K15", "INF754K01TN5", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9", "INF247L01BM8");
         List<Map<String, Object>> matrix = new ArrayList<>();
         for (int i = 0; i < evalFundIds.size(); i++) {
             for (int j = i + 1; j < evalFundIds.size(); j++) {
@@ -577,7 +577,7 @@ public class PortfolioValuationService {
 
     public Map<String, Object> getMultiFundUpSetAnalytics() {
         new NseIndexConstituentDownloader().seedStandardIndexConstituents(duckDbProjector);
-        List<String> evalFundIds = Arrays.asList("INF109KC12U0", "INF109KC13X2", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9", "INF879O01027", "INF204K01K15");
+        List<String> evalFundIds = Arrays.asList("INF879O01027", "INF109KC13X2", "INF109KC12U0", "INF204K01K15", "INF754K01TN5", "INF174KA1TY2", "INF247L01916", "INF247L01BQ9", "INF247L01BM8");
         List<Map<String, Object>> upset = duckDbProjector.getMultiFundIntersectionAnalytics(evalFundIds);
 
         String coverageType = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists() ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";

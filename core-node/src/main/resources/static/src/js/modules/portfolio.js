@@ -776,14 +776,16 @@ export async function loadBenchmarkAnalytics() {
   }
 }
 
-const FUND_REGISTRY = {
+export const FUND_REGISTRY = {
   'INF879O01027': 'PPFAS Flexi Cap',
   'INF109KC13X2': 'Value 30',
-  'INF247L01BQ9': 'Edelweiss Multi Cap MQ50',
   'INF109KC12U0': 'LargeMidcap 250',
   'INF204K01K15': 'Nippon Small Cap',
-  'INF174KA1TY2': 'Motilal Gold & Silver FoF',
-  'INF247L01916': 'Motilal Microcap 250'
+  'INF754K01TN5': 'Edelweiss Multicap MQ50',
+  'INF174KA1TY2': '100 Equal Weight',
+  'INF247L01916': 'Midcap 150',
+  'INF247L01BQ9': 'Motilal Microcap 250',
+  'INF247L01BM8': 'Gold & Silver FoF'
 };
 
 export function populateFundDropdowns() {
@@ -831,7 +833,7 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
     elPairName.textContent = `${nameA} vs ${nameB}`;
   }
 
-  // Same Fund Selected Case
+  // Same Fund Selected Case (Strict ISIN string comparison)
   if (fundAKey === fundBKey) {
     if (elPairwise) elPairwise.textContent = '100.00%';
     if (elCount) elCount.textContent = `Identical Fund Selected (100% Stock Overlap)`;
@@ -859,7 +861,8 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
 
         if (elCount && pairwise.common_stocks) {
           const topSymbols = pairwise.common_stocks.slice(0, 4).map(s => s.stock_symbol).join(', ');
-          elCount.textContent = `Common Holdings: ${pairwise.common_stock_count} Stocks (${topSymbols})`;
+          const extraStr = topSymbols ? ` (${topSymbols})` : '';
+          elCount.textContent = `Common Holdings: ${pairwise.common_stock_count} Stocks${extraStr}`;
         }
 
         if (elBadge) {
@@ -956,16 +959,7 @@ export async function loadUpSetAnalytics() {
     const res = await fetchJson(`${API_BASE}/analytics/overlap/upset`);
     if (res && res.status === 'OK' && res.upset_combinations) {
       const combos = res.upset_combinations;
-      const fundMap = {
-        'INF109KC12U0': 'LargeMidcap 250',
-        'INF109KC13X2': 'Value 30',
-        'INF174KA1TY2': '100 Equal Weight',
-        'INF247L01916': 'Midcap 150',
-        'INF247L01BQ9': 'Momentum Quality 50',
-        'INF879O01027': 'PPFAS Flexi Cap',
-        'INF204K01K15': 'Nippon Small Cap'
-      };
-      const allFundKeys = Object.keys(fundMap);
+      const allFundKeys = Object.keys(FUND_REGISTRY);
 
       if (combos.length === 0) {
         container.innerHTML = `<div style="text-align:center; color:#64748b;">No multi-set intersections found.</div>`;
@@ -977,7 +971,7 @@ export async function loadUpSetAnalytics() {
       let html = `<div style="display: flex; gap: 20px; font-family: monospace; font-size: 0.78rem;">`;
       html += `<div style="display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; font-weight: 600; color: #94a3b8; padding-bottom: 22px;">`;
       allFundKeys.forEach(key => {
-        html += `<div style="height: 18px; line-height: 18px; text-align: right; white-space: nowrap;">${fundMap[key]}</div>`;
+        html += `<div style="height: 18px; line-height: 18px; text-align: right; white-space: nowrap;">${FUND_REGISTRY[key]}</div>`;
       });
       html += `</div>`;
 
@@ -985,7 +979,7 @@ export async function loadUpSetAnalytics() {
 
       combos.forEach(c => {
         const participating = c.participating_funds;
-        const participatingNames = participating.map(k => fundMap[k] || k);
+        const participatingNames = participating.map(k => FUND_REGISTRY[k] || k);
         const stockList = c.stocks.map(s => s.stock_symbol).join(', ');
 
         const barPct = Math.round((c.stock_count / maxCount) * 100);
