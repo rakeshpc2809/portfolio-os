@@ -22,6 +22,8 @@ public class BucketConfigLoader {
         String bucket,
         double targetPct,
         double bandPct,
+        double triggerDriftPct,
+        String strategy,
         List<PreferredFundConfig> preferredFunds
     ) {}
 
@@ -70,6 +72,11 @@ public class BucketConfigLoader {
                     String bName = (String) tMap.get("bucket");
                     double tPct = ((Number) tMap.get("target_pct")).doubleValue();
                     double bPct = ((Number) tMap.get("band_pct")).doubleValue();
+                    
+                    double tdPct = tMap.containsKey("trigger_drift_pct") 
+                        ? ((Number) tMap.get("trigger_drift_pct")).doubleValue() 
+                        : bPct;
+                    String strat = (String) tMap.getOrDefault("strategy", "");
 
                     List<PreferredFundConfig> prefFunds = new ArrayList<>();
                     if (tMap.containsKey("preferred_funds")) {
@@ -85,7 +92,7 @@ public class BucketConfigLoader {
                         prefFunds = getDefaultPreferredFundsForBucket(bName);
                     }
 
-                    targetConfigs.add(new BucketTargetConfig(bName, tPct, bPct, prefFunds));
+                    targetConfigs.add(new BucketTargetConfig(bName, tPct, bPct, tdPct, strat, prefFunds));
                 }
                 parsedVersions.add(new BucketTargetVersion(vId, effFrom, targetConfigs));
             }
@@ -174,6 +181,9 @@ public class BucketConfigLoader {
             if (tc.bandPct() < 1.0 || tc.bandPct() > 20.0) {
                 throw new IllegalArgumentException("Band tolerance for " + tc.bucket() + " must be between 1.0% and 20.0%");
             }
+            if (tc.triggerDriftPct() < 0.0 || tc.triggerDriftPct() > 100.0) {
+                throw new IllegalArgumentException("Trigger drift percentage for " + tc.bucket() + " must be between 0.0% and 100.0%");
+            }
             sumPct += tc.targetPct();
         }
 
@@ -238,10 +248,10 @@ public class BucketConfigLoader {
 
     private static BucketRulesConfig createDefaultConfig() {
         List<BucketTargetConfig> defaults = List.of(
-            new BucketTargetConfig("EQUITY_CORE", 50.0, 5.0, getDefaultPreferredFundsForBucket("EQUITY_CORE")),
-            new BucketTargetConfig("EQUITY_SATELLITE", 20.0, 5.0, getDefaultPreferredFundsForBucket("EQUITY_SATELLITE")),
-            new BucketTargetConfig("GOLD_SILVER", 15.0, 5.0, getDefaultPreferredFundsForBucket("GOLD_SILVER")),
-            new BucketTargetConfig("LIQUID_BUFFER", 15.0, 5.0, getDefaultPreferredFundsForBucket("LIQUID_BUFFER"))
+            new BucketTargetConfig("EQUITY_CORE", 50.0, 5.0, 5.0, "CORE", getDefaultPreferredFundsForBucket("EQUITY_CORE")),
+            new BucketTargetConfig("EQUITY_SATELLITE", 20.0, 5.0, 5.0, "SATELLITE", getDefaultPreferredFundsForBucket("EQUITY_SATELLITE")),
+            new BucketTargetConfig("GOLD_SILVER", 15.0, 5.0, 12.0, "ACCUMULATOR", getDefaultPreferredFundsForBucket("GOLD_SILVER")),
+            new BucketTargetConfig("LIQUID_BUFFER", 15.0, 5.0, 5.0, "ARBITRAGE", getDefaultPreferredFundsForBucket("LIQUID_BUFFER"))
         );
         return new BucketRulesConfig(List.of(
             new BucketTargetVersion("v1.0", "2024-01-01", defaults)
@@ -271,6 +281,8 @@ public class BucketConfigLoader {
                     tMap.put("bucket", tc.bucket());
                     tMap.put("target_pct", tc.targetPct());
                     tMap.put("band_pct", tc.bandPct());
+                    tMap.put("trigger_drift_pct", tc.triggerDriftPct());
+                    tMap.put("strategy", tc.strategy());
 
                     if (tc.preferredFunds() != null && !tc.preferredFunds().isEmpty()) {
                         List<Map<String, Object>> pfList = new ArrayList<>();
