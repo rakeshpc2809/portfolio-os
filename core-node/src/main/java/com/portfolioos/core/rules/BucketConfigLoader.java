@@ -215,7 +215,7 @@ public class BucketConfigLoader {
             }
             case "GOLD_SILVER" -> {
                 return List.of(
-                    new PreferredFundConfig("INF247L01908", "Motilal Oswal Gold and Silver Passive Fund of Funds", 1.00)
+                    new PreferredFundConfig("INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", 1.00)
                 );
             }
             case "LIQUID_BUFFER" -> {

@@ -39,7 +39,7 @@ versions:
     trigger_drift_pct: 12.0
     strategy: "ACCUMULATOR"
     preferred_funds:
-    - fund_id: "INF247L01908"
+    - fund_id: "INF247L01BM8"
       fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
       allocation_weight: 1.0
   - bucket: "LIQUID_BUFFER"
