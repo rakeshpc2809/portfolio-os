@@ -64,7 +64,8 @@ public class SyncController {
 
     @GetMapping("/snapshot")
     public ResponseEntity<UnidirectionalSyncSnapshot> getSnapshot(
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+        @RequestParam(value = "fy", defaultValue = "2026-27") String fy,
+        @RequestParam(value = "trigger", required = false) String requestedTrigger
     ) {
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<TaxEvent> allEvents = state.events();
@@ -252,7 +253,7 @@ public class SyncController {
                     double ddThreshold = switch (bucket) {
                         case "Debt & Liquid" -> PortfolioConstants.DRAWDOWN_TIER_1_PCT / 100.0;
                         case "Core Equity", "Flexi Cap", "Large & Midcap", "Equal Weight Index", "Gold & Commodities" -> PortfolioConstants.DRAWDOWN_TIER_2_PCT / 100.0;
-                        default -> 0.25; // Small Cap, Microcap, Sectoral, Midcap, Factor Value/Momentum
+                        default -> PortfolioConstants.DRAWDOWN_TIER_HIGH_VOLATILITY_PCT / 100.0; // Small Cap, Microcap, Sectoral, Midcap, Factor Value/Momentum
                     };
 
                     if (maxDdObj instanceof Number maxDd && Math.abs(maxDd.doubleValue()) >= ddThreshold) {
@@ -356,8 +357,31 @@ public class SyncController {
             .map(p -> new NetWorthPointDto(p.date(), p.valuation(), p.invested()))
             .toList();
 
+        BigDecimal rollingHigh = netWorthHistory.stream()
+            .map(p -> BigDecimal.valueOf(p.valuation()))
+            .max(BigDecimal::compareTo)
+            .orElse(totalPortfolioCurrentVal);
+
+        String derivedTriggerType;
+        if (requestedTrigger != null && !requestedTrigger.isBlank()) {
+            derivedTriggerType = requestedTrigger.toUpperCase();
+        } else {
+            double dynamicDdPct = 0.0;
+            if (rollingHigh.compareTo(BigDecimal.ZERO) > 0) {
+                dynamicDdPct = rollingHigh.subtract(totalPortfolioCurrentVal)
+                    .divide(rollingHigh, 4, RoundingMode.HALF_UP)
+                    .doubleValue() * 100.0;
+            }
+            derivedTriggerType = PortfolioConstants.deriveTriggerType(dynamicDdPct);
+        }
+
+        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto rebalancePlan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
+            openLots, matchedLots, navMap, LocalDate.now(), totalPortfolioCurrentVal, rollingHigh,
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), fy, derivedTriggerType, null
+        );
+
         return ResponseEntity.ok(new UnidirectionalSyncSnapshot(
-            syncInfo, holdings, taxLots, radarSignals, netWorthHistory
+            syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan
         ));
     }
 
@@ -383,7 +407,7 @@ public class SyncController {
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
-        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
+        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
             openLots, matchedLots, navMap, LocalDate.now(), new BigDecimal("24000.00"), new BigDecimal("25000.00"),
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
         );

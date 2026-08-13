@@ -72,7 +72,8 @@ public class SyncDtos {
         List<FlatHoldingDto> holdings,
         List<FlatTaxLotDto> taxLots,
         List<RadarSignalDto> radarSignals,
-        List<NetWorthPointDto> netWorthHistory
+        List<NetWorthPointDto> netWorthHistory,
+        RebalancePlanDtos.RebalancePlanDto rebalancePlan
     ) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

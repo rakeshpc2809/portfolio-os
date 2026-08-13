@@ -16,7 +16,104 @@ data class SyncSnapshot(
     @SerializedName("holdings") val holdings: List<FlatHoldingDto>? = emptyList(),
     @SerializedName("tax_lots") val taxLots: List<FlatTaxLotDto>? = emptyList(),
     @SerializedName("radar_signals") val radarSignals: List<RadarSignalDto>? = emptyList(),
-    @SerializedName("net_worth_history") val netWorthHistory: List<NetWorthPointDto>? = emptyList()
+    @SerializedName("net_worth_history") val netWorthHistory: List<NetWorthPointDto>? = emptyList(),
+    @SerializedName("rebalance_plan") val rebalancePlan: RebalancePlanDto? = null
+)
+
+@Immutable
+data class RebalancePlanDto(
+    @SerializedName("plan_id") val planId: String = "",
+    @SerializedName("generated_at") val generatedAt: String = "",
+    @SerializedName("trigger") val trigger: RebalanceTriggerDto? = null,
+    @SerializedName("sell_side") val sellSide: SellSidePlanDto? = null,
+    @SerializedName("buy_side") val buySide: BuySidePlanDto? = null,
+    @SerializedName("reasoning_narrative") val reasoningNarrative: ReasoningNarrativeDto? = null
+)
+
+@Immutable
+data class BuySidePlanDto(
+    @SerializedName("total_to_invest") val totalToInvest: Double = 0.0,
+    @SerializedName("is_manual_lumpsum") val isManualLumpsum: Boolean = false,
+    @SerializedName("buckets") val buckets: List<RebalanceBucketAllocationDto> = emptyList()
+)
+
+@Immutable
+data class RebalanceBucketAllocationDto(
+    @SerializedName("bucket") val bucket: String = "",
+    @SerializedName("target_pct") val targetPct: Double = 0.0,
+    @SerializedName("current_pct") val currentPct: Double = 0.0,
+    @SerializedName("post_rebalance_pct") val postRebalancePct: Double = 0.0,
+    @SerializedName("amount_allocated") val amountAllocated: Double = 0.0,
+    @SerializedName("fund_breakdown") val fundBreakdown: List<FundAllocationDto> = emptyList()
+)
+
+@Immutable
+data class FundAllocationDto(
+    @SerializedName("fund_id") val fundId: String = "",
+    @SerializedName("fund_name") val fundName: String = "",
+    @SerializedName("amount") val amount: Double = 0.0
+)
+
+@Immutable
+data class ReasoningNarrativeDto(
+    @SerializedName("headline") val headline: String = "",
+    @SerializedName("paragraphs") val paragraphs: List<String> = emptyList(),
+    @SerializedName("generated_from_template_version") val generatedFromTemplateVersion: String = ""
+)
+
+@Immutable
+data class RebalanceTriggerDto(
+    @SerializedName("type") val type: String = "",
+    @SerializedName("reason_code") val reasonCode: String = "",
+    @SerializedName("reason_label") val reasonLabel: String = ""
+)
+
+@Immutable
+data class SellSidePlanDto(
+    @SerializedName("total_required") val totalRequired: Double = 0.0,
+    @SerializedName("waterfall") val waterfall: List<WaterfallTierDto> = emptyList(),
+    @SerializedName("tax_summary") val taxSummary: TaxSummaryDto? = null
+)
+
+@Immutable
+data class WaterfallTierDto(
+    @SerializedName("tier") val tier: String = "",
+    @SerializedName("tier_label") val tierLabel: String = "",
+    @SerializedName("available") val available: Double = 0.0,
+    @SerializedName("sold") val sold: Double = 0.0,
+    @SerializedName("skipped_reason") val skippedReason: String? = null,
+    @SerializedName("lots") val lots: List<RebalanceLotImpactDto> = emptyList()
+)
+
+@Immutable
+data class RebalanceLotImpactDto(
+    @SerializedName("lot_id") val lotId: String = "",
+    @SerializedName("fund_id") val fundId: String = "",
+    @SerializedName("fund_name") val fundName: String = "",
+    @SerializedName("acquisition_date") val acquisitionDate: String = "",
+    @SerializedName("holding_days") val holdingDays: Long = 0L,
+    @SerializedName("units_sold") val unitsSold: Double = 0.0,
+    @SerializedName("cost_basis") val costBasis: Double = 0.0,
+    @SerializedName("sale_proceeds") val saleProceeds: Double = 0.0,
+    @SerializedName("realized_gain") val realizedGain: Double = 0.0,
+    @SerializedName("tax_term") val taxTerm: String = "",
+    @SerializedName("tax_impact") val taxImpact: LotTaxImpactDto? = null
+)
+
+@Immutable
+data class LotTaxImpactDto(
+    @SerializedName("regime") val regime: String = "",
+    @SerializedName("exemption_applied") val exemptionApplied: Double = 0.0,
+    @SerializedName("taxable_amount") val taxableAmount: Double = 0.0,
+    @SerializedName("tax_amount") val taxAmount: Double = 0.0
+)
+
+@Immutable
+data class TaxSummaryDto(
+    @SerializedName("total_realized_gain") val totalRealizedGain: Double = 0.0,
+    @SerializedName("total_ltcg_exempt") val totalLtcgExempt: Double = 0.0,
+    @SerializedName("total_stcg_taxable") val totalStcgTaxable: Double = 0.0,
+    @SerializedName("total_tax_estimate") val totalTaxEstimate: Double = 0.0
 )
 
 @Immutable

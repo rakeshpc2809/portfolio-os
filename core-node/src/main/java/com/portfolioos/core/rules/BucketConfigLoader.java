@@ -25,7 +25,15 @@ public class BucketConfigLoader {
         double triggerDriftPct,
         String strategy,
         List<PreferredFundConfig> preferredFunds
-    ) {}
+    ) {
+        public BucketTargetConfig(String bucket, double targetPct, double bandPct, List<PreferredFundConfig> preferredFunds) {
+            this(bucket, targetPct, bandPct, bandPct, "", preferredFunds);
+        }
+    }
+
+    public static String mapAssetToBucket(String assetId, String assetName) {
+        return com.portfolioos.core.valuation.BucketEngine.classifyAssetToBucket(assetId, assetName).name();
+    }
 
     public record BucketTargetVersion(
         String versionId,

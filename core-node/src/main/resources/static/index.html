@@ -113,12 +113,13 @@
 
     <!-- Minimalist Tab Navigation Bar -->
     <nav class="tab-nav">
-      <button class="tab-btn active" data-tab="overview">📊 Overview & Allocation</button>
-      <button class="tab-btn" data-tab="tax">⚡ Tax Optimization & Audit</button>
-      <button class="tab-btn" data-tab="fire">🎯 FIRE & Rebalancing</button>
+      <button class="tab-btn active" data-tab="overview">📊 Executive Overview</button>
+      <button class="tab-btn" data-tab="overlap">🔍 Overlap & Concentration</button>
+      <button class="tab-btn" data-tab="tax">⚡ Tax & Compliance Audit</button>
+      <button class="tab-btn" data-tab="fire">🎯 FIRE & Waterfall Rebalancing</button>
     </nav>
 
-    <!-- TAB 1: Overview & Allocation -->
+    <!-- TAB 1: Executive Overview -->
     <main class="tab-content active" id="tab-overview">
       <div class="dashboard-grid">
         <!-- Fund Allocation Chart -->
@@ -137,15 +138,6 @@
             <span class="live-tag">BY CATEGORY</span>
           </div>
           <div class="canvas-wrapper-small" id="categoryChart" style="height: 280px; width: 100%;"></div>
-        </div>
-
-        <!-- Cashflow Sankey Flow Chart -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Holistic Cashflow & Tax Drag Flow</h2>
-            <span class="live-tag">SANKEY VISUALIZATION</span>
-          </div>
-          <div class="canvas-wrapper-large" id="sankeyChart" style="height: 340px; width: 100%;"></div>
         </div>
 
         <!-- Benchmark Risk Radar -->
@@ -186,76 +178,92 @@
           </div>
         </div>
 
-        <!-- Fund Stock Overlap & Concentration Radar -->
+        <!-- Cashflow Sankey Flow Chart -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Holistic Cashflow & Tax Drag Flow</h2>
+            <span class="live-tag">SANKEY VISUALIZATION</span>
+          </div>
+          <div class="canvas-wrapper-large" id="sankeyChart" style="height: 340px; width: 100%;"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 2: Overlap & Concentration -->
+    <main class="tab-content" id="tab-overlap">
+      <div class="dashboard-grid">
+        <!-- Single-Stock Concentration Table -->
         <div class="glass-card col-12">
           <div class="card-header">
             <div>
-              <h2>Fund Stock Overlap & Concentration Radar</h2>
-              <span class="sub font-mono" id="overlapSnapshotSub" style="color: #cbd5e1; font-size: 0.8rem;">7 Funds: Top Core Holdings & Index Constituents (5 Index + 2 Active)</span>
+              <h2>Top Portfolio Single-Stock Exposure</h2>
+              <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">Aggregated across all active schemes</span>
             </div>
-            <span class="live-tag positive-tag" id="overlapDateBadge">SNAPSHOT ALIGNED</span>
+            <span class="live-tag">CONCENTRATION METRIC</span>
           </div>
-          <div class="dashboard-grid" style="padding: 0; margin-top: 10px;">
-            <div class="col-6" style="padding: 0 10px 0 0;">
-              <h3 style="color: #38bdf8; font-size: 0.95rem; margin-bottom: 8px;">Pairwise Stock Overlap</h3>
-              <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                  <span class="lbl font-mono" style="color: #94a3b8;" id="overlapPairName">PPFAS Flexi Cap vs Value 30</span>
-                  <strong class="val font-mono highlight-cyan" id="pairwiseOverlapVal" style="font-size: 1.2rem;">--</strong>
-                </div>
-                <div style="color: #cbd5e1; font-size: 0.8rem;" id="commonStockCountSub">Loading overlap analytics...</div>
-              </div>
-            </div>
-            <div class="col-6" style="padding: 0 0 0 10px;">
-              <h3 style="color: #38bdf8; font-size: 0.95rem; margin-bottom: 8px;">Top Portfolio Single-Stock Exposure (IN + US)</h3>
-              <div class="table-container" style="max-height: 160px; overflow-y: auto;">
-                <table class="data-table" id="topStockConcentrationTable" style="font-size: 0.82rem;">
-                  <thead>
-                    <tr>
-                      <th>Stock Symbol</th>
-                      <th>Blended Exposure ₹</th>
-                      <th>% of Index Sleeve</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr><td colspan="3" class="loading-td">Loading concentration...</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
+          <div class="table-container" style="max-height: 200px; overflow-y: auto;">
+            <table class="data-table" id="topStockConcentrationTable" style="font-size: 0.82rem;">
+              <thead>
+                <tr>
+                  <th>Stock / Asset</th>
+                  <th>Overlapping Funds</th>
+                  <th>Portfolio Weight %</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="3" class="loading-td">Loading stock exposures...</td></tr>
+              </tbody>
+            </table>
           </div>
+        </div>
 
-          <!-- UpSet Plot Multi-Fund Intersection Matrix Widget -->
-          <div style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-              <h3 style="color: #38bdf8; font-size: 0.95rem; margin: 0;">Multi-Set Overlap UpSet Plot (7 Funds Universe)</h3>
-              <span class="live-tag positive-tag" style="font-size: 0.7rem;">N-WAY INTERSECTION MATRIX</span>
+        <!-- Multi-Set Overlap UpSet Plot Matrix -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <div>
+              <h2>Multi-Set Overlap UpSet Plot Matrix (N-Way Intersections)</h2>
+              <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">All Active Portfolio Schemes Intersections (DuckDB SQL Engine)</span>
             </div>
-            <div id="upsetContainer" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 14px; border: 1px solid rgba(255,255,255,0.06); overflow-x: auto;">
-              <div class="loading-td" style="text-align: center; color: #64748b;">Loading UpSet Plot matrix...</div>
-            </div>
+            <span class="live-tag positive-tag">EXACT DUCKDB JOIN</span>
           </div>
+          <div class="table-container" style="max-height: 240px; overflow-y: auto;">
+            <table class="data-table" id="upsetMatrixTable" style="font-size: 0.82rem;">
+              <thead>
+                <tr>
+                  <th>Shared Stocks Count</th>
+                  <th>Overlapping Schemes Set</th>
+                  <th>Top Shared Holdings</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="3" class="loading-td">Loading UpSet intersection matrix...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-          <!-- Selectable 2-3 Fund Venn Visualizer Widget -->
-          <div style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-              <h3 style="color: #38bdf8; font-size: 0.95rem; margin: 0;">Interactive 2-3 Fund Venn Explorer</h3>
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <label for="vennSelectA" style="font-size: 0.75rem; color: #94a3b8;">Select Subset:</label>
-                <select id="vennFundA" class="form-control" style="background: #1e293b; color: #f8fafc; border: 1px solid #334155; border-radius: 4px; padding: 2px 6px; font-size: 0.75rem;">
-                  <option value="INF109KC13X2">Value 30</option>
-                  <option value="INF879O01027" selected>PPFAS Flexi Cap</option>
-                  <option value="INF204K01K15">Nippon Small Cap</option>
-                  <option value="INF109KC12U0">LargeMidcap 250</option>
-                  <option value="INF247L01916">Midcap 150</option>
-                </select>
-                <select id="vennFundB" class="form-control" style="background: #1e293b; color: #f8fafc; border: 1px solid #334155; border-radius: 4px; padding: 2px 6px; font-size: 0.75rem;">
-                  <option value="INF109KC13X2" selected>Value 30</option>
-                  <option value="INF879O01027">PPFAS Flexi Cap</option>
-                  <option value="INF204K01K15">Nippon Small Cap</option>
-                  <option value="INF109KC12U0">LargeMidcap 250</option>
-                  <option value="INF247L01916">Midcap 150</option>
-                </select>
+        <!-- Interactive 2-3 Fund Venn Visualizer -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <div>
+              <h2>Interactive 2-3 Fund Venn Visualizer & Selector</h2>
+              <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">Dynamic Overlap Computation via DuckDB Holdings Engine</span>
+            </div>
+            <span class="live-tag">LIVE SQL QUERY</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 280px 1fr; gap: 16px; margin-top: 10px;">
+            <div style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 14px; border: 1px solid rgba(255,255,255,0.06);">
+              <label style="font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px;">Fund A (Primary):</label>
+              <select id="vennFundA" style="width: 100%; background: #1e293b; color: #f8fafc; border: 1px solid #334155; padding: 6px; border-radius: 4px; font-size: 0.8rem; margin-bottom: 12px;">
+                <option value="INF879O01027" selected>PPFAS Flexi Cap</option>
+              </select>
+              <label style="font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px;">Fund B (Compare):</label>
+              <select id="vennFundB" style="width: 100%; background: #1e293b; color: #f8fafc; border: 1px solid #334155; padding: 6px; border-radius: 4px; font-size: 0.8rem; margin-bottom: 12px;">
+                <option value="INF109KC13X2" selected>Value 30</option>
+              </select>
+              <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px; margin-top: 6px;">
+                <div style="font-size: 0.75rem; color: #64748b;">Computed Overlap %:</div>
+                <div id="vennLivePct" style="font-size: 1.3rem; font-weight: 800; color: #06b6d4;" class="font-mono">--%</div>
               </div>
             </div>
             <div id="vennContainer" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 14px; border: 1px solid rgba(255,255,255,0.06); text-align: center;">
@@ -263,7 +271,90 @@
             </div>
           </div>
         </div>
+      </div>
+    </main>
 
+    <!-- TAB 3: Tax & Compliance Audit -->
+    <main class="tab-content" id="tab-tax">
+      <div class="dashboard-grid">
+        <!-- Actionable Advisory Recommendations Cards (Side-by-Side Left) -->
+        <div class="glass-card col-6" id="actionCardsContainer">
+          <div class="card-header">
+            <h2>Actionable Advisory Recommendations</h2>
+            <span class="live-tag positive-tag">RULE ENGINE ADVISORY</span>
+          </div>
+          <div id="actionCardsList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
+            <div class="loading-td" style="color: #64748b; padding: 16px;">Evaluating rule engine triggers...</div>
+          </div>
+        </div>
+
+        <!-- AI Decision Radar (Side-by-Side Right) -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Tax & Strategy Decision Radar</h2>
+            <span class="live-tag">AI ADVISOR</span>
+          </div>
+          <div class="radar-list">
+            <div class="radar-empty-state">Scanning open lots for tax-loss harvesting and LTCG maturation opportunities...</div>
+          </div>
+        </div>
+
+        <!-- Schedule FA Pre-Flight Checklist -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Schedule FA Compliance Checklist</h2>
+            <span class="live-tag">FOREIGN ASSETS</span>
+          </div>
+          <div class="compliance-list">
+            <div class="compliance-item valid">
+              <span class="check-icon">✓</span>
+              <div class="comp-text">
+                <div class="comp-title">Foreign Entity Identification & Address</div>
+                <div class="comp-desc">International ETF ISINs mapped to US jurisdiction.</div>
+              </div>
+            </div>
+            <div class="compliance-item valid">
+              <span class="check-icon">✓</span>
+              <div class="comp-text">
+                <div class="comp-title">Peak Intra-Year Valuation INR</div>
+                <div class="comp-desc">SBI Telegraphic Transfer conversion applied to peak balances.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Realized Disposals Audit Log Table -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Realized Disposals Audit Log</h2>
+            <span class="live-tag">SELECTED FY</span>
+          </div>
+          <div class="table-container">
+            <table class="data-table" id="realizedLogTable">
+              <thead>
+                <tr>
+                  <th>Disposal Date</th>
+                  <th>Acquisition Date</th>
+                  <th>Scheme Name</th>
+                  <th>Units</th>
+                  <th>Proceeds</th>
+                  <th>Cost Basis</th>
+                  <th>Realized Gain</th>
+                  <th>Tax Term</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="8" class="loading-td">Loading realized log...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 4: FIRE & Waterfall Rebalancing -->
+    <main class="tab-content" id="tab-fire">
+      <div class="dashboard-grid">
         <!-- Persistent Unified Rebalance Trigger Status Strip -->
         <div class="glass-card col-12" id="rebalanceStatusStrip" style="padding: 14px 20px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(56, 189, 248, 0.2); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
@@ -287,8 +378,8 @@
           </div>
         </div>
 
-        <!-- Unified Rebalance Plan & Waterfall Drawer Card -->
-        <div class="glass-card col-12" id="rebalancePlanCard" style="display: block; margin-top: 16px;">
+        <!-- Unified Rebalance Plan & Waterfall -->
+        <div class="glass-card col-12" id="rebalancePlanCard">
           <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
               <h2 id="planHeadlineTitle">Unified Rebalance Plan</h2>
@@ -297,54 +388,20 @@
             <div style="font-size: 0.75rem; color: #94a3b8;" id="planMetaTimestamp">Generated At: 2026-08-08</div>
           </div>
 
-          <!-- Section A: Sell-Side Waterfall Diagram -->
-          <!-- Section A: Drawdown Tripwire Gauge & Exemption Burndown Bar -->
+          <!-- Section A: Drawdown & Exemption -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px;">
-            
-            <!-- Drawdown Tripwire Depth Gauge -->
             <div style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <h4 style="color: #38bdf8; font-size: 0.85rem; margin: 0;">Drawdown Tripwire Depth Gauge</h4>
                 <span id="drawdownTripwireLabel" class="live-tag" style="font-size: 0.7rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8;">INDUCED GAUGE</span>
               </div>
               <div id="drawdownGaugeContainer" style="margin-top: 8px;">
-                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px;">
-                  <span>0% (Peak)</span>
-                  <span>-10% (Tier 1)</span>
-                  <span>-15% (Tier 2)</span>
-                  <span>-20% (Tier 3)</span>
-                </div>
                 <div style="height: 12px; background: #1e293b; border-radius: 6px; position: relative; overflow: hidden;">
                   <div id="gaugeProgressBar" style="height: 100%; width: 20%; background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444); transition: width 0.4s ease;"></div>
                   <div id="gaugeIndicatorMarker" style="position: absolute; top: 0; bottom: 0; width: 4px; background: #ffffff; box-shadow: 0 0 8px #ffffff; transition: left 0.4s ease;"></div>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #64748b; margin-top: 6px;">
-                  <span id="gaugeStatusText">Current: 4.0% Drawdown</span>
-                  <span id="gaugeNextDistance">6.0% to next tier</span>
-                </div>
               </div>
             </div>
-
-            <!-- Exemption Headroom Burndown Bar -->
-            <div style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <h4 style="color: #38bdf8; font-size: 0.85rem; margin: 0;">Sec 112A Exemption Burndown (₹1.25L Limit)</h4>
-                <span id="burndownHeadroomRemaining" class="live-tag positive-tag" style="font-size: 0.7rem;">Headroom: ₹1.25L</span>
-              </div>
-              <div style="margin-top: 8px;">
-                <div style="height: 14px; background: #1e293b; border-radius: 6px; display: flex; overflow: hidden;">
-                  <div id="burnUsedPrior" style="width: 0%; background: #0284c7;" title="Prior FY Realized"></div>
-                  <div id="burnTradeExempt" style="width: 10%; background: #06b6d4; animation: pulse 2s infinite;" title="Trade LTCG Exempt"></div>
-                  <div id="burnTaxableSpill" style="width: 0%; background: #ef4444;" title="Taxable Spillover"></div>
-                </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #94a3b8; margin-top: 6px;">
-                  <span id="burnTextPrior">Prior Used: ₹0</span>
-                  <span id="burnTextTrade" style="color: #06b6d4; font-weight: 700;">Trade Exempt: ₹12,420</span>
-                  <span id="burnTextRem">Remaining: ₹1,12,580</span>
-                </div>
-              </div>
-            </div>
-
           </div>
 
           <!-- Section B: Capital Routing Micro-Sankey -->
@@ -355,115 +412,21 @@
             </div>
           </div>
 
-          <!-- Section C: Interactive Tactical Action Matrix (Lot Override) -->
+          <!-- Section C: Interactive Tactical Action Matrix -->
           <div style="margin-top: 16px; background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(56, 189, 248, 0.2);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-              <div>
-                <h3 style="color: #38bdf8; font-size: 0.95rem; margin: 0;">⚡ Interactive Tactical Action Matrix (Granular Lot Override)</h3>
-                <span style="font-size: 0.75rem; color: #94a3b8;">Uncheck lots to exclude from sale — metrics & buy allocations recalculate in real-time</span>
-              </div>
-              <div style="text-align: right; display: flex; align-items: center; gap: 12px;">
-                <div style="text-align: right;">
-                  <div style="font-size: 0.7rem; color: #94a3b8;">REACTIVE PROCEEDS</div>
-                  <div id="matrixLiveProceeds" style="font-size: 1.1rem; font-weight: 800; color: #10b981;">₹87,905</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="color: #38bdf8; font-size: 0.9rem; margin: 0;">2. Sell-Side Lot Sourcing (Selected Sell Lots & Tax Term)</h3>
+              <div style="display: flex; gap: 16px; align-items: center;">
+                <div>
+                  <div style="font-size: 0.7rem; color: #94a3b8;">SELECTED PROCEEDS</div>
+                  <div id="matrixLiveProceeds" style="font-size: 1.1rem; font-weight: 800; color: #38bdf8;">₹0</div>
                 </div>
-                <div style="text-align: right;">
+                <div>
                   <div style="font-size: 0.7rem; color: #94a3b8;">TAX DRAG</div>
                   <div id="matrixLiveTaxDrag" style="font-size: 1.1rem; font-weight: 800; color: #ef4444;">₹0</div>
                 </div>
               </div>
             </div>
-
-            <!-- Matrix Table -->
-            <div style="overflow-x: auto; max-height: 280px; overflow-y: auto;">
-              <table class="data-table" style="width: 100%; font-size: 0.8rem;">
-                <thead>
-                  <tr style="background: rgba(30, 41, 59, 0.8);">
-                    <th style="width: 40px; text-align: center;"><input type="checkbox" id="matrixSelectAllLots" checked style="accent-color: #06b6d4; cursor: pointer;"></th>
-                    <th>Fund / Scheme Name</th>
-                    <th>Acquisition</th>
-                    <th>Holding</th>
-                    <th>Cost Basis</th>
-                    <th>Sale Proceeds</th>
-                    <th>Realized Gain</th>
-                    <th>Tax Regime</th>
-                    <th>Tax Est.</th>
-                  </tr>
-                </thead>
-                <tbody id="matrixLotTableBody">
-                  <!-- Lot rows injected via JS -->
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Footer Hotkey Action Strip -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08);">
-              <span style="font-size: 0.75rem; color: #64748b;">Press <kbd style="background: #334155; color: #f8fafc; padding: 2px 6px; border-radius: 3px;">Ctrl</kbd> + <kbd style="background: #334155; color: #f8fafc; padding: 2px 6px; border-radius: 3px;">Enter</kbd> to execute trade with selected override lots</span>
-              <button id="btnExecuteTradeOverride" class="btn" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; font-weight: 700; font-size: 0.75rem; padding: 6px 14px; border-radius: 4px; cursor: pointer;">
-                ⚡ Execute Selected Override Trade
-              </button>
-            </div>
-          </div>
-
-          <!-- Section D: Plain-Language Reasoning Narrative -->
-          <div style="margin-top: 16px; background: rgba(30, 41, 59, 0.5); border-radius: 8px; padding: 16px; border-left: 4px solid #38bdf8;">
-            <h4 style="color: #f8fafc; font-size: 0.85rem; margin-top: 0; margin-bottom: 8px;">Reasoning Narrative & Tax Attribution</h4>
-            <div id="planReasoningParagraphs" style="font-size: 0.8rem; color: #cbd5e1; line-height: 1.5;">
-              <!-- Narrative Paragraphs Injected via JS -->
-            </div>
-          </div>
-
-          <!-- Section E: Buy-Side Asset Deployment -->
-          <div style="margin-top: 16px; background: rgba(15, 23, 42, 0.5); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
-            <h3 style="color: #38bdf8; font-size: 0.9rem; margin-top: 0; margin-bottom: 12px;">3. Buy-Side Asset Deployment (Current vs Target vs Reactive Post-Trade)</h3>
-            <div id="buySideAllocationGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
-              <!-- Buy Side Buckets Injected via JS -->
-            </div>
-          </div>
-        </div>
-
-        <!-- Actionable Advisory Recommendations Cards Widget -->
-        <div class="glass-card col-12" id="actionCardsContainer">
-          <div class="card-header">
-            <h2>Actionable Advisory Recommendations & Rule Engine</h2>
-            <span class="live-tag positive-tag">ADVISORY ONLY (NO AUTO-EXECUTE)</span>
-          </div>
-          <div id="actionCardsList" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 12px;">
-            <div class="loading-td" style="color: #64748b; padding: 16px;">Evaluating rule engine triggers...</div>
-          </div>
-        </div>
-
-        <!-- Open Holdings Table -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Open Holdings & FIFO Lots</h2>
-            <span class="live-tag">LEDGER DRILL-DOWN</span>
-          </div>
-          <div class="table-container">
-            <table class="data-table" id="holdingsTable">
-              <thead>
-                <tr>
-                  <th>Scheme Name</th>
-                  <th>Category</th>
-                  <th>Invested</th>
-                  <th>Current Value</th>
-                  <th>Unrealized Gain</th>
-                  <th>Allocation %</th>
-                  <th>Open Lots</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="7" class="loading-td">Loading holdings...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- TAB 2: Tax Optimization & Audit -->
-    <main class="tab-content" id="tab-tax">
-      <div class="dashboard-grid">
         <!-- AI Decision Radar -->
         <div class="glass-card col-12">
           <div class="card-header">

@@ -30,6 +30,22 @@ public class FundTierClassifier {
         return activeIds;
     }
 
+    public enum FundStatus {
+        ACTIVE_SIP,
+        ACCUMULATOR,
+        LEGACY_HOLDING
+    }
+
+    public static FundStatus getFundStatus(String assetId, String bucketStrategy, Set<String> sipActiveIds) {
+        if ("ACCUMULATOR".equalsIgnoreCase(bucketStrategy)) {
+            return FundStatus.ACCUMULATOR;
+        }
+        if (sipActiveIds != null && sipActiveIds.contains(assetId)) {
+            return FundStatus.ACTIVE_SIP;
+        }
+        return FundStatus.LEGACY_HOLDING;
+    }
+
     public static boolean isLegacyFund(String assetId, Set<String> activeAssetIds) {
         if (assetId == null || activeAssetIds == null) return false;
         return !activeAssetIds.contains(assetId);

@@ -254,17 +254,7 @@ public class RebalanceWaterfallEngine {
 
         @Override
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
-            return coreLots.stream().filter(l -> {
-                BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
-                if (nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0) return false;
-                AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
-                long threshold = getThresholdDays(cat, rules);
-                long holdingDays = ChronoUnit.DAYS.between(l.acquisitionDate(), today);
-                return threshold > 0 && holdingDays >= threshold;
-            }).sorted(Comparator.comparing(l -> {
-                BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
-                return nav.subtract(l.costPerUnit());
-            })).toList();
+            return selectCoreLotsByHoldingCondition(coreLots, navMap, today, rules, true);
         }
     }
 
@@ -274,17 +264,28 @@ public class RebalanceWaterfallEngine {
 
         @Override
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
-            return coreLots.stream().filter(l -> {
-                BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
-                if (nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0) return false;
-                AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
-                long threshold = getThresholdDays(cat, rules);
-                long holdingDays = ChronoUnit.DAYS.between(l.acquisitionDate(), today);
-                return threshold <= 0 || holdingDays < threshold;
-            }).sorted(Comparator.comparing(l -> {
-                BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
-                return nav.subtract(l.costPerUnit());
-            })).toList();
+            return selectCoreLotsByHoldingCondition(coreLots, navMap, today, rules, false);
         }
+    }
+
+    private static List<Lot> selectCoreLotsByHoldingCondition(
+        List<Lot> coreLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate today,
+        TaxRulesConfig rules,
+        boolean requireLtcg
+    ) {
+        return coreLots.stream().filter(l -> {
+            BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+            if (nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0) return false;
+            AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
+            long threshold = getThresholdDays(cat, rules);
+            long holdingDays = ChronoUnit.DAYS.between(l.acquisitionDate(), today);
+            boolean isLtcg = threshold > 0 && holdingDays >= threshold;
+            return requireLtcg ? isLtcg : !isLtcg;
+        }).sorted(Comparator.comparing(l -> {
+            BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+            return nav.subtract(l.costPerUnit());
+        })).toList();
     }
 }

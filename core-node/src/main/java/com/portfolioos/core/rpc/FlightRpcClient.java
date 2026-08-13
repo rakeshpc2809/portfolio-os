@@ -190,13 +190,7 @@ public class FlightRpcClient {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             String json = mapper.writeValueAsString(payload);
 
-            String token = System.getenv("API_AUTH_TOKEN");
-            if (token == null || token.isBlank()) {
-                token = System.getProperty("API_AUTH_TOKEN");
-            }
-            if (token == null || token.isBlank()) {
-                throw new IllegalStateException("Missing required environment variable 'API_AUTH_TOKEN'. FlightRpcClient refuses unauthenticated RPC call.");
-            }
+            String token = resolveAuthToken();
 
             java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
@@ -227,13 +221,7 @@ public class FlightRpcClient {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             String json = mapper.writeValueAsString(payload);
 
-            String token = System.getenv("API_AUTH_TOKEN");
-            if (token == null || token.isBlank()) {
-                token = System.getProperty("API_AUTH_TOKEN");
-            }
-            if (token == null || token.isBlank()) {
-                throw new IllegalStateException("Missing required environment variable 'API_AUTH_TOKEN'. FlightRpcClient refuses unauthenticated RPC call.");
-            }
+            String token = resolveAuthToken();
 
             java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
@@ -251,5 +239,19 @@ public class FlightRpcClient {
             System.err.println("Benchmark analytics request failed: " + e.getMessage());
         }
         return Collections.emptyMap();
+    }
+
+    private static String resolveAuthToken() {
+        String token = System.getenv("API_AUTH_TOKEN");
+        if (token == null || token.isBlank()) {
+            String activeProfiles = System.getProperty("spring.profiles.active", "");
+            if (activeProfiles.contains("test") && System.getProperty("API_AUTH_TOKEN") != null) {
+                token = System.getProperty("API_AUTH_TOKEN");
+            }
+        }
+        if (token == null || token.isBlank()) {
+            throw new IllegalStateException("Missing required environment variable 'API_AUTH_TOKEN'. FlightRpcClient refuses unauthenticated RPC call.");
+        }
+        return token;
     }
 }

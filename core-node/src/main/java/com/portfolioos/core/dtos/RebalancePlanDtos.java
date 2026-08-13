@@ -16,12 +16,34 @@ public class RebalancePlanDtos {
     ) {}
 
     public record RebalanceTriggerDto(
-        String type, // SCHEDULED, INDUCED, MANUAL_LUMPSUM
+        String type, // DRAWDOWN, DRIFT, SCHEDULED, GOLD_FLOOR_BACKSTOP, MANUAL_LUMPSUM
+        String legacyTriggerType, // INDUCED (for DRAWDOWN/DRIFT), SCHEDULED, MANUAL_LUMPSUM
         String reasonCode,
         String reasonLabel,
         String scheduledWindowLabel,
         DrawdownContextDto drawdownContext
-    ) {}
+    ) {
+        public RebalanceTriggerDto(
+            String type,
+            String reasonCode,
+            String reasonLabel,
+            String scheduledWindowLabel,
+            DrawdownContextDto drawdownContext
+        ) {
+            this(
+                type,
+                ("DRAWDOWN".equals(type) || "DRIFT".equals(type)) ? "INDUCED" : type,
+                reasonCode,
+                reasonLabel,
+                scheduledWindowLabel,
+                drawdownContext
+            );
+        }
+
+        public boolean isInduced() {
+            return "INDUCED".equals(legacyTriggerType);
+        }
+    }
 
     public record DrawdownContextDto(
         double currentDrawdownPct,

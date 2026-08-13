@@ -214,8 +214,8 @@ fun DashboardScreen(
                                         showSimulatorBottomSheet = true
                                     })
                                     1 -> RadarSignalsView(radarSignals)
-                                    2 -> GroupedTaxLotsView(taxLots, holdings)
-                                    3 -> SimulatorView(holdings)
+                                    2 -> RebalanceWaterfallView(snapshot.rebalancePlan)
+                                    3 -> GroupedTaxLotsView(taxLots, holdings)
                                 }
                             }
                         }
@@ -966,3 +966,165 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
         }
     }
 }
+
+@Composable
+fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.RebalancePlanDto?) {
+    val sellSide = rebalancePlan?.sellSide
+    val tiers = remember(sellSide) { sellSide?.waterfall.orEmpty().filter { it.lots.isNotEmpty() } }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 110.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "REBALANCE WATERFALL FLOW",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = M3TextMuted,
+                letterSpacing = 1.5.sp
+            )
+        }
+
+        if (sellSide == null || tiers.isEmpty() || sellSide.totalRequired == 0.0) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = M3GreenPositive.copy(alpha = 0.15f),
+                                shape = CircleShape,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("✓", color = M3GreenPositive, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Portfolio Allocation Balanced",
+                                    color = Color.White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "No Rebalance Action Required",
+                                    color = M3GreenPositive,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "All asset categories remain within target allocation bands. LTCG exemption headroom is uncompromised.",
+                            color = M3TextMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        } else {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E150A)),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = rebalancePlan.trigger?.reasonLabel ?: "INDUCED REBALANCE TRIGGERED",
+                            color = M3AmberWarning,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("TARGET TRIM", color = M3TextMuted, fontSize = 10.sp)
+                                Text(formatInr(sellSide.totalRequired), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("ESTIMATED TAX DRAG", color = M3TextMuted, fontSize = 10.sp)
+                                Text(formatInr(sellSide.taxSummary?.totalTaxEstimate ?: 0.0), color = M3AmberWarning, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            tiers.forEach { tier ->
+                item(key = "tier_${tier.tier}") {
+                    Text(
+                        text = tier.tierLabel.ifEmpty { tier.tier },
+                        color = M3NeonCyan,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                items(
+                    items = tier.lots,
+                    key = { "${it.fundId}_${it.acquisitionDate}_${it.unitsSold}_${it.saleProceeds}" }
+                ) { lot ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = lot.fundName.ifEmpty { lot.fundId },
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Acquired ${lot.acquisitionDate} · ${lot.unitsSold} units",
+                                    color = M3TextMuted,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = formatInr(lot.saleProceeds),
+                                    color = M3ElectricLime,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = lot.taxTerm,
+                                    color = if (lot.taxTerm.contains("LONG")) M3GreenPositive else M3AmberWarning,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
