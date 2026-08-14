@@ -25,7 +25,8 @@ public class BucketEngine {
         EQUITY_CORE,
         EQUITY_SATELLITE,
         GOLD_SILVER,
-        LIQUID_BUFFER
+        LIQUID_BUFFER,
+        LEGACY_HOLDINGS
     }
 
     public record BucketTarget(
@@ -79,9 +80,14 @@ public class BucketEngine {
     );
 
     public static Bucket classifyAssetToBucket(String assetId, String assetName) {
+        return classifyAssetToBucket(assetId, assetName, java.util.Collections.emptySet());
+    }
+
+    public static Bucket classifyAssetToBucket(String assetId, String assetName, java.util.Set<String> activeOrPreferredAssetIds) {
         String nameUpper = assetName.toUpperCase();
         AssetCategory category = TaxClassifier.detectCategory(assetId, assetName);
 
+        // Step 1: Category / Asset Type match FIRST (Gold/Silver & Liquid Buffer are structurally exempt from LEGACY_HOLDINGS)
         if (category == AssetCategory.GOLD_SILVER || category == AssetCategory.SGB) {
             return Bucket.GOLD_SILVER;
         }
@@ -93,6 +99,12 @@ public class BucketEngine {
             return Bucket.LIQUID_BUFFER;
         }
 
+        // Step 2: Legacy check SECOND (for remaining equity funds, if activeOrPreferredAssetIds is provided and asset is not in it, map to LEGACY_HOLDINGS)
+        if (activeOrPreferredAssetIds != null && !activeOrPreferredAssetIds.isEmpty() && !activeOrPreferredAssetIds.contains(assetId)) {
+            return Bucket.LEGACY_HOLDINGS;
+        }
+
+        // Step 3: Active Equity Strategy THIRD
         if (nameUpper.contains("SMALL") || nameUpper.contains("MICRO") || nameUpper.contains("SMALLCAP")) {
             return Bucket.EQUITY_SATELLITE;
         }
@@ -122,6 +134,20 @@ public class BucketEngine {
         List<BucketTarget> targets,
         String fiscalYear
     ) {
+        return evaluateRebalance(openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh, targets, fiscalYear, java.util.Collections.emptySet());
+    }
+
+    public static RebalanceEngineResult evaluateRebalance(
+        List<Lot> openLots,
+        List<MatchedLot> matchedLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate currentDate,
+        BigDecimal benchmarkCurrent,
+        BigDecimal benchmarkRollingHigh,
+        List<BucketTarget> targets,
+        String fiscalYear,
+        java.util.Set<String> activeOrPreferredAssetIds
+    ) {
         BigDecimal totalPortfolioValue = BigDecimal.ZERO;
         Map<Bucket, BigDecimal> bucketValues = new HashMap<>();
         Map<Bucket, Map<String, List<Lot>>> bucketAssetLots = new HashMap<>();
@@ -132,7 +158,7 @@ public class BucketEngine {
         }
 
         for (Lot lot : openLots) {
-            Bucket bucket = classifyAssetToBucket(lot.assetId(), lot.assetName());
+            Bucket bucket = classifyAssetToBucket(lot.assetId(), lot.assetName(), activeOrPreferredAssetIds);
             BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
             BigDecimal lotValue = lot.remainingUnits().multiply(nav);
             
@@ -162,16 +188,19 @@ public class BucketEngine {
                 curPct = curVal.multiply(new BigDecimal("100")).divide(totalPortfolioValue, 2, RoundingMode.HALF_UP);
             }
 
-            BucketTarget tgt = targetMap.getOrDefault(bucket, new BucketTarget(bucket, new BigDecimal("25.0"), new BigDecimal("5.0")));
-            BigDecimal drift = curPct.subtract(tgt.targetPct());
-            boolean isDrifted = drift.abs().compareTo(tgt.bandPct()) > 0;
+            BucketTarget tgt = targetMap.get(bucket);
+            BigDecimal targetPct = tgt != null ? tgt.targetPct() : BigDecimal.ZERO;
+            BigDecimal bandPct = tgt != null ? tgt.bandPct() : new BigDecimal("5.0");
+
+            BigDecimal drift = curPct.subtract(targetPct);
+            boolean isDrifted = (bucket == Bucket.LEGACY_HOLDINGS) ? false : (drift.abs().compareTo(bandPct) > 0);
 
             if (isCalendarReviewDate && isDrifted) {
                 calendarTriggerFired = true;
             }
 
             bucketStatuses.add(new BucketStatus(
-                bucket, curVal, curPct, tgt.targetPct(), drift, isDrifted
+                bucket, curVal, curPct, targetPct, drift, isDrifted
             ));
         }
 

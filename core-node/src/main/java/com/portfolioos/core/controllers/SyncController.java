@@ -414,6 +414,54 @@ public class SyncController {
         return ResponseEntity.ok(plan);
     }
 
+    @GetMapping("/portfolio/bucket-allocation")
+    public ResponseEntity<List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto>> getBucketAllocation() {
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
+        List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
+        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
+
+        List<com.portfolioos.core.valuation.BucketEngine.BucketTarget> activeTargets = 
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now());
+        
+        String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
+
+        // Construct preferred / active asset IDs set
+        Set<String> activeOrPreferredAssetIds = new HashSet<>();
+        com.portfolioos.core.rules.BucketConfigLoader.BucketRulesConfig config = 
+            com.portfolioos.core.rules.BucketConfigLoader.loadConfig();
+        if (config != null && !config.versions().isEmpty()) {
+            com.portfolioos.core.rules.BucketConfigLoader.BucketTargetVersion activeVer = 
+                com.portfolioos.core.rules.BucketConfigLoader.getActiveVersion(LocalDate.now());
+            for (var tc : activeVer.targets()) {
+                if (tc.preferredFunds() != null) {
+                    for (var pf : tc.preferredFunds()) {
+                        activeOrPreferredAssetIds.add(pf.fundId());
+                    }
+                }
+            }
+        }
+
+        com.portfolioos.core.valuation.BucketEngine.RebalanceEngineResult result = 
+            com.portfolioos.core.valuation.BucketEngine.evaluateRebalance(
+                openLots, matchedLots, navMap, LocalDate.now(), BigDecimal.ZERO, BigDecimal.ZERO,
+                activeTargets, currentFy, activeOrPreferredAssetIds
+            );
+
+        List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto> dtos = result.bucketStatuses().stream()
+            .map(s -> new com.portfolioos.core.dtos.ReportDtos.BucketStatusDto(
+                s.bucket().name(),
+                s.currentValue().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
+                s.currentPct().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
+                s.targetPct().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
+                s.driftPct().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
+                s.isDrifted()
+            ))
+            .toList();
+
+        return ResponseEntity.ok(dtos);
+    }
+
     @PostMapping("/rebalance/simulate-lumpsum")
     public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> simulateLumpsum(
         @RequestBody Map<String, Object> req

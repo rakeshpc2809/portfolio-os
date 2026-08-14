@@ -6,6 +6,7 @@ import {
   renderHoldingsTable,
   renderAllocationChart,
   renderCategoryChart,
+  renderBucketAllocationChart,
   renderNetWorthTrendChart,
   renderCashflowSankey,
   renderBucketRebalance,
@@ -35,6 +36,9 @@ async function initDashboard() {
 
     const catData = await fetchJson(`/portfolio/category-allocation`).catch(() => null);
     if (catData) renderCategoryChart(catData);
+
+    const bucketAllocData = await fetchJson(`/portfolio/bucket-allocation`).catch(() => null);
+    if (bucketAllocData) renderBucketAllocationChart('bucketAllocationChart', bucketAllocData);
 
     const exemptionData = await fetchJson(`/tax/exemption-status?fy=${state.currentFy}`).catch(() => null);
     if (exemptionData) updateExemptionMeter(exemptionData);

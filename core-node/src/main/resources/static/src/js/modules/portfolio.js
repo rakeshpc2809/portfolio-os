@@ -211,6 +211,83 @@ export function renderCategoryChart(catAllocations) {
   state.charts.categoryChart = renderPieChart('categoryChart', data);
 }
 
+export function renderBucketAllocationChart(containerId, bucketStatuses) {
+  const container = document.getElementById(containerId);
+  if (!container || !bucketStatuses || bucketStatuses.length === 0 || !window.echarts) return null;
+
+  if (state.charts.bucketAllocChart) state.charts.bucketAllocChart.dispose();
+
+  const instance = window.echarts.init(container);
+
+  const categories = bucketStatuses.map(b => b.bucket_name || b.bucketName || b.bucket);
+  const targetData = bucketStatuses.map(b => parseFloat(b.target_pct || b.targetPct) || 0);
+  const actualData = bucketStatuses.map(b => {
+    const val = parseFloat(b.current_pct || b.currentPct) || 0;
+    const isDrifted = b.is_drifted !== undefined ? b.is_drifted : b.isDrifted;
+    const isLegacy = (b.bucket_name || b.bucketName || b.bucket) === 'LEGACY_HOLDINGS';
+    return {
+      value: val,
+      itemStyle: {
+        color: isLegacy ? '#64748b' : (isDrifted ? '#f59e0b' : '#10b981')
+      }
+    };
+  });
+
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: params => {
+        let res = `<b>${params[0].name}</b><br/>`;
+        params.forEach(p => {
+          res += `${p.marker} ${p.seriesName}: <b>${p.value}%</b><br/>`;
+        });
+        return res;
+      }
+    },
+    legend: {
+      data: ['Target %', 'Actual %'],
+      textStyle: { color: '#94a3b8', fontSize: 11 },
+      right: 10,
+      top: 10
+    },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: categories,
+      axisLine: { lineStyle: { color: '#334155' } },
+      axisLabel: { color: '#94a3b8', fontSize: 11 }
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: { lineStyle: { color: '#334155' } },
+      splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } },
+      axisLabel: { color: '#94a3b8', fontSize: 11, formatter: '{value}%' }
+    },
+    series: [
+      {
+        name: 'Target %',
+        type: 'bar',
+        data: targetData,
+        itemStyle: { color: '#38bdf8', borderRadius: [4, 4, 0, 0] },
+        barGap: '20%'
+      },
+      {
+        name: 'Actual %',
+        type: 'bar',
+        data: actualData,
+        itemStyle: { borderRadius: [4, 4, 0, 0] },
+        barGap: '20%'
+      }
+    ]
+  };
+
+  instance.setOption(option);
+  state.charts.bucketAllocChart = instance;
+  return instance;
+}
+
 export async function fetchConsolidationPreviewData() {
   try {
     const data = await fetchJson(`${API_BASE}/portfolio/consolidation-preview?fy=${state.currentFy}`).catch(() => null);
