@@ -97,15 +97,21 @@ fun DashboardScreen(
                                 letterSpacing = 3.sp,
                                 color = Color.White
                             )
+                            val (sectionTagText, sectionTagColor) = when (pagerState.currentPage) {
+                                0 -> "EXECUTIVE OVERVIEW" to M3ElectricLime
+                                1 -> "OVERLAP & CONCENTRATION" to M3VibrantViolet
+                                2 -> "TAX & COMPLIANCE AUDIT" to M3NeonCyan
+                                else -> "FIRE & REBALANCING" to M3AmberWarning
+                            }
                             Surface(
-                                color = M3ElectricLime.copy(alpha = 0.15f),
+                                color = sectionTagColor.copy(alpha = 0.15f),
                                 shape = RoundedCornerShape(100.dp),
                                 modifier = Modifier.padding(top = 2.dp)
                             ) {
                                 Text(
-                                    text = snapshot?.syncInfo?.fiscalYear?.let { "FY $it · Android 17 Edge" } ?: "Sync Active",
+                                    text = sectionTagText,
                                     fontSize = 10.sp,
-                                    color = M3ElectricLime,
+                                    color = sectionTagColor,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
                                 )
@@ -205,17 +211,23 @@ fun DashboardScreen(
                         } else {
                             HorizontalPager(
                                 state = pagerState,
-                                beyondBoundsPageCount = 1,
+                                beyondBoundsPageCount = 3,
                                 modifier = Modifier.fillMaxSize()
                             ) { page ->
                                 when (page) {
-                                    0 -> HoldingsView(snapshot, syncInfo, holdings, onSimulateSale = { h ->
-                                        selectedHoldingForSimulator = h
-                                        showSimulatorBottomSheet = true
-                                    })
-                                    1 -> RadarSignalsView(radarSignals)
-                                    2 -> RebalanceWaterfallView(snapshot.rebalancePlan)
-                                    3 -> GroupedTaxLotsView(taxLots, holdings)
+                                    0 -> HoldingsView(
+                                        snapshot = snapshot,
+                                        syncInfo = syncInfo,
+                                        holdings = holdings,
+                                        radarSignals = radarSignals,
+                                        onSimulateSale = { h ->
+                                            selectedHoldingForSimulator = h
+                                            showSimulatorBottomSheet = true
+                                        }
+                                    )
+                                    1 -> OverlapConcentrationPlaceholderView(holdings)
+                                    2 -> GroupedTaxLotsView(taxLots, holdings)
+                                    3 -> RebalanceWaterfallView(snapshot.rebalancePlan)
                                 }
                             }
                         }
@@ -282,7 +294,7 @@ fun DashboardScreen(
                     ) {
                         ExpressiveNavPill(
                             selected = pagerState.currentPage == 0,
-                            label = "Holdings",
+                            label = "Overview",
                             icon = Icons.Default.Star,
                             activeColor = M3ElectricLime,
                             onClick = {
@@ -293,8 +305,8 @@ fun DashboardScreen(
                         )
                         ExpressiveNavPill(
                             selected = pagerState.currentPage == 1,
-                            label = "AI Radar",
-                            icon = Icons.Default.Notifications,
+                            label = "Overlap",
+                            icon = Icons.Default.List,
                             activeColor = M3VibrantViolet,
                             onClick = {
                                 coroutineScope.launch {
@@ -304,8 +316,8 @@ fun DashboardScreen(
                         )
                         ExpressiveNavPill(
                             selected = pagerState.currentPage == 2,
-                            label = "Tax Lots",
-                            icon = Icons.Default.List,
+                            label = "Tax Audit",
+                            icon = Icons.Default.Notifications,
                             activeColor = M3NeonCyan,
                             onClick = {
                                 coroutineScope.launch {
@@ -315,9 +327,9 @@ fun DashboardScreen(
                         )
                         ExpressiveNavPill(
                             selected = pagerState.currentPage == 3,
-                            label = "Simulator",
+                            label = "FIRE",
                             icon = Icons.Default.Settings,
-                            activeColor = Color(0xFFD0FF00),
+                            activeColor = M3AmberWarning,
                             onClick = {
                                 coroutineScope.launch {
                                     pagerState.animateScrollToPage(3)
@@ -440,6 +452,7 @@ fun HoldingsView(
     snapshot: com.portfolioos.mobile.model.SyncSnapshot?,
     syncInfo: com.portfolioos.mobile.model.SyncInfoDto?,
     holdings: List<FlatHoldingDto>,
+    radarSignals: List<RadarSignalDto> = emptyList(),
     onSimulateSale: (FlatHoldingDto) -> Unit = {}
 ) {
     LazyColumn(
@@ -563,6 +576,21 @@ fun HoldingsView(
 
         item {
             PortfolioAllocationBarChart(holdings = holdings)
+        }
+
+        if (radarSignals.isNotEmpty()) {
+            item {
+                Text(
+                    text = "PRIORITY AI RADAR & QUANT INTELLIGENCE",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = M3TextMuted,
+                    letterSpacing = 1.5.sp
+                )
+            }
+            items(radarSignals, key = { s -> s.title.ifEmpty { s.signalType } }) { signal ->
+                M3RadarCard(signal)
+            }
         }
 
         item {
@@ -706,6 +734,153 @@ fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> U
                         modifier = Modifier.height(28.dp)
                     ) {
                         Text("Simulate ➔", color = M3NeonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun OverlapConcentrationPlaceholderView(holdings: List<FlatHoldingDto>) {
+    val bucketCounts = remember(holdings) {
+        holdings.groupBy { it.assetBucket }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(bottom = 110.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(4.dp))
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        width = 1.5.dp,
+                        brush = Brush.linearGradient(listOf(M3VibrantViolet.copy(alpha = 0.7f), M3NeonCyan.copy(alpha = 0.35f))),
+                        shape = RoundedCornerShape(24.dp)
+                    )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(Color(0xFF1E0B36), Color(0xFF0F172A), Color(0xFF030712))
+                            )
+                        )
+                        .padding(22.dp)
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "OVERLAP & CONCENTRATION AUDIT",
+                                color = M3VibrantViolet,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.5.sp
+                            )
+                            Surface(
+                                color = M3VibrantViolet.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(100.dp)
+                            ) {
+                                Text(
+                                    text = "COMING IN PHASE 2",
+                                    color = M3VibrantViolet,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Fund Overlap Matrix & Stock Look-Through",
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "The mobile 4-tab navigation shell is active. Interactive fund-to-fund portfolio overlap, stock concentration analysis, and asset class drift details are undergoing mobile-first UI adaptation for Phase 2.",
+                            color = M3TextMuted,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Text(
+                text = "PORTFOLIO BUCKET CONCENTRATION SUMMARY",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = M3TextMuted,
+                letterSpacing = 1.5.sp
+            )
+        }
+
+        if (bucketCounts.isEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "No open holdings recorded.",
+                        color = M3TextMuted,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(20.dp)
+                    )
+                }
+            }
+        } else {
+            items(bucketCounts.entries.toList(), key = { entry -> entry.key }) { (bucket, list) ->
+                val bucketVal = list.sumOf { it.currentValue }
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = bucket.ifEmpty { "UNCLASSIFIED" },
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "${list.size} Schemes",
+                                color = M3TextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Text(
+                            text = formatInr(bucketVal),
+                            color = M3NeonCyan,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
                 }
             }
