@@ -1272,10 +1272,16 @@ export function renderUnifiedRebalancePlanUI(plan) {
   if (burnTextTrade) burnTextTrade.textContent = `Trade Exempt: ₹${tradeExempt.toLocaleString('en-IN')}`;
   if (burnTextRem) burnTextRem.textContent = `Remaining: ₹${headroomAfter.toLocaleString('en-IN')}`;
 
-  // 4. Render Capital Routing Micro-Sankey
+  // 4. Render Primary Box & Connector Layout and Summary Line
+  renderRebalanceBoxConnector(plan);
+
+  // 5. Render Pre/Post Allocation Progression Delta Badges
+  renderPrePostAllocationDelta(plan);
+
+  // 6. Render Secondary Sankey (mounted, hidden by default until toggle)
   renderRebalanceMicroSankey(sellSide, buySide);
 
-  // 5. Render Interactive Tactical Action Matrix (Granular Lot Override)
+  // 7. Render Interactive Tactical Action Matrix (Granular Lot Override)
   renderTacticalActionMatrix(plan);
 
   // 6. Render Narrative Paragraphs
@@ -1327,6 +1333,258 @@ function renderBuySideAllocationGrid(buySide, liveTotalOverride = null) {
         <div style="margin-top: 6px;">
           ${fundsHtml}
         </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function shortenFundName(rawName) {
+  if (!rawName) return '';
+  return rawName
+    .replace(/\s*-\s*Direct Plan Growth\s*\(Non Demat\)/gi, '')
+    .replace(/\s*-\s*DIRECT GROWTH PLAN GROWTH OPTION\s*\(Non Demat\)/gi, '')
+    .replace(/\s*Direct Plan\s*-\s*Growth/gi, '')
+    .replace(/\s*-\s*Direct Plan Growth/gi, '')
+    .replace(/\s*Direct Growth Plan Growth Option\s*\(Non Demat\)/gi, '')
+    .replace(/\s*-\s*Direct Growth/gi, '')
+    .trim();
+}
+
+function renderRebalanceBoxConnector(plan) {
+  const sellSide = plan.sell_side || plan.sellSide || {};
+  const buySide = plan.buy_side || plan.buySide || {};
+  const taxSum = sellSide.tax_summary || sellSide.taxSummary || {};
+
+  const totalRealized = parseFloat(taxSum.total_sale_proceeds ?? taxSum.totalSaleProceeds ?? buySide.total_to_invest ?? buySide.totalToInvest ?? 0);
+  const tradeExempt = parseFloat(taxSum.total_ltcg_exemption_applied ?? taxSum.totalLtcgExemptionApplied ?? 0);
+  const priorUsed = parseFloat(taxSum.ytd_ltcg_exemption_prior_used ?? taxSum.ytdLtcgExemptionPriorUsed ?? 0);
+  const totalYtdExempt = priorUsed + tradeExempt;
+  const headroomRem = Math.max(0, 125000 - totalYtdExempt);
+  const totalTax = parseFloat(taxSum.total_tax_estimate ?? taxSum.totalTaxEstimate ?? 0);
+
+  // 1. Update Summary Bar
+  const elRealized = document.getElementById('sumRealizedProceeds');
+  const elTradeEx = document.getElementById('sumTradeExemption');
+  const elYtdEx = document.getElementById('sumYtdExemption');
+  const elHeadroom = document.getElementById('sumRemainingHeadroom');
+  const elTax = document.getElementById('sumTaxOwed');
+
+  if (elRealized) elRealized.textContent = `₹${Math.round(totalRealized).toLocaleString('en-IN')}`;
+  if (elTradeEx) elTradeEx.textContent = `₹${Math.round(tradeExempt).toLocaleString('en-IN')}`;
+  if (elYtdEx) elYtdEx.textContent = `₹${Math.round(totalYtdExempt).toLocaleString('en-IN')} of ₹1,25,000`;
+  if (elHeadroom) elHeadroom.textContent = `₹${Math.round(headroomRem).toLocaleString('en-IN')}`;
+  if (elTax) elTax.textContent = `₹${Math.round(totalTax).toLocaleString('en-IN')}`;
+
+  // 2. Build Sell Cards Column
+  const sellCol = document.getElementById('rebalanceSellCardsCol');
+  const sellFundMap = new Map();
+
+  (sellSide.waterfall || []).forEach(tier => {
+    (tier.lots || []).forEach(lot => {
+      const fName = shortenFundName(lot.fundName || lot.fund_name || lot.fundId || lot.fund_id);
+      const proceeds = parseFloat(lot.saleProceeds || lot.sale_proceeds || 0);
+      const units = parseFloat(lot.units || 0);
+      const ti = lot.tax_impact || lot.taxImpact || {};
+      const regime = ti.regime || ti.regime_type || lot.tax_term || lot.taxTerm || 'SEC_112A_EXEMPT';
+
+      if (proceeds > 0) {
+        if (!sellFundMap.has(fName)) {
+          sellFundMap.set(fName, { name: fName, proceeds: 0, units: 0, regime: regime });
+        }
+        const existing = sellFundMap.get(fName);
+        existing.proceeds += proceeds;
+        existing.units += units;
+        if (regime === 'SLAB_RATE_STCG') existing.regime = 'SLAB_RATE_STCG';
+        else if (regime === 'SEC_112A_TAXABLE_12_5' && existing.regime !== 'SLAB_RATE_STCG') existing.regime = 'SEC_112A_TAXABLE_12_5';
+      }
+    });
+  });
+
+  if (sellCol) {
+    if (sellFundMap.size > 0) {
+      sellCol.innerHTML = Array.from(sellFundMap.values()).map(f => {
+        let badgeBg = 'rgba(16, 185, 129, 0.15)';
+        let badgeColor = '#10b981';
+        let badgeBorder = '#10b981';
+        let badgeLabel = 'LTCG EXEMPT';
+
+        if (f.regime === 'SLAB_RATE_STCG') {
+          badgeBg = 'rgba(239, 68, 68, 0.15)';
+          badgeColor = '#ef4444';
+          badgeBorder = '#ef4444';
+          badgeLabel = 'STCG (20%)';
+        } else if (f.regime === 'SEC_112A_TAXABLE_12_5') {
+          badgeBg = 'rgba(245, 158, 11, 0.15)';
+          badgeColor = '#f59e0b';
+          badgeBorder = '#f59e0b';
+          badgeLabel = 'LTCG (12.5%)';
+        }
+
+        return `
+          <div class="rebalance-sell-card" style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.08); border-left: 4px solid ${badgeColor}; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
+            <div>
+              <div style="font-weight: 700; color: #f8fafc;">${f.name}</div>
+              <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">
+                ${f.units > 0 ? `${f.units.toFixed(1)} units` : 'Legacy Sourcing'}
+                <span style="background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; font-size: 0.62rem; padding: 1px 5px; border-radius: 3px; margin-left: 6px; font-weight: 600;">${badgeLabel}</span>
+              </div>
+            </div>
+            <div style="font-weight: 800; color: #38bdf8; font-size: 0.85rem;">
+              ₹${Math.round(f.proceeds).toLocaleString('en-IN')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      sellCol.innerHTML = `
+        <div style="background: rgba(30, 41, 59, 0.6); border: 1px dashed rgba(255,255,255,0.1); border-radius: 6px; padding: 12px; text-align: center; color: #94a3b8; font-size: 0.78rem;">
+          No liquidations required — using available cash reserves
+        </div>
+      `;
+    }
+  }
+
+  // 3. Build Central Pool Amount
+  const elPoolAmt = document.getElementById('rebalancePoolAmount');
+  if (elPoolAmt) elPoolAmt.textContent = `₹${Math.round(totalRealized).toLocaleString('en-IN')}`;
+
+  // 4. Build Buy Cards Column
+  const buyCol = document.getElementById('rebalanceBuyCardsCol');
+  const buyFunds = [];
+
+  (buySide.buckets || []).forEach(b => {
+    const bucketName = (b.bucket || '').replace('_', ' ');
+    (b.fund_breakdown || b.fundBreakdown || []).forEach(f => {
+      const fName = shortenFundName(f.fundName || f.fund_name || f.fundId || f.fund_id);
+      const amt = parseFloat(f.amount || 0);
+      if (amt > 0) {
+        buyFunds.push({ name: fName, amount: amt, bucket: bucketName });
+      }
+    });
+  });
+
+  if (buyCol) {
+    if (buyFunds.length > 0) {
+      buyCol.innerHTML = buyFunds.map(f => `
+        <div class="rebalance-buy-card" style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(56, 189, 248, 0.2); border-right: 4px solid #38bdf8; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
+          <div>
+            <div style="font-weight: 700; color: #f8fafc;">${f.name}</div>
+            <div style="font-size: 0.68rem; color: #38bdf8; margin-top: 2px; font-weight: 600;">${f.bucket}</div>
+          </div>
+          <div style="font-weight: 800; color: #34d399; font-size: 0.85rem;">
+            +₹${Math.round(f.amount).toLocaleString('en-IN')}
+          </div>
+        </div>
+      `).join('');
+    } else {
+      buyCol.innerHTML = `<div style="text-align: center; color: #64748b; padding: 12px; font-size: 0.78rem;">No target buy allocations</div>`;
+    }
+  }
+
+  // 5. Draw SVG Bezier Connectors
+  setTimeout(drawBoxSvgConnectors, 50);
+
+  // 6. View Toggle Event Listeners
+  const btnBox = document.getElementById('btnViewBoxConnector');
+  const btnSankey = document.getElementById('btnViewSankey');
+  const boxContainer = document.getElementById('rebalanceBoxConnectorContainer');
+  const sankeyContainer = document.getElementById('rebalanceSankeyChartContainer');
+
+  if (btnBox && btnSankey && boxContainer && sankeyContainer) {
+    btnBox.onclick = () => {
+      boxContainer.style.display = 'flex';
+      sankeyContainer.style.display = 'none';
+      btnBox.style.background = 'rgba(56, 189, 248, 0.2)';
+      btnBox.style.color = '#38bdf8';
+      btnBox.style.borderColor = '#38bdf8';
+      btnSankey.style.background = 'rgba(255,255,255,0.05)';
+      btnSankey.style.color = '#94a3b8';
+      btnSankey.style.borderColor = 'rgba(255,255,255,0.1)';
+      setTimeout(drawBoxSvgConnectors, 50);
+    };
+
+    btnSankey.onclick = () => {
+      boxContainer.style.display = 'none';
+      sankeyContainer.style.display = 'block';
+      btnSankey.style.background = 'rgba(56, 189, 248, 0.2)';
+      btnSankey.style.color = '#38bdf8';
+      btnSankey.style.borderColor = '#38bdf8';
+      btnBox.style.background = 'rgba(255,255,255,0.05)';
+      btnBox.style.color = '#94a3b8';
+      btnBox.style.borderColor = 'rgba(255,255,255,0.1)';
+
+      const sankeyEl = document.getElementById('rebalanceSankeyChart');
+      if (sankeyEl && typeof echarts !== 'undefined') {
+        const inst = echarts.getInstanceByDom(sankeyEl);
+        if (inst) inst.resize();
+      }
+    };
+  }
+}
+
+function drawBoxSvgConnectors() {
+  const svg = document.getElementById('rebalanceSvgConnectors');
+  const container = document.getElementById('rebalanceBoxConnectorContainer');
+  const poolPill = document.getElementById('rebalanceCentralPoolPill');
+
+  if (!svg || !container || !poolPill) return;
+
+  const containerRect = container.getBoundingClientRect();
+  const poolRect = poolPill.getBoundingClientRect();
+
+  const poolLeftX = poolRect.left - containerRect.left;
+  const poolRightX = poolRect.right - containerRect.left;
+  const poolY = poolRect.top + poolRect.height / 2 - containerRect.top;
+
+  let pathHtml = '';
+
+  // Sell Cards -> Pool Left
+  const sellCards = document.querySelectorAll('.rebalance-sell-card');
+  sellCards.forEach(card => {
+    const cRect = card.getBoundingClientRect();
+    const cardX = cRect.right - containerRect.left;
+    const cardY = cRect.top + cRect.height / 2 - containerRect.top;
+
+    const dx = (poolLeftX - cardX) * 0.5;
+    pathHtml += `<path d="M ${cardX} ${cardY} C ${cardX + dx} ${cardY}, ${poolLeftX - dx} ${poolY}, ${poolLeftX} ${poolY}" fill="none" stroke="rgba(16, 185, 129, 0.4)" stroke-width="2" stroke-dasharray="4 3" />`;
+  });
+
+  // Pool Right -> Buy Cards
+  const buyCards = document.querySelectorAll('.rebalance-buy-card');
+  buyCards.forEach(card => {
+    const cRect = card.getBoundingClientRect();
+    const cardX = cRect.left - containerRect.left;
+    const cardY = cRect.top + cRect.height / 2 - containerRect.top;
+
+    const dx = (cardX - poolRightX) * 0.5;
+    pathHtml += `<path d="M ${poolRightX} ${poolY} C ${poolRightX + dx} ${poolY}, ${cardX - dx} ${cardY}, ${cardX} ${cardY}" fill="none" stroke="rgba(56, 189, 248, 0.4)" stroke-width="2" />`;
+  });
+
+  svg.innerHTML = pathHtml;
+}
+
+function renderPrePostAllocationDelta(plan) {
+  const container = document.getElementById('rebalanceAllocationDeltaContainer');
+  const buySide = plan.buy_side || plan.buySide || {};
+
+  if (!container || !buySide.buckets) return;
+
+  container.innerHTML = buySide.buckets.map(b => {
+    const name = (b.bucket || '').replace('_', ' ');
+    const tgt = b.target_pct ?? b.targetPct ?? 0;
+    const cur = b.current_pct ?? b.currentPct ?? 0;
+    const post = b.post_rebalance_pct ?? b.postRebalancePct ?? 0;
+
+    let deltaColor = '#34d399'; // Green for increase or match
+    if (post < cur) deltaColor = '#f87171'; // Red for decrease
+
+    return `
+      <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 6px 12px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px;">
+        <span style="font-weight: 700; color: #38bdf8;">${name}:</span>
+        <span style="color: #94a3b8;">${cur.toFixed(1)}%</span>
+        <span style="color: #64748b;">➔</span>
+        <span style="font-weight: 800; color: ${deltaColor};">${post.toFixed(1)}%</span>
+        <span style="color: #64748b; font-size: 0.7rem;">(Target ${tgt.toFixed(1)}%)</span>
       </div>
     `;
   }).join('');

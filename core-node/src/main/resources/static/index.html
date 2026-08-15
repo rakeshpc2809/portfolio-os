@@ -413,11 +413,62 @@
             </div>
           </div>
 
-          <!-- Section B: Capital Routing Micro-Sankey -->
-          <div style="margin-top: 16px; background: rgba(15, 23, 42, 0.5); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
-            <h3 style="color: #38bdf8; font-size: 0.9rem; margin-top: 0; margin-bottom: 12px;">1. Capital Routing Micro-Sankey (Flow of Rebalance Funds)</h3>
-            <div id="rebalanceSankeyChart" style="height: 240px; width: 100%;">
-              <div class="loading-td" style="text-align: center; color: #64748b; padding-top: 80px;">Rendering Capital Flow Sankey...</div>
+          <!-- Section B: Capital Routing & Rebalance Trade Flow -->
+          <div style="margin-top: 16px; background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(56, 189, 248, 0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="color: #38bdf8; font-size: 0.9rem; margin: 0;">1. Capital Routing & Rebalance Trade Flow</h3>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" id="btnViewBoxConnector" class="secondary-btn" style="padding: 4px 10px; font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8;">📦 Box & Connector</button>
+                <button type="button" id="btnViewSankey" class="secondary-btn" style="padding: 4px 10px; font-size: 0.75rem; background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1);">📊 Sankey Diagram</button>
+              </div>
+            </div>
+
+            <!-- YTD-Aware Tax Summary Line -->
+            <div id="rebalanceSummaryLine" style="background: rgba(30, 41, 59, 0.6); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center;">
+              <div><span style="color: #94a3b8;">Total Realized:</span> <strong id="sumRealizedProceeds" style="color: #f8fafc;">₹88,142</strong></div>
+              <div><span style="color: #94a3b8;">This Trade Exemption:</span> <strong id="sumTradeExemption" style="color: #10b981;">₹12,124</strong></div>
+              <div><span style="color: #94a3b8;">YTD Exemption Used:</span> <strong id="sumYtdExemption" style="color: #34d399;">₹12,124 of ₹1,25,000</strong></div>
+              <div><span style="color: #94a3b8;">Remaining Headroom:</span> <strong id="sumRemainingHeadroom" style="color: #38bdf8;">₹1,12,876</strong></div>
+              <div><span style="color: #94a3b8;">Tax Owed:</span> <strong id="sumTaxOwed" style="color: #ef4444;">₹0</strong></div>
+            </div>
+
+            <!-- Primary Box & Connector Layout Container -->
+            <div id="rebalanceBoxConnectorContainer" style="position: relative; width: 100%; min-height: 280px; display: flex; align-items: stretch; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+              <!-- Sell Side Cards Column (Left) -->
+              <div id="rebalanceSellCardsCol" style="flex: 1; display: flex; flex-direction: column; gap: 8px; z-index: 2;">
+                <!-- Populated dynamically -->
+              </div>
+
+              <!-- Central Cash Pool & SVG Connectors (Middle) -->
+              <div style="width: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; z-index: 2;">
+                <div id="rebalanceCentralPoolPill" style="background: linear-gradient(135deg, #0284c7, #0f766e); padding: 12px 14px; border-radius: 20px; text-align: center; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);">
+                  <div style="font-size: 0.65rem; color: #bae6fd; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Rebalance Cash Pool</div>
+                  <div id="rebalancePoolAmount" style="font-size: 0.95rem; font-weight: 800; color: #ffffff; margin-top: 2px;">₹88,142</div>
+                </div>
+              </div>
+
+              <!-- Buy Side Cards Column (Right) -->
+              <div id="rebalanceBuyCardsCol" style="flex: 1; display: flex; flex-direction: column; gap: 8px; z-index: 2;">
+                <!-- Populated dynamically -->
+              </div>
+
+              <!-- SVG Bezier Connector Canvas -->
+              <svg id="rebalanceSvgConnectors" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;">
+                <!-- Drawn dynamically -->
+              </svg>
+            </div>
+
+            <!-- Secondary Sankey Container (Hidden by default) -->
+            <div id="rebalanceSankeyChartContainer" style="display: none; height: 240px; width: 100%; margin-bottom: 16px;">
+              <div id="rebalanceSankeyChart" style="height: 240px; width: 100%;"></div>
+            </div>
+
+            <!-- Pre/Post Bucket Progression Delta Badges -->
+            <div style="background: rgba(15, 23, 42, 0.4); border-radius: 6px; padding: 12px; border: 1px solid rgba(255,255,255,0.04);">
+              <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 700; margin-bottom: 8px;">TARGET BUCKET PROGRESSION (PRE ➔ POST REBALANCE)</div>
+              <div id="rebalanceAllocationDeltaContainer" style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <!-- Populated dynamically -->
+              </div>
             </div>
           </div>
 
