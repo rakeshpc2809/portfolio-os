@@ -1385,7 +1385,7 @@ function renderRebalanceBoxConnector(plan) {
     (tier.lots || []).forEach(lot => {
       const fName = shortenFundName(lot.fundName || lot.fund_name || lot.fundId || lot.fund_id);
       const proceeds = parseFloat(lot.saleProceeds || lot.sale_proceeds || 0);
-      const units = parseFloat(lot.units || 0);
+      const units = parseFloat(lot.units_sold || lot.unitsSold || lot.units || 0);
       const ti = lot.tax_impact || lot.taxImpact || {};
       const regime = ti.regime || ti.regime_type || lot.tax_term || lot.taxTerm || 'SEC_112A_EXEMPT';
 
