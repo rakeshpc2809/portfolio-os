@@ -349,19 +349,35 @@ public class RebalancePlanEngine {
         }
 
         // 4. Dynamic Buy Side Allocations Resolving to REAL Portfolio Fund ISINs
+        BucketEngine.RebalanceEngineResult bucketResult = BucketEngine.evaluateRebalance(
+            openLots, matchedLots, navMap, today, benchmarkCurrent, benchmarkRollingHigh, activeTargets, fiscalYear
+        );
+
+        Map<BucketEngine.Bucket, BucketEngine.BucketStatus> statusMap = new HashMap<>();
+        if (bucketResult != null && bucketResult.bucketStatuses() != null) {
+            for (BucketEngine.BucketStatus s : bucketResult.bucketStatuses()) {
+                statusMap.put(s.bucket(), s);
+            }
+        }
+
         List<RebalanceBucketAllocationDto> buyBuckets = new ArrayList<>();
 
         for (BucketEngine.BucketTarget target : activeTargets) {
             String bucketName = target.bucket().name();
             double targetPct = target.targetPct().doubleValue();
 
-            double currentPct = (liveCorpus.compareTo(BigDecimal.ZERO) > 0) ?
-                Math.round((liveCorpus.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP).doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct;
-
-            double postPct = (totalPool.compareTo(BigDecimal.ZERO) > 0) ?
-                Math.round((currentPct + (totalPool.doubleValue() / (liveCorpus.doubleValue() + totalPool.doubleValue())) * (targetPct / 100.0) * 100.0) * 10.0) / 10.0 : currentPct;
+            BucketEngine.BucketStatus status = statusMap.get(target.bucket());
+            BigDecimal curVal = status != null ? status.currentValue() : BigDecimal.ZERO;
+            double currentPct = status != null ? status.currentPct().doubleValue() : (liveCorpus.compareTo(BigDecimal.ZERO) > 0 ?
+                Math.round((curVal.doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct);
 
             BigDecimal amountAllocated = totalPool.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+
+            BigDecimal postVal = curVal.add(amountAllocated);
+            BigDecimal totalPostCorpus = liveCorpus.add(totalPool);
+
+            double postPct = (totalPostCorpus.compareTo(BigDecimal.ZERO) > 0) ?
+                Math.round((postVal.doubleValue() / totalPostCorpus.doubleValue()) * 1000.0) / 10.0 : currentPct;
 
             List<FundAllocationDto> realFunds = resolveRealFundBreakdown(target.bucket(), amountAllocated, activeVersion);
 

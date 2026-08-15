@@ -1341,34 +1341,79 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
     chart = echarts.init(container);
   }
 
-  const nodes = [{ name: 'Pooled Capital' }];
+  const nodesMap = new Map();
   const links = [];
+  const poolNodeName = 'Rebalance Cash Pool';
+  nodesMap.set(poolNodeName, { name: poolNodeName, itemStyle: { color: '#38bdf8' } });
 
-  // Sell Side Sources
+  // 1. Group Sell Lots by Source Fund & Determine Link Color by Tax Regime
+  const sellFundProceeds = new Map();
+  const sellFundRegimes = new Map();
+
   (sellSide.waterfall || []).forEach(tier => {
-    const soldAmt = parseFloat(tier.sold || 0);
-    if (soldAmt > 0) {
-      const name = tier.tier_label || tier.tierLabel || tier.tier;
-      nodes.push({ name: name });
-      links.push({ source: name, target: 'Pooled Capital', value: soldAmt });
-    }
+    (tier.lots || []).forEach(lot => {
+      const fName = lot.fundName || lot.fund_name || lot.fundId || lot.fund_id;
+      const proceeds = parseFloat(lot.saleProceeds || lot.sale_proceeds || 0);
+      if (proceeds > 0) {
+        sellFundProceeds.set(fName, (sellFundProceeds.get(fName) || 0) + proceeds);
+        
+        const regime = lot.taxImpact ? (lot.taxImpact.regime || lot.taxImpact.regime_type) : (lot.taxTerm || '');
+        const currentRegime = sellFundRegimes.get(fName) || 'SEC_112A_EXEMPT';
+        if (regime === 'SLAB_RATE_STCG' || currentRegime === 'SLAB_RATE_STCG') {
+          sellFundRegimes.set(fName, 'SLAB_RATE_STCG');
+        } else if (regime === 'SEC_112A_TAXABLE_12_5' || currentRegime === 'SEC_112A_TAXABLE_12_5') {
+          sellFundRegimes.set(fName, 'SEC_112A_TAXABLE_12_5');
+        } else {
+          sellFundRegimes.set(fName, 'SEC_112A_EXEMPT');
+        }
+      }
+    });
   });
 
+  if (sellFundProceeds.size > 0) {
+    sellFundProceeds.forEach((amount, fundName) => {
+      nodesMap.set(fundName, { name: fundName, itemStyle: { color: '#94a3b8' } });
+      const regime = sellFundRegimes.get(fundName);
+      let linkColor = '#10b981'; // Green for SEC_112A_EXEMPT
+      if (regime === 'SEC_112A_TAXABLE_12_5') linkColor = '#f59e0b'; // Amber for taxable LTCG
+      if (regime === 'SLAB_RATE_STCG') linkColor = '#ef4444'; // Red for STCG
+
+      links.push({
+        source: fundName,
+        target: poolNodeName,
+        value: amount,
+        lineStyle: { color: linkColor, opacity: 0.6 }
+      });
+    });
+  } else {
+    const freshCapNode = 'Available Cash';
+    nodesMap.set(freshCapNode, { name: freshCapNode, itemStyle: { color: '#10b981' } });
+    const poolAmt = parseFloat(buySide.totalToInvest || buySide.total_to_invest || 0);
+    if (poolAmt > 0) {
+      links.push({ source: freshCapNode, target: poolNodeName, value: poolAmt, lineStyle: { color: '#10b981', opacity: 0.6 } });
+    }
+  }
+
+  // 2. Tax Friction Node
   const taxSum = sellSide.tax_summary || sellSide.taxSummary || {};
   const estTax = parseFloat(taxSum.total_tax_estimate ?? taxSum.totalTaxEstimate ?? 0);
   if (estTax > 0) {
-    nodes.push({ name: 'Tax Friction' });
-    links.push({ source: 'Pooled Capital', target: 'Tax Friction', value: estTax });
+    const taxNodeName = 'Estimated Tax';
+    nodesMap.set(taxNodeName, { name: taxNodeName, itemStyle: { color: '#ef4444' } });
+    links.push({ source: poolNodeName, target: taxNodeName, value: estTax, lineStyle: { color: '#ef4444', opacity: 0.7 } });
   }
 
-  // Buy Side Targets
+  // 3. Buy-Side Target Funds
   (buySide.buckets || []).forEach(b => {
-    const alloc = parseFloat(b.amount_allocated || b.amountAllocated || 0);
-    if (alloc > 0) {
-      const name = b.bucket.replace('_', ' ');
-      nodes.push({ name: name });
-      links.push({ source: 'Pooled Capital', target: name, value: alloc });
-    }
+    const funds = b.fund_breakdown || b.fundBreakdown || [];
+    funds.forEach(f => {
+      const fName = f.fundName || f.fund_name || f.fundId || f.fund_id;
+      const amount = parseFloat(f.amount || 0);
+      if (amount > 0) {
+        nodesMap.set(fName, { name: fName, itemStyle: { color: '#38bdf8' } });
+        links.push({ source: poolNodeName, target: fName, value: amount, lineStyle: { color: '#38bdf8', opacity: 0.6 } });
+      }
+    });
   });
 
   if (links.length === 0) {
@@ -1377,13 +1422,22 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
   }
 
   const option = {
-    tooltip: { trigger: 'item', triggerOn: 'mousemove' },
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      triggerOn: 'mousemove',
+      formatter: params => {
+        if (params.dataType === 'node') return `<b>${params.name}</b>`;
+        return `Flow: <b>${params.data.source}</b> → <b>${params.data.target}</b><br/>Amount: <b>₹${params.data.value.toLocaleString('en-IN')}</b>`;
+      }
+    },
     series: [{
       type: 'sankey',
-      data: nodes,
-      links: links,
+      layout: 'none',
       emphasis: { focus: 'adjacency' },
-      lineStyle: { color: 'gradient', curveness: 0.5 },
+      data: Array.from(nodesMap.values()),
+      links: links,
+      lineStyle: { curveness: 0.5 },
       label: { color: '#f8fafc', fontSize: 11 }
     }]
   };
