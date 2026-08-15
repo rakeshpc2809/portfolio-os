@@ -156,7 +156,7 @@ public class RebalancePlanEngine {
             );
         }
 
-        String resolvedType = isLumpsum ? "MANUAL_LUMPSUM" : resolution.triggerType();
+        String resolvedType = requestedTriggerType != null ? requestedTriggerType : (isLumpsum ? "MANUAL_LUMPSUM" : resolution.triggerType());
         String reasonCode = isLumpsum ? "USER_LUMPSUM_ENTRY" : resolution.reasonCode();
         String reasonLabel = isLumpsum ? "Manual Lump-Sum Entry" : resolution.reasonLabel();
 
@@ -371,7 +371,22 @@ public class RebalancePlanEngine {
             double currentPct = status != null ? status.currentPct().doubleValue() : (liveCorpus.compareTo(BigDecimal.ZERO) > 0 ?
                 Math.round((curVal.doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct);
 
-            BigDecimal amountAllocated = totalPool.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            BigDecimal amountAllocated;
+            if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
+                if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER) {
+                    amountAllocated = totalPool;
+                } else {
+                    amountAllocated = BigDecimal.ZERO;
+                }
+            } else if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER && totalPool.compareTo(BigDecimal.ZERO) > 0) {
+                // Apply GoldDampenerCalculator for Gold/Silver bucket
+                double devPct = 0.0; // default neutral dev if NAV history absent
+                GoldDampenerCalculator.DampenerMultipliers mults = GoldDampenerCalculator.calculateMultipliers(devPct);
+                BigDecimal baseAlloc = totalPool.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                amountAllocated = baseAlloc.multiply(BigDecimal.valueOf(mults.buyMultiplier())).setScale(2, RoundingMode.HALF_UP).min(totalPool);
+            } else {
+                amountAllocated = totalPool.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            }
 
             BigDecimal postVal = curVal.add(amountAllocated);
             BigDecimal totalPostCorpus = liveCorpus.add(totalPool);

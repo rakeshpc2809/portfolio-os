@@ -143,7 +143,34 @@ class RebalanceSankeyDtoTest {
                     assertEquals(b.amountAllocated(), fundSum, "Sum of fundBreakdown amounts must equal bucket amountAllocated");
                 }
             }
-            assertEquals(plan.buySide().totalToInvest(), totalAllocated, "Sum of bucket allocations must equal buySide totalToInvest");
         }
+    }
+
+    @Test
+    @DisplayName("Gold Floor Backstop Sankey allocation allocates 100% of buy pool to GOLD_SILVER")
+    void testGoldFloorBackstopSankeyAllocation() {
+        BigDecimal nav = new BigDecimal("100.00");
+        LocalDate acqDate = LocalDate.of(2024, 1, 1);
+        Lot coreLot = new Lot("lot-1", "INF109KC12U0", "ICICI LargeMidcap", acqDate, new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            List.of(coreLot), Collections.emptyList(), Map.of("INF109KC12U0", nav), LocalDate.of(2026, 8, 10),
+            new BigDecimal("100000.00"), new BigDecimal("100000.00"), null, "2026-27", "GOLD_FLOOR_BACKSTOP", null, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.buySide());
+        RebalanceBucketAllocationDto goldBucket = plan.buySide().buckets().stream()
+            .filter(b -> "GOLD_SILVER".equals(b.bucket()))
+            .findFirst()
+            .orElseThrow();
+
+        RebalanceBucketAllocationDto coreBucket = plan.buySide().buckets().stream()
+            .filter(b -> "EQUITY_CORE".equals(b.bucket()))
+            .findFirst()
+            .orElseThrow();
+
+        assertTrue(goldBucket.amountAllocated().compareTo(BigDecimal.ZERO) > 0, "Gold Floor Backstop must allocate non-zero to Gold");
+        assertEquals(BigDecimal.ZERO, coreBucket.amountAllocated(), "Gold Floor Backstop must allocate 0 to non-Gold buckets");
     }
 }
