@@ -62,8 +62,10 @@ fun DashboardScreen(
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
-    LaunchedEffect(initialPage) {
-        pagerState.scrollToPage(initialPage)
+    LaunchedEffect(snapshot) {
+        if (snapshot != null) {
+            pagerState.scrollToPage(initialPage)
+        }
     }
     var showSimulatorBottomSheet by remember { mutableStateOf(false) }
     var selectedHoldingForSimulator by remember { mutableStateOf<FlatHoldingDto?>(null) }
@@ -213,6 +215,11 @@ fun DashboardScreen(
                                 }
                             }
                         } else {
+                            LaunchedEffect(initialPage, snapshot) {
+                                if (snapshot != null) {
+                                    pagerState.scrollToPage(initialPage)
+                                }
+                            }
                             HorizontalPager(
                                 state = pagerState,
                                 beyondBoundsPageCount = 3,

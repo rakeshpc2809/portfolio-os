@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
         activePage.value = intent.getIntExtra("TARGET_PAGE", 0)
 
         setContent {
+            val page by activePage
             var snapshot by remember { mutableStateOf<SyncSnapshot?>(null) }
             var isLoading by remember { mutableStateOf(true) }
             val scope = rememberCoroutineScope()
@@ -43,7 +44,7 @@ class MainActivity : ComponentActivity() {
             DashboardScreen(
                 snapshot = snapshot,
                 isLoading = isLoading,
-                initialPage = activePage.value,
+                initialPage = page,
                 onRefresh = { fetchSyncSnapshot() },
                 onUpdateCustomUrl = { newUrl ->
                     SnapshotCacheManager.setCustomUrl(applicationContext, newUrl)
