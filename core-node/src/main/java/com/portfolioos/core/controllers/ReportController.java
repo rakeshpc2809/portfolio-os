@@ -62,6 +62,9 @@ public class ReportController {
 
     @GetMapping({"/reports/allocations/bucket", "/portfolio/bucket-allocation"})
     public ResponseEntity<List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto>> getBucketAllocation() {
+        if (cacheService != null && cacheService.getCachedState() == null) {
+            cacheService.refreshCacheInBackground();
+        }
         com.portfolioos.core.service.LedgerCacheService.CachedLedgerState state = cacheService != null ? cacheService.getCachedState() : null;
         List<com.portfolioos.core.model.Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : java.util.Collections.emptyList();
         List<com.portfolioos.core.model.MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : java.util.Collections.emptyList();

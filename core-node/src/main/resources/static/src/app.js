@@ -10,6 +10,7 @@ import {
   renderNetWorthTrendChart,
   renderCashflowSankey,
   renderBucketRebalance,
+  renderUnifiedRebalancePlanUI,
   fetchFireSummary
 } from './js/modules/portfolio.js';
 import { updateExemptionMeter, updateReportMetrics, renderDecisionRadar, renderRealizedLogTable } from './js/modules/tax.js';
@@ -42,6 +43,9 @@ async function initDashboard() {
 
     const exemptionData = await fetchJson(`/tax/exemption-status?fy=${state.currentFy}`).catch(() => null);
     if (exemptionData) updateExemptionMeter(exemptionData);
+
+    const planData = await fetchJson(`/sync/rebalance/plan?triggerType=DRIFT`).catch(() => null);
+    if (planData) renderUnifiedRebalancePlanUI(planData);
 
     const bucketData = await fetchJson(`/rebalance/bucket?fy=${state.currentFy}`).catch(() => null);
     if (bucketData) renderBucketRebalance(bucketData);
