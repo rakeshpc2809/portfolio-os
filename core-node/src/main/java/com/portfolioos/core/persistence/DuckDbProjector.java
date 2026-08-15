@@ -395,6 +395,7 @@ public class DuckDbProjector {
         String date,
         double valuation,
         double invested,
+        double realNavValuation,
         boolean isEstimated
     ) {}
 
@@ -432,7 +433,7 @@ public class DuckDbProjector {
                     SELECT 
                         nav_date,
                         SUM(active_units * COALESCE(market_nav, cost_nav, 0.0)) AS total_valuation,
-                        SUM(CASE WHEN a.asset_id LIKE 'INF%' AND NOT EXISTS (SELECT 1 FROM nav_history nh2 WHERE nh2.asset_id = a.asset_id) AND a.active_units > 0 THEN 1 ELSE 0 END) AS fallback_count
+                        SUM(CASE WHEN market_nav IS NOT NULL THEN active_units * market_nav ELSE 0.0 END) AS real_nav_valuation
                     FROM active_units_per_asset a
                     WHERE active_units > 0
                     GROUP BY nav_date
@@ -453,7 +454,8 @@ public class DuckDbProjector {
                     v.nav_date,
                     v.total_valuation,
                     i.total_invested,
-                    (v.fallback_count > 0) AS is_estimated
+                    v.real_nav_valuation,
+                    (v.real_nav_valuation < v.total_valuation - 0.01) AS is_estimated
                 FROM daily_valuation v
                 JOIN daily_invested i ON v.nav_date = i.nav_date
                 ORDER BY v.nav_date ASC
@@ -464,8 +466,9 @@ public class DuckDbProjector {
                     String d = rs.getString("nav_date");
                     double val = rs.getDouble("total_valuation");
                     double inv = rs.getDouble("total_invested");
+                    double realVal = rs.getDouble("real_nav_valuation");
                     boolean est = rs.getBoolean("is_estimated");
-                    trend.add(new NetWorthPoint(d, val, inv, est));
+                    trend.add(new NetWorthPoint(d, val, inv, realVal, est));
                 }
             }
         } catch (SQLException e) {

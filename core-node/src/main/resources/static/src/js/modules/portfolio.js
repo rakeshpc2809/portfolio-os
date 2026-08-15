@@ -299,7 +299,7 @@ export async function loadNetWorthTrend(isMonthly = false) {
       if (windowBadge) {
         windowBadge.textContent = coverage >= 99.0
           ? 'Daily Valuation & Capital Contributed (100% Mark-to-Market NAV)'
-          : `Daily Valuation & Capital Contributed (${coverage.toFixed(0)}% NAV Coverage)`;
+          : `Daily Valuation & Capital Contributed (${coverage.toFixed(1)}% Value-Weighted NAV Coverage)`;
       }
     }
 
