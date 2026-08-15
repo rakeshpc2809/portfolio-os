@@ -90,6 +90,15 @@ public class PortfolioValuationService {
 
     public NetWorthTrendResponse getNetWorthTrend() {
         List<DuckDbProjector.NetWorthPoint> rawTrend = duckDbProjector.getDailyNetWorthTrend();
+        if (rawTrend.isEmpty()) {
+            LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+            Set<String> isins = state.events().stream().map(TaxEvent::assetId).collect(Collectors.toSet());
+            MfApiNavDownloader downloader = new MfApiNavDownloader();
+            for (String isin : isins) {
+                downloader.downloadHistoricalNavsForIsin(isin, duckDbProjector);
+            }
+            rawTrend = duckDbProjector.getDailyNetWorthTrend();
+        }
         List<String> dates = new ArrayList<>();
         List<Double> values = new ArrayList<>();
         List<Double> investedValues = new ArrayList<>();

@@ -327,6 +327,33 @@ public class DuckDbProjector {
         }
     }
 
+    public void saveNavHistoryFullSeries(String assetId, Map<LocalDate, BigDecimal> series) {
+        if (series == null || series.isEmpty()) return;
+        try (Connection conn = getConnection()) {
+            boolean wasAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try {
+                String sql = "INSERT INTO nav_history (asset_id, nav_date, nav) VALUES (?, ?, ?) ON CONFLICT (asset_id, nav_date) DO UPDATE SET nav = EXCLUDED.nav";
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    for (Map.Entry<LocalDate, BigDecimal> entry : series.entrySet()) {
+                        stmt.setString(1, assetId);
+                        stmt.setString(2, entry.getKey().toString());
+                        stmt.setDouble(3, entry.getValue().doubleValue());
+                        stmt.addBatch();
+                    }
+                    stmt.executeBatch();
+                }
+                conn.commit();
+            } catch (Exception e) {
+                conn.rollback();
+            } finally {
+                conn.setAutoCommit(wasAutoCommit);
+            }
+        } catch (SQLException e) {
+            System.err.println("DuckDB nav_history series save failure: " + e.getMessage());
+        }
+    }
+
     public Map<String, List<Double>> getNavHistorySeries(Set<String> assetIds) {
         Map<String, NavHistorySeriesEntry> full = getNavHistorySeriesWithDates(assetIds);
         Map<String, List<Double>> result = new HashMap<>();
@@ -376,6 +403,8 @@ public class DuckDbProjector {
             String sql = """
                 WITH daily_dates AS (
                     SELECT DISTINCT nav_date FROM nav_history
+                    UNION
+                    SELECT DISTINCT event_date AS nav_date FROM projected_events
                 ),
                 active_units_per_asset AS (
                     SELECT 
