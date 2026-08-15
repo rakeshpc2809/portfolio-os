@@ -1373,7 +1373,8 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
       if (proceeds > 0) {
         sellFundProceeds.set(fName, (sellFundProceeds.get(fName) || 0) + proceeds);
         
-        const regime = lot.taxImpact ? (lot.taxImpact.regime || lot.taxImpact.regime_type) : (lot.taxTerm || '');
+        const ti = lot.tax_impact || lot.taxImpact || {};
+        const regime = ti.regime || ti.regime_type || lot.tax_term || lot.taxTerm || 'SEC_112A_EXEMPT';
         const currentRegime = sellFundRegimes.get(fName) || 'SEC_112A_EXEMPT';
         if (regime === 'SLAB_RATE_STCG' || currentRegime === 'SLAB_RATE_STCG') {
           sellFundRegimes.set(fName, 'SLAB_RATE_STCG');
@@ -1388,12 +1389,13 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
 
   if (sellFundProceeds.size > 0) {
     sellFundProceeds.forEach((amount, fundName) => {
-      const sellNodeName = `${fundName} (Sell)`;
-      nodesMap.set(sellNodeName, { name: sellNodeName, itemStyle: { color: '#94a3b8' } });
       const regime = sellFundRegimes.get(fundName);
       let linkColor = '#10b981'; // Green for SEC_112A_EXEMPT
       if (regime === 'SEC_112A_TAXABLE_12_5') linkColor = '#f59e0b'; // Amber for taxable LTCG
       if (regime === 'SLAB_RATE_STCG') linkColor = '#ef4444'; // Red for STCG
+
+      const sellNodeName = `${fundName} (Sell)`;
+      nodesMap.set(sellNodeName, { name: sellNodeName, itemStyle: { color: linkColor } });
 
       links.push({
         source: sellNodeName,
