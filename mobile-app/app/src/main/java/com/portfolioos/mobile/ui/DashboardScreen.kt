@@ -1,5 +1,6 @@
 package com.portfolioos.mobile.ui
 
+import com.portfolioos.mobile.BuildConfig
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -486,70 +487,72 @@ fun DashboardScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            onSimulateFullSync()
-                                            showUrlDialog = false
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(100.dp)
-                                    ) {
-                                        Text("Full Sync", color = M3ElectricLime, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            onSimulateAmfiFallback()
-                                            showUrlDialog = false
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(100.dp)
-                                    ) {
-                                        Text("AMFI Tag", color = M3VibrantViolet, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            onSimulateRefreshing()
-                                            showUrlDialog = false
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(100.dp)
-                                    ) {
-                                        Text("Toggle Refresh", color = M3NeonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            onSimulateSyncFailure()
-                                            showUrlDialog = false
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(100.dp)
-                                    ) {
-                                        Text("Failure Toast", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            onSimulateAgedOffline()
-                                            showUrlDialog = false
-                                        },
+                            if (BuildConfig.DEBUG) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(100.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text("Aged Offline (11m)", color = Color(0xFFF59E0B), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        OutlinedButton(
+                                            onClick = {
+                                                onSimulateFullSync()
+                                                showUrlDialog = false
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(100.dp)
+                                        ) {
+                                            Text("Full Sync", color = M3ElectricLime, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                onSimulateAmfiFallback()
+                                                showUrlDialog = false
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(100.dp)
+                                        ) {
+                                            Text("AMFI Tag", color = M3VibrantViolet, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                onSimulateRefreshing()
+                                                showUrlDialog = false
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(100.dp)
+                                        ) {
+                                            Text("Toggle Refresh", color = M3NeonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                onSimulateSyncFailure()
+                                                showUrlDialog = false
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(100.dp)
+                                        ) {
+                                            Text("Failure Toast", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                onSimulateAgedOffline()
+                                                showUrlDialog = false
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(100.dp)
+                                        ) {
+                                            Text("Aged Offline (11m)", color = Color(0xFFF59E0B), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             }
