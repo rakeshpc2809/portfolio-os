@@ -1382,6 +1382,7 @@ function renderRebalanceBoxConnector(plan) {
   const sellFundMap = new Map();
 
   (sellSide.waterfall || []).forEach(tier => {
+    const tLabel = tier.tier_label || tier.tierLabel || 'Waterfall Tier';
     (tier.lots || []).forEach(lot => {
       const fName = shortenFundName(lot.fundName || lot.fund_name || lot.fundId || lot.fund_id);
       const proceeds = parseFloat(lot.saleProceeds || lot.sale_proceeds || 0);
@@ -1391,7 +1392,7 @@ function renderRebalanceBoxConnector(plan) {
 
       if (proceeds > 0) {
         if (!sellFundMap.has(fName)) {
-          sellFundMap.set(fName, { name: fName, proceeds: 0, units: 0, regime: regime });
+          sellFundMap.set(fName, { name: fName, proceeds: 0, units: 0, regime: regime, tierLabel: tLabel });
         }
         const existing = sellFundMap.get(fName);
         existing.proceeds += proceeds;
@@ -1427,7 +1428,7 @@ function renderRebalanceBoxConnector(plan) {
             <div>
               <div style="font-weight: 700; color: #f8fafc;">${f.name}</div>
               <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">
-                ${f.units > 0 ? `${f.units.toFixed(1)} units` : 'Legacy Sourcing'}
+                ${f.units > 0 ? `${f.units.toFixed(1)} units` : ''} · <span style="color: #cbd5e1;">${f.tierLabel}</span>
                 <span style="background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; font-size: 0.62rem; padding: 1px 5px; border-radius: 3px; margin-left: 6px; font-weight: 600;">${badgeLabel}</span>
               </div>
             </div>
