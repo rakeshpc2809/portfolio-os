@@ -75,7 +75,9 @@ fun DashboardScreen(
     onSimulateFullyOffline: () -> Unit = {},
     onSimulateAgedOffline: () -> Unit = {},
     onSimulateRefreshing: () -> Unit = {},
-    onSimulateSyncFailure: () -> Unit = {}
+    onSimulateSyncFailure: () -> Unit = {},
+    isBiometricLockEnabled: Boolean = true,
+    onToggleBiometricLock: (Boolean) -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
@@ -550,6 +552,25 @@ fun DashboardScreen(
                                         Text("Aged Offline (11m)", color = Color(0xFFF59E0B), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Require Biometric / PIN Lock", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("Require fingerprint or PIN on launch & resume", color = M3TextMuted, fontSize = 10.sp)
+                                }
+                                Switch(
+                                    checked = isBiometricLockEnabled,
+                                    onCheckedChange = { onToggleBiometricLock(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = M3ObsidianDark,
+                                        checkedTrackColor = M3ElectricLime
+                                    )
+                                )
                             }
                         }
                     },
