@@ -436,6 +436,27 @@
                 </div>
               </div>
             </div>
+            <div style="overflow-x: auto; margin-top: 12px;">
+              <table class="report-table" style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                <thead>
+                  <tr style="color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
+                    <th style="text-align: center; width: 40px;"><input type="checkbox" id="matrixSelectAllLots" checked style="accent-color: #06b6d4;"></th>
+                    <th>Scheme Name</th>
+                    <th>Acquired</th>
+                    <th>Holding</th>
+                    <th>Cost Basis</th>
+                    <th>Sale Proceeds</th>
+                    <th>Realized Gain</th>
+                    <th>Tax Term</th>
+                    <th>Tax Drag</th>
+                  </tr>
+                </thead>
+                <tbody id="matrixLotTableBody">
+                  <tr><td colspan="9" class="loading-td" style="text-align: center; color: #64748b; padding: 20px;">Loading sell-side lot matrix...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         <!-- AI Decision Radar -->
         <div class="glass-card col-12">
           <div class="card-header">
