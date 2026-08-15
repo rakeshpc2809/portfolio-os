@@ -1336,20 +1336,13 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
   const container = document.getElementById('rebalanceSankeyChart');
   if (!container || typeof echarts === 'undefined') return;
 
-  let w = container.clientWidth;
-  if (!w || w <= 100) {
-    w = container.parentElement ? container.parentElement.clientWidth : 0;
-  }
-  if (!w || w <= 100) {
-    w = 1200;
-  }
-  container.style.width = `${w}px`;
+  container.style.width = '100%';
   container.style.height = '240px';
-  if (echarts.getInstanceByDom(container)) {
-    echarts.dispose(container);
+
+  let chart = echarts.getInstanceByDom(container);
+  if (!chart) {
+    chart = echarts.init(container);
   }
-  const chart = echarts.init(container, null, { width: w, height: 240 });
-  console.log('SANKEY DEBUG:', { sellSide, buySide });
 
   const nodesMap = new Map();
   const links = [];
@@ -1443,29 +1436,30 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
     },
     series: [{
       type: 'sankey',
+      left: '3%',
+      right: '28%',
+      top: 15,
+      bottom: 15,
+      nodeWidth: 14,
+      nodeGap: 12,
       layout: 'none',
       emphasis: { focus: 'adjacency' },
       data: Array.from(nodesMap.values()),
       links: links,
       lineStyle: { curveness: 0.5 },
-      label: { color: '#f8fafc', fontSize: 11 }
+      label: { color: '#f8fafc', fontSize: 11, distance: 6 }
     }]
   };
 
   chart.setOption(option, true);
-  const doResize = () => {
-    let w = container.clientWidth;
-    if (!w || w <= 100) {
-      w = container.parentElement ? container.parentElement.clientWidth : 0;
-    }
-    if (!w || w <= 100) {
-      w = 1200;
-    }
-    container.style.width = `${w}px`;
-    chart.resize({ width: w, height: 240 });
-  };
-  doResize();
-  setTimeout(doResize, 350);
+  chart.resize();
+
+  if (!container.__ro) {
+    container.__ro = new ResizeObserver(() => {
+      if (chart) chart.resize();
+    });
+    container.__ro.observe(container);
+  }
 }
 
 function renderTacticalActionMatrix(plan) {
