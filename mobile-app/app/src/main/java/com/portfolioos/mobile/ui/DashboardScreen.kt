@@ -1,6 +1,7 @@
 package com.portfolioos.mobile.ui
 
 import com.portfolioos.mobile.BuildConfig
+import com.portfolioos.mobile.ui.components.PortfolioStateCard
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -15,6 +16,8 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
@@ -790,6 +793,16 @@ fun HoldingsView(
             items(radarSignals, key = { s -> s.title.ifEmpty { s.signalType } }) { signal ->
                 M3RadarCard(signal)
             }
+        } else {
+            item {
+                PortfolioStateCard(
+                    icon = Icons.Default.Info,
+                    iconTint = M3NeonCyan,
+                    title = "All Clear — No Radar Signals",
+                    subtitle = "Quant Scans Nominal",
+                    description = "No maturing tax lots, harvest opportunities, or asset drift triggers detected across your active holdings."
+                )
+            }
         }
 
         item {
@@ -822,18 +835,15 @@ fun HoldingsView(
 
         if (holdings.isEmpty()) {
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "No open holdings recorded in ledger.",
-                        color = M3TextMuted,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(20.dp)
-                    )
-                }
+                PortfolioStateCard(
+                    icon = Icons.Default.List,
+                    iconTint = M3ElectricLime,
+                    title = "No Open Holdings",
+                    subtitle = "Ledger Empty",
+                    description = "No active fund or equity holdings recorded in your ledger. Sync your CAS statement or add transactions to populate net worth metrics.",
+                    actionLabel = "Sync Statement",
+                    onAction = {}
+                )
             }
         } else {
             items(holdings, key = { h -> h.isin.ifEmpty { h.fundName } }) { holding ->
@@ -1027,18 +1037,13 @@ fun OverlapConcentrationPlaceholderView(holdings: List<FlatHoldingDto>) {
 
         if (bucketCounts.isEmpty()) {
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "No open holdings recorded.",
-                        color = M3TextMuted,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(20.dp)
-                    )
-                }
+                PortfolioStateCard(
+                    icon = Icons.Default.Star,
+                    iconTint = M3VibrantViolet,
+                    title = "No Bucket Concentration Data",
+                    subtitle = "Asset Allocation Pending",
+                    description = "Asset class and category concentration summaries will appear here once active holdings are recorded in your portfolio."
+                )
             }
         } else {
             items(bucketCounts.entries.toList(), key = { entry -> entry.key }) { (bucket, list) ->
@@ -1204,18 +1209,15 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
 
         if (groupedLots.isEmpty()) {
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "No tax lots recorded.",
-                        color = M3TextMuted,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(20.dp)
-                    )
-                }
+                PortfolioStateCard(
+                    icon = Icons.Default.Info,
+                    iconTint = M3AmberWarning,
+                    title = "No Open Tax Lots",
+                    subtitle = "Zero Active Tax Lots",
+                    description = "No open tax lots detected in ledger. Your portfolio may be fully liquidated, or tax lot breakdown data has not been synced yet.",
+                    actionLabel = "Refresh Tax Ledger",
+                    onAction = {}
+                )
             }
         } else {
             items(groupedLots.entries.toList(), key = { entry -> entry.key }) { (isin, lots) ->
@@ -1367,48 +1369,29 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
             )
         }
 
-        if (sellSide == null || tiers.isEmpty() || sellSide.totalRequired == 0.0) {
+        if (rebalancePlan == null) {
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                color = M3GreenPositive.copy(alpha = 0.15f),
-                                shape = CircleShape,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text("✓", color = M3GreenPositive, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Portfolio Allocation Balanced",
-                                    color = Color.White,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "No Rebalance Action Required",
-                                    color = M3GreenPositive,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "All asset categories remain within target allocation bands. LTCG exemption headroom is uncompromised.",
-                            color = M3TextMuted,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
+                PortfolioStateCard(
+                    icon = Icons.Default.Info,
+                    iconTint = M3NeonCyan,
+                    title = "Rebalance Plan Unavailable",
+                    subtitle = "Core Node Sync Required",
+                    description = "Point-in-time drawdown tiers and waterfall trade plans require connection to Core Node. Connect to Core Node to compute allocation drift.",
+                    actionLabel = "Sync with Core Node",
+                    onAction = {}
+                )
+            }
+        } else if (sellSide == null || tiers.isEmpty() || sellSide.totalRequired == 0.0) {
+            item {
+                PortfolioStateCard(
+                    icon = Icons.Default.CheckCircle,
+                    iconTint = M3GreenPositive,
+                    title = "Portfolio Allocation Balanced",
+                    subtitle = "No Rebalance Action Required",
+                    description = rebalancePlan.reasoningNarrative?.headline?.ifEmpty {
+                        "All asset categories remain within target allocation bands. LTCG exemption headroom is uncompromised."
+                    } ?: "All asset categories remain within target allocation bands. LTCG exemption headroom is uncompromised."
+                )
             }
         } else {
             item {
