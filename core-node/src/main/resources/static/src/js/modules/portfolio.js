@@ -1375,14 +1375,15 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
 
   if (sellFundProceeds.size > 0) {
     sellFundProceeds.forEach((amount, fundName) => {
-      nodesMap.set(fundName, { name: fundName, itemStyle: { color: '#94a3b8' } });
+      const sellNodeName = `${fundName} (Sell)`;
+      nodesMap.set(sellNodeName, { name: sellNodeName, itemStyle: { color: '#94a3b8' } });
       const regime = sellFundRegimes.get(fundName);
       let linkColor = '#10b981'; // Green for SEC_112A_EXEMPT
       if (regime === 'SEC_112A_TAXABLE_12_5') linkColor = '#f59e0b'; // Amber for taxable LTCG
       if (regime === 'SLAB_RATE_STCG') linkColor = '#ef4444'; // Red for STCG
 
       links.push({
-        source: fundName,
+        source: sellNodeName,
         target: poolNodeName,
         value: amount,
         lineStyle: { color: linkColor, opacity: 0.6 }
@@ -1411,10 +1412,11 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
     const funds = b.fund_breakdown || b.fundBreakdown || [];
     funds.forEach(f => {
       const fName = f.fundName || f.fund_name || f.fundId || f.fund_id;
+      const buyNodeName = `${fName} (Buy)`;
       const amount = parseFloat(f.amount || 0);
       if (amount > 0) {
-        nodesMap.set(fName, { name: fName, itemStyle: { color: '#38bdf8' } });
-        links.push({ source: poolNodeName, target: fName, value: amount, lineStyle: { color: '#38bdf8', opacity: 0.6 } });
+        nodesMap.set(buyNodeName, { name: buyNodeName, itemStyle: { color: '#38bdf8' } });
+        links.push({ source: poolNodeName, target: buyNodeName, value: amount, lineStyle: { color: '#38bdf8', opacity: 0.6 } });
       }
     });
   });
