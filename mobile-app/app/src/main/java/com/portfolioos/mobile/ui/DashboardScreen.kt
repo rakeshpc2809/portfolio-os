@@ -56,11 +56,15 @@ val M3TextMuted = Color(0xFF94A3B8)
 fun DashboardScreen(
     snapshot: SyncSnapshot?,
     isLoading: Boolean,
+    initialPage: Int = 0,
     onRefresh: () -> Unit,
     onUpdateCustomUrl: (String) -> Unit = {}
 ) {
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
+    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
+    LaunchedEffect(initialPage) {
+        pagerState.scrollToPage(initialPage)
+    }
     var showSimulatorBottomSheet by remember { mutableStateOf(false) }
     var selectedHoldingForSimulator by remember { mutableStateOf<FlatHoldingDto?>(null) }
     var showUrlDialog by remember { mutableStateOf(false) }
@@ -195,7 +199,7 @@ fun DashboardScreen(
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        val isExpandedWidth = maxWidth >= 600.dp
+                        val isExpandedWidth = false
                         if (isExpandedWidth) {
                             Row(modifier = Modifier.fillMaxSize()) {
                                 Box(modifier = Modifier.weight(0.5f).fillMaxHeight()) {
