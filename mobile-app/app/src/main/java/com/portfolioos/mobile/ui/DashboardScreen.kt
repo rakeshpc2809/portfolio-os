@@ -788,31 +788,26 @@ fun OverlapConcentrationPlaceholderView(holdings: List<FlatHoldingDto>) {
                         .padding(22.dp)
                 ) {
                     Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            color = M3VibrantViolet.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(100.dp)
                         ) {
                             Text(
-                                text = "OVERLAP & CONCENTRATION AUDIT",
+                                text = "COMING IN PHASE 2",
                                 color = M3VibrantViolet,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.5.sp
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
-                            Surface(
-                                color = M3VibrantViolet.copy(alpha = 0.2f),
-                                shape = RoundedCornerShape(100.dp)
-                            ) {
-                                Text(
-                                    text = "COMING IN PHASE 2",
-                                    color = M3VibrantViolet,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "OVERLAP & CONCENTRATION AUDIT",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.5.sp
+                        )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "Fund Overlap Matrix & Stock Look-Through",
