@@ -173,4 +173,46 @@ class RebalanceSankeyDtoTest {
         assertTrue(goldBucket.amountAllocated().compareTo(BigDecimal.ZERO) > 0, "Gold Floor Backstop must allocate non-zero to Gold");
         assertEquals(BigDecimal.ZERO, coreBucket.amountAllocated(), "Gold Floor Backstop must allocate 0 to non-Gold buckets");
     }
+
+    @Test
+    @DisplayName("Gold Dampener buy allocation reflects non-zero price extension deviation (+10% deviation -> 0.85x buy multiplier)")
+    void testGoldDampenedBuyAllocationWithNonZeroDeviation() {
+        BigDecimal currentNav = new BigDecimal("110.00");
+        BigDecimal sma200 = new BigDecimal("100.00");
+        // devPct = (110 - 100) / 100 * 100 = +10.0%
+        // buyMultiplier at +10% deviation = 1.30 - (10/20)*(1.30 - 0.40) = 0.8500
+        LocalDate acqDate = LocalDate.of(2024, 1, 1);
+
+        Lot goldLot = new Lot("lot-gold", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", acqDate, new BigDecimal("100"), new BigDecimal("100"), currentNav, new BigDecimal("11000.00"), false, null);
+        Lot coreLot = new Lot("lot-core", "INF109KC12U0", "ICICI LargeMidcap", acqDate, new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("100.00"), new BigDecimal("100000.00"), false, null);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF247L01BM8", currentNav,
+            "INF109KC12U0", new BigDecimal("100.00")
+        );
+
+        List<BucketEngine.BucketTarget> customTargets = List.of(
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("85.00"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("15.00"), new BigDecimal("5.00"))
+        );
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            List.of(goldLot, coreLot), Collections.emptyList(), navMap, LocalDate.of(2026, 8, 10),
+            currentNav, sma200, customTargets, "2026-27", "DRIFT", null, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.buySide());
+        RebalanceBucketAllocationDto goldBucket = plan.buySide().buckets().stream()
+            .filter(b -> "GOLD_SILVER".equals(b.bucket()))
+            .findFirst()
+            .orElseThrow();
+
+        BigDecimal totalPool = plan.buySide().totalToInvest();
+        BigDecimal baseAlloc = totalPool.multiply(new BigDecimal("15.00")).divide(new BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
+        BigDecimal expectedAlloc = baseAlloc.multiply(new BigDecimal("0.8500")).setScale(2, java.math.RoundingMode.HALF_UP);
+
+        assertEquals(expectedAlloc, goldBucket.amountAllocated(), "Gold amountAllocated must equal 0.85x dampened base allocation at +10% deviation");
+        assertNotEquals(baseAlloc.multiply(new BigDecimal("1.3000")).setScale(2, java.math.RoundingMode.HALF_UP), goldBucket.amountAllocated(), "Gold amountAllocated must NOT equal 1.30x cheap multiplier when deviation is +10%");
+    }
 }

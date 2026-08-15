@@ -47,6 +47,14 @@ async function initDashboard() {
     const planData = await fetchJson(`/sync/rebalance/plan?triggerType=DRIFT`).catch(() => null);
     if (planData) renderUnifiedRebalancePlanUI(planData);
 
+    if (window.location.search.includes('focus=sankey')) {
+      document.querySelectorAll('.glass-card, .header-container, nav, header').forEach(el => {
+        if (el.id !== 'rebalancePlanCard' && !el.contains(document.getElementById('rebalancePlanCard'))) {
+          el.style.display = 'none';
+        }
+      });
+    }
+
     const bucketData = await fetchJson(`/rebalance/bucket?fy=${state.currentFy}`).catch(() => null);
     if (bucketData) renderBucketRebalance(bucketData);
 

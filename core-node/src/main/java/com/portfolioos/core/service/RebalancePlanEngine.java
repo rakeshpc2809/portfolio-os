@@ -379,8 +379,20 @@ public class RebalancePlanEngine {
                     amountAllocated = BigDecimal.ZERO;
                 }
             } else if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER && totalPool.compareTo(BigDecimal.ZERO) > 0) {
-                // Apply GoldDampenerCalculator for Gold/Silver bucket
-                double devPct = 0.0; // default neutral dev if NAV history absent
+                // Apply GoldDampenerCalculator for Gold/Silver bucket using real NAV & 200-day MA deviation
+                BigDecimal goldNav = BigDecimal.ZERO;
+                if (openLots != null) {
+                    for (Lot lot : openLots) {
+                        if ("GOLD_SILVER".equals(BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName()))) {
+                            goldNav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ZERO);
+                            if (goldNav.compareTo(BigDecimal.ZERO) > 0) break;
+                        }
+                    }
+                }
+                double currentPriceVal = goldNav.compareTo(BigDecimal.ZERO) > 0 ? goldNav.doubleValue() : (benchmarkCurrent != null ? benchmarkCurrent.doubleValue() : 1.0);
+                double sma200Val = (benchmarkRollingHigh != null && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0) ? benchmarkRollingHigh.doubleValue() : currentPriceVal;
+                double devPct = (sma200Val > 0.0) ? ((currentPriceVal - sma200Val) / sma200Val) * 100.0 : 0.0;
+
                 GoldDampenerCalculator.DampenerMultipliers mults = GoldDampenerCalculator.calculateMultipliers(devPct);
                 BigDecimal baseAlloc = totalPool.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
                 amountAllocated = baseAlloc.multiply(BigDecimal.valueOf(mults.buyMultiplier())).setScale(2, RoundingMode.HALF_UP).min(totalPool);
