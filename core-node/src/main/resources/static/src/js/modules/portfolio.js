@@ -1444,7 +1444,6 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
       bottom: 15,
       nodeWidth: 14,
       nodeGap: 12,
-      layout: 'none',
       emphasis: { focus: 'adjacency' },
       data: Array.from(nodesMap.values()),
       links: links,

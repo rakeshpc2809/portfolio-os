@@ -12,7 +12,7 @@ import {
   renderBucketRebalance,
   renderUnifiedRebalancePlanUI,
   fetchFireSummary
-} from './js/modules/portfolio.js';
+} from './js/modules/portfolio.js?v=3.5.0';
 import { updateExemptionMeter, updateReportMetrics, renderDecisionRadar, renderRealizedLogTable } from './js/modules/tax.js';
 
 const DEFAULT_AUTH_TOKEN = 'fintracker-cachyos-default-key-2026';
