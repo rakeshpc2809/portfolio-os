@@ -65,7 +65,7 @@ object SyncApiClient {
             try {
                 val formatted = if (customUrl.endsWith("/")) customUrl else "$customUrl/"
                 val remoteSnapshot = createService(formatted).getSnapshot(token = authToken)
-                SnapshotCacheManager.saveSnapshot(context, remoteSnapshot)
+                SnapshotCacheManager.saveSnapshot(context, remoteSnapshot, isFullLedgerSync = true)
                 return remoteSnapshot
             } catch (e: Exception) {
                 // fallthrough to local networks
@@ -75,25 +75,27 @@ object SyncApiClient {
         // 2. Try USB Loopback (adb reverse)
         try {
             val snapshot = createService(USB_BASE_URL).getSnapshot(token = authToken)
-            SnapshotCacheManager.saveSnapshot(context, snapshot)
+            SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
             return snapshot
         } catch (e1: Exception) {
             // 3. Try Android Emulator loopback
             try {
                 val snapshot = createService(EMULATOR_BASE_URL).getSnapshot(token = authToken)
-                SnapshotCacheManager.saveSnapshot(context, snapshot)
+                SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
                 return snapshot
             } catch (e2: Exception) {
                 // 4. Try Wi-Fi LAN IP
                 try {
                     val snapshot = createService(WIFI_BASE_URL).getSnapshot(token = authToken)
-                    SnapshotCacheManager.saveSnapshot(context, snapshot)
+                    SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
                     return snapshot
                 } catch (e3: Exception) {
                     // 5. Offline Fallback: Load cached snapshot & fetch direct AMFI NAVs over cellular!
                     val cached = SnapshotCacheManager.loadSnapshot(context)
                     if (cached != null) {
-                        return SnapshotCacheManager.updateOfflineSnapshotWithLiveAmfi(cached)
+                        val updated = SnapshotCacheManager.updateOfflineSnapshotWithLiveAmfi(cached)
+                        SnapshotCacheManager.saveSnapshot(context, updated, isFullLedgerSync = false)
+                        return updated
                     } else {
                         throw e3
                     }

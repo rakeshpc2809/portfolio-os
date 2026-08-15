@@ -22,33 +22,70 @@ class MainActivity : ComponentActivity() {
             val page by activePage
             var snapshot by remember { mutableStateOf<SyncSnapshot?>(null) }
             var isLoading by remember { mutableStateOf(true) }
+            var isRefreshing by remember { mutableStateOf(false) }
+            val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+            
+            var lastSyncMillis by remember { mutableLongStateOf(SnapshotCacheManager.getLastSyncTimestamp(applicationContext)) }
+            var lastFullLedgerMillis by remember { mutableLongStateOf(SnapshotCacheManager.getLastFullLedgerTimestamp(applicationContext)) }
+            var isAmfiFallback by remember { mutableStateOf(SnapshotCacheManager.isAmfiFallback(applicationContext)) }
+            
             val scope = rememberCoroutineScope()
 
-            fun fetchSyncSnapshot() {
+            fun fetchSyncSnapshot(isManualRefresh: Boolean = false) {
                 scope.launch {
-                    isLoading = true
+                    if (isManualRefresh) {
+                        isRefreshing = true
+                    } else if (snapshot == null) {
+                        isLoading = true
+                    }
                     try {
-                        snapshot = SyncApiClient.fetchSnapshotWithFallback(applicationContext)
+                        val newSnapshot = SyncApiClient.fetchSnapshotWithFallback(applicationContext)
+                        snapshot = newSnapshot
+                        lastSyncMillis = SnapshotCacheManager.getLastSyncTimestamp(applicationContext)
+                        lastFullLedgerMillis = SnapshotCacheManager.getLastFullLedgerTimestamp(applicationContext)
+                        isAmfiFallback = SnapshotCacheManager.isAmfiFallback(applicationContext)
                     } catch (e: Exception) {
                         e.printStackTrace()
+                        if (snapshot != null && isManualRefresh) {
+                            snackbarHostState.showSnackbar("Sync failed — showing cached data")
+                        }
                     } finally {
                         isLoading = false
+                        isRefreshing = false
                     }
                 }
             }
 
             LaunchedEffect(Unit) {
-                fetchSyncSnapshot()
+                fetchSyncSnapshot(isManualRefresh = false)
             }
 
             DashboardScreen(
                 snapshot = snapshot,
                 isLoading = isLoading,
+                isRefreshing = isRefreshing,
+                lastSyncMillis = lastSyncMillis,
+                lastFullLedgerMillis = lastFullLedgerMillis,
+                isAmfiFallback = isAmfiFallback,
+                snackbarHostState = snackbarHostState,
                 initialPage = page,
-                onRefresh = { fetchSyncSnapshot() },
+                onRefresh = { fetchSyncSnapshot(isManualRefresh = true) },
                 onUpdateCustomUrl = { newUrl ->
                     SnapshotCacheManager.setCustomUrl(applicationContext, newUrl)
-                    fetchSyncSnapshot()
+                    fetchSyncSnapshot(isManualRefresh = true)
+                },
+                onSimulateAmfiFallback = {
+                    if (snapshot != null) {
+                        SnapshotCacheManager.saveSnapshot(applicationContext, snapshot!!, isFullLedgerSync = false)
+                        lastSyncMillis = System.currentTimeMillis()
+                        lastFullLedgerMillis = System.currentTimeMillis() - 172800000L // 2 days ago
+                        isAmfiFallback = true
+                    }
+                },
+                onSimulateSyncFailure = {
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Sync failed — showing cached data")
+                    }
                 }
             )
         }

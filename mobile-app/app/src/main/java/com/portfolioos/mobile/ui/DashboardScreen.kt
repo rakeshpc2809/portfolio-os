@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -56,12 +58,27 @@ val M3TextMuted = Color(0xFF94A3B8)
 fun DashboardScreen(
     snapshot: SyncSnapshot?,
     isLoading: Boolean,
+    isRefreshing: Boolean = false,
+    lastSyncMillis: Long = 0L,
+    lastFullLedgerMillis: Long = 0L,
+    isAmfiFallback: Boolean = false,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     initialPage: Int = 0,
     onRefresh: () -> Unit,
-    onUpdateCustomUrl: (String) -> Unit = {}
+    onUpdateCustomUrl: (String) -> Unit = {},
+    onSimulateAmfiFallback: () -> Unit = {},
+    onSimulateSyncFailure: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    }
+
     LaunchedEffect(snapshot) {
         if (snapshot != null) {
             pagerState.scrollToPage(initialPage)
@@ -72,8 +89,19 @@ fun DashboardScreen(
     var showUrlDialog by remember { mutableStateOf(false) }
     var inputUrl by remember { mutableStateOf("") }
 
-    val derivedInfo by remember(snapshot) {
-        derivedStateOf { snapshot?.syncInfo }
+    fun formatRelativeTime(millis: Long): String {
+        if (millis <= 0L) return "Never"
+        val diffSec = (System.currentTimeMillis() - millis) / 1000
+        return when {
+            diffSec < 10 -> "just now"
+            diffSec < 60 -> "${diffSec}s ago"
+            diffSec < 3600 -> "${diffSec / 60}m ago"
+            diffSec < 86400 -> "${diffSec / 3600}h ago"
+            else -> {
+                val sdf = java.text.SimpleDateFormat("dd MMM HH:mm", java.util.Locale.US)
+                sdf.format(java.util.Date(millis))
+            }
+        }
     }
 
     MaterialTheme(
@@ -109,13 +137,22 @@ fun DashboardScreen(
                                 2 -> "TAX & COMPLIANCE AUDIT" to M3NeonCyan
                                 else -> "FIRE & REBALANCING" to M3AmberWarning
                             }
+                            
+                            val timestampText = if (isAmfiFallback && lastFullLedgerMillis > 0L) {
+                                "Valuations ${formatRelativeTime(lastSyncMillis)} (AMFI) · Ledger ${formatRelativeTime(lastFullLedgerMillis)}"
+                            } else if (lastSyncMillis > 0L) {
+                                "Synced ${formatRelativeTime(lastSyncMillis)}"
+                            } else {
+                                sectionTagText
+                            }
+
                             Surface(
                                 color = sectionTagColor.copy(alpha = 0.15f),
                                 shape = RoundedCornerShape(100.dp),
                                 modifier = Modifier.padding(top = 2.dp)
                             ) {
                                 Text(
-                                    text = sectionTagText,
+                                    text = timestampText,
                                     fontSize = 10.sp,
                                     color = sectionTagColor,
                                     fontWeight = FontWeight.Bold,
@@ -137,6 +174,18 @@ fun DashboardScreen(
                         containerColor = M3ObsidianDark
                     )
                 )
+
+                AnimatedVisibility(
+                    visible = isRefreshing,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = M3ElectricLime,
+                        trackColor = M3ObsidianDark
+                    )
+                }
 
                 if (isLoading) {
                     Box(
@@ -367,6 +416,13 @@ fun DashboardScreen(
                 }
             }
 
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 90.dp)
+            )
+
             // Dialog for setting Custom Core Node Remote Server URL (Tailscale / Ngrok / LAN IP)
             if (showUrlDialog) {
                 AlertDialog(
@@ -387,6 +443,32 @@ fun DashboardScreen(
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onSimulateAmfiFallback()
+                                        showUrlDialog = false
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(100.dp)
+                                ) {
+                                    Text("Test AMFI Tag", color = M3VibrantViolet, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        onSimulateSyncFailure()
+                                        showUrlDialog = false
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(100.dp)
+                                ) {
+                                    Text("Test Failure", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     },
                     confirmButton = {
