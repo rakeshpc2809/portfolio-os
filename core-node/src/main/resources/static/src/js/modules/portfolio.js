@@ -1353,9 +1353,22 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
   const sellFundProceeds = new Map();
   const sellFundRegimes = new Map();
 
+  const shortenFundName = rawName => {
+    if (!rawName) return '';
+    return rawName
+      .replace(/\s*-\s*Direct Plan Growth\s*\(Non Demat\)/gi, '')
+      .replace(/\s*-\s*DIRECT GROWTH PLAN GROWTH OPTION\s*\(Non Demat\)/gi, '')
+      .replace(/\s*Direct Plan\s*-\s*Growth/gi, '')
+      .replace(/\s*-\s*Direct Plan Growth/gi, '')
+      .replace(/\s*Direct Growth Plan Growth Option\s*\(Non Demat\)/gi, '')
+      .replace(/\s*-\s*Direct Growth/gi, '')
+      .trim();
+  };
+
   (sellSide.waterfall || []).forEach(tier => {
     (tier.lots || []).forEach(lot => {
-      const fName = lot.fundName || lot.fund_name || lot.fundId || lot.fund_id;
+      const rawName = lot.fundName || lot.fund_name || lot.fundId || lot.fund_id;
+      const fName = shortenFundName(rawName);
       const proceeds = parseFloat(lot.saleProceeds || lot.sale_proceeds || 0);
       if (proceeds > 0) {
         sellFundProceeds.set(fName, (sellFundProceeds.get(fName) || 0) + proceeds);
@@ -1411,7 +1424,8 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
   (buySide.buckets || []).forEach(b => {
     const funds = b.fund_breakdown || b.fundBreakdown || [];
     funds.forEach(f => {
-      const fName = f.fundName || f.fund_name || f.fundId || f.fund_id;
+      const rawName = f.fundName || f.fund_name || f.fundId || f.fund_id;
+      const fName = shortenFundName(rawName);
       const buyNodeName = `${fName} (Buy)`;
       const amount = parseFloat(f.amount || 0);
       if (amount > 0) {
