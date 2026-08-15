@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
             var lastSyncMillis by remember { mutableLongStateOf(SnapshotCacheManager.getLastSyncTimestamp(applicationContext)) }
             var lastFullLedgerMillis by remember { mutableLongStateOf(SnapshotCacheManager.getLastFullLedgerTimestamp(applicationContext)) }
             var isAmfiFallback by remember { mutableStateOf(SnapshotCacheManager.isAmfiFallback(applicationContext)) }
+            var isFullyOffline by remember { mutableStateOf(SnapshotCacheManager.isFullyOffline(applicationContext)) }
             
             val scope = rememberCoroutineScope()
 
@@ -44,10 +45,18 @@ class MainActivity : ComponentActivity() {
                         lastSyncMillis = SnapshotCacheManager.getLastSyncTimestamp(applicationContext)
                         lastFullLedgerMillis = SnapshotCacheManager.getLastFullLedgerTimestamp(applicationContext)
                         isAmfiFallback = SnapshotCacheManager.isAmfiFallback(applicationContext)
+                        isFullyOffline = SnapshotCacheManager.isFullyOffline(applicationContext)
                     } catch (e: Exception) {
                         e.printStackTrace()
-                        if (snapshot != null && isManualRefresh) {
-                            snackbarHostState.showSnackbar("Sync failed — showing cached data")
+                        if (snapshot != null) {
+                            isFullyOffline = true
+                            SnapshotCacheManager.setFullyOffline(applicationContext, true)
+                            if (isManualRefresh) {
+                                snackbarHostState.showSnackbar(
+                                    message = "Sync failed — showing cached data",
+                                    duration = androidx.compose.material3.SnackbarDuration.Short
+                                )
+                            }
                         }
                     } finally {
                         isLoading = false
@@ -67,6 +76,7 @@ class MainActivity : ComponentActivity() {
                 lastSyncMillis = lastSyncMillis,
                 lastFullLedgerMillis = lastFullLedgerMillis,
                 isAmfiFallback = isAmfiFallback,
+                isFullyOffline = isFullyOffline,
                 snackbarHostState = snackbarHostState,
                 initialPage = page,
                 onRefresh = { fetchSyncSnapshot(isManualRefresh = true) },
@@ -80,6 +90,8 @@ class MainActivity : ComponentActivity() {
                         lastSyncMillis = System.currentTimeMillis()
                         lastFullLedgerMillis = System.currentTimeMillis()
                         isAmfiFallback = false
+                        isFullyOffline = false
+                        SnapshotCacheManager.setFullyOffline(applicationContext, false)
                     }
                 },
                 onSimulateAmfiFallback = {
@@ -88,6 +100,14 @@ class MainActivity : ComponentActivity() {
                         lastSyncMillis = System.currentTimeMillis()
                         lastFullLedgerMillis = System.currentTimeMillis() - 172800000L // 2 days ago
                         isAmfiFallback = true
+                        isFullyOffline = false
+                        SnapshotCacheManager.setFullyOffline(applicationContext, false)
+                    }
+                },
+                onSimulateFullyOffline = {
+                    if (snapshot != null) {
+                        isFullyOffline = !isFullyOffline
+                        SnapshotCacheManager.setFullyOffline(applicationContext, isFullyOffline)
                     }
                 },
                 onSimulateRefreshing = {

@@ -21,6 +21,9 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -62,12 +65,14 @@ fun DashboardScreen(
     lastSyncMillis: Long = 0L,
     lastFullLedgerMillis: Long = 0L,
     isAmfiFallback: Boolean = false,
+    isFullyOffline: Boolean = false,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     initialPage: Int = 0,
     onRefresh: () -> Unit,
     onUpdateCustomUrl: (String) -> Unit = {},
     onSimulateFullSync: () -> Unit = {},
     onSimulateAmfiFallback: () -> Unit = {},
+    onSimulateFullyOffline: () -> Unit = {},
     onSimulateRefreshing: () -> Unit = {},
     onSimulateSyncFailure: () -> Unit = {}
 ) {
@@ -140,23 +145,22 @@ fun DashboardScreen(
                                 else -> "FIRE & REBALANCING" to M3AmberWarning
                             }
                             
-                            val timestampText = if (isAmfiFallback && lastFullLedgerMillis > 0L) {
-                                "Valuations ${formatRelativeTime(lastSyncMillis)} (AMFI) · Ledger ${formatRelativeTime(lastFullLedgerMillis)}"
-                            } else if (lastSyncMillis > 0L) {
-                                "Synced ${formatRelativeTime(lastSyncMillis)}"
-                            } else {
-                                sectionTagText
+                            val (timestampText, pillColor) = when {
+                                isFullyOffline && lastSyncMillis > 0L -> "Offline · Synced ${formatRelativeTime(lastSyncMillis)}" to M3AmberWarning
+                                isAmfiFallback && lastFullLedgerMillis > 0L -> "Valuations ${formatRelativeTime(lastSyncMillis)} (AMFI) · Ledger ${formatRelativeTime(lastFullLedgerMillis)}" to sectionTagColor
+                                lastSyncMillis > 0L -> "Synced ${formatRelativeTime(lastSyncMillis)}" to sectionTagColor
+                                else -> sectionTagText to sectionTagColor
                             }
 
                             Surface(
-                                color = sectionTagColor.copy(alpha = 0.15f),
+                                color = pillColor.copy(alpha = 0.15f),
                                 shape = RoundedCornerShape(100.dp),
                                 modifier = Modifier.padding(top = 2.dp)
                             ) {
                                 Text(
                                     text = timestampText,
                                     fontSize = 10.sp,
-                                    color = sectionTagColor,
+                                    color = pillColor,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
                                 )
@@ -189,6 +193,38 @@ fun DashboardScreen(
                     )
                 }
 
+                AnimatedVisibility(
+                    visible = isFullyOffline && snapshot != null,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Surface(
+                        color = Color(0xFFF59E0B).copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "OFFLINE MODE — Showing cached portfolio data from ${formatRelativeTime(lastSyncMillis)}",
+                                color = Color(0xFFF59E0B),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
                 if (isLoading) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -211,16 +247,17 @@ fun DashboardScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
-                                    text = "Core Node Offline / Not Synced",
+                                    text = "No Connection & No Cached Data",
                                     color = Color.White,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Connect over Wi-Fi, USB, or set a custom server URL.",
+                                    text = "No internet connection & no cached portfolio data available. Connect to Wi-Fi, USB, or set server URL.",
                                     color = M3TextMuted,
-                                    fontSize = 12.sp
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
