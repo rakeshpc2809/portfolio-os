@@ -374,19 +374,41 @@ public class DuckDbProjector {
         List<NetWorthPoint> trend = new ArrayList<>();
         try (Connection conn = getConnection()) {
             String sql = """
+                WITH daily_dates AS (
+                    SELECT DISTINCT nav_date FROM nav_history
+                ),
+                asset_latest_nav AS (
+                    SELECT 
+                        d.nav_date,
+                        pe.asset_id,
+                        SUM(CASE 
+                                WHEN pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT') THEN CAST(pe.units AS DOUBLE)
+                                WHEN pe.event_type = 'DISPOSAL' THEN -CAST(pe.units AS DOUBLE)
+                                ELSE 0.0 
+                            END) AS active_units,
+                        (
+                            SELECT nh.nav 
+                            FROM nav_history nh 
+                            WHERE nh.asset_id = pe.asset_id AND nh.nav_date <= d.nav_date 
+                            ORDER BY nh.nav_date DESC 
+                            LIMIT 1
+                        ) AS nav,
+                        SUM(CASE 
+                                WHEN pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT') THEN CAST(pe.gross_amount AS DOUBLE)
+                                WHEN pe.event_type = 'DISPOSAL' THEN -CAST(pe.gross_amount AS DOUBLE)
+                                ELSE 0.0 
+                            END) AS invested_amount
+                    FROM daily_dates d
+                    JOIN projected_events pe ON pe.event_date <= d.nav_date
+                    GROUP BY d.nav_date, pe.asset_id
+                )
                 SELECT 
-                    nh.nav_date,
-                    SUM(CAST(pe.units AS DOUBLE) * nh.nav) AS total_valuation,
-                    SUM(CASE 
-                            WHEN pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT') THEN CAST(pe.gross_amount AS DOUBLE)
-                            WHEN pe.event_type = 'DISPOSAL' THEN -CAST(pe.gross_amount AS DOUBLE)
-                            ELSE 0.0 
-                        END) AS total_invested
-                FROM nav_history nh
-                JOIN projected_events pe ON nh.asset_id = pe.asset_id
-                WHERE pe.event_date <= nh.nav_date
-                GROUP BY nh.nav_date
-                ORDER BY nh.nav_date ASC
+                    nav_date,
+                    SUM(active_units * COALESCE(nav, 0.0)) AS total_valuation,
+                    SUM(invested_amount) AS total_invested
+                FROM asset_latest_nav
+                GROUP BY nav_date
+                ORDER BY nav_date ASC
             """;
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(sql)) {
