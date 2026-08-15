@@ -1122,12 +1122,20 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "${lot.buyDate} · ${lot.units} u @ ${formatInr(lot.costPerUnit)}",
-                                color = M3TextMuted,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
+                            Column {
+                                Text(
+                                    text = schemeName,
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${lot.buyDate} · ${lot.units} u @ ${formatInr(lot.costPerUnit)}",
+                                    color = M3TextMuted,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
                             Text(
                                 text = if (lot.isLongTerm) "LTCG" else "STCG (${lot.daysToLtcg}d)",
                                 color = if (lot.isLongTerm) M3GreenPositive else M3AmberWarning,
