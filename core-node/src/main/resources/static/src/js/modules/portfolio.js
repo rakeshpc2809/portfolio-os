@@ -1356,10 +1356,12 @@ function renderRebalanceBoxConnector(plan) {
   const taxSum = sellSide.tax_summary || sellSide.taxSummary || {};
 
   const totalRealized = parseFloat(taxSum.total_sale_proceeds ?? taxSum.totalSaleProceeds ?? buySide.total_to_invest ?? buySide.totalToInvest ?? 0);
-  const tradeExempt = parseFloat(taxSum.total_ltcg_exemption_applied ?? taxSum.totalLtcgExemptionApplied ?? 0);
-  const priorUsed = parseFloat(taxSum.ytd_ltcg_exemption_prior_used ?? taxSum.ytdLtcgExemptionPriorUsed ?? 0);
+  const tradeExempt = parseFloat(taxSum.total_ltcg_exempt ?? taxSum.totalLtcgExempt ?? taxSum.total_ltcg_exemption_applied ?? 0);
+  const headroomBefore = parseFloat(taxSum.exemption_headroom_before ?? taxSum.exemptionHeadroomBefore ?? 125000);
+  const headroomAfter = parseFloat(taxSum.exemption_headroom_after ?? taxSum.exemptionHeadroomAfter ?? (headroomBefore - tradeExempt));
+  const priorUsed = Math.max(0, 125000 - headroomBefore);
   const totalYtdExempt = priorUsed + tradeExempt;
-  const headroomRem = Math.max(0, 125000 - totalYtdExempt);
+  const headroomRem = headroomAfter;
   const totalTax = parseFloat(taxSum.total_tax_estimate ?? taxSum.totalTaxEstimate ?? 0);
 
   // 1. Update Summary Bar
