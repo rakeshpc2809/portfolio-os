@@ -1336,10 +1336,14 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
   const container = document.getElementById('rebalanceSankeyChart');
   if (!container || typeof echarts === 'undefined') return;
 
-  let chart = echarts.getInstanceByDom(container);
-  if (!chart) {
-    chart = echarts.init(container);
+  container.innerHTML = '';
+  container.style.width = '1400px';
+  container.style.height = '240px';
+  if (echarts.getInstanceByDom(container)) {
+    echarts.dispose(container);
   }
+  const chart = echarts.init(container, null, { width: 1400, height: 240 });
+  console.log('SANKEY DEBUG:', { sellSide, buySide });
 
   const nodesMap = new Map();
   const links = [];
@@ -1443,6 +1447,7 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
   };
 
   chart.setOption(option, true);
+  chart.resize();
 }
 
 function renderTacticalActionMatrix(plan) {
