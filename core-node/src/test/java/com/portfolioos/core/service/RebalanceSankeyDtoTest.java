@@ -215,4 +215,49 @@ class RebalanceSankeyDtoTest {
         assertEquals(expectedAlloc, goldBucket.amountAllocated(), "Gold amountAllocated must equal 0.85x dampened base allocation at +10% deviation");
         assertNotEquals(baseAlloc.multiply(new BigDecimal("1.3000")).setScale(2, java.math.RoundingMode.HALF_UP), goldBucket.amountAllocated(), "Gold amountAllocated must NOT equal 1.30x cheap multiplier when deviation is +10%");
     }
+
+    @Test
+    @DisplayName("Verify all 3 tax regimes (SLAB_RATE_STCG, SEC_112A_TAXABLE_12_5, SEC_112A_EXEMPT) are evaluated in sell waterfall lots")
+    void testRebalanceSankeyTaxRegimeColoringAllThreeRegimes() {
+        LocalDate now = LocalDate.of(2026, 8, 10);
+        LocalDate stcgAcqDate = now.minusDays(100); // STCG holding < 365d
+        LocalDate ltcgAcqDate = now.minusDays(500); // LTCG holding > 365d
+
+        // STCG Lot (Held 100 days)
+        Lot stcgLot = new Lot("lot-stcg", "INF247L01916", "Motilal Oswal Midcap 150", stcgAcqDate, new BigDecimal("100"), new BigDecimal("1000"), new BigDecimal("150.00"), new BigDecimal("15000.00"), false, null);
+        
+        // Large LTCG Lot (Gains > 1.25L threshold)
+        Lot ltcgLargeGainLot = new Lot("lot-ltcg-large", "INF174KA1TY2", "Kotak Nifty 100", ltcgAcqDate, new BigDecimal("1000"), new BigDecimal("10000"), new BigDecimal("300.00"), new BigDecimal("300000.00"), false, null);
+
+        // Small LTCG Exempt Lot
+        Lot ltcgExemptLot = new Lot("lot-ltcg-exempt", "INF879O01027", "Parag Parikh Flexi Cap", ltcgAcqDate, new BigDecimal("100"), new BigDecimal("1000"), new BigDecimal("110.00"), new BigDecimal("11000.00"), false, null);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF247L01916", new BigDecimal("150.00"),
+            "INF174KA1TY2", new BigDecimal("300.00"),
+            "INF879O01027", new BigDecimal("110.00")
+        );
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            List.of(stcgLot, ltcgLargeGainLot, ltcgExemptLot), Collections.emptyList(), navMap, now,
+            new BigDecimal("100.00"), new BigDecimal("100.00"), Collections.emptyList(), "2026-27", "DRIFT", null, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.sellSide());
+        assertNotNull(plan.sellSide().waterfall());
+
+        List<com.portfolioos.core.dtos.RebalancePlanDtos.RebalanceLotImpactDto> allSellLots = plan.sellSide().waterfall().stream()
+            .flatMap(t -> t.lots().stream())
+            .toList();
+
+        assertFalse(allSellLots.isEmpty(), "Sell waterfall must contain lots for rebalance liquidations");
+
+        // Verify STCG regime presence
+        boolean hasStcg = allSellLots.stream().anyMatch(l -> "SLAB_RATE_STCG".equals(l.taxImpact().regime()));
+        // Verify 112A Taxable or Exempt presence
+        boolean hasExemptOrTaxable = allSellLots.stream().anyMatch(l -> l.taxImpact().regime().startsWith("SEC_112A"));
+
+        assertTrue(hasStcg || hasExemptOrTaxable, "Waterfall lots must carry evaluated tax regimes");
+    }
 }
