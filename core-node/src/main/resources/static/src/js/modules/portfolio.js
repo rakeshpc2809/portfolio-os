@@ -287,6 +287,7 @@ export async function loadNetWorthTrend(isMonthly = false) {
     let dates = data.dates;
     let values = data.values;
     let investedValues = data.invested_values || data.investedValues || [];
+    let coverage = typeof data.coverage_pct === 'number' ? data.coverage_pct : 100.0;
 
     if (isMonthly) {
       const resampled = resampleToMonthEnd(dates, values, investedValues);
@@ -296,7 +297,9 @@ export async function loadNetWorthTrend(isMonthly = false) {
     } else {
       const windowBadge = document.getElementById('netWorthWindowBadge');
       if (windowBadge) {
-        windowBadge.textContent = 'Daily Valuation & Capital Contributed';
+        windowBadge.textContent = coverage >= 99.0
+          ? 'Daily Valuation & Capital Contributed (100% Mark-to-Market NAV)'
+          : `Daily Valuation & Capital Contributed (${coverage.toFixed(0)}% NAV Coverage)`;
       }
     }
 

@@ -102,14 +102,21 @@ public class PortfolioValuationService {
         List<String> dates = new ArrayList<>();
         List<Double> values = new ArrayList<>();
         List<Double> investedValues = new ArrayList<>();
+        List<Boolean> isEstimated = new ArrayList<>();
+        int estimatedCount = 0;
 
         for (DuckDbProjector.NetWorthPoint p : rawTrend) {
             dates.add(p.date());
             values.add(p.valuation());
             investedValues.add(p.invested());
+            isEstimated.add(p.isEstimated());
+            if (p.isEstimated()) {
+                estimatedCount++;
+            }
         }
 
-        return new NetWorthTrendResponse(dates, values, investedValues);
+        double coveragePct = rawTrend.isEmpty() ? 100.0 : ((double) (rawTrend.size() - estimatedCount) / rawTrend.size()) * 100.0;
+        return new NetWorthTrendResponse(dates, values, investedValues, isEstimated, coveragePct);
     }
 
     public List<HoldingDetailDto> getHoldings() {

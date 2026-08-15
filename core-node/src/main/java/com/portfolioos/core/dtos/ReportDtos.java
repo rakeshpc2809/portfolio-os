@@ -19,7 +19,9 @@ public class ReportDtos {
     public record NetWorthTrendResponse(
         @JsonProperty("dates") List<String> dates,
         @JsonProperty("values") List<Double> values,
-        @JsonProperty("invested_values") List<Double> investedValues
+        @JsonProperty("invested_values") List<Double> investedValues,
+        @JsonProperty("is_estimated") List<Boolean> isEstimated,
+        @JsonProperty("coverage_pct") double coveragePct
     ) {}
 
     public record AssetAllocationEntry(

@@ -394,7 +394,8 @@ public class DuckDbProjector {
     public static record NetWorthPoint(
         String date,
         double valuation,
-        double invested
+        double invested,
+        boolean isEstimated
     ) {}
 
     public List<NetWorthPoint> getDailyNetWorthTrend() {
@@ -415,16 +416,14 @@ public class DuckDbProjector {
                                 WHEN pe.event_type = 'DISPOSAL' THEN -CAST(pe.units AS DOUBLE)
                                 ELSE 0.0 
                             END) AS active_units,
-                        COALESCE(
-                            (
-                                SELECT nh.nav 
-                                FROM nav_history nh 
-                                WHERE nh.asset_id = pe.asset_id AND nh.nav_date <= d.nav_date 
-                                ORDER BY nh.nav_date DESC 
-                                LIMIT 1
-                            ),
-                            AVG(CAST(pe.price_per_unit AS DOUBLE))
-                        ) AS latest_nav
+                        (
+                            SELECT nh.nav 
+                            FROM nav_history nh 
+                            WHERE nh.asset_id = pe.asset_id AND nh.nav_date <= d.nav_date 
+                            ORDER BY nh.nav_date DESC 
+                            LIMIT 1
+                        ) AS market_nav,
+                        AVG(CAST(pe.price_per_unit AS DOUBLE)) AS cost_nav
                     FROM daily_dates d
                     JOIN projected_events pe ON pe.event_date <= d.nav_date
                     GROUP BY d.nav_date, pe.asset_id
@@ -432,8 +431,9 @@ public class DuckDbProjector {
                 daily_valuation AS (
                     SELECT 
                         nav_date,
-                        SUM(active_units * COALESCE(latest_nav, 0.0)) AS total_valuation
-                    FROM active_units_per_asset
+                        SUM(active_units * COALESCE(market_nav, cost_nav, 0.0)) AS total_valuation,
+                        SUM(CASE WHEN a.asset_id LIKE 'INF%' AND NOT EXISTS (SELECT 1 FROM nav_history nh2 WHERE nh2.asset_id = a.asset_id) AND a.active_units > 0 THEN 1 ELSE 0 END) AS fallback_count
+                    FROM active_units_per_asset a
                     WHERE active_units > 0
                     GROUP BY nav_date
                 ),
@@ -452,7 +452,8 @@ public class DuckDbProjector {
                 SELECT 
                     v.nav_date,
                     v.total_valuation,
-                    i.total_invested
+                    i.total_invested,
+                    (v.fallback_count > 0) AS is_estimated
                 FROM daily_valuation v
                 JOIN daily_invested i ON v.nav_date = i.nav_date
                 ORDER BY v.nav_date ASC
@@ -463,36 +464,12 @@ public class DuckDbProjector {
                     String d = rs.getString("nav_date");
                     double val = rs.getDouble("total_valuation");
                     double inv = rs.getDouble("total_invested");
-                    trend.add(new NetWorthPoint(d, val, inv));
+                    boolean est = rs.getBoolean("is_estimated");
+                    trend.add(new NetWorthPoint(d, val, inv, est));
                 }
             }
-
-            if (trend.size() < 10) {
-                String fallbackSql = """
-                    SELECT 
-                        event_date,
-                        SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(gross_amount AS DOUBLE) ELSE -CAST(gross_amount AS DOUBLE) END) OVER (ORDER BY event_date ASC) AS cumulative_invested,
-                        SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(units AS DOUBLE) * CAST(price_per_unit AS DOUBLE) ELSE -CAST(units AS DOUBLE) * CAST(price_per_unit AS DOUBLE) END) OVER (ORDER BY event_date ASC) AS cumulative_valuation
-                    FROM projected_events
-                    GROUP BY event_date, event_type, gross_amount, units, price_per_unit
-                    ORDER BY event_date ASC
-                """;
-                List<NetWorthPoint> fallbackTrend = new ArrayList<>();
-                try (Statement stmt = conn.createStatement();
-                     ResultSet rs = stmt.executeQuery(fallbackSql)) {
-                    while (rs.next()) {
-                        String d = rs.getString("event_date");
-                        double cVal = rs.getDouble("cumulative_valuation");
-                        double cInv = rs.getDouble("cumulative_invested");
-                        fallbackTrend.add(new NetWorthPoint(d, cVal, cInv));
-                    }
-                }
-                if (!fallbackTrend.isEmpty()) {
-                    trend = fallbackTrend;
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to fetch daily net worth trend: " + e.getMessage());
+        } catch (SQLException e) {
+            System.err.println("Failed to fetch daily net worth trend from DuckDB: " + e.getMessage());
         }
         return trend;
     }
