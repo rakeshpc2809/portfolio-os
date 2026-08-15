@@ -187,8 +187,8 @@ export function renderNetWorthTrendChart(containerId, dates, values, investedVal
     lineStyle: { width: 3, color: '#d0ff00' },
     areaStyle: {
       color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: 'rgba(208,255,0,0.35)' },
-        { offset: 1, color: 'rgba(6,182,212,0.02)' }
+        { offset: 0, color: 'rgba(208,255,0,0.25)' },
+        { offset: 1, color: 'rgba(6,182,212,0.01)' }
       ])
     },
     data: values
@@ -199,15 +199,23 @@ export function renderNetWorthTrendChart(containerId, dates, values, investedVal
       name: 'Capital Invested',
       type: 'line',
       smooth: true,
+      z: 10,
       showSymbol: isMonthly,
       symbolSize: 6,
-      lineStyle: { width: 2, color: '#06b6d4', type: 'dashed' },
+      lineStyle: { width: 2.5, color: '#38bdf8', type: 'dashed' },
       data: investedValues
     });
   }
 
   const option = {
     backgroundColor: 'transparent',
+    legend: {
+      show: true,
+      top: '0%',
+      right: '2%',
+      textStyle: { color: '#cbd5e1', fontSize: 11 },
+      data: ['Net Worth', 'Capital Invested']
+    },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross', label: { backgroundColor: '#090f1e' } },
