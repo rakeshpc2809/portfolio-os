@@ -66,7 +66,9 @@ fun DashboardScreen(
     initialPage: Int = 0,
     onRefresh: () -> Unit,
     onUpdateCustomUrl: (String) -> Unit = {},
+    onSimulateFullSync: () -> Unit = {},
     onSimulateAmfiFallback: () -> Unit = {},
+    onSimulateRefreshing: () -> Unit = {},
     onSimulateSyncFailure: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 4 })
@@ -444,29 +446,56 @@ fun DashboardScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        onSimulateAmfiFallback()
-                                        showUrlDialog = false
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(100.dp)
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text("Test AMFI Tag", color = M3VibrantViolet, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    OutlinedButton(
+                                        onClick = {
+                                            onSimulateFullSync()
+                                            showUrlDialog = false
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(100.dp)
+                                    ) {
+                                        Text("Full Sync", color = M3ElectricLime, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            onSimulateAmfiFallback()
+                                            showUrlDialog = false
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(100.dp)
+                                    ) {
+                                        Text("AMFI Tag", color = M3VibrantViolet, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
-                                OutlinedButton(
-                                    onClick = {
-                                        onSimulateSyncFailure()
-                                        showUrlDialog = false
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(100.dp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text("Test Failure", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    OutlinedButton(
+                                        onClick = {
+                                            onSimulateRefreshing()
+                                            showUrlDialog = false
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(100.dp)
+                                    ) {
+                                        Text("Toggle Refresh", color = M3NeonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            onSimulateSyncFailure()
+                                            showUrlDialog = false
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(100.dp)
+                                    ) {
+                                        Text("Failure Toast", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }

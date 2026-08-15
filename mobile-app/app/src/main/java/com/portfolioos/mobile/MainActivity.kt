@@ -74,6 +74,14 @@ class MainActivity : ComponentActivity() {
                     SnapshotCacheManager.setCustomUrl(applicationContext, newUrl)
                     fetchSyncSnapshot(isManualRefresh = true)
                 },
+                onSimulateFullSync = {
+                    if (snapshot != null) {
+                        SnapshotCacheManager.saveSnapshot(applicationContext, snapshot!!, isFullLedgerSync = true)
+                        lastSyncMillis = System.currentTimeMillis()
+                        lastFullLedgerMillis = System.currentTimeMillis()
+                        isAmfiFallback = false
+                    }
+                },
                 onSimulateAmfiFallback = {
                     if (snapshot != null) {
                         SnapshotCacheManager.saveSnapshot(applicationContext, snapshot!!, isFullLedgerSync = false)
@@ -82,9 +90,15 @@ class MainActivity : ComponentActivity() {
                         isAmfiFallback = true
                     }
                 },
+                onSimulateRefreshing = {
+                    isRefreshing = !isRefreshing
+                },
                 onSimulateSyncFailure = {
                     scope.launch {
-                        snackbarHostState.showSnackbar("Sync failed — showing cached data")
+                        snackbarHostState.showSnackbar(
+                            message = "Sync failed — showing cached data",
+                            duration = androidx.compose.material3.SnackbarDuration.Indefinite
+                        )
                     }
                 }
             )
