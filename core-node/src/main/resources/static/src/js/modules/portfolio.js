@@ -104,7 +104,7 @@ export function renderPieChart(containerId, data) {
     },
     series: [{
       type: 'pie',
-      radius: ['45%', '70%'],
+      radius: ['40%', '75%'],
       center: ['38%', '50%'],
       avoidLabelOverlap: true,
       itemStyle: { borderRadius: 6, borderColor: '#0c101c', borderWidth: 2 },
@@ -113,6 +113,15 @@ export function renderPieChart(containerId, data) {
     }]
   };
   instance.setOption(option);
+
+  if (window.ResizeObserver && !container.__resizeObserverAttached) {
+    container.__resizeObserverAttached = true;
+    const ro = new ResizeObserver(() => {
+      try { instance.resize(); } catch (e) {}
+    });
+    ro.observe(container);
+  }
+
   return instance;
 }
 

@@ -113,14 +113,14 @@
 
     <!-- Minimalist Tab Navigation Bar -->
     <nav class="tab-nav">
-      <button class="tab-btn" data-tab="overview">📊 Executive Overview</button>
+      <button class="tab-btn active" data-tab="overview">📊 Executive Overview</button>
       <button class="tab-btn" data-tab="overlap">🔍 Overlap & Concentration</button>
       <button class="tab-btn" data-tab="tax">⚡ Tax & Compliance Audit</button>
-      <button class="tab-btn active" data-tab="fire">🎯 FIRE & Waterfall Rebalancing</button>
+      <button class="tab-btn" data-tab="fire">🎯 FIRE & Waterfall Rebalancing</button>
     </nav>
 
     <!-- TAB 1: Executive Overview -->
-    <main class="tab-content" id="tab-overview">
+    <main class="tab-content active" id="tab-overview">
       <div class="dashboard-grid">
         <!-- Fund Allocation Chart -->
         <div class="glass-card col-6">
@@ -380,7 +380,7 @@
     </main>
 
     <!-- TAB 4: FIRE & Waterfall Rebalancing -->
-    <main class="tab-content active" id="tab-fire">
+    <main class="tab-content" id="tab-fire">
       <div class="dashboard-grid">
         <!-- Persistent Unified Rebalance Trigger Status Strip -->
         <div class="glass-card col-12" id="rebalanceStatusStrip" style="padding: 14px 20px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(56, 189, 248, 0.2); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
