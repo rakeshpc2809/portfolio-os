@@ -116,17 +116,120 @@ export function renderPieChart(containerId, data) {
   return instance;
 }
 
-export function renderNetWorthTrendChart(containerId, dates, values) {
+export function resampleToMonthEnd(dates, values, investedValues) {
+  if (!dates || dates.length === 0) return { dates: [], values: [], investedValues: [] };
+
+  const monthMap = new Map();
+  for (let i = 0; i < dates.length; i++) {
+    const dStr = dates[i];
+    const monthKey = dStr.substring(0, 7); // YYYY-MM
+    monthMap.set(monthKey, {
+      date: dStr,
+      value: values[i],
+      invested: investedValues && investedValues.length > i ? investedValues[i] : 0
+    });
+  }
+
+  const allResampled = Array.from(monthMap.values());
+  const sliced = allResampled.slice(-12);
+
+  const resDates = sliced.map(p => p.date);
+  const resValues = sliced.map(p => p.value);
+  const resInvested = sliced.map(p => p.invested);
+
+  const windowBadge = document.getElementById('netWorthWindowBadge');
+  if (windowBadge) {
+    windowBadge.textContent = `Trailing ${sliced.length} Months (Month-End Snapshot)`;
+  }
+
+  return { dates: resDates, values: resValues, investedValues: resInvested };
+}
+
+export function renderNetWorthTrendChart(containerId, dates, values, investedValues = null, isMonthly = false) {
   const container = document.getElementById(containerId);
   if (!container || !dates || dates.length === 0 || !window.echarts) return null;
 
+  if (state.charts.netWorthTrendChart) {
+    try { state.charts.netWorthTrendChart.dispose(); } catch (e) {}
+  }
+
   const instance = window.echarts.init(container);
+
+  // Calculate MoM % if monthly or latest period change
+  if (values && values.length >= 2) {
+    const prevVal = values[values.length - 2];
+    const currVal = values[values.length - 1];
+    if (prevVal > 0) {
+      const momPct = ((currVal - prevVal) / prevVal) * 100;
+      const momBadge = document.getElementById('netWorthMoMBadge');
+      if (momBadge) {
+        const sign = momPct >= 0 ? '+' : '';
+        momBadge.textContent = `MoM: ${sign}${momPct.toFixed(1)}%`;
+        if (momPct >= 0) {
+          momBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+          momBadge.style.color = '#10b981';
+          momBadge.style.borderColor = '#10b981';
+        } else {
+          momBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+          momBadge.style.color = '#ef4444';
+          momBadge.style.borderColor = '#ef4444';
+        }
+      }
+    }
+  }
+
+  const series = [{
+    name: 'Net Worth',
+    type: 'line',
+    smooth: true,
+    showSymbol: isMonthly,
+    symbolSize: 6,
+    lineStyle: { width: 3, color: '#d0ff00' },
+    areaStyle: {
+      color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: 'rgba(208,255,0,0.35)' },
+        { offset: 1, color: 'rgba(6,182,212,0.02)' }
+      ])
+    },
+    data: values
+  }];
+
+  if (investedValues && investedValues.length > 0) {
+    series.push({
+      name: 'Capital Invested',
+      type: 'line',
+      smooth: true,
+      showSymbol: isMonthly,
+      symbolSize: 6,
+      lineStyle: { width: 2, color: '#06b6d4', type: 'dashed' },
+      data: investedValues
+    });
+  }
+
   const option = {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'cross', label: { backgroundColor: '#090f1e' } },
-      formatter: params => `${params[0].name}<br/>Valuation: <b>₹ ${formatINR(params[0].value)}</b>`
+      formatter: params => {
+        let res = `<div style="font-weight:700; color:#f8fafc; margin-bottom:4px;">${params[0].name}</div>`;
+        params.forEach(p => {
+          const color = p.color || '#38bdf8';
+          res += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;"></span>${p.seriesName}: <b>₹ ${formatINR(p.value)}</b></div>`;
+        });
+        if (isMonthly && params[0].dataIndex > 0) {
+          const idx = params[0].dataIndex;
+          const pVal = values[idx - 1];
+          const cVal = values[idx];
+          if (pVal > 0) {
+            const diff = cVal - pVal;
+            const pct = (diff / pVal) * 100;
+            const sign = pct >= 0 ? '+' : '';
+            res += `<div style="margin-top:4px; font-size:0.75rem; color:#cbd5e1;">MoM Return: <b style="color:${pct >= 0 ? '#10b981' : '#ef4444'};">${sign}${pct.toFixed(1)}% (${sign}₹ ${formatINR(diff)})</b></div>`;
+          }
+        }
+        return res;
+      }
     },
     grid: { left: '3%', right: '4%', bottom: '18%', containLabel: true },
     xAxis: {
@@ -146,23 +249,41 @@ export function renderNetWorthTrendChart(containerId, dates, values) {
       { type: 'inside', start: 0, end: 100 },
       { type: 'slider', start: 0, end: 100, height: 16, bottom: 0, borderColor: 'transparent', backgroundColor: 'rgba(255,255,255,0.05)', fillerColor: 'rgba(208,255,0,0.2)' }
     ],
-    series: [{
-      name: 'Net Worth',
-      type: 'line',
-      smooth: true,
-      showSymbol: false,
-      lineStyle: { width: 3, color: '#d0ff00' },
-      areaStyle: {
-        color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(208,255,0,0.35)' },
-          { offset: 1, color: 'rgba(6,182,212,0.02)' }
-        ])
-      },
-      data: values
-    }]
+    series: series
   };
   instance.setOption(option);
+  state.charts.netWorthTrendChart = instance;
   return instance;
+}
+
+export async function loadNetWorthTrend(isMonthly = false) {
+  try {
+    const data = await fetchJson(`${API_BASE}/reports/trend`).catch(() => null) ||
+                 await fetchJson(`${API_BASE}/portfolio/net-worth-trend`).catch(() => null);
+    if (!data || !data.dates || data.dates.length === 0) return;
+
+    state.netWorthRawData = data;
+
+    let dates = data.dates;
+    let values = data.values;
+    let investedValues = data.invested_values || data.investedValues || [];
+
+    if (isMonthly) {
+      const resampled = resampleToMonthEnd(dates, values, investedValues);
+      dates = resampled.dates;
+      values = resampled.values;
+      investedValues = resampled.investedValues;
+    } else {
+      const windowBadge = document.getElementById('netWorthWindowBadge');
+      if (windowBadge) {
+        windowBadge.textContent = 'Daily Valuation & Capital Contributed';
+      }
+    }
+
+    renderNetWorthTrendChart('netWorthChartContainer', dates, values, investedValues, isMonthly);
+  } catch (err) {
+    console.error('Failed to load Net Worth Trend:', err);
+  }
 }
 
 export function renderAllocationChart(allocations) {
@@ -1909,8 +2030,42 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const btnDaily = document.getElementById('btnNetWorthDaily');
+  const btnMonthly = document.getElementById('btnNetWorthMonthly');
+
+  if (btnDaily && btnMonthly) {
+    btnDaily.addEventListener('click', () => {
+      btnDaily.classList.add('active');
+      btnDaily.style.background = 'rgba(56, 189, 248, 0.2)';
+      btnDaily.style.color = '#38bdf8';
+      btnDaily.style.borderColor = '#38bdf8';
+
+      btnMonthly.classList.remove('active');
+      btnMonthly.style.background = 'rgba(255,255,255,0.05)';
+      btnMonthly.style.color = '#94a3b8';
+      btnMonthly.style.borderColor = 'rgba(255,255,255,0.1)';
+
+      loadNetWorthTrend(false);
+    });
+
+    btnMonthly.addEventListener('click', () => {
+      btnMonthly.classList.add('active');
+      btnMonthly.style.background = 'rgba(56, 189, 248, 0.2)';
+      btnMonthly.style.color = '#38bdf8';
+      btnMonthly.style.borderColor = '#38bdf8';
+
+      btnDaily.classList.remove('active');
+      btnDaily.style.background = 'rgba(255,255,255,0.05)';
+      btnDaily.style.color = '#94a3b8';
+      btnDaily.style.borderColor = 'rgba(255,255,255,0.1)';
+
+      loadNetWorthTrend(true);
+    });
+  }
+
   loadActionRecommendations();
   render2FundVennDiagram();
+  loadNetWorthTrend(false);
   loadUnifiedRebalancePlan('INDUCED');
 });
 

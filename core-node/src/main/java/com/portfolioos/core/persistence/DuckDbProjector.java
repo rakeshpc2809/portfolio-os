@@ -377,11 +377,14 @@ public class DuckDbProjector {
                 SELECT 
                     nh.nav_date,
                     SUM(CAST(pe.units AS DOUBLE) * nh.nav) AS total_valuation,
-                    SUM(CAST(pe.gross_amount AS DOUBLE)) AS total_invested
+                    SUM(CASE 
+                            WHEN pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT') THEN CAST(pe.gross_amount AS DOUBLE)
+                            WHEN pe.event_type = 'DISPOSAL' THEN -CAST(pe.gross_amount AS DOUBLE)
+                            ELSE 0.0 
+                        END) AS total_invested
                 FROM nav_history nh
                 JOIN projected_events pe ON nh.asset_id = pe.asset_id
                 WHERE pe.event_date <= nh.nav_date
-                  AND pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT')
                 GROUP BY nh.nav_date
                 ORDER BY nh.nav_date ASC
             """;

@@ -149,6 +149,24 @@
           <div class="canvas-wrapper-large" id="bucketAllocationChart" style="height: 320px; width: 100%;"></div>
         </div>
 
+        <!-- Net Worth & Capital Invested Timeline Chart -->
+        <div class="glass-card col-12">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px;">
+            <div>
+              <h2 style="margin: 0; font-size: 1.1rem; color: #f8fafc;">Net Worth & Capital Invested Timeline</h2>
+              <span class="sub font-mono" id="netWorthWindowBadge" style="color: #cbd5e1; font-size: 0.8rem;">Daily Valuation & Capital Contributed</span>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <span class="live-tag positive-tag" id="netWorthMoMBadge" style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981; padding: 2px 8px; border-radius: 4px; font-weight: 600;">MoM: --%</span>
+              <div class="btn-group" style="display: flex; gap: 6px;">
+                <button type="button" id="btnNetWorthDaily" class="secondary-btn active" style="padding: 4px 10px; font-size: 0.72rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; border-radius: 4px; cursor: pointer;">Daily</button>
+                <button type="button" id="btnNetWorthMonthly" class="secondary-btn" style="padding: 4px 10px; font-size: 0.72rem; background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; cursor: pointer;">12-Mo Monthly</button>
+              </div>
+            </div>
+          </div>
+          <div class="canvas-wrapper-large" id="netWorthChartContainer" style="height: 320px; width: 100%;"></div>
+        </div>
+
         <!-- Benchmark Risk Radar -->
         <div class="glass-card col-12">
           <div class="card-header">
