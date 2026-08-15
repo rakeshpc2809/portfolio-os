@@ -239,13 +239,13 @@ export function renderNetWorthTrendChart(containerId, dates, values, investedVal
         return res;
       }
     },
-    grid: { left: '3%', right: '4%', bottom: '18%', containLabel: true },
+    grid: { left: '3%', right: '3%', top: '16%', bottom: '16%', containLabel: true },
     xAxis: {
       type: 'category',
       boundaryGap: false,
       data: dates,
-      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
-      axisLabel: { color: '#94a3b8', fontSize: 11 }
+      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.15)' } },
+      axisLabel: { color: '#94a3b8', fontSize: 10, hideOverlap: true }
     },
     yAxis: {
       type: 'value',
@@ -261,6 +261,18 @@ export function renderNetWorthTrendChart(containerId, dates, values, investedVal
   };
   instance.setOption(option);
   state.charts.netWorthTrendChart = instance;
+
+  // Handle Dynamic ResizeObserver for parent container
+  if (window.ResizeObserver && container) {
+    if (container._resizeObserver) {
+      container._resizeObserver.disconnect();
+    }
+    container._resizeObserver = new ResizeObserver(() => {
+      try { instance.resize(); } catch (e) {}
+    });
+    container._resizeObserver.observe(container);
+  }
+
   return instance;
 }
 

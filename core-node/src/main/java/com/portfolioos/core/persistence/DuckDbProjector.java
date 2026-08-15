@@ -377,7 +377,7 @@ public class DuckDbProjector {
                 WITH daily_dates AS (
                     SELECT DISTINCT nav_date FROM nav_history
                 ),
-                asset_latest_nav AS (
+                active_units_per_asset AS (
                     SELECT 
                         d.nav_date,
                         pe.asset_id,
@@ -386,29 +386,47 @@ public class DuckDbProjector {
                                 WHEN pe.event_type = 'DISPOSAL' THEN -CAST(pe.units AS DOUBLE)
                                 ELSE 0.0 
                             END) AS active_units,
-                        (
-                            SELECT nh.nav 
-                            FROM nav_history nh 
-                            WHERE nh.asset_id = pe.asset_id AND nh.nav_date <= d.nav_date 
-                            ORDER BY nh.nav_date DESC 
-                            LIMIT 1
-                        ) AS nav,
+                        COALESCE(
+                            (
+                                SELECT nh.nav 
+                                FROM nav_history nh 
+                                WHERE nh.asset_id = pe.asset_id AND nh.nav_date <= d.nav_date 
+                                ORDER BY nh.nav_date DESC 
+                                LIMIT 1
+                            ),
+                            AVG(CAST(pe.price_per_unit AS DOUBLE))
+                        ) AS latest_nav
+                    FROM daily_dates d
+                    JOIN projected_events pe ON pe.event_date <= d.nav_date
+                    GROUP BY d.nav_date, pe.asset_id
+                ),
+                daily_valuation AS (
+                    SELECT 
+                        nav_date,
+                        SUM(active_units * COALESCE(latest_nav, 0.0)) AS total_valuation
+                    FROM active_units_per_asset
+                    WHERE active_units > 0
+                    GROUP BY nav_date
+                ),
+                daily_invested AS (
+                    SELECT 
+                        d.nav_date,
                         SUM(CASE 
                                 WHEN pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT') THEN CAST(pe.gross_amount AS DOUBLE)
                                 WHEN pe.event_type = 'DISPOSAL' THEN -CAST(pe.gross_amount AS DOUBLE)
                                 ELSE 0.0 
-                            END) AS invested_amount
+                            END) AS total_invested
                     FROM daily_dates d
                     JOIN projected_events pe ON pe.event_date <= d.nav_date
-                    GROUP BY d.nav_date, pe.asset_id
+                    GROUP BY d.nav_date
                 )
                 SELECT 
-                    nav_date,
-                    SUM(active_units * COALESCE(nav, 0.0)) AS total_valuation,
-                    SUM(invested_amount) AS total_invested
-                FROM asset_latest_nav
-                GROUP BY nav_date
-                ORDER BY nav_date ASC
+                    v.nav_date,
+                    v.total_valuation,
+                    i.total_invested
+                FROM daily_valuation v
+                JOIN daily_invested i ON v.nav_date = i.nav_date
+                ORDER BY v.nav_date ASC
             """;
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(sql)) {
