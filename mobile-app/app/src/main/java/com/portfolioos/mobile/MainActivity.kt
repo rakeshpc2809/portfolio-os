@@ -110,6 +110,16 @@ class MainActivity : ComponentActivity() {
                         SnapshotCacheManager.setFullyOffline(applicationContext, isFullyOffline)
                     }
                 },
+                onSimulateAgedOffline = {
+                    if (snapshot != null) {
+                        val agedTime = System.currentTimeMillis() - 660000L // 11 mins ago
+                        lastSyncMillis = agedTime
+                        lastFullLedgerMillis = agedTime
+                        isAmfiFallback = false
+                        isFullyOffline = true
+                        SnapshotCacheManager.setFullyOffline(applicationContext, true)
+                    }
+                },
                 onSimulateRefreshing = {
                     isRefreshing = !isRefreshing
                 },

@@ -73,6 +73,7 @@ fun DashboardScreen(
     onSimulateFullSync: () -> Unit = {},
     onSimulateAmfiFallback: () -> Unit = {},
     onSimulateFullyOffline: () -> Unit = {},
+    onSimulateAgedOffline: () -> Unit = {},
     onSimulateRefreshing: () -> Unit = {},
     onSimulateSyncFailure: () -> Unit = {}
 ) {
@@ -532,6 +533,21 @@ fun DashboardScreen(
                                         shape = RoundedCornerShape(100.dp)
                                     ) {
                                         Text("Failure Toast", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            onSimulateAgedOffline()
+                                            showUrlDialog = false
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(100.dp)
+                                    ) {
+                                        Text("Aged Offline (11m)", color = Color(0xFFF59E0B), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
