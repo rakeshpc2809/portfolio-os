@@ -111,6 +111,11 @@ public class SimulationService {
                     BigDecimal gain = match.realizedGain();
                     totalGain = totalGain.add(gain);
 
+                    if (term == TaxTerm.EXEMPT) {
+                        // SGB 8-year maturity redemption under Sec 47(ix) is completely tax-exempt
+                        continue;
+                    }
+
                     switch (category) {
                         case EQUITY -> {
                             if (term == TaxTerm.LONG_TERM) {
