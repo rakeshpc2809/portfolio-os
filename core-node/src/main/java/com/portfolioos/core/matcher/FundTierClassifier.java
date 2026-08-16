@@ -46,8 +46,25 @@ public class FundTierClassifier {
         return FundStatus.LEGACY_HOLDING;
     }
 
+    public enum FundTier {
+        CORE_SATELLITE,
+        LEGACY
+    }
+
+    public static FundTier classify(String assetId) {
+        if (assetId == null) return FundTier.LEGACY;
+        if (com.portfolioos.core.rules.BucketConfigLoader.isPreferredFund(assetId)) {
+            return FundTier.CORE_SATELLITE;
+        }
+        return FundTier.LEGACY;
+    }
+
     public static boolean isLegacyFund(String assetId, Set<String> activeAssetIds) {
-        if (assetId == null || activeAssetIds == null) return false;
+        if (assetId == null) return false;
+        if (classify(assetId) == FundTier.CORE_SATELLITE) {
+            return false; // Target core/satellite preferred funds are never legacy
+        }
+        if (activeAssetIds == null) return false;
         return !activeAssetIds.contains(assetId);
     }
 }

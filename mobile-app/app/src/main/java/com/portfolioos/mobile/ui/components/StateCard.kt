@@ -1,8 +1,8 @@
 package com.portfolioos.mobile.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -12,8 +12,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.portfolioos.mobile.ui.M3SurfaceCard
-import com.portfolioos.mobile.ui.M3TextMuted
+import com.portfolioos.mobile.ui.theme.ColorTokens
+import com.portfolioos.mobile.ui.theme.ShapeTokens
+import com.portfolioos.mobile.ui.theme.SpacingTokens
+import com.portfolioos.mobile.ui.theme.TypographyTokens
 
 @Composable
 fun PortfolioStateCard(
@@ -28,11 +30,12 @@ fun PortfolioStateCard(
     onAction: (() -> Unit)? = null
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = ColorTokens.SurfaceCard),
+        shape = ShapeTokens.GlassCardShape, // Aligned to web 16.dp standard
+        border = BorderStroke(1.dp, ColorTokens.CardBorder),
         modifier = modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(SpacingTokens.xl)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = iconBgColor,
@@ -52,38 +55,34 @@ fun PortfolioStateCard(
                 Column {
                     Text(
                         text = title,
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        style = TypographyTokens.CardTitle
                     )
                     Text(
                         text = subtitle,
-                        color = iconTint,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
+                        style = TypographyTokens.BodyText.copy(
+                            color = iconTint,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(SpacingTokens.md))
             Text(
                 text = description,
-                color = M3TextMuted,
-                fontSize = 12.sp,
-                lineHeight = 18.sp
+                style = TypographyTokens.BodyText
             )
             if (!actionLabel.isNullOrBlank() && onAction != null) {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(SpacingTokens.lg))
                 OutlinedButton(
                     onClick = onAction,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = iconTint),
-                    shape = RoundedCornerShape(100.dp),
+                    shape = ShapeTokens.PillShape,
+                    border = BorderStroke(1.dp, iconTint.copy(alpha = 0.5f)),
                     modifier = Modifier.align(Alignment.End)
                 ) {
                     Text(
                         text = actionLabel,
-                        color = iconTint,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                        style = TypographyTokens.BadgeTag.copy(color = iconTint)
                     )
                 }
             }

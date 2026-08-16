@@ -28,8 +28,27 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.BorderStroke
 import com.portfolioos.mobile.model.FlatHoldingDto
 import com.portfolioos.mobile.model.NetWorthPointDto
+import com.portfolioos.mobile.ui.theme.ColorTokens
+import com.portfolioos.mobile.ui.theme.ShapeTokens
+import com.portfolioos.mobile.ui.theme.TypographyTokens
+import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
+import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
+import com.patrykandpatrick.vico.compose.chart.Chart
+import com.patrykandpatrick.vico.compose.chart.line.lineChart
+import com.patrykandpatrick.vico.compose.chart.line.lineSpec
+import com.patrykandpatrick.vico.compose.component.shape.shader.fromBrush
+import com.patrykandpatrick.vico.compose.component.marker.markerComponent
+import com.patrykandpatrick.vico.compose.component.shapeComponent
+import com.patrykandpatrick.vico.compose.component.textComponent
+import com.patrykandpatrick.vico.core.axis.AxisPosition
+import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter
+import com.patrykandpatrick.vico.core.component.shape.Shapes
+import com.patrykandpatrick.vico.core.entry.entryModelOf
+import com.patrykandpatrick.vico.core.entry.entryOf
+import com.patrykandpatrick.vico.core.marker.Marker
 import kotlin.math.roundToInt
 
 data class BucketAllocation(
@@ -98,8 +117,9 @@ fun PortfolioAllocationBarChart(
     }.sortedByDescending { it.percentage }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
-        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = ColorTokens.SurfaceCard),
+        shape = ShapeTokens.GlassCardShape,
+        border = BorderStroke(1.dp, ColorTokens.CardBorder),
         modifier = modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -111,24 +131,22 @@ fun PortfolioAllocationBarChart(
                 Column {
                     Text(
                         text = "ASSET ALLOCATION BREAKDOWN",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
+                        style = TypographyTokens.MetricLabel.copy(
+                            color = ColorTokens.TextMuted,
+                            letterSpacing = 1.sp
+                        )
                     )
                     Text(
                         text = "SEBI Fund Categorization Engine",
-                        color = Color(0xFFD0FF00),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
+                        style = TypographyTokens.CardTitle.copy(color = ColorTokens.ElectricLime)
                     )
                 }
                 Text(
                     text = "₹${String.format("%,.0f", totalInvested)}",
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace
+                    style = TypographyTokens.MetricNumber.copy(
+                        fontSize = 15.sp,
+                        color = ColorTokens.TextMain
+                    )
                 )
             }
 
@@ -138,9 +156,9 @@ fun PortfolioAllocationBarChart(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(12.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF1E293B))
+                    .height(14.dp)
+                    .clip(ShapeTokens.PillShape)
+                    .background(ColorTokens.GlassSurfaceBase)
             ) {
                 allocations.forEach { alloc ->
                     Box(
@@ -154,8 +172,8 @@ fun PortfolioAllocationBarChart(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Category Legend Grid
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Category Legend Grid with Enhanced Legibility
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 allocations.chunked(2).forEach { rowAllocations ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -167,27 +185,34 @@ fun PortfolioAllocationBarChart(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(8.dp)
+                                            .size(10.dp)
                                             .clip(CircleShape)
                                             .background(alloc.color)
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = alloc.bucketName.take(16),
-                                        color = Color(0xFFCBD5E1),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
+                                        text = alloc.bucketName,
+                                        style = TypographyTokens.BodyText.copy(
+                                            color = ColorTokens.TextMain,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium
+                                        ),
+                                        maxLines = 1
                                     )
                                 }
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = "${String.format("%.1f", alloc.percentage)}%",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
+                                    style = TypographyTokens.FinancialValue.copy(
+                                        color = ColorTokens.TextMuted,
+                                        fontSize = 11.sp
+                                    )
                                 )
                             }
                         }
@@ -206,20 +231,12 @@ fun HistoricalNetWorthTrendChart(
     trendPoints: List<NetWorthPointDto>,
     modifier: Modifier = Modifier
 ) {
-    val animProgress = remember { Animatable(0f) }
-    val haptic = LocalHapticFeedback.current
-    var selectedIndex by remember { mutableStateOf<Int?>(null) }
-
-    LaunchedEffect(trendPoints) {
-        animProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing)
-        )
-    }
+    var selectedPoint by remember { mutableStateOf<NetWorthPointDto?>(null) }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1424)),
-        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = ColorTokens.SurfaceCard),
+        shape = ShapeTokens.GlassCardShape,
+        border = BorderStroke(1.dp, ColorTokens.CardBorder),
         modifier = modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -231,33 +248,28 @@ fun HistoricalNetWorthTrendChart(
                 Column {
                     Text(
                         text = "HISTORICAL NET WORTH TREND",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
+                        style = TypographyTokens.MetricLabel.copy(
+                            color = ColorTokens.TextMuted,
+                            letterSpacing = 1.sp
+                        )
                     )
                     Text(
                         text = "NAV Growth & Capital Curve",
-                        color = Color(0xFFD0FF00),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
+                        style = TypographyTokens.CardTitle.copy(color = ColorTokens.ElectricLime)
                     )
                 }
-                if (selectedIndex != null && selectedIndex!! in trendPoints.indices) {
-                    val pt = trendPoints[selectedIndex!!]
+                if (selectedPoint != null) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = pt.date,
-                            color = Color(0xFF06B6D4),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
+                            text = selectedPoint!!.date,
+                            style = TypographyTokens.BadgeTag.copy(color = ColorTokens.CyanBright)
                         )
                         Text(
-                            text = "₹${String.format("%,.0f", pt.valuation)}",
-                            color = Color(0xFFD0FF00),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace
+                            text = "₹${String.format("%,.0f", selectedPoint!!.valuation)}",
+                            style = TypographyTokens.MetricNumber.copy(
+                                fontSize = 14.sp,
+                                color = ColorTokens.ElectricLime
+                            )
                         )
                     }
                 }
@@ -274,107 +286,110 @@ fun HistoricalNetWorthTrendChart(
                 ) {
                     Text(
                         text = "No historical net worth data available.",
-                        color = Color(0xFF64748B),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
+                        style = TypographyTokens.BodyText.copy(color = ColorTokens.TextMuted)
                     )
                 }
             } else {
-                val rawVals = trendPoints.map { it.valuation }
-                val minVal = rawVals.minOrNull() ?: 1.0
-                val maxVal = rawVals.maxOrNull() ?: (minVal * 1.2)
-                val valRange = (maxVal - minVal).coerceAtLeast(1.0)
-                val points = rawVals.map { v -> ((v - minVal) / valRange * 0.70 + 0.25).toFloat() }
+                val rawVals = remember(trendPoints) { trendPoints.map { it.valuation } }
+                val minVal = remember(rawVals) { rawVals.minOrNull() ?: 1.0 }
+                val maxVal = remember(rawVals) { rawVals.maxOrNull() ?: (minVal * 1.05) }
+                val valRange = remember(minVal, maxVal) { (maxVal - minVal).coerceAtLeast(1.0) }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(140.dp)
-                ) {
-                    Canvas(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer()
-                            .pointerInput(trendPoints) {
-                                detectDragGestures(
-                                    onDragStart = { offset ->
-                                        val stepX = size.width / (points.size - 1).coerceAtLeast(1)
-                                        val idx = (offset.x / stepX).roundToInt().coerceIn(0, trendPoints.size - 1)
-                                        if (idx != selectedIndex) {
-                                            selectedIndex = idx
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        }
-                                    },
-                                    onDrag = { change, _ ->
-                                        change.consume()
-                                        val stepX = size.width / (points.size - 1).coerceAtLeast(1)
-                                        val idx = (change.position.x / stepX).roundToInt().coerceIn(0, trendPoints.size - 1)
-                                        if (idx != selectedIndex) {
-                                            selectedIndex = idx
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        }
-                                    },
-                                    onDragEnd = { selectedIndex = null },
-                                    onDragCancel = { selectedIndex = null }
-                                )
+                val chartEntries = remember(trendPoints, minVal, valRange) {
+                    trendPoints.mapIndexed { idx, pt ->
+                        val normY = (((pt.valuation - minVal) / valRange) * 80.0 + 10.0).toFloat()
+                        entryOf(idx.toFloat(), normY)
+                    }
+                }
+                val entryModel = remember(chartEntries) { entryModelOf(chartEntries) }
+
+                val dateAxisFormatter = AxisValueFormatter<AxisPosition.Horizontal.Bottom> { value, _ ->
+                    val idx = value.toInt()
+                    if (idx in trendPoints.indices) trendPoints[idx].date else ""
+                }
+
+                val marker = rememberChartMarker(selectedPoint)
+                val markerVisibilityChangeListener = remember(trendPoints) {
+                    object : com.patrykandpatrick.vico.core.marker.MarkerVisibilityChangeListener {
+                        override fun onMarkerShown(
+                            marker: Marker,
+                            markerEntryModels: List<com.patrykandpatrick.vico.core.marker.Marker.EntryModel>
+                        ) {
+                            val entry = markerEntryModels.firstOrNull()?.entry
+                            if (entry != null) {
+                                val idx = entry.x.toInt()
+                                if (idx in trendPoints.indices) {
+                                    selectedPoint = trendPoints[idx]
+                                }
                             }
-                    ) {
-                        val width = size.width
-                        val height = size.height
-
-                        val stepX = width / (points.size - 1).coerceAtLeast(1)
-                        val path = androidx.compose.ui.graphics.Path()
-                        val fillPath = androidx.compose.ui.graphics.Path()
-
-                        val startY = height - (points[0] * height * 0.7f * animProgress.value)
-                        path.moveTo(0f, startY)
-                        fillPath.moveTo(0f, height)
-                        fillPath.lineTo(0f, startY)
-
-                        for (i in 1 until points.size) {
-                            val x = i * stepX
-                            val y = height - (points[i] * height * 0.7f * animProgress.value)
-                            val prevX = (i - 1) * stepX
-                            val prevY = height - (points[i - 1] * height * 0.7f * animProgress.value)
-
-                            val controlX1 = prevX + (stepX / 2f)
-                            val controlY1 = prevY
-                            val controlX2 = prevX + (stepX / 2f)
-                            val controlY2 = y
-
-                            path.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
-                            fillPath.cubicTo(controlX1, controlY1, controlX2, controlY2, x, y)
                         }
 
-                        fillPath.lineTo(width, height)
-                        fillPath.close()
-
-                        drawPath(
-                            path = fillPath,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(Color(0xFFD0FF00).copy(alpha = 0.35f), Color(0xFF00F0FF).copy(alpha = 0.02f))
-                            )
-                        )
-
-                        drawPath(
-                            path = path,
-                            color = Color(0xFFD0FF00),
-                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                        )
-
-                        // Render active scrub cursor line
-                        if (selectedIndex != null && selectedIndex!! in points.indices) {
-                            val cx = selectedIndex!! * stepX
-                            drawLine(
-                                color = Color(0xFF06B6D4),
-                                start = androidx.compose.ui.geometry.Offset(cx, 0f),
-                                end = androidx.compose.ui.geometry.Offset(cx, height),
-                                strokeWidth = 2.dp.toPx()
-                            )
+                        override fun onMarkerHidden(marker: Marker) {
+                            selectedPoint = null
                         }
                     }
                 }
+
+                Chart(
+                    chart = lineChart(
+                        lines = listOf(
+                            lineSpec(
+                                lineColor = ColorTokens.ElectricLime,
+                                lineBackgroundShader = com.patrykandpatrick.vico.core.component.shape.shader.DynamicShaders.fromBrush(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            ColorTokens.ElectricLime.copy(alpha = 0.35f),
+                                            ColorTokens.CyanBright.copy(alpha = 0.02f)
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    ),
+                    model = entryModel,
+                    marker = marker,
+                    markerVisibilityChangeListener = markerVisibilityChangeListener,
+                    isZoomEnabled = false,
+                    chartScrollSpec = com.patrykandpatrick.vico.compose.chart.scroll.rememberChartScrollSpec(isScrollEnabled = false),
+                    bottomAxis = rememberBottomAxis(
+                        valueFormatter = dateAxisFormatter,
+                        guideline = null,
+                        itemPlacer = com.patrykandpatrick.vico.core.axis.AxisItemPlacer.Horizontal.default(spacing = 4),
+                        label = textComponent(
+                            color = ColorTokens.TextMuted,
+                            textSize = 10.sp
+                        )
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                )
             }
         }
     }
+}
+
+@Composable
+fun rememberChartMarker(selectedPoint: NetWorthPointDto? = null): Marker {
+    val label = textComponent(
+        color = ColorTokens.ObsidianBackground,
+        background = com.patrykandpatrick.vico.compose.component.shapeComponent(
+            shape = com.patrykandpatrick.vico.core.component.shape.Shapes.pillShape,
+            color = ColorTokens.ElectricLime
+        ),
+        padding = com.patrykandpatrick.vico.compose.dimensions.dimensionsOf(horizontal = 8.dp, vertical = 4.dp),
+        textSize = 11.sp
+    )
+    val indicator = com.patrykandpatrick.vico.compose.component.shapeComponent(
+        shape = com.patrykandpatrick.vico.core.component.shape.Shapes.pillShape,
+        color = ColorTokens.CyanBright
+    )
+    val guideline = com.patrykandpatrick.vico.compose.component.lineComponent(
+        color = ColorTokens.CyanBright.copy(alpha = 0.5f)
+    )
+    return com.patrykandpatrick.vico.compose.component.marker.markerComponent(
+        label = label,
+        indicator = indicator,
+        guideline = guideline
+    )
 }

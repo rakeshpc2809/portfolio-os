@@ -111,11 +111,40 @@ class RebalanceWaterfallEngineTest {
         );
 
         assertNotNull(result);
-        assertEquals(new BigDecimal("5000.00"), result.satisfiedAmount());
+        assertEquals(new BigDecimal("5000.00"), result.satisfiedAmount(), "Under DRAWDOWN / urgent trigger, STCG realization IS allowed with tax drag explicitly calculated");
         assertEquals(new BigDecimal("0.00"), result.deferredAmount());
         assertFalse(result.steps().isEmpty());
+        assertEquals(WaterfallTier.STCG_URGENT_ONLY, result.steps().get(0).tier());
+        assertEquals("SHORT_TERM", result.steps().get(0).taxTerm());
+        assertTrue(result.totalTaxDrag().compareTo(BigDecimal.ZERO) > 0, "STCG tax drag must be strictly greater than 0 under DRAWDOWN trigger");
+        assertEquals(new BigDecimal("333.33"), result.totalTaxDrag(), "STCG tax drag must equal 20% of realized gain (333.33)");
+    }
 
-        RebalanceWaterfallEngine.WaterfallStep step = result.steps().get(0);
-        assertEquals(WaterfallTier.STCG_URGENT_ONLY, step.tier());
+    @Test
+    void testStcgExcludedWhenNotUrgent() {
+        LocalDate today = LocalDate.of(2026, 8, 1);
+        LocalDate acqRecent = LocalDate.of(2026, 7, 1); // 1 month old -> STCG
+
+        Lot recentLot = new Lot("L1", "NIFTY_LARGEMIDCAP_250", "Nifty LargeMidcap 250 Index Fund",
+            acqRecent, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of("NIFTY_LARGEMIDCAP_250", new BigDecimal("150"));
+
+        // Trim 5,000 INR, urgent = false (routine DRIFT trigger)
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("5000"),
+            List.of(recentLot),
+            navMap,
+            new BigDecimal("125000"),
+            false,
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(result);
+        assertEquals(new BigDecimal("0.00"), result.satisfiedAmount(), "STCG lots must be 100% excluded under routine DRIFT (urgent=false)");
+        assertEquals(new BigDecimal("5000.00"), result.deferredAmount());
+        assertTrue(result.steps().isEmpty());
     }
 }

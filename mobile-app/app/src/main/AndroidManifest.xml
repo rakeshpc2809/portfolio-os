@@ -26,6 +26,7 @@
             </intent-filter>
         </activity>
 
+
         <receiver
             android:name=".widget.PortfolioGlanceReceiver"
             android:exported="true">

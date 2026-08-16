@@ -54,7 +54,14 @@ public class GoldDampenerCalculator {
                 .setScale(2, RoundingMode.HALF_UP);
         }
 
-        double devPct = (trailingMa > 0.0) ? ((currentPrice - trailingMa) / trailingMa) * 100.0 : 0.0;
+        if (trailingMa <= 0.0 || currentPrice <= 0.0) {
+            // When moving average data is missing/unwired, default to neutral 1.0x multipliers (disarm safe)
+            return gapWeightPct > 0 
+                ? totalPortfolioValue.multiply(BigDecimal.valueOf(gapWeightPct / 100.0)).setScale(2, RoundingMode.HALF_UP)
+                : totalPortfolioValue.multiply(BigDecimal.valueOf(Math.abs(gapWeightPct) / 100.0)).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        double devPct = ((currentPrice - trailingMa) / trailingMa) * 100.0;
         DampenerMultipliers mults = calculateMultipliers(devPct);
 
         if (gapWeightPct > 0) {

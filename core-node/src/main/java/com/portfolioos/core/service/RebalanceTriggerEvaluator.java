@@ -66,16 +66,17 @@ public class RebalanceTriggerEvaluator {
         }
 
         // 2. Compute Drawdown Context
-        BigDecimal high = (benchmarkRollingHigh != null && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0)
-            ? benchmarkRollingHigh : liveCorpus.multiply(new BigDecimal("1.08")).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal curr = (benchmarkCurrent != null && benchmarkCurrent.compareTo(BigDecimal.ZERO) > 0)
-            ? benchmarkCurrent : liveCorpus;
+        BigDecimal high = (benchmarkRollingHigh != null && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0) ? benchmarkRollingHigh : BigDecimal.ZERO;
+        BigDecimal curr = (benchmarkCurrent != null && benchmarkCurrent.compareTo(BigDecimal.ZERO) > 0) ? benchmarkCurrent : BigDecimal.ZERO;
+        double ddPct = 0.0;
 
-        if (high.compareTo(BigDecimal.ZERO) == 0) high = new BigDecimal("100000.00");
-        if (curr.compareTo(BigDecimal.ZERO) == 0) curr = high;
-
-        double ddPct = high.subtract(curr).divide(high, 4, RoundingMode.HALF_UP).doubleValue() * 100.0;
-        ddPct = Math.max(0.0, Math.round(ddPct * 10.0) / 10.0);
+        if (curr.compareTo(BigDecimal.ZERO) > 0 && high.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal diff = high.subtract(curr).max(BigDecimal.ZERO);
+            ddPct = diff.divide(high, 4, RoundingMode.HALF_UP).doubleValue() * 100.0;
+            ddPct = Math.max(0.0, Math.round(ddPct * 10.0) / 10.0);
+        } else {
+            System.err.println("WARNING: Real Nifty benchmark market data unavailable (benchmarkCurrent/benchmarkRollingHigh is null). Drawdown Trigger Disarmed (0.00% DD).");
+        }
 
         String armedTier = ddPct >= PortfolioConstants.DRAWDOWN_TIER_3_PCT ? "TIER_20"
             : (ddPct >= PortfolioConstants.DRAWDOWN_TIER_2_PCT ? "TIER_15"

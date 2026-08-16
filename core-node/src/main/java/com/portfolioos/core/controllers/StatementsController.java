@@ -31,18 +31,20 @@ public class StatementsController {
     private final LedgerCacheService cacheService;
     private final RestClient restClient;
     private final String authToken;
+    private final String sidecarUrl;
 
     public StatementsController(
         EventStorePort eventStore,
         DuckDbProjector duckDbProjector,
         LedgerCacheService cacheService,
         @Value("${quant-sidecar.url:http://quant-sidecar:8000}") String sidecarUrl,
-        @Value("${api.auth.token:fintracker-cachyos-default-key-2026}") String authToken
+        @Value("${api.auth.token:dev_secret_key_123}") String authToken
     ) {
         this.eventStore = eventStore;
         this.duckDbProjector = duckDbProjector;
         this.cacheService = cacheService;
         this.authToken = authToken;
+        this.sidecarUrl = sidecarUrl;
         this.restClient = RestClient.builder().baseUrl(sidecarUrl).build();
     }
 
@@ -79,14 +81,42 @@ public class StatementsController {
                 body.add("password", password);
             }
 
-            // POST to parser sidecar with authentication header
-            ResponseEntity<ParsedEventDto[]> response = restClient.post()
-                .uri("/api/v1/parse")
-                .header("X-Api-Auth-Token", authToken)
-                .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(body)
-                .retrieve()
-                .toEntity(ParsedEventDto[].class);
+            // POST to parser sidecar with authentication header & candidate host fallbacks
+            String[] candidateUrls = new String[] {
+                sidecarUrl,
+                "http://127.0.0.1:8000",
+                "http://host.containers.internal:8000",
+                "http://172.17.0.1:8000",
+                "http://localhost:8000"
+            };
+
+            ResponseEntity<ParsedEventDto[]> response = null;
+            Exception lastException = null;
+
+            for (String targetUrl : candidateUrls) {
+                if (targetUrl == null || targetUrl.isBlank()) continue;
+                try {
+                    RestClient candidateClient = RestClient.builder().baseUrl(targetUrl).build();
+                    response = candidateClient.post()
+                        .uri("/api/v1/parse")
+                        .header("X-Api-Auth-Token", authToken)
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(body)
+                        .retrieve()
+                        .toEntity(ParsedEventDto[].class);
+                    if (response != null && response.getStatusCode().is2xxSuccessful()) {
+                        System.out.println("Successfully connected to CAS parser sidecar at: " + targetUrl);
+                        break;
+                    }
+                } catch (Exception ex) {
+                    System.err.println("Sidecar parsing attempt failed for candidate [" + targetUrl + "]: " + ex.getMessage());
+                    lastException = ex;
+                }
+            }
+
+            if (response == null || response.getBody() == null) {
+                throw new RuntimeException("All parser sidecar host candidates failed: " + (lastException != null ? lastException.getMessage() : "No response"));
+            }
 
             ParsedEventDto[] dtoList = response.getBody();
             if (dtoList == null || dtoList.length == 0) {

@@ -9,6 +9,7 @@ import com.portfolioos.core.persistence.TriggerHistoryRepository;
 import com.portfolioos.core.reporting.ExemptionTracker;
 import com.portfolioos.core.rules.BucketConfigLoader;
 import com.portfolioos.core.valuation.BucketEngine;
+import com.portfolioos.core.valuation.FundTrendDampenerCalculator;
 import com.portfolioos.core.valuation.GoldDampenerCalculator;
 
 import java.math.BigDecimal;
@@ -219,9 +220,35 @@ public class RebalancePlanEngine {
             );
         } else {
             // Sell-side trigger active (DRAWDOWN, DRIFT, SCHEDULED)
-            BigDecimal poolNeeded = liveCorpus.multiply(new BigDecimal("0.05")).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal targetMonthlyExpense = FireTracker.calculateFireSummary(openLots, navMap, today).monthlyExpenseToday();
-            if (poolNeeded.compareTo(new BigDecimal("10000.00")) < 0) poolNeeded = targetMonthlyExpense;
+            // Calculate true excess drift across over-allocated buckets
+            BigDecimal poolNeeded = BigDecimal.ZERO;
+            if (activeTargets != null) {
+                for (BucketEngine.BucketTarget target : activeTargets) {
+                    BigDecimal targetPct = target.targetPct();
+                    BigDecimal targetVal = liveCorpus.multiply(targetPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+
+                    BigDecimal curVal = BigDecimal.ZERO;
+                    if (openLots != null) {
+                        for (Lot lot : openLots) {
+                            BucketEngine.Bucket b = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
+                            if (target.bucket() == b) {
+                                BigDecimal nav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                                curVal = curVal.add(lot.remainingUnits().multiply(nav));
+                            }
+                        }
+                    }
+                    if (curVal.compareTo(targetVal) > 0) {
+                        BigDecimal excessVal = curVal.subtract(targetVal);
+                        BigDecimal dampenedTrim = FundTrendDampenerCalculator.calculateDampenedTrim(excessVal, targetVal.doubleValue());
+                        poolNeeded = poolNeeded.add(dampenedTrim);
+                    }
+                }
+            }
+
+            if (poolNeeded.compareTo(BigDecimal.ZERO) == 0) {
+                BigDecimal targetMonthlyExpense = FireTracker.calculateFireSummary(openLots, navMap, today).monthlyExpenseToday();
+                poolNeeded = targetMonthlyExpense;
+            }
             totalPool = poolNeeded;
 
             List<WaterfallTierDto> waterfallTiers = new ArrayList<>();
@@ -237,82 +264,92 @@ public class RebalancePlanEngine {
                 List.of()
             ));
 
-            // Sourcing from live open lots
+            boolean isUrgent = false;
+            if (resolution != null && resolution.drawdownContext() != null) {
+                isUrgent = resolution.drawdownContext().currentDrawdownPct() >= 15.0;
+            }
+
+            com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallResult waterfallResult =
+                com.portfolioos.core.valuation.RebalanceWaterfallEngine.buildTrimWaterfall(
+                    BucketEngine.Bucket.EQUITY_CORE,
+                    poolNeeded,
+                    openLots != null ? openLots : List.of(),
+                    navMap != null ? navMap : Map.of(),
+                    headroomBefore,
+                    isUrgent,
+                    today,
+                    fiscalYear
+                );
+
             BigDecimal totalGain = BigDecimal.ZERO;
             BigDecimal totalLtcgExempt = BigDecimal.ZERO;
             BigDecimal totalStcgTaxable = BigDecimal.ZERO;
-            BigDecimal totalTaxEstimate = BigDecimal.ZERO;
+            BigDecimal totalTaxEstimate = waterfallResult.totalTaxDrag();
             BigDecimal currentHeadroom = headroomBefore;
 
-            Set<String> activeAssetIds = FundTierClassifier.findActiveAssetIds(openLots, today);
             List<RebalanceLotImpactDto> soldLegacyLots = new ArrayList<>();
             List<RebalanceLotImpactDto> soldCoreLots = new ArrayList<>();
             BigDecimal soldLegacyAmount = BigDecimal.ZERO;
             BigDecimal soldCoreAmount = BigDecimal.ZERO;
 
-            if (openLots != null) {
-                for (Lot lot : openLots) {
-                    if (poolRemaining.compareTo(BigDecimal.ZERO) <= 0) break;
+            if (waterfallResult.steps() != null) {
+                for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep step : waterfallResult.steps()) {
+                    Lot origLot = null;
+                    if (openLots != null) {
+                        for (Lot l : openLots) {
+                            if (l.lotId() != null && l.lotId().equals(step.lotId())) {
+                                origLot = l;
+                                break;
+                            }
+                        }
+                    }
 
-                    BigDecimal nav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
-                    BigDecimal lotVal = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
-                    if (lotVal.compareTo(BigDecimal.ZERO) <= 0) continue;
+                    long holdingDays = (origLot != null && origLot.acquisitionDate() != null) ?
+                        ChronoUnit.DAYS.between(origLot.acquisitionDate(), today) : 400L;
 
-                    BigDecimal lotSoldVal = lotVal.min(poolRemaining);
-                    BigDecimal unitsSold = lotSoldVal.divide(nav, 4, RoundingMode.HALF_UP);
-                    BigDecimal costBasis = unitsSold.multiply(lot.costPerUnit() != null ? lot.costPerUnit() : nav).setScale(2, RoundingMode.HALF_UP);
-                    BigDecimal gain = lotSoldVal.subtract(costBasis).max(BigDecimal.ZERO);
+                    BigDecimal costBasis = step.proceeds().subtract(step.realizedGain()).max(BigDecimal.ZERO);
+                    boolean isLongTerm = "LONG_TERM".equals(step.taxTerm());
 
-                    long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate() != null ? lot.acquisitionDate() : today.minusDays(400), today);
-                    boolean isLongTerm = holdingDays > 365;
-                    String taxTerm = isLongTerm ? "LONG_TERM" : "SHORT_TERM";
-
-                    String regime;
                     BigDecimal exempt = BigDecimal.ZERO;
                     BigDecimal taxable = BigDecimal.ZERO;
-                    BigDecimal tax = BigDecimal.ZERO;
 
                     if (isLongTerm) {
-                        exempt = gain.min(currentHeadroom);
-                        taxable = gain.subtract(exempt).max(BigDecimal.ZERO);
-                        tax = taxable.multiply(new BigDecimal("0.125")).setScale(2, RoundingMode.HALF_UP);
-                        regime = exempt.compareTo(BigDecimal.ZERO) > 0 && taxable.compareTo(BigDecimal.ZERO) == 0 ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5";
+                        exempt = step.realizedGain().min(currentHeadroom);
+                        taxable = step.realizedGain().subtract(exempt).max(BigDecimal.ZERO);
                         currentHeadroom = currentHeadroom.subtract(exempt).max(BigDecimal.ZERO);
                         totalLtcgExempt = totalLtcgExempt.add(exempt);
                     } else {
-                        taxable = gain;
-                        tax = taxable.multiply(new BigDecimal("0.20")).setScale(2, RoundingMode.HALF_UP);
-                        regime = "SLAB_RATE_STCG";
+                        taxable = step.realizedGain();
                         totalStcgTaxable = totalStcgTaxable.add(taxable);
                     }
 
-                    totalGain = totalGain.add(gain);
-                    totalTaxEstimate = totalTaxEstimate.add(tax);
+                    totalGain = totalGain.add(step.realizedGain());
+
+                    String regime = isLongTerm ?
+                        (exempt.compareTo(BigDecimal.ZERO) > 0 && taxable.compareTo(BigDecimal.ZERO) == 0 ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5") :
+                        "SLAB_RATE_STCG";
 
                     RebalanceLotImpactDto lotImpact = new RebalanceLotImpactDto(
-                        lot.lotId() != null ? lot.lotId() : UUID.randomUUID().toString(),
-                        lot.assetId() != null ? lot.assetId() : "UNKNOWN",
-                        lot.assetName() != null ? lot.assetName() : "Equity Fund",
-                        lot.acquisitionDate() != null ? lot.acquisitionDate().toString() : "2024-01-01",
+                        step.lotId(),
+                        step.assetId(),
+                        step.assetName(),
+                        (origLot != null && origLot.acquisitionDate() != null) ? origLot.acquisitionDate().toString() : today.toString(),
                         holdingDays,
-                        unitsSold,
+                        step.unitsSold(),
                         costBasis,
-                        lotSoldVal,
-                        gain,
-                        taxTerm,
-                        new LotTaxImpactDto(regime, exempt, taxable, tax)
+                        step.proceeds(),
+                        step.realizedGain(),
+                        step.taxTerm(),
+                        new LotTaxImpactDto(regime, exempt, taxable, step.taxDrag())
                     );
 
-                    boolean isLegacy = FundTierClassifier.isLegacyFund(lot.assetId(), activeAssetIds);
-                    if (isLegacy) {
+                    if (step.tier() == com.portfolioos.core.valuation.WaterfallTier.LEGACY_FUND) {
                         soldLegacyLots.add(lotImpact);
-                        soldLegacyAmount = soldLegacyAmount.add(lotSoldVal);
+                        soldLegacyAmount = soldLegacyAmount.add(step.proceeds());
                     } else {
                         soldCoreLots.add(lotImpact);
-                        soldCoreAmount = soldCoreAmount.add(lotSoldVal);
+                        soldCoreAmount = soldCoreAmount.add(step.proceeds());
                     }
-
-                    poolRemaining = poolRemaining.subtract(lotSoldVal);
                 }
             }
 
@@ -360,6 +397,19 @@ public class RebalancePlanEngine {
             }
         }
 
+        Map<BucketEngine.Bucket, BigDecimal> bucketShortfalls = new HashMap<>();
+        BigDecimal totalShortfall = BigDecimal.ZERO;
+
+        for (BucketEngine.BucketTarget target : activeTargets) {
+            BucketEngine.BucketStatus status = statusMap.get(target.bucket());
+            BigDecimal curVal = status != null ? status.currentValue() : BigDecimal.ZERO;
+            BigDecimal targetVal = liveCorpus.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+
+            BigDecimal shortfall = targetVal.subtract(curVal).max(BigDecimal.ZERO);
+            bucketShortfalls.put(target.bucket(), shortfall);
+            totalShortfall = totalShortfall.add(shortfall);
+        }
+
         List<RebalanceBucketAllocationDto> buyBuckets = new ArrayList<>();
 
         for (BucketEngine.BucketTarget target : activeTargets) {
@@ -371,33 +421,32 @@ public class RebalancePlanEngine {
             double currentPct = status != null ? status.currentPct().doubleValue() : (liveCorpus.compareTo(BigDecimal.ZERO) > 0 ?
                 Math.round((curVal.doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct);
 
-            BigDecimal amountAllocated;
+            BigDecimal amountAllocated = BigDecimal.ZERO;
+            BigDecimal shortfall = bucketShortfalls.getOrDefault(target.bucket(), BigDecimal.ZERO);
+
             if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
                 if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER) {
                     amountAllocated = totalPool;
-                } else {
-                    amountAllocated = BigDecimal.ZERO;
                 }
-            } else if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER && totalPool.compareTo(BigDecimal.ZERO) > 0) {
-                // Apply GoldDampenerCalculator for Gold/Silver bucket using real NAV & 200-day MA deviation
-                BigDecimal goldNav = BigDecimal.ZERO;
-                if (openLots != null) {
-                    for (Lot lot : openLots) {
-                        if ("GOLD_SILVER".equals(BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName()))) {
-                            goldNav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ZERO);
-                            if (goldNav.compareTo(BigDecimal.ZERO) > 0) break;
+            } else if (totalShortfall.compareTo(BigDecimal.ZERO) > 0 && shortfall.compareTo(BigDecimal.ZERO) > 0) {
+                amountAllocated = totalPool.multiply(shortfall).divide(totalShortfall, 2, RoundingMode.HALF_UP);
+                if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER) {
+                    BigDecimal goldNav = BigDecimal.ZERO;
+                    if (openLots != null) {
+                        for (Lot lot : openLots) {
+                            if ("GOLD_SILVER".equals(BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName()))) {
+                                goldNav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ZERO);
+                                if (goldNav.compareTo(BigDecimal.ZERO) > 0) break;
+                            }
                         }
                     }
-                }
-                double currentPriceVal = goldNav.compareTo(BigDecimal.ZERO) > 0 ? goldNav.doubleValue() : (benchmarkCurrent != null ? benchmarkCurrent.doubleValue() : 1.0);
-                double sma200Val = (benchmarkRollingHigh != null && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0) ? benchmarkRollingHigh.doubleValue() : currentPriceVal;
-                double devPct = (sma200Val > 0.0) ? ((currentPriceVal - sma200Val) / sma200Val) * 100.0 : 0.0;
+                    double currentPriceVal = goldNav.compareTo(BigDecimal.ZERO) > 0 ? goldNav.doubleValue() : (benchmarkCurrent != null ? benchmarkCurrent.doubleValue() : 1.0);
+                    double sma200Val = (benchmarkRollingHigh != null && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0) ? benchmarkRollingHigh.doubleValue() : currentPriceVal;
+                    double devPct = (sma200Val > 0.0) ? ((currentPriceVal - sma200Val) / sma200Val) * 100.0 : 0.0;
 
-                GoldDampenerCalculator.DampenerMultipliers mults = GoldDampenerCalculator.calculateMultipliers(devPct);
-                BigDecimal baseAlloc = totalPool.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
-                amountAllocated = baseAlloc.multiply(BigDecimal.valueOf(mults.buyMultiplier())).setScale(2, RoundingMode.HALF_UP).min(totalPool);
-            } else {
-                amountAllocated = totalPool.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                    GoldDampenerCalculator.DampenerMultipliers mults = GoldDampenerCalculator.calculateMultipliers(devPct);
+                    amountAllocated = amountAllocated.multiply(BigDecimal.valueOf(mults.buyMultiplier())).setScale(2, RoundingMode.HALF_UP).min(totalPool);
+                }
             }
 
             BigDecimal postVal = curVal.add(amountAllocated);
@@ -418,10 +467,35 @@ public class RebalancePlanEngine {
             ));
         }
 
+        // Budget Conservation Normalization: Ensure sum(amountAllocated) strictly equals totalPool
+        BigDecimal rawSum = buyBuckets.stream().map(RebalanceBucketAllocationDto::amountAllocated).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (rawSum.compareTo(BigDecimal.ZERO) > 0 && totalPool.compareTo(BigDecimal.ZERO) > 0 && rawSum.compareTo(totalPool) != 0) {
+            List<RebalanceBucketAllocationDto> normalizedBuckets = new ArrayList<>();
+            BigDecimal runningAlloc = BigDecimal.ZERO;
+            for (int i = 0; i < buyBuckets.size(); i++) {
+                RebalanceBucketAllocationDto b = buyBuckets.get(i);
+                BigDecimal normAlloc;
+                if (i == buyBuckets.size() - 1) {
+                    normAlloc = totalPool.subtract(runningAlloc).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+                } else {
+                    normAlloc = b.amountAllocated().multiply(totalPool).divide(rawSum, 2, RoundingMode.HALF_UP);
+                    runningAlloc = runningAlloc.add(normAlloc);
+                }
+                List<FundAllocationDto> realFunds = resolveRealFundBreakdown(BucketEngine.Bucket.valueOf(b.bucket()), normAlloc, activeVersion);
+                normalizedBuckets.add(new RebalanceBucketAllocationDto(
+                    b.bucket(), b.targetPct(), b.currentPct(), b.postRebalancePct(), normAlloc, realFunds
+                ));
+            }
+            buyBuckets = normalizedBuckets;
+        }
+
         BuySidePlanDto buySide = new BuySidePlanDto(totalPool, isLumpsum, buyBuckets);
 
         // 5. Templated Narrative
         List<String> paragraphs = new ArrayList<>();
+        if (benchmarkCurrent == null || benchmarkRollingHigh == null) {
+            paragraphs.add("Notice: Drawdown protection is currently INACTIVE (no live benchmark index data source configured). Portfolio is operating under DRIFT & SCHEDULED rebalance rules.");
+        }
         String headline;
         double ddPct = resolution.drawdownContext().currentDrawdownPct();
         BigDecimal high = resolution.drawdownContext().rollingHighValue();

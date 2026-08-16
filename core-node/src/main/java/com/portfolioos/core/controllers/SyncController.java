@@ -270,7 +270,7 @@ public class SyncController {
                     }
                 }
             }
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
             System.err.println("Non-critical Quant Flight RPC signal extraction warning: " + ex.getMessage());
         }
 
@@ -316,9 +316,13 @@ public class SyncController {
             ));
         }
 
+        BigDecimal totalCurrentVal = openLots.stream()
+            .map(l -> l.remainingUnits().multiply(navMap.getOrDefault(l.assetId(), l.costPerUnit())))
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         // 4. Asset Allocation Drift Signal
         BucketEngine.RebalanceEngineResult bucketStatus = BucketEngine.evaluateRebalance(
-            openLots, state.fifoResult().matchedLots(), navMap, today, new BigDecimal("24000.00"), new BigDecimal("25000.00"), BucketEngine.DEFAULT_TARGETS, fy
+            openLots, state.fifoResult().matchedLots(), navMap, today, null, null, BucketEngine.DEFAULT_TARGETS, fy
         );
 
         BucketEngine.BucketStatus driftedBucket = bucketStatus.bucketStatuses().stream()
@@ -406,9 +410,22 @@ public class SyncController {
         List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
+        BigDecimal totalCurrentVal = BigDecimal.ZERO;
+        for (Lot lot : openLots) {
+            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            totalCurrentVal = totalCurrentVal.add(lot.remainingUnits().multiply(nav));
+        }
+
+        List<DuckDbProjector.NetWorthPoint> trend = duckDbProjector.getDailyNetWorthTrend();
+        double peak = trend.stream().mapToDouble(DuckDbProjector.NetWorthPoint::valuation).max().orElse(totalCurrentVal.doubleValue());
+        BigDecimal rollingHigh = BigDecimal.valueOf(peak);
+        if (rollingHigh.compareTo(totalCurrentVal) < 0) {
+            rollingHigh = totalCurrentVal;
+        }
+
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
-            openLots, matchedLots, navMap, LocalDate.now(), new BigDecimal("24000.00"), new BigDecimal("25000.00"),
+            openLots, matchedLots, navMap, LocalDate.now(), totalCurrentVal, rollingHigh,
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
         );
         return ResponseEntity.ok(plan);
@@ -472,9 +489,14 @@ public class SyncController {
         List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
+        BigDecimal totalVal = openLots.stream()
+            .map(l -> l.remainingUnits().multiply(navMap.getOrDefault(l.assetId(), l.costPerUnit())))
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
+
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
-            openLots, matchedLots, navMap, LocalDate.now(), new BigDecimal("24000.00"), new BigDecimal("25000.00"),
+            openLots, matchedLots, navMap, LocalDate.now(), null, null,
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, "MANUAL_LUMPSUM", amount
         );
         return ResponseEntity.ok(plan);

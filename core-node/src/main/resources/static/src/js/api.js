@@ -1,6 +1,6 @@
 export const API_BASE = '/api/v1';
 
-export const DEFAULT_AUTH_TOKEN = 'fintracker-cachyos-default-key-2026';
+export const DEFAULT_AUTH_TOKEN = 'dev_secret_key_123';
 
 export function getAuthToken() {
   let token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN;

@@ -13,9 +13,9 @@ import {
   renderUnifiedRebalancePlanUI,
   fetchFireSummary
 } from './js/modules/portfolio.js?v=3.5.0';
-import { updateExemptionMeter, updateReportMetrics, renderDecisionRadar, renderRealizedLogTable } from './js/modules/tax.js';
+import { updateExemptionMeter, updateReportMetrics, renderDecisionRadar, fetchDecisionRadar, fetchTaxMetrics, renderRealizedLogTable } from './js/modules/tax.js';
 
-const DEFAULT_AUTH_TOKEN = 'fintracker-cachyos-default-key-2026';
+const DEFAULT_AUTH_TOKEN = 'dev_secret_key_123';
 
 async function initDashboard() {
   try {
@@ -44,7 +44,7 @@ async function initDashboard() {
     const exemptionData = await fetchJson(`/tax/exemption-status?fy=${state.currentFy}`).catch(() => null);
     if (exemptionData) updateExemptionMeter(exemptionData);
 
-    const planData = await fetchJson(`/sync/rebalance/plan?triggerType=DRIFT`).catch(() => null);
+    const planData = await fetchJson(`/sync/rebalance/plan?trigger=DRIFT`).catch(() => null);
     if (planData) renderUnifiedRebalancePlanUI(planData);
 
     const bucketData = await fetchJson(`/rebalance/bucket?fy=${state.currentFy}`).catch(() => null);
@@ -57,6 +57,8 @@ async function initDashboard() {
     const eventsData = await fetchJson(`/tax/realized-log?fy=${state.currentFy}`).catch(() => null);
     if (eventsData) renderRealizedLogTable(eventsData);
 
+    fetchDecisionRadar();
+    fetchTaxMetrics();
     fetchFireSummary();
   } catch (err) {
     console.error("Dashboard initialization failed:", err);
@@ -302,3 +304,88 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+
+async function uploadCasFile(file, password) {
+  const statusEl = document.getElementById('casUploadStatus');
+  const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
+  
+  if (statusEl) {
+    statusEl.style.display = 'block';
+    statusEl.style.background = 'rgba(6, 182, 212, 0.1)';
+    statusEl.style.color = '#06b6d4';
+    statusEl.style.border = '1px solid rgba(6, 182, 212, 0.3)';
+    statusEl.textContent = '⚡ Decrypting & Parsing CAS transactions...';
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  if (password) formData.append('password', password);
+
+  try {
+    const res = await fetch(`/api/v1/statements/upload?token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      headers: {
+        'X-Api-Auth-Token': token
+      },
+      body: formData
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => 'Upload failed');
+      throw new Error(errText || `Server returned ${res.status}`);
+    }
+
+    const events = await res.json();
+    showToast(`✅ Successfully ingested CAS statement! Registered ${events ? events.length || 0 : 0} transaction events.`, 'success');
+    window.closeCasPasswordModal();
+    initDashboard();
+  } catch (err) {
+    console.error("CAS upload failed:", err);
+    if (statusEl) {
+      statusEl.style.display = 'block';
+      statusEl.style.background = 'rgba(239, 68, 68, 0.1)';
+      statusEl.style.color = '#ef4444';
+      statusEl.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      statusEl.textContent = `⚠️ CAS Parsing Failed: ${err.message || 'Incorrect password or unsupported file format'}`;
+    }
+  }
+}
+
+let currentSelectedCasFile = null;
+
+window.closeCasPasswordModal = () => {
+  const modal = document.getElementById('casPasswordModal');
+  if (modal) modal.style.display = 'none';
+  const fileInput = document.getElementById('fileUploadInput');
+  if (fileInput) fileInput.value = '';
+  currentSelectedCasFile = null;
+};
+
+window.handleFileSelect = (e) => {
+  const file = e.target ? e.target.files[0] : (e.files ? e.files[0] : null);
+  if (!file) return;
+  currentSelectedCasFile = file;
+
+  if (file.name.toLowerCase().endsWith('.pdf')) {
+    const modal = document.getElementById('casPasswordModal');
+    const filenameEl = document.getElementById('casModalFilename');
+    const passInput = document.getElementById('casPasswordInput');
+    const statusEl = document.getElementById('casUploadStatus');
+
+    if (filenameEl) filenameEl.textContent = file.name;
+    if (passInput) passInput.value = '';
+    if (statusEl) statusEl.style.display = 'none';
+    if (modal) modal.style.display = 'flex';
+    if (passInput) setTimeout(() => passInput.focus(), 100);
+  } else {
+    uploadCasFile(file, '');
+  }
+};
+
+window.submitCasUpload = () => {
+  const passInput = document.getElementById('casPasswordInput');
+  const password = passInput ? passInput.value : '';
+  if (currentSelectedCasFile) {
+    uploadCasFile(currentSelectedCasFile, password);
+  }
+};

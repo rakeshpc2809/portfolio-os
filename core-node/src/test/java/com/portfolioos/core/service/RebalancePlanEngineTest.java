@@ -78,9 +78,9 @@ class RebalancePlanEngineTest {
         assertTrue(plan.trigger().isInduced());
         assertEquals("DRIFT_THRESHOLD_EXCEEDED", plan.trigger().reasonCode());
 
-        // Verify buy side sizing: 5% pool on 2,000,000 corpus = ₹100,000.00
+        // Verify buy side sizing: Excess Core with per-fund Trend Dampener (0.75x of ₹600,000.00 = ₹450,000.00)
         assertNotNull(plan.buySide());
-        assertEquals(new BigDecimal("100000.00"), plan.buySide().totalToInvest(), "5% pool on 2M corpus must yield exactly ₹100,000.00 total to invest");
+        assertEquals(new BigDecimal("450000.00"), plan.buySide().totalToInvest(), "Excess drift pool on 2M corpus with per-fund trend dampener must yield exactly ₹450,000.00 total to invest");
         assertFalse(plan.buySide().buckets().isEmpty());
     }
 

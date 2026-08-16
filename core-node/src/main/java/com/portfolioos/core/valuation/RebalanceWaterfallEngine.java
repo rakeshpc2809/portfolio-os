@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -87,6 +88,14 @@ public class RebalanceWaterfallEngine {
             }
         }
 
+        Map<String, BigDecimal> legacySchemeValueMap = new HashMap<>();
+        for (Lot lot : legacyLots) {
+            BigDecimal nav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+            BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
+            legacySchemeValueMap.put(lot.assetId(), legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
+        }
+        Map<String, BigDecimal> legacySchemeTrimmedMap = new HashMap<>();
+
         List<WaterfallTierStrategy> strategiesToRun = new ArrayList<>(REGULAR_STRATEGIES);
         if (urgent) {
             strategiesToRun.add(URGENT_STCG_STRATEGY);
@@ -97,13 +106,28 @@ public class RebalanceWaterfallEngine {
             List<Lot> candidateLots = strategy.selectLots(legacyLots, coreLots, navMap, today, rules);
             for (Lot lot : candidateLots) {
                 if (remainingTarget.compareTo(BigDecimal.ZERO) <= 0) break;
-                LotProcessResult res = processLot(strategy.tier(), lot, navMap, remainingTarget, unusedExemption, rules, today);
-                if (res != null) {
+
+                BigDecimal lotTarget = remainingTarget;
+                if (strategy.tier() == WaterfallTier.LEGACY_FUND) {
+                    BigDecimal schemeTotal = legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
+                    BigDecimal maxSchemeTrim = schemeTotal.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal alreadyTrimmed = legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
+                    BigDecimal schemeCapRemaining = maxSchemeTrim.subtract(alreadyTrimmed).max(BigDecimal.ZERO);
+                    if (schemeCapRemaining.compareTo(BigDecimal.ZERO) <= 0) continue;
+                    lotTarget = lotTarget.min(schemeCapRemaining);
+                }
+
+                LotProcessResult res = processLot(strategy.tier(), lot, navMap, lotTarget, unusedExemption, rules, today, urgent);
+                if (res != null && res.proceeds().compareTo(BigDecimal.ZERO) > 0) {
                     steps.add(res.step());
                     satisfiedAmount = satisfiedAmount.add(res.proceeds());
                     remainingTarget = remainingTarget.subtract(res.proceeds());
                     unusedExemption = res.newUnusedExemption();
                     totalTaxDrag = totalTaxDrag.add(res.taxDrag());
+                    if (strategy.tier() == WaterfallTier.LEGACY_FUND) {
+                        legacySchemeTrimmedMap.put(lot.assetId(),
+                            legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(res.proceeds()));
+                    }
                 }
             }
         }
@@ -142,7 +166,8 @@ public class RebalanceWaterfallEngine {
         BigDecimal remainingTarget,
         BigDecimal unusedExemption,
         TaxRulesConfig rules,
-        LocalDate today
+        LocalDate today,
+        boolean urgent
     ) {
         BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
         BigDecimal lotValue = lot.remainingUnits().multiply(nav);
@@ -157,6 +182,13 @@ public class RebalanceWaterfallEngine {
         long threshold = getThresholdDays(cat, rules);
         long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
         boolean isLtcg = threshold > 0 && holdingDays >= threshold;
+
+        // USER DIRECTIVE (Fix 2a): STCG lots are 100% EXCLUDED during DRIFT or SCHEDULED rebalancing.
+        // Under DRAWDOWN or urgent de-risking (urgent == true), controlled STCG realization IS allowed
+        // with tax drag explicitly calculated and logged as a trade-off.
+        if (!isLtcg && !urgent) {
+            return null;
+        }
 
         BigDecimal taxDrag = BigDecimal.ZERO;
         BigDecimal newExemption = unusedExemption;
@@ -226,7 +258,16 @@ public class RebalanceWaterfallEngine {
 
         @Override
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
-            List<Lot> lots = new ArrayList<>(legacyLots);
+            List<Lot> lots = legacyLots.stream().filter(l -> {
+                BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+                BigDecimal gain = nav.subtract(l.costPerUnit());
+                if (gain.compareTo(BigDecimal.ZERO) < 0) return true; // Always allow loss harvest
+                AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
+                long threshold = getThresholdDays(cat, rules);
+                long holdingDays = ChronoUnit.DAYS.between(l.acquisitionDate(), today);
+                return threshold > 0 && holdingDays >= threshold; // Strictly ONLY LTCG lots allowed
+            }).collect(java.util.stream.Collectors.toList());
+
             sortLotsByTaxCost(lots, navMap, today, rules);
             return lots;
         }

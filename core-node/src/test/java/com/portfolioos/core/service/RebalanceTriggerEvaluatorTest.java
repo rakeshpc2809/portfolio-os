@@ -60,6 +60,28 @@ class RebalanceTriggerEvaluatorTest {
     }
 
     @Test
+    @DisplayName("Drawdown Protection: Null benchmark params strictly disarm Drawdown trigger (0.00% DD)")
+    void testNullBenchmarkDisarmsDrawdown() {
+        List<Lot> openLots = List.of(
+            new Lot("l1", "INF109KC12U0", "ICICI LargeMidcap 250", LocalDate.of(2025, 1, 1),
+                new BigDecimal("1000"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100000"), false, BigDecimal.ZERO)
+        );
+        Map<String, BigDecimal> navMap = Map.of("INF109KC12U0", new BigDecimal("150"));
+
+        RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
+            openLots, navMap,
+            null, null, // Null benchmark inputs
+            null, null, LocalDate.of(2026, 8, 1)
+        );
+
+        assertNotNull(res);
+        assertNotNull(res.drawdownContext());
+        assertEquals(0.0, res.drawdownContext().currentDrawdownPct(), "Null benchmark inputs MUST produce exactly 0.00% drawdown");
+        assertEquals("NONE", res.drawdownContext().armedTier(), "Null benchmark inputs MUST result in armedTier = NONE");
+        assertNotEquals("DRAWDOWN", res.triggerType(), "DRAWDOWN trigger MUST NOT fire when benchmark inputs are null");
+    }
+
+    @Test
     @DisplayName("30-day sell cooldown blocks DRAWDOWN sell plan")
     void testSellCooldownBlocksDrawdown() {
         LocalDate firstDate = LocalDate.of(2026, 8, 1);

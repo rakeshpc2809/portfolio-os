@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -47,18 +48,22 @@ import com.portfolioos.mobile.model.FlatTaxLotDto
 import com.portfolioos.mobile.model.RadarSignalDto
 import com.portfolioos.mobile.model.SyncSnapshot
 import com.portfolioos.mobile.util.formatInr
+import com.portfolioos.mobile.ui.theme.ColorTokens
+import com.portfolioos.mobile.ui.theme.TypographyTokens
+import com.portfolioos.mobile.ui.theme.ShapeTokens
+import com.portfolioos.mobile.ui.theme.SpacingTokens
 import kotlinx.coroutines.launch
 
-// Bleeding-Edge Material 3 Expressive Vibrant Obsidian Palette
-val M3ObsidianDark = Color(0xFF030712)
-val M3SurfaceCard = Color(0xFF0D1424)
-val M3SurfaceVariant = Color(0xFF162036)
-val M3ElectricLime = Color(0xFFD0FF00)
-val M3NeonCyan = Color(0xFF00F0FF)
-val M3VibrantViolet = Color(0xFFE040FB)
-val M3GreenPositive = Color(0xFF10B981)
-val M3AmberWarning = Color(0xFFF59E0B)
-val M3TextMuted = Color(0xFF94A3B8)
+// Web CSS Aligned Tokens Palette Mapping
+val M3ObsidianDark = ColorTokens.ObsidianBackground
+val M3SurfaceCard = ColorTokens.SurfaceCard
+val M3SurfaceVariant = ColorTokens.GlassSurfaceBase
+val M3ElectricLime = ColorTokens.ElectricLime
+val M3NeonCyan = ColorTokens.CyanBright
+val M3VibrantViolet = ColorTokens.PurpleAccent
+val M3GreenPositive = ColorTokens.GreenPositive
+val M3AmberWarning = ColorTokens.AmberWarning
+val M3TextMuted = ColorTokens.TextMuted
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -668,24 +673,20 @@ fun HoldingsView(
             Spacer(modifier = Modifier.height(4.dp))
             // Expressive M3 Hero Net Worth Card (en-IN Currency Format)
             Card(
-                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 10.dp, bottomEnd = 32.dp, bottomStart = 10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.5.dp,
-                        brush = Brush.linearGradient(listOf(M3ElectricLime.copy(alpha = 0.7f), M3NeonCyan.copy(alpha = 0.35f))),
-                        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 10.dp, bottomEnd = 32.dp, bottomStart = 10.dp)
-                    )
+                shape = ShapeTokens.GlassCardShape,
+                colors = CardDefaults.cardColors(containerColor = ColorTokens.SurfaceCard),
+                border = BorderStroke(1.dp, ColorTokens.CardBorder),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
                             Brush.linearGradient(
-                                colors = listOf(Color(0xFF142600), Color(0xFF062C33), Color(0xFF0D1424))
+                                colors = listOf(Color(0xFF0F1B2B), Color(0xFF0C101C), Color(0xFF050811))
                             )
                         )
-                        .padding(22.dp)
+                        .padding(SpacingTokens.xxl)
                 ) {
                     Column {
                         Row(
@@ -694,27 +695,26 @@ fun HoldingsView(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Surface(
-                                color = M3ElectricLime.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(100.dp)
+                                color = ColorTokens.ElectricLime.copy(alpha = 0.15f),
+                                shape = ShapeTokens.PillShape
                             ) {
                                 Text(
                                     text = "NET WORTH VALUATION",
-                                    color = M3ElectricLime,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 1.5.sp,
+                                    color = ColorTokens.ElectricLime,
+                                    style = TypographyTokens.MetricLabel.copy(
+                                        color = ColorTokens.ElectricLime,
+                                        letterSpacing = 1.5.sp
+                                    ),
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
                             Surface(
-                                color = M3GreenPositive.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(100.dp)
+                                color = ColorTokens.GreenPositive.copy(alpha = 0.15f),
+                                shape = ShapeTokens.PillShape
                             ) {
                                 Text(
                                     text = syncInfo?.xirrPercentage ?: "0.00% XIRR",
-                                    color = M3GreenPositive,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    style = TypographyTokens.BadgeTag.copy(color = ColorTokens.GreenPositive),
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
@@ -722,13 +722,13 @@ fun HoldingsView(
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = formatInr(syncInfo?.currentValue ?: 0.0),
-                            color = Color.White,
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace
+                            style = TypographyTokens.MetricNumber.copy(
+                                fontSize = 34.sp,
+                                color = ColorTokens.TextMain
+                            )
                         )
                         Spacer(modifier = Modifier.height(14.dp))
-                        Divider(color = Color.White.copy(alpha = 0.1f))
+                        Divider(color = ColorTokens.CardBorder)
                         Spacer(modifier = Modifier.height(14.dp))
 
                         Row(
@@ -738,32 +738,24 @@ fun HoldingsView(
                             Column {
                                 Text(
                                     text = "Total Invested",
-                                    color = M3TextMuted,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
+                                    style = TypographyTokens.MetricLabel
                                 )
                                 Text(
                                     text = formatInr(syncInfo?.totalInvested ?: 0.0),
-                                    color = Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
+                                    style = TypographyTokens.FinancialValue
                                 )
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
                                     text = "Unrealized Gain",
-                                    color = M3TextMuted,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
+                                    style = TypographyTokens.MetricLabel
                                 )
                                 val gain = syncInfo?.unrealizedGain ?: 0.0
                                 Text(
                                     text = "${if (gain >= 0) "+" else ""}${formatInr(gain)}",
-                                    color = if (gain >= 0) M3GreenPositive else Color.Red,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
+                                    style = TypographyTokens.FinancialValue.copy(
+                                        color = if (gain >= 0) ColorTokens.GreenPositive else ColorTokens.RedNegative
+                                    )
                                 )
                             }
                         }
@@ -773,7 +765,7 @@ fun HoldingsView(
         }
 
         item {
-            HistoricalNetWorthTrendChart(trendPoints = snapshot?.netWorthHistory ?: emptyList())
+            HistoricalNetWorthTrendChart(trendPoints = snapshot?.netWorthHistory.orEmpty())
         }
 
         item {
@@ -790,7 +782,7 @@ fun HoldingsView(
                     letterSpacing = 1.5.sp
                 )
             }
-            items(radarSignals, key = { s -> s.title.ifEmpty { s.signalType } }) { signal ->
+            itemsIndexed(radarSignals, key = { index, s -> "${s.title}_${s.signalType}_$index" }) { _, signal ->
                 M3RadarCard(signal)
             }
         } else {
@@ -846,7 +838,7 @@ fun HoldingsView(
                 )
             }
         } else {
-            items(holdings, key = { h -> h.isin.ifEmpty { h.fundName } }) { holding ->
+            itemsIndexed(holdings, key = { index, h -> "${h.isin}_${h.fundName}_${h.currentValue}_$index" }) { _, holding ->
                 M3HoldingCard(holding)
             }
         }
@@ -856,11 +848,12 @@ fun HoldingsView(
 @Composable
 fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> Unit = {}) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 8.dp, bottomEnd = 20.dp, bottomStart = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = ColorTokens.SurfaceCard),
+        shape = ShapeTokens.GlassCardShape,
+        border = BorderStroke(1.dp, ColorTokens.CardBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(SpacingTokens.lg)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -868,35 +861,31 @@ fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> U
             ) {
                 Text(
                     text = holding.fundName.ifEmpty { holding.isin },
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
+                    style = TypographyTokens.CardTitle.copy(fontSize = 14.sp),
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Surface(
-                    color = M3ElectricLime.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(100.dp)
+                    color = ColorTokens.ElectricLime.copy(alpha = 0.15f),
+                    shape = ShapeTokens.PillShape
                 ) {
                     Text(
                         text = "🔄 SIP",
-                        color = M3ElectricLime,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
+                        style = TypographyTokens.BadgeTag.copy(color = ColorTokens.ElectricLime, fontSize = 9.sp),
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Surface(
-                    color = if (holding.xirr >= 0) M3GreenPositive.copy(alpha = 0.15f) else Color.Red.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(100.dp)
+                    color = if (holding.xirr >= 0) ColorTokens.GreenPositive.copy(alpha = 0.15f) else ColorTokens.RedNegative.copy(alpha = 0.15f),
+                    shape = ShapeTokens.PillShape
                 ) {
                     Text(
                         text = "${if (holding.xirr >= 0) "+" else ""}${holding.xirr}% XIRR",
-                        color = if (holding.xirr >= 0) M3GreenPositive else Color.Red,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
+                        style = TypographyTokens.BadgeTag.copy(
+                            color = if (holding.xirr >= 0) ColorTokens.GreenPositive else ColorTokens.RedNegative,
+                            fontSize = 11.sp
+                        ),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
@@ -910,39 +899,35 @@ fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> U
                 Column {
                     Text(
                         text = "Valuation: ${formatInr(holding.currentValue)}",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
+                        style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp)
                     )
                     Text(
                         text = "${holding.totalUnits} Units · Cost: ${formatInr(holding.investedValue)}",
-                        color = M3TextMuted,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace
+                        style = TypographyTokens.FinancialValue.copy(color = ColorTokens.TextMuted, fontSize = 11.sp)
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Surface(
-                        color = M3SurfaceVariant,
-                        shape = RoundedCornerShape(100.dp)
+                        color = ColorTokens.GlassSurfaceBase,
+                        shape = ShapeTokens.PillShape
                     ) {
                         Text(
                             text = holding.assetBucket,
-                            color = M3NeonCyan,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
+                            style = TypographyTokens.BadgeTag.copy(color = ColorTokens.CyanBright, fontSize = 10.sp),
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
                     Button(
                         onClick = { onSimulateSale(holding) },
-                        colors = ButtonDefaults.buttonColors(containerColor = M3NeonCyan.copy(alpha = 0.2f)),
-                        shape = RoundedCornerShape(100.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ColorTokens.CyanBright.copy(alpha = 0.2f)),
+                        shape = ShapeTokens.PillShape,
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         modifier = Modifier.height(28.dp)
                     ) {
-                        Text("Simulate ➔", color = M3NeonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Simulate ➔",
+                            style = TypographyTokens.MetricLabel.copy(color = ColorTokens.CyanBright, fontSize = 10.sp)
+                        )
                     }
                 }
             }
@@ -966,14 +951,10 @@ fun OverlapConcentrationPlaceholderView(holdings: List<FlatHoldingDto>) {
         item {
             Spacer(modifier = Modifier.height(4.dp))
             Card(
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.5.dp,
-                        brush = Brush.linearGradient(listOf(M3VibrantViolet.copy(alpha = 0.7f), M3NeonCyan.copy(alpha = 0.35f))),
-                        shape = RoundedCornerShape(24.dp)
-                    )
+                shape = ShapeTokens.GlassCardShape,
+                colors = CardDefaults.cardColors(containerColor = ColorTokens.SurfaceCard),
+                border = BorderStroke(1.dp, ColorTokens.CardBorder),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Box(
                     modifier = Modifier
@@ -983,42 +964,36 @@ fun OverlapConcentrationPlaceholderView(holdings: List<FlatHoldingDto>) {
                                 colors = listOf(Color(0xFF1E0B36), Color(0xFF0F172A), Color(0xFF030712))
                             )
                         )
-                        .padding(22.dp)
+                        .padding(SpacingTokens.xxl)
                 ) {
                     Column {
                         Surface(
-                            color = M3VibrantViolet.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(100.dp)
+                            color = ColorTokens.PurpleAccent.copy(alpha = 0.2f),
+                            shape = ShapeTokens.PillShape
                         ) {
                             Text(
                                 text = "COMING IN PHASE 2",
-                                color = M3VibrantViolet,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
+                                style = TypographyTokens.BadgeTag.copy(color = ColorTokens.PurpleAccent),
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "OVERLAP & CONCENTRATION AUDIT",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 1.5.sp
+                            style = TypographyTokens.MetricLabel.copy(
+                                color = ColorTokens.TextMain,
+                                letterSpacing = 1.5.sp
+                            )
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "Fund Overlap Matrix & Stock Look-Through",
-                            color = Color.White,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
+                            style = TypographyTokens.SectionHeader.copy(fontSize = 18.sp)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "The mobile 4-tab navigation shell is active. Interactive fund-to-fund portfolio overlap, stock concentration analysis, and asset class drift details are undergoing mobile-first UI adaptation for Phase 2.",
-                            color = M3TextMuted,
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp
+                            style = TypographyTokens.BodyText
                         )
                     }
                 }
@@ -1123,7 +1098,7 @@ fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {
                 }
             }
         } else {
-            items(radarSignals, key = { s -> "${s.title}-${s.signalType}" }) { signal ->
+            itemsIndexed(radarSignals, key = { index, s -> "${s.title}_${s.signalType}_$index" }) { _, signal ->
                 M3RadarCard(signal)
             }
         }
@@ -1220,7 +1195,7 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
                 )
             }
         } else {
-            items(groupedLots.entries.toList(), key = { entry -> entry.key }) { (isin, lots) ->
+            itemsIndexed(groupedLots.entries.toList(), key = { index, entry -> "${entry.key}_$index" }) { _, (isin, lots) ->
                 val schemeName = nameMap[isin] ?: isin
                 GroupedSchemeTaxLotCard(schemeName = schemeName, isin = isin, lots = lots)
             }
@@ -1350,6 +1325,10 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
 fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.RebalancePlanDto?) {
     val sellSide = rebalancePlan?.sellSide
     val tiers = remember(sellSide) { sellSide?.waterfall.orEmpty().filter { it.lots.isNotEmpty() } }
+    val isCooldownBlocked = remember(rebalancePlan) {
+        val headline = rebalancePlan?.reasoningNarrative?.headline.orEmpty()
+        headline.contains("cooldown", ignoreCase = true)
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -1381,6 +1360,16 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                     onAction = {}
                 )
             }
+        } else if (isCooldownBlocked) {
+            item {
+                PortfolioStateCard(
+                    icon = Icons.Default.Info,
+                    iconTint = M3AmberWarning,
+                    title = "Rebalance Action Deferred",
+                    subtitle = "30-Day Cooldown Active",
+                    description = rebalancePlan.reasoningNarrative?.headline ?: "Bucket drift detected, but sell rebalance is on 30-day cooldown."
+                )
+            }
         } else if (sellSide == null || tiers.isEmpty() || sellSide.totalRequired == 0.0) {
             item {
                 PortfolioStateCard(
@@ -1388,9 +1377,7 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                     iconTint = M3GreenPositive,
                     title = "Portfolio Allocation Balanced",
                     subtitle = "No Rebalance Action Required",
-                    description = rebalancePlan.reasoningNarrative?.headline?.ifEmpty {
-                        "All asset categories remain within target allocation bands. LTCG exemption headroom is uncompromised."
-                    } ?: "All asset categories remain within target allocation bands. LTCG exemption headroom is uncompromised."
+                    description = "All asset categories remain within target allocation bands. LTCG exemption headroom is uncompromised."
                 )
             }
         } else {
@@ -1436,10 +1423,10 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                     )
                 }
 
-                items(
+                itemsIndexed(
                     items = tier.lots,
-                    key = { "${it.fundId}_${it.acquisitionDate}_${it.unitsSold}_${it.saleProceeds}" }
-                ) { lot ->
+                    key = { index, lot -> "${lot.fundId}_${lot.acquisitionDate}_${lot.unitsSold}_${lot.saleProceeds}_$index" }
+                ) { _, lot ->
                     Card(
                         colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
                         shape = RoundedCornerShape(16.dp),

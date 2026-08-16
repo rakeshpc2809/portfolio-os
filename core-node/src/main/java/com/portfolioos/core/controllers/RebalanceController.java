@@ -19,8 +19,8 @@ public class RebalanceController {
 
     @GetMapping({"/rebalance/bucket", "/portfolio/buckets/rebalance"})
     public ResponseEntity<BucketRebalanceResponse> getBucketRebalance(
-        @RequestParam(value = "benchmarkCurrent", defaultValue = "24000.00") BigDecimal benchmarkCurrent,
-        @RequestParam(value = "benchmarkRollingHigh", defaultValue = "25000.00") BigDecimal benchmarkRollingHigh,
+        @RequestParam(value = "benchmarkCurrent", required = false) BigDecimal benchmarkCurrent,
+        @RequestParam(value = "benchmarkRollingHigh", required = false) BigDecimal benchmarkRollingHigh,
         @RequestParam(value = "fy", defaultValue = "2026-27") String fy
     ) {
         return ResponseEntity.ok(valuationService.getBucketRebalance(benchmarkCurrent, benchmarkRollingHigh, fy));

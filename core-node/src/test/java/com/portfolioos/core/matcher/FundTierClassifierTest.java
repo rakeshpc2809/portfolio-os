@@ -33,4 +33,15 @@ class FundTierClassifierTest {
         );
         assertEquals(FundTierClassifier.FundStatus.LEGACY_HOLDING, legacyStatus);
     }
+
+    @Test
+    @DisplayName("FundTier classification: Parag Parikh Flexi Cap (INF879O01027) is explicitly CORE_SATELLITE")
+    void testParagParikhClassificationIsCoreSatellite() {
+        FundTierClassifier.FundTier tier = FundTierClassifier.classify("INF879O01027");
+        assertEquals(FundTierClassifier.FundTier.CORE_SATELLITE, tier,
+            "Parag Parikh Flexi Cap Fund (INF879O01027) must classify as CORE_SATELLITE (not LEGACY)");
+
+        boolean isLegacy = FundTierClassifier.isLegacyFund("INF879O01027", Set.of());
+        assertFalse(isLegacy, "Parag Parikh Flexi Cap must NEVER be classified as a legacy fund even with 0 active SIPs!");
+    }
 }

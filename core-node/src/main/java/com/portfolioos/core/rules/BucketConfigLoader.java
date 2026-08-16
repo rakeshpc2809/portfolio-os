@@ -35,6 +35,23 @@ public class BucketConfigLoader {
         return com.portfolioos.core.valuation.BucketEngine.classifyAssetToBucket(assetId, assetName).name();
     }
 
+    public static boolean isPreferredFund(String assetId) {
+        if (assetId == null) return false;
+        BucketTargetVersion version = getActiveVersion(LocalDate.now());
+        if (version != null && version.targets() != null) {
+            for (BucketTargetConfig target : version.targets()) {
+                if (target.preferredFunds() != null) {
+                    for (PreferredFundConfig fund : target.preferredFunds()) {
+                        if (assetId.equalsIgnoreCase(fund.fundId())) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     public record BucketTargetVersion(
         String versionId,
         String effectiveFrom, // YYYY-MM-DD

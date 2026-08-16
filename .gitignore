@@ -48,6 +48,10 @@ dist/
 # Databases & local data files
 data/
 *.db
+*.duckdb
+jdbc:duckdb:
+*.zip
+portfolio-os-codebase.xml
 *.wal
 *.duckdb
 *.duckdb.wal
