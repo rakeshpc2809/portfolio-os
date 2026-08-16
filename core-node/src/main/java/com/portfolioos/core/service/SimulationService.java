@@ -3,6 +3,7 @@ package com.portfolioos.core.service;
 import com.portfolioos.core.matcher.FifoMatcher;
 import com.portfolioos.core.model.*;
 import com.portfolioos.core.reporting.ExemptionTracker;
+import com.portfolioos.core.rules.TaxRulesConfig;
 import com.portfolioos.core.rules.TaxRulesLoader;
 import com.portfolioos.core.xirr.CashFlow;
 import com.portfolioos.core.xirr.XirrEngine;
@@ -42,14 +43,19 @@ public class SimulationService {
         BigDecimal grossCapitalGain,
         BigDecimal ltcgEquity,
         BigDecimal stcgEquity,
-        BigDecimal debtGain,
+        BigDecimal slabRateGain, // Renamed from debtGain to accurately reflect all slab-taxed gains (specified debt, STCG Gold/Intl/SGB)
         BigDecimal sec112aExemptionApplied,
         BigDecimal estimatedTaxLiability,
         BigDecimal postTradeNetWorth,
         BigDecimal postTradeInvestedCost,
         BigDecimal postTradeXirr,
         String taxSummaryNotice
-    ) {}
+    ) {
+        // Backwards compatibility getter alias for legacy callers querying debtGain()
+        public BigDecimal debtGain() {
+            return slabRateGain;
+        }
+    }
 
     public TradeSimulationResult simulateTrade(TradeSimulationRequest req) {
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
@@ -61,6 +67,7 @@ public class SimulationService {
             : LocalDate.now();
 
         String targetFy = TaxRulesLoader.detectFiscalYear(tradeDate);
+        TaxRulesConfig rules = TaxRulesLoader.loadRules(targetFy);
 
         BigDecimal unitsBd = req.units() != null ? req.units().setScale(4, RoundingMode.HALF_UP) : BigDecimal.ZERO;
         BigDecimal priceBd = req.pricePerUnit() != null ? req.pricePerUnit().setScale(4, RoundingMode.HALF_UP) : BigDecimal.ZERO;
@@ -92,7 +99,8 @@ public class SimulationService {
 
         BigDecimal ltcgEquity = BigDecimal.ZERO;
         BigDecimal stcgEquity = BigDecimal.ZERO;
-        BigDecimal debtGain = BigDecimal.ZERO;
+        BigDecimal ltcgGoldInternational = BigDecimal.ZERO;
+        BigDecimal stcgSlabRateGain = BigDecimal.ZERO;
         BigDecimal totalGain = BigDecimal.ZERO;
 
         if (type == EventType.DISPOSAL) {
@@ -103,35 +111,49 @@ public class SimulationService {
                     BigDecimal gain = match.realizedGain();
                     totalGain = totalGain.add(gain);
 
-                    if (category == AssetCategory.EQUITY) {
-                        if (term == TaxTerm.LONG_TERM) {
-                            ltcgEquity = ltcgEquity.add(gain);
-                        } else {
-                            stcgEquity = stcgEquity.add(gain);
+                    switch (category) {
+                        case EQUITY -> {
+                            if (term == TaxTerm.LONG_TERM) {
+                                ltcgEquity = ltcgEquity.add(gain);
+                            } else {
+                                stcgEquity = stcgEquity.add(gain);
+                            }
                         }
-                    } else {
-                        debtGain = debtGain.add(gain);
+                        case GOLD_SILVER, INTERNATIONAL, SGB -> {
+                            if (term == TaxTerm.LONG_TERM) {
+                                ltcgGoldInternational = ltcgGoldInternational.add(gain);
+                            } else {
+                                stcgSlabRateGain = stcgSlabRateGain.add(gain);
+                            }
+                        }
+                        case DEBT_SPECIFIED_50AA -> {
+                            // Specified debt under Sec 50AA is always short term and taxed at SLAB_RATE
+                            stcgSlabRateGain = stcgSlabRateGain.add(gain);
+                        }
+                        default -> throw new IllegalStateException("Unhandled AssetCategory for tax simulation: " + category);
                     }
                 }
             }
         }
 
-        // Use ExemptionTracker bound to target fiscal year instead of lifetime accumulation
+        // Use ExemptionTracker bound to target fiscal year
         ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(state.fifoResult().matchedLots(), targetFy);
         BigDecimal remainingExemptionLimit = new BigDecimal(exStatus.exemptionRemaining());
 
         BigDecimal exemptionApplied = BigDecimal.ZERO;
-        BigDecimal taxableLtcg = BigDecimal.ZERO;
+        BigDecimal taxableLtcgEquity = BigDecimal.ZERO;
 
         if (ltcgEquity.compareTo(BigDecimal.ZERO) > 0) {
             exemptionApplied = ltcgEquity.min(remainingExemptionLimit);
-            taxableLtcg = ltcgEquity.subtract(exemptionApplied).max(BigDecimal.ZERO);
+            taxableLtcgEquity = ltcgEquity.subtract(exemptionApplied).max(BigDecimal.ZERO);
         }
 
-        BigDecimal ltcgTax = taxableLtcg.multiply(new BigDecimal("0.125")).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal stcgTax = stcgEquity.max(BigDecimal.ZERO).multiply(new BigDecimal("0.20")).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal debtTax = debtGain.max(BigDecimal.ZERO).multiply(new BigDecimal("0.30")).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal estimatedTax = ltcgTax.add(stcgTax).add(debtTax);
+        // Calculate tax dynamic from rules object — NO hardcoded BigDecimal literal rates
+        BigDecimal ltcgEquityTax = taxableLtcgEquity.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal stcgEquityTax = stcgEquity.max(BigDecimal.ZERO).multiply(rules.equityStcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal ltcgGoldTax = ltcgGoldInternational.max(BigDecimal.ZERO).multiply(rules.goldInternationalLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+        
+        BigDecimal estimatedTax = ltcgEquityTax.add(stcgEquityTax).add(ltcgGoldTax);
 
         // Compute post-trade net worth & XIRR
         BigDecimal postInvested = BigDecimal.ZERO;
@@ -157,10 +179,20 @@ public class SimulationService {
         double postXirrVal = xirrEngine.calculateXirr(cashFlows);
         BigDecimal postXirr = BigDecimal.valueOf(postXirrVal).setScale(2, RoundingMode.HALF_UP);
 
-        String notice = (type == EventType.DISPOSAL)
-            ? String.format("Simulated Sale (FY %s): Estimated Tax Drag ₹%s (LTCG Exemption Used: ₹%s)",
-                targetFy, estimatedTax.setScale(2, RoundingMode.HALF_UP).toPlainString(), exemptionApplied.setScale(2, RoundingMode.HALF_UP).toPlainString())
-            : String.format("Simulated Purchase: Added ₹%s investment to portfolio.", grossAmount.setScale(2, RoundingMode.HALF_UP).toPlainString());
+        String notice;
+        if (type == EventType.DISPOSAL) {
+            if (stcgSlabRateGain.compareTo(BigDecimal.ZERO) > 0) {
+                notice = String.format("Simulated Sale (FY %s): Estimated Computed Tax Drag ₹%s (LTCG Exemption Used: ₹%s). Additional Gains: ₹%s (SLAB_RATE — not computed without income slab data).",
+                    targetFy, estimatedTax.setScale(2, RoundingMode.HALF_UP).toPlainString(),
+                    exemptionApplied.setScale(2, RoundingMode.HALF_UP).toPlainString(),
+                    stcgSlabRateGain.setScale(2, RoundingMode.HALF_UP).toPlainString());
+            } else {
+                notice = String.format("Simulated Sale (FY %s): Estimated Tax Drag ₹%s (LTCG Exemption Used: ₹%s)",
+                    targetFy, estimatedTax.setScale(2, RoundingMode.HALF_UP).toPlainString(), exemptionApplied.setScale(2, RoundingMode.HALF_UP).toPlainString());
+            }
+        } else {
+            notice = String.format("Simulated Purchase: Added ₹%s investment to portfolio.", grossAmount.setScale(2, RoundingMode.HALF_UP).toPlainString());
+        }
 
         return new TradeSimulationResult(
             isin,
@@ -172,7 +204,7 @@ public class SimulationService {
             totalGain.setScale(2, RoundingMode.HALF_UP),
             ltcgEquity.setScale(2, RoundingMode.HALF_UP),
             stcgEquity.setScale(2, RoundingMode.HALF_UP),
-            debtGain.setScale(2, RoundingMode.HALF_UP),
+            stcgSlabRateGain.setScale(2, RoundingMode.HALF_UP),
             exemptionApplied.setScale(2, RoundingMode.HALF_UP),
             estimatedTax.setScale(2, RoundingMode.HALF_UP),
             postCurrentVal.setScale(2, RoundingMode.HALF_UP),

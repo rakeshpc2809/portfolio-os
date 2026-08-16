@@ -62,9 +62,11 @@ public class TaxOptimizationService {
         Map<String, BigDecimal> navMap = amfiSync.getNavMap();
         String currentFy = TaxRulesLoader.detectFiscalYear(LocalDate.now());
 
-        // Assume zero exemption used so far for simple harvest opportunity advice
+        ExemptionTracker.ExemptionStatus status = getExemptionStatus(currentFy);
+        BigDecimal usedExemption = new BigDecimal(status.exemptionUsed());
+
         HarvestAdvisor.TaxHarvestResult plan = HarvestAdvisor.generateHarvestPlan(
-            openLots, navMap, BigDecimal.ZERO, currentFy
+            openLots, navMap, usedExemption, currentFy
         );
 
         return plan.recommendations().stream().map(opp -> new HarvestOpportunityDto(
@@ -152,11 +154,15 @@ public class TaxOptimizationService {
     }
 
     public Map<String, String> downloadItr2Files(String fy) {
+        return downloadItr2Files(fy, Map.of());
+    }
+
+    public Map<String, String> downloadItr2Files(String fy, Map<String, BigDecimal> fmv2018Map) {
         List<TaxEvent> allEvents = eventStore.getAllEvents();
         List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents).matchedLots();
         Map<String, String> assetNameMap = allEvents.stream()
             .collect(Collectors.toMap(TaxEvent::assetId, TaxEvent::assetName, (a, b) -> a));
 
-        return Itr2CsvExporter.exportItr2ScheduleCg(matchedLots, fy, assetNameMap);
+        return Itr2CsvExporter.exportItr2ScheduleCg(matchedLots, fy, assetNameMap, fmv2018Map != null ? fmv2018Map : Map.of());
     }
 }
