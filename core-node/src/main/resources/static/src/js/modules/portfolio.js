@@ -1583,6 +1583,7 @@ export function renderUnifiedRebalancePlanUI(plan) {
 
   // 5. Render Pre/Post Allocation Progression Delta Badges
   renderPrePostAllocationDelta(plan);
+  renderTargetFundProgression(plan, state.holdings, state.bucketTargetsConfig);
 
   // 6. Render Secondary Sankey (mounted, hidden by default until toggle)
   renderRebalanceMicroSankey(sellSide, buySide);
@@ -1894,6 +1895,135 @@ function renderPrePostAllocationDelta(plan) {
         <span style="color: #64748b;">➔</span>
         <span style="font-weight: 800; color: ${deltaColor};">${post.toFixed(1)}%</span>
         <span style="color: #64748b; font-size: 0.7rem;">(Target ${tgt.toFixed(1)}%)</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderTargetFundProgression(plan, holdings, bucketTargetsConfig) {
+  const container = document.getElementById('rebalanceFundProgressionContainer');
+  if (!container) return;
+
+  const sellSide = plan.sell_side || plan.sellSide || {};
+  const buySide = plan.buy_side || plan.buySide || {};
+  const actualHoldings = holdings || state.holdings || [];
+  const targetsConfig = bucketTargetsConfig || state.bucketTargetsConfig || null;
+
+  // 1. Calculate current fund valuations & total portfolio net worth
+  const currentFundVal = {};
+  const fundNameMap = {};
+  let totalNetWorth = 0;
+
+  actualHoldings.forEach(h => {
+    const isin = h.asset_id || h.assetId;
+    const name = h.asset_name || h.assetName || isin;
+    const val = parseFloat(h.current_value || h.currentValue) || 0;
+    if (isin) {
+      currentFundVal[isin] = val;
+      fundNameMap[isin] = name;
+      totalNetWorth += val;
+    }
+  });
+
+  // 2. Calculate sell amounts per fund
+  const fundSellMap = {};
+  (sellSide.waterfall || []).forEach(tier => {
+    (tier.lots || []).forEach(lot => {
+      const isin = lot.fundId || lot.fund_id;
+      const proceeds = parseFloat(lot.saleProceeds || lot.sale_proceeds) || 0;
+      if (isin) {
+        fundSellMap[isin] = (fundSellMap[isin] || 0) + proceeds;
+      }
+    });
+  });
+
+  // 3. Calculate buy amounts per fund
+  const fundBuyMap = {};
+  const totalPool = buySide.total_to_invest ?? buySide.totalToInvest ?? 0;
+  (buySide.buckets || []).forEach(b => {
+    const tgtPct = parseFloat(b.target_pct ?? b.targetPct) || 0;
+    const bucketAlloc = totalPool * (tgtPct / 100.0);
+    const prefFunds = b.fund_breakdown || b.fundBreakdown || [];
+    const fundCount = prefFunds.length > 0 ? prefFunds.length : 1;
+    prefFunds.forEach(f => {
+      const isin = f.fund_id || f.fundId;
+      const weight = parseFloat(f.allocation_weight || f.allocationWeight) || (1.0 / fundCount);
+      const buyAmt = bucketAlloc * weight;
+      if (isin) {
+        fundBuyMap[isin] = (fundBuyMap[isin] || 0) + buyAmt;
+        if (f.fund_name || f.fundName) fundNameMap[isin] = f.fund_name || f.fundName;
+      }
+    });
+  });
+
+  // 4. Calculate target fund allocation % from targetsConfig
+  const plannedMap = {};
+  let activeVersion = null;
+  if (targetsConfig && targetsConfig.versions && targetsConfig.versions.length > 0) {
+    activeVersion = targetsConfig.versions[targetsConfig.versions.length - 1];
+  }
+  if (activeVersion && activeVersion.targets) {
+    activeVersion.targets.forEach(t => {
+      const bucketTargetPct = parseFloat(t.target_pct || t.targetPct) || 0;
+      const prefFunds = t.preferred_funds || t.preferredFunds || [];
+      prefFunds.forEach(pf => {
+        const isin = pf.fund_id || pf.fundId;
+        const weight = parseFloat(pf.allocation_weight || pf.allocationWeight) || 0;
+        const plannedPct = Math.round(bucketTargetPct * weight * 100) / 100;
+        if (isin) plannedMap[isin] = plannedPct;
+      });
+    });
+  }
+
+  // 5. Build combined list of all funds (holdings + buy targets)
+  const allIsins = new Set([...Object.keys(currentFundVal), ...Object.keys(fundBuyMap), ...Object.keys(plannedMap)]);
+  const fundItems = [];
+
+  allIsins.forEach(isin => {
+    const rawName = fundNameMap[isin] || isin;
+    const shortName = shortenFundName(rawName);
+    const curVal = currentFundVal[isin] || 0;
+    const sellAmt = fundSellMap[isin] || 0;
+    const buyAmt = fundBuyMap[isin] || 0;
+    const postVal = Math.max(0, curVal - sellAmt + buyAmt);
+    const targetPct = plannedMap[isin] || 0.0;
+
+    const curPct = totalNetWorth > 0 ? (curVal / totalNetWorth) * 100 : 0;
+    const postPct = totalNetWorth > 0 ? (postVal / totalNetWorth) * 100 : 0;
+
+    fundItems.push({
+      isin,
+      rawName,
+      shortName: shortName.length > 24 ? shortName.substring(0, 22) + '...' : shortName,
+      curPct,
+      postPct,
+      targetPct,
+      isTarget: targetPct > 0
+    });
+  });
+
+  // Sort: Target funds first (by targetPct desc), then legacy funds (by curPct desc)
+  fundItems.sort((a, b) => {
+    if (a.isTarget && !b.isTarget) return -1;
+    if (!a.isTarget && b.isTarget) return 1;
+    if (a.isTarget && b.isTarget) return b.targetPct - a.targetPct;
+    return b.curPct - a.curPct;
+  });
+
+  container.innerHTML = fundItems.map(f => {
+    let deltaColor = '#34d399'; // Green
+    if (f.postPct < f.curPct) deltaColor = '#f87171'; // Red for trim
+    if (!f.isTarget) deltaColor = '#64748b'; // Muted for legacy 0% target
+
+    const targetBadgeText = f.isTarget ? `Target ${f.targetPct.toFixed(1)}%` : 'Legacy (0.0%)';
+
+    return `
+      <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 6px 12px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px;">
+        <span style="font-weight: 700; color: #f8fafc;">${f.shortName}:</span>
+        <span style="color: #94a3b8;">${f.curPct.toFixed(1)}%</span>
+        <span style="color: #64748b;">➔</span>
+        <span style="font-weight: 800; color: ${deltaColor};">${f.postPct.toFixed(1)}%</span>
+        <span style="color: #64748b; font-size: 0.7rem;">(${targetBadgeText})</span>
       </div>
     `;
   }).join('');

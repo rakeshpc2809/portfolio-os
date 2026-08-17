@@ -31,6 +31,7 @@ async function initDashboard() {
     renderSchemeGroupedTaxLotsUI(holdings, 'groupedTaxLotsContainerTaxTab');
 
     const bucketTargetsConfig = await fetchJson(`/config/bucket-targets`).catch(() => null);
+    state.bucketTargetsConfig = bucketTargetsConfig;
     if (bucketTargetsConfig && holdings) {
       renderFundAllocationCompareChart('fundAllocationCompareChart', holdings, bucketTargetsConfig);
     }
