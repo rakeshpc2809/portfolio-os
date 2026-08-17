@@ -45,11 +45,12 @@ public class BucketConfigLoader {
             for (BucketTargetConfig target : version.targets()) {
                 if (target.preferredFunds() != null) {
                     for (PreferredFundConfig fund : target.preferredFunds()) {
-                        if (assetId != null && assetId.equalsIgnoreCase(fund.fundId())) {
-                            if (assetName == null || fund.fundName() == null || assetName.equalsIgnoreCase(fund.fundName()) ||
-                                assetName.toUpperCase().contains("NIPPON") || assetName.toUpperCase().contains("SMALL")) {
-                                return target.bucket();
-                            }
+                        if (assetId != null && fund.fundId() != null && assetId.equalsIgnoreCase(fund.fundId())) {
+                            return target.bucket();
+                        }
+                        if (assetName != null && fund.fundName() != null &&
+                            assetName.toUpperCase().contains(fund.fundName().toUpperCase())) {
+                            return target.bucket();
                         }
                     }
                 }
