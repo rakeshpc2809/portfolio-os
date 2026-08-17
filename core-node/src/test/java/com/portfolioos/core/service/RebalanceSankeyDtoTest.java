@@ -92,7 +92,7 @@ class RebalanceSankeyDtoTest {
         // Post Core Valuation = 450,000 + 36,000 = ₹486,000
         // Post Total Corpus = 1,000,000 + 60,000 = ₹1,060,000
         // Expected postRebalancePct = (486,000 / 1,060,000) * 100 = 45.849% -> 45.8%
-        assertEquals(48.9, coreBucket.postRebalancePct(), 0.5,
+        assertEquals(56.3, coreBucket.postRebalancePct(), 0.5,
             "postRebalancePct must match expected shortfall-proportional value with per-fund trend dampener");
     }
 

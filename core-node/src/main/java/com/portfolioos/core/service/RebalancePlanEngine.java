@@ -526,8 +526,9 @@ public class RebalancePlanEngine {
                 }
             }
 
+            BigDecimal freshCash = isLumpsum ? (manualLumpsumAmount != null ? manualLumpsumAmount : BigDecimal.ZERO) : ((sellSide == null || sellSide.totalRequired() == null || sellSide.totalRequired().compareTo(BigDecimal.ZERO) == 0) ? totalPool : BigDecimal.ZERO);
             BigDecimal postVal = curVal.add(amountAllocated);
-            BigDecimal totalPostCorpus = liveCorpus.add(totalPool);
+            BigDecimal totalPostCorpus = liveCorpus.add(freshCash);
 
             double postPct = (totalPostCorpus.compareTo(BigDecimal.ZERO) > 0) ?
                 Math.round((postVal.doubleValue() / totalPostCorpus.doubleValue()) * 1000.0) / 10.0 : currentPct;
@@ -559,8 +560,16 @@ public class RebalancePlanEngine {
                     runningAlloc = runningAlloc.add(normAlloc);
                 }
                 List<FundAllocationDto> realFunds = resolveRealFundBreakdown(BucketEngine.Bucket.valueOf(b.bucket()), normAlloc, activeVersion);
+                BigDecimal curVal = statusMap.containsKey(BucketEngine.Bucket.valueOf(b.bucket())) ?
+                    statusMap.get(BucketEngine.Bucket.valueOf(b.bucket())).currentValue() : BigDecimal.ZERO;
+                BigDecimal postVal = curVal.add(normAlloc);
+                BigDecimal freshCash = isLumpsum ? (manualLumpsumAmount != null ? manualLumpsumAmount : BigDecimal.ZERO) : ((sellSide == null || sellSide.totalRequired() == null || sellSide.totalRequired().compareTo(BigDecimal.ZERO) == 0) ? totalPool : BigDecimal.ZERO);
+                BigDecimal totalPostCorpus = liveCorpus.add(freshCash);
+                double postPct = totalPostCorpus.compareTo(BigDecimal.ZERO) > 0 ?
+                    Math.round((postVal.doubleValue() / totalPostCorpus.doubleValue()) * 1000.0) / 10.0 : b.targetPct();
+
                 normalizedBuckets.add(new RebalanceBucketAllocationDto(
-                    b.bucket(), b.targetPct(), b.currentPct(), b.postRebalancePct(), normAlloc, realFunds
+                    b.bucket(), b.targetPct(), b.currentPct(), postPct, normAlloc, realFunds
                 ));
             }
             buyBuckets = normalizedBuckets;

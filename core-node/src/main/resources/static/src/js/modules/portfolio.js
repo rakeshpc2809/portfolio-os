@@ -1968,16 +1968,14 @@ function renderTargetFundProgression(plan, holdings, bucketTargetsConfig) {
 
   // 3. Calculate buy amounts per fund
   const fundBuyMap = {};
-  const totalPool = buySide.total_to_invest ?? buySide.totalToInvest ?? 0;
   (buySide.buckets || []).forEach(b => {
-    const tgtPct = parseFloat(b.target_pct ?? b.targetPct) || 0;
-    const bucketAlloc = totalPool * (tgtPct / 100.0);
+    const bucketAlloc = parseFloat(b.amount_allocated ?? b.amountAllocated) || 0;
     const prefFunds = b.fund_breakdown || b.fundBreakdown || [];
     const fundCount = prefFunds.length > 0 ? prefFunds.length : 1;
     prefFunds.forEach(f => {
       const isin = f.fund_id || f.fundId;
       const weight = parseFloat(f.allocation_weight || f.allocationWeight) || (1.0 / fundCount);
-      const buyAmt = bucketAlloc * weight;
+      const buyAmt = f.amount !== undefined ? parseFloat(f.amount) : (bucketAlloc * weight);
       if (isin) {
         fundBuyMap[isin] = (fundBuyMap[isin] || 0) + buyAmt;
         if (f.fund_name || f.fundName) fundNameMap[isin] = f.fund_name || f.fundName;
