@@ -16,9 +16,11 @@ services:
       - SIDECAR_HTTP_URL=http://quant-sidecar:8000
       - SIDECAR_FLIGHT_URL=grpc+tcp://quant-sidecar:8001
       - SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434
+      - SPRING_WEB_RESOURCES_STATIC_LOCATIONS=file:/app/static/,classpath:/static/
     volumes:
       - ./data:/app/data
       - ./rules:/app/rules
+      - ./core-node/src/main/resources/static:/app/static
     depends_on:
       quant-sidecar:
         condition: service_healthy
