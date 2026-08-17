@@ -463,6 +463,9 @@ public class RebalancePlanEngine {
         }
 
         // 4. Dynamic Buy Side Allocations Resolving to REAL Portfolio Fund ISINs
+        BigDecimal freshCash = isLumpsum ? (manualLumpsumAmount != null ? manualLumpsumAmount : BigDecimal.ZERO) : ((sellSide == null || sellSide.totalRequired() == null || sellSide.totalRequired().compareTo(BigDecimal.ZERO) == 0) ? totalPool : BigDecimal.ZERO);
+        BigDecimal postCorpus = liveCorpus.add(freshCash);
+
         BucketEngine.RebalanceEngineResult bucketResult = BucketEngine.evaluateRebalance(
             openLots, matchedLots, navMap, today, benchmarkCurrent, benchmarkRollingHigh, activeTargets, fiscalYear
         );
@@ -480,7 +483,7 @@ public class RebalancePlanEngine {
         for (BucketEngine.BucketTarget target : activeTargets) {
             BucketEngine.BucketStatus status = statusMap.get(target.bucket());
             BigDecimal curVal = status != null ? status.currentValue() : BigDecimal.ZERO;
-            BigDecimal targetVal = liveCorpus.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            BigDecimal targetVal = postCorpus.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
             BigDecimal shortfall = targetVal.subtract(curVal).max(BigDecimal.ZERO);
             bucketShortfalls.put(target.bucket(), shortfall);
@@ -495,8 +498,8 @@ public class RebalancePlanEngine {
 
             BucketEngine.BucketStatus status = statusMap.get(target.bucket());
             BigDecimal curVal = status != null ? status.currentValue() : BigDecimal.ZERO;
-            double currentPct = status != null ? status.currentPct().doubleValue() : (liveCorpus.compareTo(BigDecimal.ZERO) > 0 ?
-                Math.round((curVal.doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct);
+            double currentPct = (liveCorpus.compareTo(BigDecimal.ZERO) > 0) ?
+                Math.round((curVal.doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct;
 
             BigDecimal amountAllocated = BigDecimal.ZERO;
             BigDecimal shortfall = bucketShortfalls.getOrDefault(target.bucket(), BigDecimal.ZERO);
@@ -506,32 +509,12 @@ public class RebalancePlanEngine {
                     amountAllocated = totalPool;
                 }
             } else if (totalShortfall.compareTo(BigDecimal.ZERO) > 0 && shortfall.compareTo(BigDecimal.ZERO) > 0) {
-                amountAllocated = totalPool.multiply(shortfall).divide(totalShortfall, 2, RoundingMode.HALF_UP);
-                if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER) {
-                    BigDecimal goldNav = BigDecimal.ZERO;
-                    if (openLots != null) {
-                        for (Lot lot : openLots) {
-                            if ("GOLD_SILVER".equals(BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName()))) {
-                                goldNav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ZERO);
-                                if (goldNav.compareTo(BigDecimal.ZERO) > 0) break;
-                            }
-                        }
-                    }
-                    double currentPriceVal = goldNav.compareTo(BigDecimal.ZERO) > 0 ? goldNav.doubleValue() : (benchmarkCurrent != null ? benchmarkCurrent.doubleValue() : 1.0);
-                    double sma200Val = (benchmarkRollingHigh != null && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0) ? benchmarkRollingHigh.doubleValue() : currentPriceVal;
-                    double devPct = (sma200Val > 0.0) ? ((currentPriceVal - sma200Val) / sma200Val) * 100.0 : 0.0;
-
-                    GoldDampenerCalculator.DampenerMultipliers mults = GoldDampenerCalculator.calculateMultipliers(devPct);
-                    amountAllocated = amountAllocated.multiply(BigDecimal.valueOf(mults.buyMultiplier())).setScale(2, RoundingMode.HALF_UP).min(totalPool);
-                }
+                amountAllocated = totalPool.multiply(shortfall).divide(totalShortfall, 2, RoundingMode.HALF_UP).min(shortfall);
             }
 
-            BigDecimal freshCash = isLumpsum ? (manualLumpsumAmount != null ? manualLumpsumAmount : BigDecimal.ZERO) : ((sellSide == null || sellSide.totalRequired() == null || sellSide.totalRequired().compareTo(BigDecimal.ZERO) == 0) ? totalPool : BigDecimal.ZERO);
             BigDecimal postVal = curVal.add(amountAllocated);
-            BigDecimal totalPostCorpus = liveCorpus.add(freshCash);
-
-            double postPct = (totalPostCorpus.compareTo(BigDecimal.ZERO) > 0) ?
-                Math.round((postVal.doubleValue() / totalPostCorpus.doubleValue()) * 1000.0) / 10.0 : currentPct;
+            double postPct = (postCorpus.compareTo(BigDecimal.ZERO) > 0) ?
+                Math.round((postVal.doubleValue() / postCorpus.doubleValue()) * 1000.0) / 10.0 : currentPct;
 
             List<FundAllocationDto> realFunds = resolveRealFundBreakdown(target.bucket(), amountAllocated, activeVersion);
 
@@ -563,10 +546,8 @@ public class RebalancePlanEngine {
                 BigDecimal curVal = statusMap.containsKey(BucketEngine.Bucket.valueOf(b.bucket())) ?
                     statusMap.get(BucketEngine.Bucket.valueOf(b.bucket())).currentValue() : BigDecimal.ZERO;
                 BigDecimal postVal = curVal.add(normAlloc);
-                BigDecimal freshCash = isLumpsum ? (manualLumpsumAmount != null ? manualLumpsumAmount : BigDecimal.ZERO) : ((sellSide == null || sellSide.totalRequired() == null || sellSide.totalRequired().compareTo(BigDecimal.ZERO) == 0) ? totalPool : BigDecimal.ZERO);
-                BigDecimal totalPostCorpus = liveCorpus.add(freshCash);
-                double postPct = totalPostCorpus.compareTo(BigDecimal.ZERO) > 0 ?
-                    Math.round((postVal.doubleValue() / totalPostCorpus.doubleValue()) * 1000.0) / 10.0 : b.targetPct();
+                double postPct = (postCorpus.compareTo(BigDecimal.ZERO) > 0) ?
+                    Math.round((postVal.doubleValue() / postCorpus.doubleValue()) * 1000.0) / 10.0 : b.targetPct();
 
                 normalizedBuckets.add(new RebalanceBucketAllocationDto(
                     b.bucket(), b.targetPct(), b.currentPct(), postPct, normAlloc, realFunds
