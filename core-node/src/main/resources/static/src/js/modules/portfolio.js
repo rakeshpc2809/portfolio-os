@@ -441,6 +441,159 @@ export function renderBucketAllocationChart(containerId, bucketStatuses) {
   return instance;
 }
 
+export function renderFundAllocationCompareChart(containerId, holdings, bucketTargetsConfig) {
+  const container = document.getElementById(containerId);
+  if (!container || !window.echarts) return null;
+
+  if (state.charts.fundAllocCompareChart) {
+    try { state.charts.fundAllocCompareChart.dispose(); } catch (e) {}
+  }
+
+  const instance = window.echarts.init(container);
+
+  // 1. Extract active target version (e.g. v2.0)
+  let activeVersion = null;
+  if (bucketTargetsConfig && bucketTargetsConfig.versions && bucketTargetsConfig.versions.length > 0) {
+    activeVersion = bucketTargetsConfig.versions[bucketTargetsConfig.versions.length - 1];
+  }
+
+  // 2. Build planned map: fund_id -> planned_pct
+  const plannedMap = {};
+  const fundNameMap = {};
+
+  if (activeVersion && activeVersion.targets) {
+    activeVersion.targets.forEach(t => {
+      const bucketTargetPct = parseFloat(t.target_pct || t.targetPct) || 0;
+      const prefFunds = t.preferred_funds || t.preferredFunds || [];
+      prefFunds.forEach(pf => {
+        const isin = pf.fund_id || pf.fundId;
+        const name = pf.fund_name || pf.fundName;
+        const weight = parseFloat(pf.allocation_weight || pf.allocationWeight) || 0;
+        const plannedPct = Math.round(bucketTargetPct * weight * 100) / 100;
+        if (isin) {
+          plannedMap[isin] = plannedPct;
+          if (name) fundNameMap[isin] = name;
+        }
+      });
+    });
+  }
+
+  // 3. Build total portfolio net worth & actual map: fund_id -> actual_pct
+  const totalVal = (holdings || []).reduce((sum, h) => sum + (parseFloat(h.current_value || h.currentValue) || 0), 0);
+  const actualMap = {};
+  const isinList = new Set();
+
+  (holdings || []).forEach(h => {
+    const isin = h.asset_id || h.assetId;
+    const name = h.asset_name || h.assetName;
+    const val = parseFloat(h.current_value || h.currentValue) || 0;
+    const actualPct = totalVal > 0 ? Math.round((val / totalVal) * 10000) / 100 : 0;
+    if (isin) {
+      actualMap[isin] = actualPct;
+      fundNameMap[isin] = name || fundNameMap[isin] || isin;
+      isinList.add(isin);
+    }
+  });
+
+  // Add any target ISINs that aren't in holdings yet
+  Object.keys(plannedMap).forEach(isin => isinList.add(isin));
+
+  // 4. Create combined items array
+  const items = Array.from(isinList).map(isin => {
+    const name = fundNameMap[isin] || isin;
+    const plannedPct = plannedMap[isin] || 0;
+    const actualPct = actualMap[isin] || 0;
+    const isTarget = plannedPct > 0;
+    const drift = Math.round((actualPct - plannedPct) * 100) / 100;
+    return {
+      isin,
+      name,
+      shortName: name.length > 28 ? name.substring(0, 26) + '...' : name,
+      plannedPct,
+      actualPct,
+      drift,
+      isTarget
+    };
+  });
+
+  // Sort: Target funds first (by plannedPct asc for bottom-to-top rendering in horizontal bar), then legacy funds
+  items.sort((a, b) => {
+    if (a.isTarget && !b.isTarget) return 1;
+    if (!a.isTarget && b.isTarget) return -1;
+    if (a.isTarget && b.isTarget) return a.plannedPct - b.plannedPct;
+    return a.actualPct - b.actualPct;
+  });
+
+  const categories = items.map(i => i.shortName);
+  const plannedData = items.map(i => i.plannedPct);
+  const actualData = items.map(i => ({
+    value: i.actualPct,
+    itemStyle: {
+      color: !i.isTarget ? '#64748b' : (Math.abs(i.drift) > 5.0 ? '#f59e0b' : '#10b981')
+    }
+  }));
+
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: params => {
+        const index = params[0].dataIndex;
+        const item = items[index];
+        let res = `<div style="font-weight:600; color:#f8fafc; margin-bottom:4px;">${item.name}</div>`;
+        res += `<span style="color:#94a3b8; font-size:11px;">ISIN: ${item.isin}</span><br/>`;
+        params.forEach(p => {
+          res += `${p.marker} ${p.seriesName}: <b>${p.value.toFixed(2)}%</b><br/>`;
+        });
+        const driftSign = item.drift >= 0 ? '+' : '';
+        const driftColor = item.drift > 5 ? '#f59e0b' : (item.drift < -5 ? '#ef4444' : '#10b981');
+        res += `Drift (&Delta;): <b style="color:${driftColor}">${driftSign}${item.drift.toFixed(2)}%</b>`;
+        return res;
+      }
+    },
+    legend: {
+      data: ['Planned %', 'Actual %'],
+      textStyle: { color: '#94a3b8', fontSize: 11 },
+      right: 10,
+      top: 10
+    },
+    grid: { left: '3%', right: '5%', bottom: '3%', top: '40px', containLabel: true },
+    xAxis: {
+      type: 'value',
+      axisLine: { lineStyle: { color: '#334155' } },
+      splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.05)' } },
+      axisLabel: { color: '#94a3b8', fontSize: 11, formatter: '{value}%' }
+    },
+    yAxis: {
+      type: 'category',
+      data: categories,
+      axisLine: { lineStyle: { color: '#334155' } },
+      axisLabel: { color: '#cbd5e1', fontSize: 11 }
+    },
+    series: [
+      {
+        name: 'Planned %',
+        type: 'bar',
+        data: plannedData,
+        itemStyle: { color: '#38bdf8', borderRadius: [0, 4, 4, 0] },
+        barGap: '20%'
+      },
+      {
+        name: 'Actual %',
+        type: 'bar',
+        data: actualData,
+        itemStyle: { borderRadius: [0, 4, 4, 0] },
+        barGap: '20%'
+      }
+    ]
+  };
+
+  instance.setOption(option);
+  state.charts.fundAllocCompareChart = instance;
+  return instance;
+}
+
 export async function fetchConsolidationPreviewData() {
   try {
     const data = await fetchJson(`${API_BASE}/portfolio/consolidation-preview?fy=${state.currentFy}`).catch(() => null);

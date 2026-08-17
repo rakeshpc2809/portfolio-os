@@ -7,6 +7,7 @@ import {
   renderAllocationChart,
   renderCategoryChart,
   renderBucketAllocationChart,
+  renderFundAllocationCompareChart,
   renderNetWorthTrendChart,
   renderCashflowSankey,
   renderBucketRebalance,
@@ -25,6 +26,11 @@ async function initDashboard() {
     const holdings = await fetchJson(`/portfolio/holdings`).catch(() => []);
     state.holdings = holdings;
     renderHoldingsTable(holdings);
+
+    const bucketTargetsConfig = await fetchJson(`/config/bucket-targets`).catch(() => null);
+    if (bucketTargetsConfig && holdings) {
+      renderFundAllocationCompareChart('fundAllocationCompareChart', holdings, bucketTargetsConfig);
+    }
 
     const navTrendData = await fetchJson(`/portfolio/net-worth-trend`).catch(() => null);
     if (navTrendData && navTrendData.dates && navTrendData.values) {
