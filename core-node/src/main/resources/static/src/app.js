@@ -8,6 +8,7 @@ import {
   renderCategoryChart,
   renderBucketAllocationChart,
   renderFundAllocationCompareChart,
+  renderSchemeGroupedTaxLotsUI,
   renderNetWorthTrendChart,
   renderCashflowSankey,
   renderBucketRebalance,
@@ -26,6 +27,8 @@ async function initDashboard() {
     const holdings = await fetchJson(`/portfolio/holdings`).catch(() => []);
     state.holdings = holdings;
     renderHoldingsTable(holdings);
+    renderSchemeGroupedTaxLotsUI(holdings, 'groupedTaxLotsContainer');
+    renderSchemeGroupedTaxLotsUI(holdings, 'groupedTaxLotsContainerTaxTab');
 
     const bucketTargetsConfig = await fetchJson(`/config/bucket-targets`).catch(() => null);
     if (bucketTargetsConfig && holdings) {

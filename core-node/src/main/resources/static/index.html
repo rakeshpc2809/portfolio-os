@@ -114,6 +114,7 @@
     <!-- Minimalist Tab Navigation Bar -->
     <nav class="tab-nav">
       <button class="tab-btn active" data-tab="overview">📊 Executive Overview</button>
+      <button class="tab-btn" data-tab="tax-lots">📋 Scheme-Grouped Tax Lots</button>
       <button class="tab-btn" data-tab="overlap">🔍 Overlap & Concentration</button>
       <button class="tab-btn" data-tab="tax">⚡ Tax & Compliance Audit</button>
       <button class="tab-btn" data-tab="fire">🎯 FIRE & Waterfall Rebalancing</button>
@@ -225,6 +226,24 @@
       </div>
     </main>
 
+    <!-- TAB: Scheme-Grouped Tax Lots -->
+    <main class="tab-content" id="tab-tax-lots">
+      <div class="dashboard-grid">
+        <div class="glass-card col-12">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h2 style="margin: 0;">Open Tax Lots Grouped by Mutual Fund Scheme</h2>
+              <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">FIFO Tax Lot Classification · LTCG Tax-Free vs STCG Locked</span>
+            </div>
+            <span class="live-tag">FIFO LEDGER</span>
+          </div>
+          <div id="groupedTaxLotsContainer" style="margin-top: 16px; display: flex; flex-direction: column; gap: 14px;">
+            <div class="loading-td" style="color: #64748b; padding: 16px;">Loading scheme-grouped open tax lots...</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
     <!-- TAB 2: Overlap & Concentration -->
     <main class="tab-content" id="tab-overlap">
       <div class="dashboard-grid">
@@ -332,6 +351,20 @@
           </div>
           <div class="radar-list">
             <div class="radar-empty-state">Scanning open lots for tax-loss harvesting and LTCG maturation opportunities...</div>
+          </div>
+        </div>
+
+        <!-- Scheme-Grouped Tax Lots Breakdown Card -->
+        <div class="glass-card col-12">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h2 style="margin: 0;">Open Tax Lots Grouped by Mutual Fund Scheme</h2>
+              <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">FIFO Tax Lot Classification · LTCG Tax-Free vs STCG Locked</span>
+            </div>
+            <span class="live-tag">FIFO LEDGER</span>
+          </div>
+          <div id="groupedTaxLotsContainerTaxTab" style="margin-top: 16px; display: flex; flex-direction: column; gap: 14px;">
+            <div class="loading-td" style="color: #64748b; padding: 16px;">Loading scheme-grouped open tax lots...</div>
           </div>
         </div>
 
