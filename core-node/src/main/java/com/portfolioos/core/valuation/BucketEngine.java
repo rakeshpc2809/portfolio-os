@@ -1,5 +1,6 @@
 package com.portfolioos.core.valuation;
 
+import com.portfolioos.core.common.PortfolioConstants;
 import com.portfolioos.core.model.AssetCategory;
 import com.portfolioos.core.matcher.TaxClassifier;
 import com.portfolioos.core.model.Lot;
@@ -204,13 +205,9 @@ public class BucketEngine {
             ));
         }
 
-        // Drawdown trigger
-        BigDecimal drawdownPct = BigDecimal.ZERO;
-        if (benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0) {
-            drawdownPct = benchmarkRollingHigh.subtract(benchmarkCurrent)
-                .multiply(new BigDecimal("100"))
-                .divide(benchmarkRollingHigh, 2, RoundingMode.HALF_UP);
-        }
+        // Drawdown trigger - delegates to unified PortfolioConstants disarm logic
+        double ddPctVal = PortfolioConstants.calculateDrawdownPct(benchmarkCurrent, benchmarkRollingHigh);
+        BigDecimal drawdownPct = BigDecimal.valueOf(ddPctVal).setScale(2, RoundingMode.HALF_UP);
 
         List<Integer> activeRungs = new ArrayList<>();
         BigDecimal deployPct = BigDecimal.ZERO;

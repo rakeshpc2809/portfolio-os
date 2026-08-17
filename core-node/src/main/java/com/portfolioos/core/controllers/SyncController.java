@@ -361,7 +361,7 @@ public class SyncController {
             .map(p -> new NetWorthPointDto(p.date(), p.valuation(), p.invested()))
             .toList();
 
-        BigDecimal rollingHigh = netWorthHistory.stream()
+        BigDecimal personalNetWorthAth = netWorthHistory.stream()
             .map(p -> BigDecimal.valueOf(p.valuation()))
             .max(BigDecimal::compareTo)
             .orElse(totalPortfolioCurrentVal);
@@ -370,17 +370,11 @@ public class SyncController {
         if (requestedTrigger != null && !requestedTrigger.isBlank()) {
             derivedTriggerType = requestedTrigger.toUpperCase();
         } else {
-            double dynamicDdPct = 0.0;
-            if (rollingHigh.compareTo(BigDecimal.ZERO) > 0) {
-                dynamicDdPct = rollingHigh.subtract(totalPortfolioCurrentVal)
-                    .divide(rollingHigh, 4, RoundingMode.HALF_UP)
-                    .doubleValue() * 100.0;
-            }
-            derivedTriggerType = PortfolioConstants.deriveTriggerType(dynamicDdPct);
+            derivedTriggerType = "DRIFT";
         }
 
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto rebalancePlan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
-            openLots, matchedLots, navMap, LocalDate.now(), totalPortfolioCurrentVal, rollingHigh,
+            openLots, matchedLots, navMap, LocalDate.now(), null, null,
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), fy, derivedTriggerType, null
         );
 
@@ -418,14 +412,14 @@ public class SyncController {
 
         List<DuckDbProjector.NetWorthPoint> trend = duckDbProjector.getDailyNetWorthTrend();
         double peak = trend.stream().mapToDouble(DuckDbProjector.NetWorthPoint::valuation).max().orElse(totalCurrentVal.doubleValue());
-        BigDecimal rollingHigh = BigDecimal.valueOf(peak);
-        if (rollingHigh.compareTo(totalCurrentVal) < 0) {
-            rollingHigh = totalCurrentVal;
+        BigDecimal personalNetWorthAth = BigDecimal.valueOf(peak);
+        if (personalNetWorthAth.compareTo(totalCurrentVal) < 0) {
+            personalNetWorthAth = totalCurrentVal;
         }
 
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
-            openLots, matchedLots, navMap, LocalDate.now(), totalCurrentVal, rollingHigh,
+            openLots, matchedLots, navMap, LocalDate.now(), null, null,
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
         );
         return ResponseEntity.ok(plan);

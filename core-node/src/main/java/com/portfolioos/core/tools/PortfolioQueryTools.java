@@ -115,24 +115,21 @@ public class PortfolioQueryTools {
         var state = cacheService.getCachedState();
         String fy = TaxRulesLoader.detectFiscalYear(LocalDate.now());
         BigDecimal currentVal = new BigDecimal(valuationService.getPortfolioSummary(fy).totalCurrentValue());
-        BigDecimal rollingHigh = duckDbProjector.getDailyNetWorthTrend().stream()
+        BigDecimal personalNetWorthAth = duckDbProjector.getDailyNetWorthTrend().stream()
             .map(p -> BigDecimal.valueOf(p.valuation()))
             .max(BigDecimal::compareTo)
             .orElse(currentVal);
-
-        double dynamicDdPct = PortfolioConstants.calculateDrawdownPct(currentVal, rollingHigh);
-        String derivedTriggerType = PortfolioConstants.deriveTriggerType(dynamicDdPct);
 
         RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
             state.fifoResult().openLots(),
             state.fifoResult().matchedLots(),
             state.navMap(),
             LocalDate.now(),
-            currentVal,
-            rollingHigh,
+            null,
+            null,
             BucketConfigLoader.getActiveBucketTargets(LocalDate.now()),
             fy,
-            derivedTriggerType,
+            "INDUCED",
             null
         );
 
@@ -140,7 +137,7 @@ public class PortfolioQueryTools {
         result.put("status", "SUCCESS");
         result.put("source_tool", "getRebalancePlan");
         result.put("fiscal_year", fy);
-        result.put("derived_trigger_type", derivedTriggerType);
+        result.put("derived_trigger_type", plan.trigger().type());
         result.put("plan_id", plan.planId());
         result.put("trigger", plan.trigger());
         result.put("sell_side", plan.sellSide());
