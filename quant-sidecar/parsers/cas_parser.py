@@ -41,7 +41,10 @@ class CasPdfParser:
                         else:
                             event_type = EventType.ACQUISITION
 
-                        txn_date = txn.date if isinstance(txn.date, date) else datetime.now().date()
+                        if not isinstance(txn.date, date):
+                            raise ValueError(f"Unparseable transaction date encountered in scheme: {scheme_name}")
+                        txn_date = txn.date
+
                         units = Decimal(str(abs(txn.units or 0)))
                         price = Decimal(str(abs(txn.nav or 0)))
                         amount = Decimal(str(abs(txn.amount or 0)))
@@ -66,6 +69,8 @@ class CasPdfParser:
                             )
             if events:
                 return events
+        except ValueError:
+            raise
         except Exception as e:
             print(f"casparser notice: {e}, falling back to custom line parser.")
 
@@ -112,8 +117,8 @@ class CasPdfParser:
                             date_str, rest = match.groups()
                             try:
                                 event_date = datetime.strptime(date_str, "%d-%b-%Y").date()
-                            except ValueError:
-                                event_date = datetime.now().date()
+                            except ValueError as e:
+                                raise ValueError(f"CRITICAL: Failed to parse date string '{date_str}' in CAS fallback parser. Raw line: {line_str}") from e
 
                             num_tokens = TOKEN_REGEX.findall(rest)
 

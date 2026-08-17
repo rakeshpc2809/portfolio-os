@@ -45,6 +45,9 @@ public class PortfolioValuationService {
     }
 
     private String fmt(BigDecimal val) {
+        if (val == null) {
+            return "0.00";
+        }
         return val.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 

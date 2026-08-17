@@ -25,12 +25,27 @@ public class FlightRpcClient {
     private final BufferAllocator allocator;
 
     public FlightRpcClient() {
-        this(
-            System.getenv("QUANT_SIDECAR_HOST") != null && !System.getenv("QUANT_SIDECAR_HOST").isEmpty()
-                ? System.getenv("QUANT_SIDECAR_HOST")
-                : "127.0.0.1",
-            8001
-        );
+        this(resolveDefaultHost(), 8001);
+    }
+
+    private static String resolveDefaultHost() {
+        String quantHost = System.getenv("QUANT_SIDECAR_HOST");
+        if (quantHost != null && !quantHost.isBlank()) {
+            return quantHost;
+        }
+        String flightUrl = System.getenv("SIDECAR_FLIGHT_URL");
+        if (flightUrl != null && !flightUrl.isBlank()) {
+            String raw = flightUrl.replace("grpc+tcp://", "http://").replace("tcp://", "http://");
+            try {
+                URI uri = URI.create(raw);
+                if (uri.getHost() != null) return uri.getHost();
+            } catch (Exception ignored) {}
+        }
+        String sidecarHost = System.getenv("SIDECAR_HOST");
+        if (sidecarHost != null && !sidecarHost.isBlank()) {
+            return sidecarHost;
+        }
+        return "quant-sidecar";
     }
 
     public FlightRpcClient(String host, int port) {

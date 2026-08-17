@@ -31,7 +31,7 @@ class BrokerCsvParser:
                     asset_name = str(row[symbol_col]) if symbol_col and row.get(symbol_col) else "Broker Asset"
                     date_str = str(row[date_col]) if date_col and row.get(date_col) else ""
 
-                    event_date = datetime.now().date()
+                    event_date = None
                     if date_str:
                         for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d-%b-%Y"):
                             try:
@@ -39,6 +39,9 @@ class BrokerCsvParser:
                                 break
                             except ValueError:
                                 pass
+
+                    if event_date is None:
+                        raise ValueError(f"CRITICAL: Missing or unparseable transaction date for asset {asset_name} in CSV row: {row}. Ingestion aborted.")
 
                     txn_type_str = str(row[type_col]).upper() if type_col and row.get(type_col) else "BUY"
                     if any(x in txn_type_str for x in ["SELL", "REDEMPTION", "DISPOSAL", "SWITCH OUT"]):
@@ -51,11 +54,15 @@ class BrokerCsvParser:
                         event_type = EventType.ACQUISITION
 
                     units_val = row.get(qty_col)
-                    units = Decimal(str(abs(float(units_val)))) if units_val is not None and str(units_val).strip() != "" else Decimal("1")
-                    
+                    if units_val is None or str(units_val).strip() == "":
+                        raise ValueError(f"CRITICAL: Missing or unparseable unit quantity for asset {asset_name} on {event_date}. Ingestion aborted.")
+                    units = Decimal(str(abs(float(units_val))))
+
                     price_val = row.get(price_col)
-                    price = Decimal(str(abs(float(price_val)))) if price_val is not None and str(price_val).strip() != "" else Decimal("0")
-                    
+                    if price_val is None or str(price_val).strip() == "":
+                        raise ValueError(f"CRITICAL: Missing or unparseable price/NAV for asset {asset_name} on {event_date}. Ingestion aborted.")
+                    price = Decimal(str(abs(float(price_val))))
+
                     amt_val = row.get(amount_col)
                     amount = Decimal(str(abs(float(amt_val)))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
 
@@ -74,8 +81,12 @@ class BrokerCsvParser:
                             ingestedAt=datetime.now()
                         )
                     )
+                except ValueError:
+                    raise
                 except Exception:
                     continue
+        except ValueError:
+            raise
         except Exception:
             pass
 

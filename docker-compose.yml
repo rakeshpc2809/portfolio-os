@@ -9,8 +9,8 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
-      - API_AUTH_TOKEN=fintracker-cachyos-default-key-2026
-      - LEDGER_HMAC_SECRET=fintracker-cachyos-default-key-2026
+      - API_AUTH_TOKEN=dev_secret_key_123
+      - LEDGER_HMAC_SECRET=dev_secret_key_123
       - SQLITE_PATH=/app/data/tax_ledger.db
       - DUCKDB_PATH=/app/data/tax_ledger.duckdb
       - SIDECAR_HTTP_URL=http://quant-sidecar:8000
