@@ -2263,8 +2263,7 @@ export function renderSchemeGroupedTaxLotsUI(holdings, containerId = 'groupedTax
     return;
   }
 
-  let html = '';
-  holdings.forEach((h, schemeIdx) => {
+  const html = holdings.map((h, schemeIdx) => {
     const isin = h.asset_id || h.assetId || '';
     const name = h.asset_name || h.assetName || isin;
     const category = h.category || 'EQUITY';
