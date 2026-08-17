@@ -84,7 +84,10 @@ public class RebalanceWaterfallEngine {
             if (FundTierClassifier.isLegacyFund(lot.assetId(), activeAssetIds)) {
                 legacyLots.add(lot);
             } else {
-                coreLots.add(lot);
+                BucketEngine.Bucket lotBucket = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
+                if (bucket == null || lotBucket == bucket) {
+                    coreLots.add(lot);
+                }
             }
         }
 

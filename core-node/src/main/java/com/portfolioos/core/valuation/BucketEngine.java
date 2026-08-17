@@ -100,14 +100,17 @@ public class BucketEngine {
             return Bucket.LIQUID_BUFFER;
         }
 
-        // Step 2: Legacy check SECOND (for remaining equity funds, if activeOrPreferredAssetIds is provided and asset is not in it, map to LEGACY_HOLDINGS)
-        if (activeOrPreferredAssetIds != null && !activeOrPreferredAssetIds.isEmpty() && !activeOrPreferredAssetIds.contains(assetId)) {
-            return Bucket.LEGACY_HOLDINGS;
+        // Step 2: Read preferred fund mapping directly from YAML / BucketConfigLoader
+        String mappedBucketName = com.portfolioos.core.rules.BucketConfigLoader.getPreferredBucketForAsset(assetId, assetName);
+        if (mappedBucketName != null) {
+            try {
+                return Bucket.valueOf(mappedBucketName);
+            } catch (IllegalArgumentException ignored) {}
         }
 
-        // Step 3: Active Equity Strategy THIRD
-        if (nameUpper.contains("SMALL") || nameUpper.contains("MICRO") || nameUpper.contains("SMALLCAP")) {
-            return Bucket.EQUITY_SATELLITE;
+        // Step 3: Legacy check (for remaining equity funds, if activeOrPreferredAssetIds is provided and asset is not in it, map to LEGACY_HOLDINGS)
+        if (activeOrPreferredAssetIds != null && !activeOrPreferredAssetIds.isEmpty() && !activeOrPreferredAssetIds.contains(assetId)) {
+            return Bucket.LEGACY_HOLDINGS;
         }
 
         return Bucket.EQUITY_CORE;

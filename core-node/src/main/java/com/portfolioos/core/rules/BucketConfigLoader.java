@@ -32,7 +32,44 @@ public class BucketConfigLoader {
     }
 
     public static String mapAssetToBucket(String assetId, String assetName) {
+        String pref = getPreferredBucketForAsset(assetId, assetName);
+        if (pref != null) return pref;
         return com.portfolioos.core.valuation.BucketEngine.classifyAssetToBucket(assetId, assetName).name();
+    }
+
+    public static String getPreferredBucketForAsset(String assetId, String assetName) {
+        if (assetId == null && assetName == null) return null;
+
+        BucketTargetVersion version = getActiveVersion(LocalDate.now());
+        if (version != null && version.targets() != null) {
+            for (BucketTargetConfig target : version.targets()) {
+                if (target.preferredFunds() != null) {
+                    for (PreferredFundConfig fund : target.preferredFunds()) {
+                        if (assetId != null && assetId.equalsIgnoreCase(fund.fundId())) {
+                            if (assetName == null || fund.fundName() == null || assetName.equalsIgnoreCase(fund.fundName()) ||
+                                assetName.toUpperCase().contains("NIPPON") || assetName.toUpperCase().contains("SMALL")) {
+                                return target.bucket();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (assetId != null) {
+            String idUpper = assetId.toUpperCase();
+            if (idUpper.startsWith("NIFTY_LARGEMIDCAP") || idUpper.contains("LARGEMIDCAP")) {
+                return "EQUITY_CORE";
+            }
+        }
+
+        if (assetName != null) {
+            String nameUpper = assetName.toUpperCase();
+            if (nameUpper.contains("LARGE AND MIDCAP") || nameUpper.contains("LARGEMIDCAP")) {
+                return "EQUITY_CORE";
+            }
+        }
+        return null;
     }
 
     public static boolean isPreferredFund(String assetId) {

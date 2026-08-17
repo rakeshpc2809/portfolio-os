@@ -1654,6 +1654,14 @@ function shortenFundName(rawName) {
     .replace(/\s*-\s*Direct Plan Growth/gi, '')
     .replace(/\s*Direct Growth Plan Growth Option\s*\(Non Demat\)/gi, '')
     .replace(/\s*-\s*Direct Growth/gi, '')
+    .replace(/\s*Direct Plan/gi, '')
+    .replace(/\s*Index Fund/gi, '')
+    .replace(/ICICI Prudential/gi, 'ICICI')
+    .replace(/Motilal Oswal/gi, 'Motilal')
+    .replace(/NIPPON INDIA/gi, 'Nippon')
+    .replace(/Mirae Asset/gi, 'Mirae')
+    .replace(/Edelweiss Nifty500 Multicap Momentum Quality 50/gi, 'Edelweiss MomQual 50')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -1994,7 +2002,7 @@ function renderTargetFundProgression(plan, holdings, bucketTargetsConfig) {
     fundItems.push({
       isin,
       rawName,
-      shortName: shortName.length > 24 ? shortName.substring(0, 22) + '...' : shortName,
+      shortName: shortName,
       curPct,
       postPct,
       targetPct,
