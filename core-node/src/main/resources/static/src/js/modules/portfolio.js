@@ -2481,10 +2481,10 @@ export function renderSchemeGroupedTaxLotsUI(holdings, containerId = 'groupedTax
               <div style="font-size: 11px; color: ${gain >= 0 ? '#10b981' : '#ef4444'};" class="font-mono">${gain >= 0 ? '+' : ''}${formatINR(gain)} (${gainPct}%)</div>
             </div>
           </div>
-          <div id="schemeAccIcon_${containerId}_${schemeIdx}" style="color: #06b6d4; font-size: 16px; font-weight: bold;">▼</div>
+          <div id="schemeAccIcon_${containerId}_${schemeIdx}" style="color: #06b6d4; font-size: 16px; font-weight: bold;">▶</div>
         </div>
 
-        <div id="schemeAccBody_${containerId}_${schemeIdx}" style="display: block; padding: 0 16px 16px 16px; border-top: 1px solid rgba(255,255,255,0.06);">
+        <div id="schemeAccBody_${containerId}_${schemeIdx}" style="display: none; padding: 0 16px 16px 16px; border-top: 1px solid rgba(255,255,255,0.06);">
           <div style="overflow-x: auto; margin-top: 12px;">
             <table style="width: 100%; border-collapse: collapse; text-align: left;">
               <thead>
