@@ -2534,6 +2534,14 @@ window.toggleSchemeLotCard = (key) => {
   }
 };
 
+if (typeof window !== 'undefined') {
+  window.loadOverlapAnalytics = loadOverlapAnalytics;
+  window.loadUpSetAnalytics = loadUpSetAnalytics;
+  window.loadActionRecommendations = loadActionRecommendations;
+  window.render2FundVennDiagram = render2FundVennDiagram;
+  window.loadUnifiedRebalancePlan = loadUnifiedRebalancePlan;
+  window.renderSchemeGroupedTaxLotsUI = renderSchemeGroupedTaxLotsUI;
+
   window.openLumpsumModal = () => {
     const backdrop = document.getElementById('lumpsumModalBackdrop');
     const modal = document.getElementById('lumpsumModal');
