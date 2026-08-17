@@ -1455,7 +1455,7 @@ function render2FundVennDiagram() {
   }
 }
 
-export async function loadUnifiedRebalancePlan(triggerType = 'INDUCED', manualAmount = null) {
+export async function loadUnifiedRebalancePlan(triggerType = 'INDUCED', manualAmount = null, includeRebalance = false) {
   try {
     let url = `/api/v1/sync/rebalance/plan?trigger=${encodeURIComponent(triggerType)}`;
     let options = { method: 'GET' };
@@ -1465,7 +1465,10 @@ export async function loadUnifiedRebalancePlan(triggerType = 'INDUCED', manualAm
       options = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: manualAmount || 50000.0 })
+        body: JSON.stringify({
+          amount: manualAmount || 100000.0,
+          includeRebalance: Boolean(includeRebalance)
+        })
       };
     }
 
@@ -1484,6 +1487,7 @@ export function renderUnifiedRebalancePlanUI(plan) {
   const sellSide = plan.sell_side || plan.sellSide || {};
   const buySide = plan.buy_side || plan.buySide || {};
   const narrative = plan.reasoning_narrative || plan.reasoningNarrative || {};
+  const lumpsumMeta = plan.manual_lumpsum_meta || plan.manualLumpsumMeta;
 
   // 1. Render Status Strip
   const badgeEl = document.getElementById('rebalanceTriggerBadge');
@@ -1492,19 +1496,33 @@ export function renderUnifiedRebalancePlanUI(plan) {
   const windowEl = document.getElementById('stripReconWindow');
 
   if (badgeEl && trigger) {
-    badgeEl.textContent = trigger.reason_label || trigger.reasonLabel || 'REBALANCE TRIGGERED';
-    if (trigger.type === 'INDUCED') {
-      badgeEl.style.background = 'rgba(239, 68, 68, 0.2)';
-      badgeEl.style.color = '#f87171';
-      badgeEl.style.borderColor = '#ef4444';
-    } else if (trigger.type === 'SCHEDULED') {
-      badgeEl.style.background = 'rgba(56, 189, 248, 0.2)';
-      badgeEl.style.color = '#38bdf8';
-      badgeEl.style.borderColor = '#0284c7';
+    if (trigger.type === 'MANUAL_LUMPSUM' || lumpsumMeta) {
+      const isIncRebal = lumpsumMeta ? (lumpsumMeta.include_rebalance ?? lumpsumMeta.includeRebalance) : false;
+      badgeEl.textContent = isIncRebal ? 'MANUAL LUMP-SUM + REBALANCE' : 'MANUAL LUMP-SUM ONLY (NO SALES)';
+      if (isIncRebal) {
+        badgeEl.style.background = 'rgba(168, 85, 247, 0.2)';
+        badgeEl.style.color = '#c084fc';
+        badgeEl.style.borderColor = '#a855f7';
+      } else {
+        badgeEl.style.background = 'rgba(56, 189, 248, 0.2)';
+        badgeEl.style.color = '#38bdf8';
+        badgeEl.style.borderColor = '#0284c7';
+      }
     } else {
-      badgeEl.style.background = 'rgba(168, 85, 247, 0.2)';
-      badgeEl.style.color = '#c084fc';
-      badgeEl.style.borderColor = '#a855f7';
+      badgeEl.textContent = trigger.reason_label || trigger.reasonLabel || 'REBALANCE TRIGGERED';
+      if (trigger.type === 'INDUCED') {
+        badgeEl.style.background = 'rgba(239, 68, 68, 0.2)';
+        badgeEl.style.color = '#f87171';
+        badgeEl.style.borderColor = '#ef4444';
+      } else if (trigger.type === 'SCHEDULED') {
+        badgeEl.style.background = 'rgba(56, 189, 248, 0.2)';
+        badgeEl.style.color = '#38bdf8';
+        badgeEl.style.borderColor = '#0284c7';
+      } else {
+        badgeEl.style.background = 'rgba(168, 85, 247, 0.2)';
+        badgeEl.style.color = '#c084fc';
+        badgeEl.style.borderColor = '#a855f7';
+      }
     }
   }
 
@@ -2359,13 +2377,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (btnLumpsum) {
     btnLumpsum.addEventListener('click', () => {
-      const amtStr = prompt('Enter manual lump-sum amount to simulate (₹):', '50000');
-      if (amtStr) {
-        const amt = parseFloat(amtStr);
-        if (!isNaN(amt) && amt > 0) {
-          loadUnifiedRebalancePlan('MANUAL_LUMPSUM', amt);
-        }
-      }
+      window.openLumpsumModal && window.openLumpsumModal();
     });
   }
 
@@ -2522,13 +2534,29 @@ window.toggleSchemeLotCard = (key) => {
   }
 };
 
-if (typeof window !== 'undefined') {
-  window.loadOverlapAnalytics = loadOverlapAnalytics;
-  window.loadUpSetAnalytics = loadUpSetAnalytics;
-  window.loadActionRecommendations = loadActionRecommendations;
-  window.render2FundVennDiagram = render2FundVennDiagram;
-  window.loadUnifiedRebalancePlan = loadUnifiedRebalancePlan;
-  window.renderSchemeGroupedTaxLotsUI = renderSchemeGroupedTaxLotsUI;
+  window.openLumpsumModal = () => {
+    const backdrop = document.getElementById('lumpsumModalBackdrop');
+    const modal = document.getElementById('lumpsumModal');
+    if (backdrop) backdrop.style.display = 'block';
+    if (modal) modal.style.display = 'block';
+  };
+
+  window.closeLumpsumModal = () => {
+    const backdrop = document.getElementById('lumpsumModalBackdrop');
+    const modal = document.getElementById('lumpsumModal');
+    if (backdrop) backdrop.style.display = 'none';
+    if (modal) modal.style.display = 'none';
+  };
+
+  window.submitLumpsumSim = () => {
+    const input = document.getElementById('lumpsumAmountInput');
+    const amt = parseFloat(input ? input.value : '100000') || 100000;
+    const selectedOpt = document.querySelector('input[name="lumpsumRebalanceOption"]:checked');
+    const includeRebal = selectedOpt ? selectedOpt.value === 'true' : false;
+
+    window.closeLumpsumModal();
+    loadUnifiedRebalancePlan('MANUAL_LUMPSUM', amt, includeRebal);
+  };
 }
 
 

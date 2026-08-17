@@ -43,7 +43,46 @@ public class RebalancePlanEngine {
     ) {
         return buildPlan(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, defaultEvaluator
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, defaultEvaluator
+        );
+    }
+
+    public static RebalancePlanDto buildPlan(
+        List<Lot> openLots,
+        List<MatchedLot> matchedLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate currentDate,
+        BigDecimal benchmarkCurrent,
+        BigDecimal benchmarkRollingHigh,
+        List<BucketEngine.BucketTarget> customTargets,
+        String fiscalYear,
+        String requestedTriggerType,
+        BigDecimal manualLumpsumAmount,
+        boolean includeRebalance
+    ) {
+        return buildPlan(
+            openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, defaultEvaluator
+        );
+    }
+
+    public static RebalancePlanDto buildPlan(
+        List<Lot> openLots,
+        List<MatchedLot> matchedLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate currentDate,
+        BigDecimal benchmarkCurrent,
+        BigDecimal benchmarkRollingHigh,
+        List<BucketEngine.BucketTarget> customTargets,
+        String fiscalYear,
+        String requestedTriggerType,
+        BigDecimal manualLumpsumAmount,
+        boolean includeRebalance,
+        RebalanceTriggerEvaluator triggerEvaluator
+    ) {
+        return buildPlanInternal(
+            openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, true
         );
     }
 
@@ -62,7 +101,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPlanInternal(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, triggerEvaluator, true
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, triggerEvaluator, true
         );
     }
 
@@ -80,7 +119,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPreviewPlan(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, defaultEvaluator
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, defaultEvaluator
         );
     }
 
@@ -99,7 +138,27 @@ public class RebalancePlanEngine {
     ) {
         return buildPlanInternal(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, triggerEvaluator, false
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, triggerEvaluator, false
+        );
+    }
+
+    public static RebalancePlanDto buildPreviewPlan(
+        List<Lot> openLots,
+        List<MatchedLot> matchedLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate currentDate,
+        BigDecimal benchmarkCurrent,
+        BigDecimal benchmarkRollingHigh,
+        List<BucketEngine.BucketTarget> customTargets,
+        String fiscalYear,
+        String requestedTriggerType,
+        BigDecimal manualLumpsumAmount,
+        boolean includeRebalance,
+        RebalanceTriggerEvaluator triggerEvaluator
+    ) {
+        return buildPlanInternal(
+            openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, false
         );
     }
 
@@ -114,6 +173,7 @@ public class RebalancePlanEngine {
         String fiscalYear,
         String requestedTriggerType,
         BigDecimal manualLumpsumAmount,
+        boolean includeRebalance,
         RebalanceTriggerEvaluator triggerEvaluator,
         boolean recordExecution
     ) {
@@ -181,8 +241,20 @@ public class RebalancePlanEngine {
             if (manualLumpsumAmount == null || manualLumpsumAmount.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new IllegalArgumentException("Lump-sum rebalance simulation requires a valid positive manualLumpsumAmount.");
             }
+        }
+
+        if (isLumpsum && !includeRebalance) {
             totalPool = manualLumpsumAmount;
-        } else if (!resolution.hasSellSide()) {
+            sellSide = new SellSidePlanDto(
+                BigDecimal.ZERO,
+                List.of(
+                    new WaterfallTierDto("ARBITRAGE_BUFFER", "Arbitrage Buffer", BigDecimal.ZERO, BigDecimal.ZERO, "NO_TRIGGER_ACTIVE", List.of()),
+                    new WaterfallTierDto("LEGACY_FUND", "Legacy Fund Lots", BigDecimal.ZERO, BigDecimal.ZERO, "NO_TRIGGER_ACTIVE", List.of()),
+                    new WaterfallTierDto("CORE_FUND", "Core Fund Lots", BigDecimal.ZERO, BigDecimal.ZERO, "NO_TRIGGER_ACTIVE", List.of())
+                ),
+                new TaxSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, headroomBefore, headroomBefore)
+            );
+        } else if (!isLumpsum && !resolution.hasSellSide()) {
             if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
                 // Gold Floor Backstop top-up sizing (buy-only)
                 double goldTargetPct = 15.0;
@@ -219,7 +291,7 @@ public class RebalancePlanEngine {
                 new TaxSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, headroomBefore, headroomBefore)
             );
         } else {
-            // Sell-side trigger active (DRAWDOWN, DRIFT, SCHEDULED)
+            // Sell-side trigger active OR (isLumpsum && includeRebalance == true)
             // Calculate true excess drift across over-allocated buckets
             BigDecimal poolNeeded = BigDecimal.ZERO;
             if (activeTargets != null) {
@@ -245,11 +317,16 @@ public class RebalancePlanEngine {
                 }
             }
 
-            if (poolNeeded.compareTo(BigDecimal.ZERO) == 0) {
+            if (poolNeeded.compareTo(BigDecimal.ZERO) == 0 && !isLumpsum) {
                 BigDecimal targetMonthlyExpense = FireTracker.calculateFireSummary(openLots, navMap, today).monthlyExpenseToday();
                 poolNeeded = targetMonthlyExpense;
             }
-            totalPool = poolNeeded;
+
+            if (isLumpsum) {
+                totalPool = poolNeeded.add(manualLumpsumAmount);
+            } else {
+                totalPool = poolNeeded;
+            }
 
             List<WaterfallTierDto> waterfallTiers = new ArrayList<>();
             BigDecimal poolRemaining = poolNeeded;
@@ -500,9 +577,20 @@ public class RebalancePlanEngine {
         double ddPct = resolution.drawdownContext().currentDrawdownPct();
         BigDecimal high = resolution.drawdownContext().rollingHighValue();
 
+        ManualLumpsumMetaDto manualLumpsumMeta = null;
         if (isLumpsum) {
-            headline = String.format("Manual Lump-Sum Inflow (₹%,d) — Redeploying per Target Allocation (Config %s)", totalPool.longValue(), activeVersion.versionId());
-            paragraphs.add(String.format("Entered manual capital inflow of ₹%,d for deployment.", totalPool.longValue()));
+            String modeNote = includeRebalance ? "Manual Lump-Sum + Portfolio Rebalance" : "Manual Lump-Sum Only (No Sales)";
+            manualLumpsumMeta = new ManualLumpsumMetaDto(manualLumpsumAmount, today.toString(), modeNote, includeRebalance);
+
+            if (includeRebalance) {
+                headline = String.format("Manual Lump-Sum (₹%,d) + Rebalance Liquidations — Combined Redeployment (Config %s)",
+                    manualLumpsumAmount.longValue(), activeVersion.versionId());
+                paragraphs.add(String.format("Entered manual lump-sum of ₹%,d combined with portfolio rebalance liquidations.", manualLumpsumAmount.longValue()));
+            } else {
+                headline = String.format("Manual Lump-Sum Inflow (₹%,d) — Redeploying per Target Allocation (Config %s)",
+                    manualLumpsumAmount.longValue(), activeVersion.versionId());
+                paragraphs.add(String.format("Entered manual capital inflow of ₹%,d for standalone deployment (no holdings sold).", manualLumpsumAmount.longValue()));
+            }
             paragraphs.add(String.format("Current portfolio drawdown is %.1f%% below rolling high of ₹%,d.", ddPct, high.longValue()));
             paragraphs.add(String.format("Target allocations reference Config Version %s (effective from %s).", activeVersion.versionId(), activeVersion.effectiveFrom()));
         } else if (!resolution.hasSellSide()) {

@@ -478,6 +478,7 @@ public class SyncController {
         @RequestBody Map<String, Object> req
     ) {
         BigDecimal amount = req.containsKey("amount") ? new BigDecimal(req.get("amount").toString()) : new BigDecimal("50000.00");
+        boolean includeRebalance = req.containsKey("includeRebalance") && Boolean.parseBoolean(req.get("includeRebalance").toString());
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
         List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
@@ -491,7 +492,7 @@ public class SyncController {
 
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
             openLots, matchedLots, navMap, LocalDate.now(), null, null,
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, "MANUAL_LUMPSUM", amount
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, "MANUAL_LUMPSUM", amount, includeRebalance
         );
         return ResponseEntity.ok(plan);
     }

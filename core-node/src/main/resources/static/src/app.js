@@ -14,7 +14,7 @@ import {
   renderBucketRebalance,
   renderUnifiedRebalancePlanUI,
   fetchFireSummary
-} from './js/modules/portfolio.js?v=3.9.0';
+} from './js/modules/portfolio.js?v=4.0.0';
 import { updateExemptionMeter, updateReportMetrics, renderDecisionRadar, fetchDecisionRadar, fetchTaxMetrics, renderRealizedLogTable } from './js/modules/tax.js';
 
 const DEFAULT_AUTH_TOKEN = 'dev_secret_key_123';

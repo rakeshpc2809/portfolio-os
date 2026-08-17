@@ -816,6 +816,45 @@
     </div>
   </div>
 
+  <!-- Manual Lump-Sum Simulation Modal -->
+  <div id="lumpsumModalBackdrop" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 999;" onclick="window.closeLumpsumModal && window.closeLumpsumModal()"></div>
+  <div id="lumpsumModal" class="modal-content" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 480px; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 24px; z-index: 1000; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="margin: 0; font-size: 1.1rem; color: #38bdf8;">+ Simulate Manual Lump-Sum</h3>
+      <button type="button" onclick="window.closeLumpsumModal && window.closeLumpsumModal()" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">✕</button>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">Fresh Capital Inflow (₹)</label>
+      <input type="number" id="lumpsumAmountInput" value="100000" placeholder="e.g. 100000" style="width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 15px; font-family: monospace; font-weight: 700;">
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <label style="display: block; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 8px;">Rebalance Execution Mode</label>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="lumpsumRebalanceOption" value="false" checked style="accent-color: #38bdf8; margin-top: 3px;">
+          <div>
+            <div style="font-weight: 700; font-size: 0.85rem; color: #f8fafc;">💧 Lump-Sum Only (No Sales)</div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">Deploy fresh cash into under-allocated buckets without trimming existing holdings.</div>
+          </div>
+        </label>
+        <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="lumpsumRebalanceOption" value="true" style="accent-color: #a855f7; margin-top: 3px;">
+          <div>
+            <div style="font-weight: 700; font-size: 0.85rem; color: #c084fc;">⚡ Lump-Sum + Portfolio Rebalance</div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">Deploy fresh cash AND execute rebalance liquidations together in one combined execution.</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 10px;">
+      <button type="button" onclick="window.closeLumpsumModal && window.closeLumpsumModal()" style="padding: 8px 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #94a3b8; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">Cancel</button>
+      <button type="button" id="submitLumpsumSimBtn" onclick="window.submitLumpsumSim && window.submitLumpsumSim()" style="padding: 8px 18px; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 13px;">Simulate Allocation</button>
+    </div>
+  </div>
+
   <!-- Slide-Out Holdings Detail Drawer -->
   <div id="holdingDetailDrawerBackdrop" class="drawer-backdrop" onclick="window.closeHoldingDrawer && window.closeHoldingDrawer()"></div>
   <aside id="holdingDetailDrawer" class="slide-drawer">
@@ -831,6 +870,6 @@
     </div>
   </aside>
 
-  <script type="module" src="./src/app.js?v=3.9.0"></script>
+  <script type="module" src="./src/app.js?v=4.0.0"></script>
 </body>
 </html>

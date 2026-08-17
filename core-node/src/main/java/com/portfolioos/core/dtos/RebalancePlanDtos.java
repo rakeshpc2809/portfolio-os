@@ -130,6 +130,11 @@ public class RebalancePlanDtos {
     public record ManualLumpsumMetaDto(
         BigDecimal enteredAmount,
         String enteredDate,
-        String driftContextNote
-    ) {}
+        String driftContextNote,
+        Boolean includeRebalance
+    ) {
+        public ManualLumpsumMetaDto(BigDecimal enteredAmount, String enteredDate, String driftContextNote) {
+            this(enteredAmount, enteredDate, driftContextNote, false);
+        }
+    }
 }
