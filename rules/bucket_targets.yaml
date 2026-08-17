@@ -48,7 +48,7 @@ versions:
     trigger_drift_pct: 5.0
     strategy: "ARBITRAGE"
     preferred_funds:
-    - fund_id: "INF209K01157"
+    - fund_id: "INF205K01KR8"
       fund_name: "Invesco India Arbitrage Fund"
       allocation_weight: 1.0
 - version_id: "v2.0"
@@ -96,6 +96,6 @@ versions:
     trigger_drift_pct: 5.0
     strategy: "ARBITRAGE"
     preferred_funds:
-    - fund_id: "INF209K01157"
+    - fund_id: "INF205K01KR8"
       fund_name: "Invesco India Arbitrage Fund"
       allocation_weight: 1.0

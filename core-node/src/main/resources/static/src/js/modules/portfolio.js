@@ -1986,9 +1986,9 @@ function renderTargetFundProgression(plan, holdings, bucketTargetsConfig) {
     });
   }
 
-  // 5. Build combined list of all funds (holdings + buy targets)
+  // 5. Build combined list of all funds grouped by unique shortName to prevent duplicate badges
   const allIsins = new Set([...Object.keys(currentFundVal), ...Object.keys(fundBuyMap), ...Object.keys(plannedMap)]);
-  const fundItems = [];
+  const fundMap = {};
 
   allIsins.forEach(isin => {
     const rawName = fundNameMap[isin] || isin;
@@ -1996,21 +1996,34 @@ function renderTargetFundProgression(plan, holdings, bucketTargetsConfig) {
     const curVal = currentFundVal[isin] || 0;
     const sellAmt = fundSellMap[isin] || 0;
     const buyAmt = fundBuyMap[isin] || 0;
-    const postVal = Math.max(0, curVal - sellAmt + buyAmt);
     const targetPct = plannedMap[isin] || 0.0;
 
-    const curPct = totalNetWorth > 0 ? (curVal / totalNetWorth) * 100 : 0;
-    const postPct = totalNetWorth > 0 ? (postVal / totalNetWorth) * 100 : 0;
+    if (!fundMap[shortName]) {
+      fundMap[shortName] = {
+        shortName,
+        curVal: 0,
+        sellAmt: 0,
+        buyAmt: 0,
+        targetPct: 0
+      };
+    }
+    fundMap[shortName].curVal += curVal;
+    fundMap[shortName].sellAmt += sellAmt;
+    fundMap[shortName].buyAmt += buyAmt;
+    fundMap[shortName].targetPct = Math.max(fundMap[shortName].targetPct, targetPct);
+  });
 
-    fundItems.push({
-      isin,
-      rawName,
-      shortName: shortName,
+  const fundItems = Object.values(fundMap).map(f => {
+    const postVal = Math.max(0, f.curVal - f.sellAmt + f.buyAmt);
+    const curPct = totalNetWorth > 0 ? (f.curVal / totalNetWorth) * 100 : 0;
+    const postPct = totalNetWorth > 0 ? (postVal / totalNetWorth) * 100 : 0;
+    return {
+      shortName: f.shortName,
       curPct,
       postPct,
-      targetPct,
-      isTarget: targetPct > 0
-    });
+      targetPct: f.targetPct,
+      isTarget: f.targetPct > 0
+    };
   });
 
   // Sort: Target funds first (by targetPct desc), then legacy funds (by curPct desc)
