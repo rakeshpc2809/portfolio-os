@@ -74,7 +74,8 @@ async def parse_statement(
         return events
     except Exception as err:
         logger.error(f"Error parsing statement: {err}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(err))
+        status_code = 400 if isinstance(err, ValueError) else 500
+        raise HTTPException(status_code=status_code, detail=str(err))
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
