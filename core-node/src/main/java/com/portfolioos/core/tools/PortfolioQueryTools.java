@@ -45,7 +45,6 @@ public class PortfolioQueryTools {
         this.cacheService = cacheService;
     }
 
-    @Tool(description = "Get real-time overall portfolio valuation, invested cost, unrealized gain, active scheme count, and money-weighted XIRR.")
     public Map<String, Object> getPortfolioValuation() {
         log.info("LLM_TOOL_EXECUTION: tool=getPortfolioValuation params={}");
         String fy = TaxRulesLoader.detectFiscalYear(LocalDate.now());
@@ -62,7 +61,6 @@ public class PortfolioQueryTools {
         return result;
     }
 
-    @Tool(description = "Get list of registered mutual funds in the portfolio registry including ISIN codes, scheme names, asset classes, and active/legacy SIP status.")
     public Map<String, Object> getFundRegistry() {
         log.info("LLM_TOOL_EXECUTION: tool=getFundRegistry params={}");
         List<HoldingDetailDto> holdings = valuationService.getHoldings();
@@ -89,7 +87,6 @@ public class PortfolioQueryTools {
         return result;
     }
 
-    @Tool(description = "Calculate Financial Independence / Retire Early (FIRE) metrics including monthly expenses, annual burn rate, current corpus multiple, and projected FIRE target date.")
     public Map<String, Object> getFireSummary() {
         log.info("LLM_TOOL_EXECUTION: tool=getFireSummary params={}");
         var state = cacheService.getCachedState();
@@ -109,7 +106,6 @@ public class PortfolioQueryTools {
         return result;
     }
 
-    @Tool(description = "Get point-in-time portfolio drawdown context, armed drawdown tier, and scheduled or induced rebalance sell-side & buy-side waterfall steps.")
     public Map<String, Object> getRebalancePlan() {
         log.info("LLM_TOOL_EXECUTION: tool=getRebalancePlan params={}");
         var state = cacheService.getCachedState();
@@ -145,7 +141,6 @@ public class PortfolioQueryTools {
         return result;
     }
 
-    @Tool(description = "Calculate tax-loss and tax-free gain harvest opportunities evaluated against remaining Sec 112A FY LTCG exemption headroom.")
     public Map<String, Object> getTaxHarvestOpportunities() {
         log.info("LLM_TOOL_EXECUTION: tool=getTaxHarvestOpportunities params={}");
         String fy = TaxRulesLoader.detectFiscalYear(LocalDate.now());
@@ -163,10 +158,9 @@ public class PortfolioQueryTools {
         return result;
     }
 
-    @Tool(description = "Calculate pairwise stock portfolio overlap percentage and common stock holdings between two mutual fund ISINs.")
     public Map<String, Object> getPairwiseFundOverlap(
-        @ToolParam(description = "Primary fund ISIN code (e.g. INF109KC13X2)") String fundA,
-        @ToolParam(description = "Secondary fund ISIN code (e.g. INF879O01027)") String fundB
+        String fundA,
+        String fundB
     ) {
         log.info("LLM_TOOL_EXECUTION: tool=getPairwiseFundOverlap params={fundA={}, fundB={}}", fundA, fundB);
         if (fundA == null || fundA.isBlank() || fundB == null || fundB.isBlank()) {
@@ -198,13 +192,12 @@ public class PortfolioQueryTools {
         return overlap;
     }
 
-    @Tool(description = "Simulate a what-if trade (DISPOSAL or ACQUISITION) to preview estimated capital gains tax drag, LTCG exemption headroom impact, and post-trade XIRR without persisting events.")
     public Map<String, Object> simulateTrade(
-        @ToolParam(description = "Fund ISIN code") String isin,
-        @ToolParam(description = "Fund scheme name") String schemeName,
-        @ToolParam(description = "Units to sell or buy") BigDecimal units,
-        @ToolParam(description = "Price per unit / NAV") BigDecimal pricePerUnit,
-        @ToolParam(description = "Trade type: DISPOSAL or ACQUISITION") String tradeType
+        String isin,
+        String schemeName,
+        BigDecimal units,
+        BigDecimal pricePerUnit,
+        String tradeType
     ) {
         log.info("LLM_TOOL_EXECUTION: tool=simulateTrade params={isin={}, schemeName={}, units={}, pricePerUnit={}, tradeType={}}",
             isin, schemeName, units, pricePerUnit, tradeType);

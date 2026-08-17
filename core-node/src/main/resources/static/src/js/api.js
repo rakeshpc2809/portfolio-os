@@ -21,10 +21,6 @@ export function getAuthHeaders(extraHeaders = {}) {
 export async function fetchJson(url, options = {}) {
   let token = getAuthToken();
   let fullUrl = url.startsWith('http') || url.startsWith('/api/v1') ? url : `${API_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
-  const separator = fullUrl.includes('?') ? '&' : '?';
-  if (!fullUrl.includes('token=')) {
-    fullUrl = `${fullUrl}${separator}token=${encodeURIComponent(token)}`;
-  }
 
   const headers = { ...getAuthHeaders(options.headers || {}) };
   let res = await fetch(fullUrl, { ...options, headers });
@@ -35,7 +31,6 @@ export async function fetchJson(url, options = {}) {
     token = DEFAULT_AUTH_TOKEN;
     localStorage.setItem('API_AUTH_TOKEN', DEFAULT_AUTH_TOKEN);
     headers['X-Api-Auth-Token'] = DEFAULT_AUTH_TOKEN;
-    fullUrl = fullUrl.replace(/token=[^&]+/, `token=${encodeURIComponent(DEFAULT_AUTH_TOKEN)}`);
     res = await fetch(fullUrl, { ...options, headers });
   }
 

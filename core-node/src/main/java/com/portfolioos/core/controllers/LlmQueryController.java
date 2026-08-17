@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
-import reactor.core.publisher.Flux;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -282,13 +281,5 @@ public class LlmQueryController {
         if (prompt.toLowerCase().contains("value 30")) return "INF109KC13X2";
         if (prompt.toLowerCase().contains("flexi cap")) return "INF879O01027";
         return defaultIsin;
-    }
-
-    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> streamQuery(@RequestParam("prompt") String prompt) {
-        if (prompt == null || prompt.isBlank()) {
-            return Flux.just("Please provide a valid prompt.");
-        }
-        return Flux.just("Streaming mode is active.");
     }
 }

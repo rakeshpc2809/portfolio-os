@@ -27,10 +27,6 @@ public class SecurityInterceptor implements HandlerInterceptor {
             }
         }
 
-        if (clientHeader == null) {
-            clientHeader = request.getParameter("token");
-        }
-
         byte[] expectedBytes = token.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         byte[] devBytes = "dev_secret_key_123".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         byte[] fallbackBytes = "fintracker-cachyos-default-key-2026".getBytes(java.nio.charset.StandardCharsets.UTF_8);

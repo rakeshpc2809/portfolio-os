@@ -322,7 +322,7 @@ async function uploadCasFile(file, password) {
   if (password) formData.append('password', password);
 
   try {
-    const res = await fetch(`/api/v1/statements/upload?token=${encodeURIComponent(token)}`, {
+    const res = await fetch(`/api/v1/statements/upload`, {
       method: 'POST',
       headers: {
         'X-Api-Auth-Token': token
