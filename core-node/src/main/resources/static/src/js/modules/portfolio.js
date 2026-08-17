@@ -337,7 +337,7 @@ export function renderAllocationChart(allocations) {
       othersCount++;
     } else {
       main.push({
-        name: assetName.length > 25 ? assetName.substring(0, 23) + '...' : assetName,
+        name: shortenFundName(assetName),
         value: val
       });
     }
@@ -508,7 +508,7 @@ export function renderFundAllocationCompareChart(containerId, holdings, bucketTa
     return {
       isin,
       name,
-      shortName: name.length > 28 ? name.substring(0, 26) + '...' : name,
+      shortName: shortenFundName(name),
       plannedPct,
       actualPct,
       drift,
@@ -1661,6 +1661,9 @@ function shortenFundName(rawName) {
     .replace(/NIPPON INDIA/gi, 'Nippon')
     .replace(/Mirae Asset/gi, 'Mirae')
     .replace(/Edelweiss Nifty500 Multicap Momentum Quality 50/gi, 'Edelweiss MomQual 50')
+    .replace(/Invesco India/gi, 'Invesco')
+    .replace(/Kotak Mahindra/gi, 'Kotak')
+    .replace(/Parag Parikh/gi, 'PPFAS')
     .replace(/\s+/g, ' ')
     .trim();
 }
