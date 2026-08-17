@@ -61,10 +61,6 @@ public class FundTierClassifier {
 
     public static boolean isLegacyFund(String assetId, Set<String> activeAssetIds) {
         if (assetId == null) return false;
-        if (classify(assetId) == FundTier.CORE_SATELLITE) {
-            return false; // Target core/satellite preferred funds are never legacy
-        }
-        if (activeAssetIds == null) return false;
-        return !activeAssetIds.contains(assetId);
+        return classify(assetId) == FundTier.LEGACY;
     }
 }

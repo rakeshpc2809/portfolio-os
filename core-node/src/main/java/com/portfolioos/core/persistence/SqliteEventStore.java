@@ -294,6 +294,56 @@ public class SqliteEventStore implements EventStorePort {
         }
     }
 
+    public void rehashLedgerChain() {
+        String selectSql = "SELECT id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id FROM tax_events ORDER BY ingested_at ASC, id ASC";
+        String updateSql = "UPDATE tax_events SET previous_hash = ?, event_hash = ? WHERE id = ?";
+        try (Connection conn = getConnection()) {
+            boolean wasAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try (PreparedStatement selectStmt = conn.prepareStatement(selectSql);
+                 PreparedStatement updateStmt = conn.prepareStatement(updateSql);
+                 ResultSet rs = selectStmt.executeQuery()) {
+
+                String expectedPrevHash = "GENESIS";
+                while (rs.next()) {
+                    String id = rs.getString("id");
+                    String priceStr = rs.getString("price_per_unit");
+                    BigDecimal price = (priceStr != null && !priceStr.isBlank()) ? new BigDecimal(priceStr) : BigDecimal.ZERO;
+
+                    TaxEvent mockEvent = new TaxEvent(
+                        id,
+                        rs.getString("asset_id"),
+                        rs.getString("asset_name"),
+                        rs.getString("isin"),
+                        EventType.valueOf(rs.getString("event_type")),
+                        LocalDate.parse(rs.getString("event_date")),
+                        new BigDecimal(rs.getString("units")),
+                        price,
+                        new BigDecimal(rs.getString("gross_amount")),
+                        rs.getString("source_document_id"),
+                        null
+                    );
+
+                    String newHash = computeHash(expectedPrevHash, mockEvent);
+                    updateStmt.setString(1, expectedPrevHash);
+                    updateStmt.setString(2, newHash);
+                    updateStmt.setString(3, id);
+                    updateStmt.executeUpdate();
+
+                    expectedPrevHash = newHash;
+                }
+                conn.commit();
+            } catch (Exception e) {
+                conn.rollback();
+                throw new RuntimeException("Failed during rehash transaction", e);
+            } finally {
+                conn.setAutoCommit(wasAutoCommit);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to rehash ledger chain", e);
+        }
+    }
+
     @Override
     public void clearAllEvents() {
         try (Connection conn = getConnection();

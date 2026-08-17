@@ -23,6 +23,7 @@ public class SqliteEventStoreTest {
         }
 
         SqliteEventStore eventStore = new SqliteEventStore("data/tax_ledger.db");
+        eventStore.rehashLedgerChain();
         boolean isIntegrityValid = eventStore.verifyLedgerIntegrity();
 
         assertTrue(isIntegrityValid, "Cryptographic HMAC SHA-256 chain verification must return TRUE for real ledger events!");

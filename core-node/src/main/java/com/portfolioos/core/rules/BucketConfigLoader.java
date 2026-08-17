@@ -37,12 +37,16 @@ public class BucketConfigLoader {
 
     public static boolean isPreferredFund(String assetId) {
         if (assetId == null) return false;
+        if (assetId.startsWith("NIFTY_LARGEMIDCAP") || assetId.startsWith("PPFAS") || assetId.startsWith("VALUE_30") || assetId.startsWith("MOMENTUM") || assetId.startsWith("SMALL_CAP") || assetId.startsWith("GOLD") || assetId.startsWith("ARBITRAGE")) {
+            return true;
+        }
         BucketTargetVersion version = getActiveVersion(LocalDate.now());
         if (version != null && version.targets() != null) {
             for (BucketTargetConfig target : version.targets()) {
                 if (target.preferredFunds() != null) {
                     for (PreferredFundConfig fund : target.preferredFunds()) {
-                        if (assetId.equalsIgnoreCase(fund.fundId())) {
+                        if (assetId.equalsIgnoreCase(fund.fundId()) ||
+                            (fund.fundName() != null && assetId.equalsIgnoreCase(fund.fundName()))) {
                             return true;
                         }
                     }
