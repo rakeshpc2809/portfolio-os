@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: portfolio-os-core
     ports:
-      - "127.0.0.1:8080:8080"
+      - "0.0.0.0:8080:8080"
     environment:
       - API_AUTH_TOKEN=dev_secret_key_123
       - LEDGER_HMAC_SECRET=dev_secret_key_123

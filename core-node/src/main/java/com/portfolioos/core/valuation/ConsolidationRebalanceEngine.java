@@ -144,14 +144,22 @@ public class ConsolidationRebalanceEngine {
         BigDecimal effectiveProceeds = netPostTaxProceeds.compareTo(BigDecimal.ZERO) > 0 ? netPostTaxProceeds : totalProceeds;
 
         List<ExistingSipAllocation> proRataAllocations = new ArrayList<>();
-        for (Map.Entry<String, Pair<String, BigDecimal>> entry : CORE_SIP_WEIGHTS.entrySet()) {
-            String id = entry.getKey();
-            Pair<String, BigDecimal> pair = entry.getValue();
-            BigDecimal weightPct = pair.second();
-            BigDecimal deployAmt = effectiveProceeds.multiply(weightPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
-            proRataAllocations.add(new ExistingSipAllocation(
-                id, pair.first(), weightPct, deployAmt
-            ));
+        Map<String, Map<String, Double>> sipAllocMap = com.portfolioos.core.rules.BucketConfigLoader.getSipAllocations();
+
+        for (Map.Entry<String, Map<String, Double>> bucketEntry : sipAllocMap.entrySet()) {
+            for (Map.Entry<String, Double> fundEntry : bucketEntry.getValue().entrySet()) {
+                String fundId = fundEntry.getKey();
+                double sipWeightFrac = fundEntry.getValue();
+                BigDecimal weightPct = BigDecimal.valueOf(sipWeightFrac * 100.0).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal deployAmt = effectiveProceeds.multiply(BigDecimal.valueOf(sipWeightFrac)).setScale(2, RoundingMode.HALF_UP);
+
+                proRataAllocations.add(new ExistingSipAllocation(
+                    fundId,
+                    fundId,
+                    weightPct,
+                    deployAmt
+                ));
+            }
         }
 
         int month = currentDate.getMonthValue();

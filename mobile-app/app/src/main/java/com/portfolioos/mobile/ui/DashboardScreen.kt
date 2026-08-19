@@ -1321,33 +1321,101 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
     }
 }
 
+internal data class FundSellAggregated(
+    val fundName: String,
+    val totalProceeds: Double,
+    val totalUnits: Double,
+    val totalGain: Double,
+    val taxSaved: Double,
+    val taxTerm: String,
+    val tierLabel: String
+)
+
+internal fun shortenFundName(rawName: String?): String {
+    if (rawName.isNullOrBlank()) return ""
+    return rawName
+        .replace(Regex("""\s*\(Non Demat\)""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*-\s*Direct Plan Growth""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*-\s*DIRECT GROWTH PLAN GROWTH OPTION""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*Direct Plan\s*-\s*Growth""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*Direct Growth Plan Growth Option""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*-\s*Direct Growth""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*Direct Growth""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*Direct Plan""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*Direct""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*Growth""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*Index Fund""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""ICICI Prudential""", RegexOption.IGNORE_CASE), "ICICI")
+        .replace(Regex("""Motilal Oswal""", RegexOption.IGNORE_CASE), "Motilal")
+        .replace(Regex("""NIPPON INDIA""", RegexOption.IGNORE_CASE), "Nippon")
+        .replace(Regex("""Mirae Asset""", RegexOption.IGNORE_CASE), "Mirae")
+        .replace(Regex("""Edelweiss Nifty500 Multicap Momentum Quality 50""", RegexOption.IGNORE_CASE), "Edelweiss MomQual 50")
+        .replace(Regex("""Invesco India""", RegexOption.IGNORE_CASE), "Invesco")
+        .replace(Regex("""Kotak Mahindra""", RegexOption.IGNORE_CASE), "Kotak")
+        .replace(Regex("""Parag Parikh""", RegexOption.IGNORE_CASE), "PPFAS")
+        .replace(Regex("""\s+"""), " ")
+        .trim()
+        .removeSuffix("-")
+        .trim()
+}
+
 @Composable
 fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.RebalancePlanDto?) {
     val sellSide = rebalancePlan?.sellSide
-    val tiers = remember(sellSide) { sellSide?.waterfall.orEmpty().filter { it.lots.isNotEmpty() } }
+    val buySide = rebalancePlan?.buySide
+    val buyBuckets = remember(buySide) { buySide?.buckets.orEmpty() }
     val isCooldownBlocked = remember(rebalancePlan) {
         val headline = rebalancePlan?.reasoningNarrative?.headline.orEmpty()
         headline.contains("cooldown", ignoreCase = true)
     }
 
+    val totalRequired = sellSide?.totalRequired ?: 0.0
+    val totalToInvest = buySide?.totalToInvest ?: totalRequired
+
+    val fundSellList = remember(sellSide) {
+        val map = mutableMapOf<String, FundSellAggregated>()
+        sellSide?.waterfall.orEmpty().forEach { tier ->
+            tier.lots.forEach { lot ->
+                val fName = shortenFundName(lot.fundName.ifEmpty { lot.fundId })
+                val proceeds = lot.saleProceeds
+                val units = lot.unitsSold
+                val gain = lot.realizedGain
+                val isLtcg = lot.taxTerm.contains("LONG", ignoreCase = true) || lot.taxImpact?.regime?.contains("112A") == true
+                val taxSaved = if (isLtcg) Math.max(0.0, gain) * 0.125 else 0.0
+
+                val existing = map[fName]
+                if (existing != null) {
+                    map[fName] = existing.copy(
+                        totalProceeds = existing.totalProceeds + proceeds,
+                        totalUnits = existing.totalUnits + units,
+                        totalGain = existing.totalGain + gain,
+                        taxSaved = existing.taxSaved + taxSaved
+                    )
+                } else {
+                    map[fName] = FundSellAggregated(
+                        fundName = fName,
+                        totalProceeds = proceeds,
+                        totalUnits = units,
+                        totalGain = gain,
+                        taxSaved = taxSaved,
+                        taxTerm = if (isLtcg) "LTCG EXEMPT" else lot.taxTerm,
+                        tierLabel = tier.tierLabel.ifEmpty { tier.tier }
+                    )
+                }
+            }
+        }
+        map.values.toList()
+    }
+
+    val totalTaxSaved = remember(fundSellList) { fundSellList.sumOf { it.taxSaved } }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(bottom = 110.dp)
+            .padding(horizontal = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp)
     ) {
-        item {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "REBALANCE WATERFALL FLOW",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                color = M3TextMuted,
-                letterSpacing = 1.5.sp
-            )
-        }
-
         if (rebalancePlan == null) {
             item {
                 PortfolioStateCard(
@@ -1355,7 +1423,7 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                     iconTint = M3NeonCyan,
                     title = "Rebalance Plan Unavailable",
                     subtitle = "Core Node Sync Required",
-                    description = "Point-in-time drawdown tiers and waterfall trade plans require connection to Core Node. Connect to Core Node to compute allocation drift.",
+                    description = "Point-in-time drawdown tiers and waterfall trade plans require connection to Core Node.",
                     actionLabel = "Sync with Core Node",
                     onAction = {}
                 )
@@ -1370,7 +1438,7 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                     description = rebalancePlan.reasoningNarrative?.headline ?: "Bucket drift detected, but sell rebalance is on 30-day cooldown."
                 )
             }
-        } else if (sellSide == null || tiers.isEmpty() || sellSide.totalRequired == 0.0) {
+        } else if (sellSide == null || (fundSellList.isEmpty() && totalToInvest == 0.0)) {
             item {
                 PortfolioStateCard(
                     icon = Icons.Default.CheckCircle,
@@ -1381,91 +1449,266 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                 )
             }
         } else {
+            // 1. HERO SUMMARY CARD (Sleek Compact Glass Pill Header)
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E150A)),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, M3AmberWarning.copy(alpha = 0.4f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = rebalancePlan.trigger?.reasonLabel ?: "INDUCED REBALANCE TRIGGERED",
-                            color = M3AmberWarning,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
+                    Column(modifier = Modifier.padding(12.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = M3AmberWarning.copy(alpha = 0.15f),
+                                shape = ShapeTokens.PillShape
+                            ) {
+                                Text(
+                                    text = "DRIFT REBALANCE TRIGGERED",
+                                    color = M3AmberWarning,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                            if (totalTaxSaved > 0) {
+                                Surface(
+                                    color = Color(0xFF10B981).copy(alpha = 0.2f),
+                                    shape = ShapeTokens.PillShape,
+                                    border = BorderStroke(1.dp, Color(0xFF10B981))
+                                ) {
+                                    Text(
+                                        text = "Saved +${formatInr(totalTaxSaved)} Tax",
+                                        color = Color(0xFF34D399),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = rebalancePlan.trigger?.reasonLabel ?: "Bucket Allocation Drift Exceeded Threshold",
+                            color = Color(0xFFCBD5E1),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
+                                .padding(vertical = 8.dp, horizontal = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column {
-                                Text("TARGET TRIM", color = M3TextMuted, fontSize = 10.sp)
-                                Text(formatInr(sellSide.totalRequired), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("SELL TRIM", color = M3TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text("-${formatInr(totalRequired)}", color = Color(0xFFFB7185), fontSize = 13.sp, fontWeight = FontWeight.Black)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("TAX SAVED", color = Color(0xFF34D399), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text("+${formatInr(totalTaxSaved)}", color = Color(0xFF34D399), fontSize = 13.sp, fontWeight = FontWeight.Black)
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text("ESTIMATED TAX DRAG", color = M3TextMuted, fontSize = 10.sp)
-                                Text(formatInr(sellSide.taxSummary?.totalTaxEstimate ?: 0.0), color = M3AmberWarning, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("BUY ALLOC", color = M3TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text("+${formatInr(totalToInvest)}", color = Color(0xFF34D399), fontSize = 13.sp, fontWeight = FontWeight.Black)
                             }
                         }
                     }
                 }
             }
 
-            tiers.forEach { tier ->
-                item(key = "tier_${tier.tier}") {
-                    Text(
-                        text = tier.tierLabel.ifEmpty { tier.tier },
-                        color = M3NeonCyan,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
-
-                itemsIndexed(
-                    items = tier.lots,
-                    key = { index, lot -> "${lot.fundId}_${lot.acquisitionDate}_${lot.unitsSold}_${lot.saleProceeds}_$index" }
-                ) { _, lot ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+            // 2. SELL SIDE CARD
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1015)),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFFF43F5E).copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                            Surface(
+                                color = Color(0xFFF43F5E).copy(alpha = 0.2f),
+                                shape = ShapeTokens.PillShape,
+                                border = BorderStroke(1.dp, Color(0xFFF43F5E))
+                            ) {
                                 Text(
-                                    text = lot.fundName.ifEmpty { lot.fundId },
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Acquired ${lot.acquisitionDate} · ${lot.unitsSold} units",
-                                    color = M3TextMuted,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace
+                                    text = "1. SELL SIDE (LIQUIDATIONS)",
+                                    color = Color(0xFFFB7185),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
                             }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = formatInr(lot.saleProceeds),
-                                    color = M3ElectricLime,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = lot.taxTerm,
-                                    color = if (lot.taxTerm.contains("LONG")) M3GreenPositive else M3AmberWarning,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        if (fundSellList.isEmpty()) {
+                            Text("No fund liquidations required", color = M3TextMuted, fontSize = 11.sp)
+                        } else {
+                            fundSellList.forEachIndexed { index, f ->
+                                if (index > 0) Divider(color = Color(0xFFF43F5E).copy(alpha = 0.15f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(f.fundName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("${String.format("%.1f", f.totalUnits)} units · ${f.tierLabel}", color = M3TextMuted, fontSize = 10.sp)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("-${formatInr(f.totalProceeds)}", color = Color(0xFFFB7185), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        if (f.taxSaved > 0) {
+                                            Text("LTCG Exempt", color = Color(0xFF34D399), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. FLOW CONNECTOR BANNER
+            item {
+                Surface(
+                    color = Color(0xFF1E293B),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, M3AmberWarning.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "↓  REDEPLOYING ${formatInr(totalToInvest)} CAPITAL  ↓",
+                        color = M3AmberWarning,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.2.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    )
+                }
+            }
+
+            // 4. BUY SIDE CARD
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0D2018)),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Surface(
+                            color = Color(0xFF10B981).copy(alpha = 0.2f),
+                            shape = ShapeTokens.PillShape,
+                            border = BorderStroke(1.dp, Color(0xFF10B981))
+                        ) {
+                            Text(
+                                text = "2. BUY SIDE (TARGET RE-ALLOCATIONS)",
+                                color = Color(0xFF34D399),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        var isFirst = true
+                        buyBuckets.forEach { bkt ->
+                            val bktAlloc = bkt.amountAllocated
+                            val funds = bkt.fundBreakdown
+                            if (bktAlloc > 0 || funds.isNotEmpty()) {
+                                if (funds.isEmpty()) {
+                                    if (!isFirst) Divider(color = Color(0xFF10B981).copy(alpha = 0.15f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
+                                    isFirst = false
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(bkt.bucket.replace('_', ' '), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("+${formatInr(bktAlloc)}", color = Color(0xFF34D399), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                } else {
+                                    funds.forEach { fund ->
+                                        if (!isFirst) Divider(color = Color(0xFF10B981).copy(alpha = 0.15f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
+                                        isFirst = false
+                                        val fName = shortenFundName(fund.fundName.ifEmpty { fund.fundId })
+                                        val fAmt = if (fund.amount > 0) fund.amount else (bktAlloc / funds.size)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(fName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                Text(bkt.bucket.replace('_', ' '), color = M3TextMuted, fontSize = 10.sp)
+                                            }
+                                            Text("+${formatInr(fAmt)}", color = Color(0xFF34D399), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. TARGET BUCKET ALLOCATION DELTAS CARD
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.2f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "3. TARGET BUCKET ALLOCATION DELTA",
+                            color = Color(0xFF38BDF8),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        buyBuckets.forEachIndexed { idx, bkt ->
+                            if (idx > 0) Divider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(bkt.bucket.replace('_', ' '), color = Color(0xFFCBD5E1), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("${String.format("%.1f", bkt.currentPct)}%", color = M3TextMuted, fontSize = 11.sp)
+                                    Text("➔", color = M3TextMuted, fontSize = 10.sp)
+                                    val isInc = bkt.postRebalancePct >= bkt.currentPct
+                                    Text(
+                                        text = "${String.format("%.1f", bkt.postRebalancePct)}%",
+                                        color = if (isInc) Color(0xFF34D399) else Color(0xFFFB7185),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text("(Tgt ${String.format("%.1f", bkt.targetPct)}%)", color = M3TextMuted, fontSize = 10.sp)
+                                }
                             }
                         }
                     }

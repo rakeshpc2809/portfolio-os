@@ -1693,6 +1693,7 @@ function renderRebalanceBoxConnector(plan) {
 
   const totalRealized = parseFloat(taxSum.total_sale_proceeds ?? taxSum.totalSaleProceeds ?? buySide.total_to_invest ?? buySide.totalToInvest ?? 0);
   const tradeExempt = parseFloat(taxSum.total_ltcg_exempt ?? taxSum.totalLtcgExempt ?? taxSum.total_ltcg_exemption_applied ?? 0);
+  const taxSavedTotal = Math.round(tradeExempt * 0.125);
   const headroomBefore = parseFloat(taxSum.exemption_headroom_before ?? taxSum.exemptionHeadroomBefore ?? 125000);
   const headroomAfter = parseFloat(taxSum.exemption_headroom_after ?? taxSum.exemptionHeadroomAfter ?? (headroomBefore - tradeExempt));
   const priorUsed = Math.max(0, 125000 - headroomBefore);
@@ -1703,17 +1704,19 @@ function renderRebalanceBoxConnector(plan) {
   // 1. Update Summary Bar
   const elRealized = document.getElementById('sumRealizedProceeds');
   const elTradeEx = document.getElementById('sumTradeExemption');
+  const elTaxSaved = document.getElementById('sumTaxSaved');
   const elYtdEx = document.getElementById('sumYtdExemption');
   const elHeadroom = document.getElementById('sumRemainingHeadroom');
   const elTax = document.getElementById('sumTaxOwed');
 
   if (elRealized) elRealized.textContent = `₹${Math.round(totalRealized).toLocaleString('en-IN')}`;
   if (elTradeEx) elTradeEx.textContent = `₹${Math.round(tradeExempt).toLocaleString('en-IN')}`;
+  if (elTaxSaved) elTaxSaved.textContent = `+₹${taxSavedTotal.toLocaleString('en-IN')}`;
   if (elYtdEx) elYtdEx.textContent = `₹${Math.round(totalYtdExempt).toLocaleString('en-IN')} of ₹1,25,000`;
   if (elHeadroom) elHeadroom.textContent = `₹${Math.round(headroomRem).toLocaleString('en-IN')}`;
   if (elTax) elTax.textContent = `₹${Math.round(totalTax).toLocaleString('en-IN')}`;
 
-  // 2. Build Sell Cards Column
+  // 2. Build Sell Cards Column (Fund-Wise Aggregated)
   const sellCol = document.getElementById('rebalanceSellCardsCol');
   const sellFundMap = new Map();
 
@@ -1723,16 +1726,18 @@ function renderRebalanceBoxConnector(plan) {
       const fName = shortenFundName(lot.fundName || lot.fund_name || lot.fundId || lot.fund_id);
       const proceeds = parseFloat(lot.saleProceeds || lot.sale_proceeds || 0);
       const units = parseFloat(lot.units_sold || lot.unitsSold || lot.units || 0);
+      const gain = parseFloat(lot.realizedGain || lot.realized_gain || 0);
       const ti = lot.tax_impact || lot.taxImpact || {};
       const regime = ti.regime || ti.regime_type || lot.tax_term || lot.taxTerm || 'SEC_112A_EXEMPT';
 
       if (proceeds > 0) {
         if (!sellFundMap.has(fName)) {
-          sellFundMap.set(fName, { name: fName, proceeds: 0, units: 0, regime: regime, tierLabel: tLabel });
+          sellFundMap.set(fName, { name: fName, proceeds: 0, units: 0, gain: 0, regime: regime, tierLabel: tLabel });
         }
         const existing = sellFundMap.get(fName);
         existing.proceeds += proceeds;
         existing.units += units;
+        existing.gain += gain;
         if (regime === 'SLAB_RATE_STCG') existing.regime = 'SLAB_RATE_STCG';
         else if (regime === 'SEC_112A_TAXABLE_12_5' && existing.regime !== 'SLAB_RATE_STCG') existing.regime = 'SEC_112A_TAXABLE_12_5';
       }
@@ -1742,10 +1747,11 @@ function renderRebalanceBoxConnector(plan) {
   if (sellCol) {
     if (sellFundMap.size > 0) {
       sellCol.innerHTML = Array.from(sellFundMap.values()).map(f => {
+        const fundTaxSaved = Math.round(Math.max(0, f.gain) * 0.125);
         let badgeBg = 'rgba(16, 185, 129, 0.15)';
         let badgeColor = '#10b981';
         let badgeBorder = '#10b981';
-        let badgeLabel = 'LTCG EXEMPT';
+        let badgeLabel = fundTaxSaved > 0 ? `LTCG EXEMPT (Saved +₹${fundTaxSaved.toLocaleString('en-IN')} Tax)` : 'LTCG EXEMPT';
 
         if (f.regime === 'SLAB_RATE_STCG') {
           badgeBg = 'rgba(239, 68, 68, 0.15)';
@@ -1760,16 +1766,19 @@ function renderRebalanceBoxConnector(plan) {
         }
 
         return `
-          <div class="rebalance-sell-card" style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.08); border-left: 4px solid ${badgeColor}; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
+          <div class="rebalance-sell-card" style="background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(244,63,94,0.3); border-left: 4px solid #f43f5e; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
             <div>
-              <div style="font-weight: 700; color: #f8fafc;">${f.name}</div>
-              <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">
+              <div style="font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 4px;">
+                <span style="background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid #f43f5e; font-size: 0.6rem; padding: 1px 5px; border-radius: 3px; font-weight: 800;">SELL</span>
+                ${f.name}
+              </div>
+              <div style="font-size: 0.7rem; color: #94a3b8; margin-top: 3px;">
                 ${f.units > 0 ? `${f.units.toFixed(1)} units` : ''} · <span style="color: #cbd5e1;">${f.tierLabel}</span>
                 <span style="background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; font-size: 0.62rem; padding: 1px 5px; border-radius: 3px; margin-left: 6px; font-weight: 600;">${badgeLabel}</span>
               </div>
             </div>
-            <div style="font-weight: 800; color: #38bdf8; font-size: 0.85rem;">
-              ₹${Math.round(f.proceeds).toLocaleString('en-IN')}
+            <div style="font-weight: 800; color: #fb7185; font-size: 0.85rem;">
+              -₹${Math.round(f.proceeds).toLocaleString('en-IN')}
             </div>
           </div>
         `;
@@ -1805,10 +1814,13 @@ function renderRebalanceBoxConnector(plan) {
   if (buyCol) {
     if (buyFunds.length > 0) {
       buyCol.innerHTML = buyFunds.map(f => `
-        <div class="rebalance-buy-card" style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(56, 189, 248, 0.2); border-right: 4px solid #38bdf8; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
+        <div class="rebalance-buy-card" style="background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(16, 185, 129, 0.3); border-right: 4px solid #10b981; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
           <div>
-            <div style="font-weight: 700; color: #f8fafc;">${f.name}</div>
-            <div style="font-size: 0.68rem; color: #38bdf8; margin-top: 2px; font-weight: 600;">${f.bucket}</div>
+            <div style="font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 4px;">
+              <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; font-size: 0.6rem; padding: 1px 5px; border-radius: 3px; font-weight: 800;">BUY</span>
+              ${f.name}
+            </div>
+            <div style="font-size: 0.68rem; color: #34d399; margin-top: 3px; font-weight: 600;">${f.bucket}</div>
           </div>
           <div style="font-weight: 800; color: #34d399; font-size: 0.85rem;">
             +₹${Math.round(f.amount).toLocaleString('en-IN')}
@@ -1862,11 +1874,10 @@ function renderRebalanceBoxConnector(plan) {
 }
 
 function drawBoxSvgConnectors() {
-  const svg = document.getElementById('rebalanceSvgConnectors');
   const container = document.getElementById('rebalanceBoxConnectorContainer');
-  const poolPill = document.getElementById('rebalanceCentralPoolPill');
-
-  if (!svg || !container || !poolPill) return;
+  const poolPill = document.getElementById('rebalancePoolPill');
+  const svg = document.getElementById('rebalanceConnectorSvg');
+  if (!container || !poolPill || !svg) return;
 
   const containerRect = container.getBoundingClientRect();
   const poolRect = poolPill.getBoundingClientRect();
@@ -1877,7 +1888,7 @@ function drawBoxSvgConnectors() {
 
   let pathHtml = '';
 
-  // Sell Cards -> Pool Left
+  // Sell Cards -> Pool Left (Rose Red dashed bezier)
   const sellCards = document.querySelectorAll('.rebalance-sell-card');
   sellCards.forEach(card => {
     const cRect = card.getBoundingClientRect();
@@ -1885,10 +1896,10 @@ function drawBoxSvgConnectors() {
     const cardY = cRect.top + cRect.height / 2 - containerRect.top;
 
     const dx = (poolLeftX - cardX) * 0.5;
-    pathHtml += `<path d="M ${cardX} ${cardY} C ${cardX + dx} ${cardY}, ${poolLeftX - dx} ${poolY}, ${poolLeftX} ${poolY}" fill="none" stroke="rgba(16, 185, 129, 0.4)" stroke-width="2" stroke-dasharray="4 3" />`;
+    pathHtml += `<path d="M ${cardX} ${cardY} C ${cardX + dx} ${cardY}, ${poolLeftX - dx} ${poolY}, ${poolLeftX} ${poolY}" fill="none" stroke="rgba(244, 63, 94, 0.6)" stroke-width="2" stroke-dasharray="4 3" />`;
   });
 
-  // Pool Right -> Buy Cards
+  // Pool Right -> Buy Cards (Emerald Green solid bezier)
   const buyCards = document.querySelectorAll('.rebalance-buy-card');
   buyCards.forEach(card => {
     const cRect = card.getBoundingClientRect();
@@ -1896,7 +1907,7 @@ function drawBoxSvgConnectors() {
     const cardY = cRect.top + cRect.height / 2 - containerRect.top;
 
     const dx = (cardX - poolRightX) * 0.5;
-    pathHtml += `<path d="M ${poolRightX} ${poolY} C ${poolRightX + dx} ${poolY}, ${cardX - dx} ${cardY}, ${cardX} ${cardY}" fill="none" stroke="rgba(56, 189, 248, 0.4)" stroke-width="2" />`;
+    pathHtml += `<path d="M ${poolRightX} ${poolY} C ${poolRightX + dx} ${poolY}, ${cardX - dx} ${cardY}, ${cardX} ${cardY}" fill="none" stroke="rgba(16, 185, 129, 0.6)" stroke-width="2" />`;
   });
 
   svg.innerHTML = pathHtml;

@@ -203,6 +203,27 @@ public class BucketConfigLoader {
         return result.isEmpty() ? BucketEngine.DEFAULT_TARGETS : result;
     }
 
+    public static Map<String, Map<String, Double>> getSipAllocations() {
+        BucketTargetVersion version = getActiveVersion(LocalDate.now());
+        Map<String, Map<String, Double>> result = new LinkedHashMap<>();
+
+        if (version != null && version.targets() != null) {
+            for (BucketTargetConfig target : version.targets()) {
+                double bucketTargetFrac = target.targetPct() / 100.0;
+                Map<String, Double> fundSipWeights = new LinkedHashMap<>();
+
+                if (target.preferredFunds() != null) {
+                    for (PreferredFundConfig fund : target.preferredFunds()) {
+                        double overallSipWeight = bucketTargetFrac * fund.allocationWeight();
+                        fundSipWeights.put(fund.fundId(), overallSipWeight);
+                    }
+                }
+                result.put(target.bucket(), fundSipWeights);
+            }
+        }
+        return result;
+    }
+
     public static BucketTargetVersion getActiveVersion(LocalDate date) {
         BucketRulesConfig config = loadConfig();
         String targetDateStr = (date != null ? date : LocalDate.now()).toString();
