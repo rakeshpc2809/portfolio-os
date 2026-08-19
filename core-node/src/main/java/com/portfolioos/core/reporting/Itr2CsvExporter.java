@@ -86,9 +86,8 @@ public class Itr2CsvExporter {
                     deemedCost = actualCost.max(lowerBound);
                     statusRemark = "VALIDATED_SECTION_55_2_AC";
                 } else {
-                    // Fail visibly with flag rather than silently understating gains
-                    deemedCost = actualCost;
-                    statusRemark = "FMV_UNAVAILABLE_REVIEW_REQUIRED";
+                    System.err.println("CRITICAL ERROR: Pre-2018 lot for ISIN " + isin + " (" + name + ") has no 2018-01-31 FMV data. Sec 55(2)(ac) calculation cannot proceed safely.");
+                    throw new IllegalStateException("MISSING_FMV_DATA: Pre-2018 grandfathered equity lot for ISIN " + isin + " (" + name + ") requires 2018-01-31 FMV to compute Sec 55(2)(ac) cost basis accurately. Please configure NAV as of 31-Jan-2018 before exporting Schedule 112A.");
                 }
             } else {
                 deemedCost = actualCost;

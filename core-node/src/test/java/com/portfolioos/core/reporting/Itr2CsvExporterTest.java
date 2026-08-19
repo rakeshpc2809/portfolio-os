@@ -63,7 +63,7 @@ class Itr2CsvExporterTest {
     }
 
     @Test
-    void testPre2018LotWithoutFmvDataFlagsUnavailable() {
+    void testPre2018LotWithoutFmvDataThrowsException() {
         MatchedLot lotPreNoFmv = new MatchedLot(
             "MATCH_X", "EV_DISP_X", "LOT_PRE_NO_FMV", "INF109KC13X2",
             LocalDate.of(2017, 1, 1), LocalDate.of(2026, 5, 1),
@@ -71,13 +71,15 @@ class Itr2CsvExporterTest {
             new BigDecimal("100.0"), 3000L, TaxTerm.LONG_TERM, AssetCategory.EQUITY
         );
 
-        String csv = Itr2CsvExporter.generateSchedule112aCsv(
-            List.of(lotPreNoFmv), "2026-27", Map.of("INF109KC13X2", "Fund Pre No FMV"),
-            Map.of()
-        );
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> {
+            Itr2CsvExporter.generateSchedule112aCsv(
+                List.of(lotPreNoFmv), "2026-27", Map.of("INF109KC13X2", "Fund Pre No FMV"),
+                Map.of()
+            );
+        });
 
-        assertTrue(csv.contains("FMV_UNAVAILABLE_REVIEW_REQUIRED"),
-            "Pre-2018 lot without FMV data must explicitly flag FMV_UNAVAILABLE_REVIEW_REQUIRED");
+        assertTrue(ex.getMessage().contains("MISSING_FMV_DATA"),
+            "Pre-2018 lot without FMV data must throw IllegalStateException with MISSING_FMV_DATA error code");
     }
 
     @Test

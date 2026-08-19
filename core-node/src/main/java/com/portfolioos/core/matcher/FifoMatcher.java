@@ -1,5 +1,6 @@
 package com.portfolioos.core.matcher;
 
+import org.springframework.stereotype.Component;
 import com.portfolioos.core.model.AssetCategory;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.model.Lot;
@@ -16,6 +17,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
+@Component
 public class FifoMatcher {
 
     public record FifoResult(List<Lot> openLots, List<MatchedLot> matchedLots) {}

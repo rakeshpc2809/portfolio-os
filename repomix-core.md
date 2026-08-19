@@ -57,6 +57,7 @@ src/
               StatementsController.java
               SyncController.java
             dtos/
+              ParsedEventDto.java
               RebalancePlanDtos.java
               ReportDtos.java
               SyncDtos.java
@@ -113,6 +114,7 @@ src/
               RebalancePlanEngine.java
               RebalanceTriggerEvaluator.java
               SimulationService.java
+              StatementIngestionUseCase.java
               TaxOptimizationService.java
             tools/
               PortfolioQueryTools.java
@@ -129,6 +131,7 @@ src/
               WaterfallTier.java
             xirr/
               CashFlow.java
+              XirrCalculationException.java
               XirrEngine.java
             CoreApplication.java
     resources/
@@ -1097,11 +1100,8 @@ public class SimulatorController {
 ````java
 package com.portfolioos.core.controllers;
 
-import com.portfolioos.core.model.EventType;
-import com.portfolioos.core.model.TaxEvent;
-import com.portfolioos.core.persistence.DuckDbProjector;
-import com.portfolioos.core.ports.EventStorePort;
-import com.portfolioos.core.service.LedgerCacheService;
+import com.portfolioos.core.dtos.ParsedEventDto;
+import com.portfolioos.core.service.StatementIngestionUseCase;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
@@ -1113,85 +1113,57 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/statements")
 public class StatementsController {
 
-    private final EventStorePort eventStore;
-    private final DuckDbProjector duckDbProjector;
-    private final LedgerCacheService cacheService;
+    private final StatementIngestionUseCase ingestionUseCase;
     private final RestClient restClient;
     private final String authToken;
     private final String sidecarUrl;
 
     public StatementsController(
-        EventStorePort eventStore,
-        DuckDbProjector duckDbProjector,
-        LedgerCacheService cacheService,
+        StatementIngestionUseCase ingestionUseCase,
         @Value("${quant-sidecar.url:http://quant-sidecar:8000}") String sidecarUrl,
         @Value("${api.auth.token:dev_secret_key_123}") String authToken
     ) {
-        this.eventStore = eventStore;
-        this.duckDbProjector = duckDbProjector;
-        this.cacheService = cacheService;
+        this.ingestionUseCase = ingestionUseCase;
         this.authToken = authToken;
         this.sidecarUrl = sidecarUrl;
         this.restClient = RestClient.builder().baseUrl(sidecarUrl).build();
     }
 
-    public record ParsedEventDto(
-        String id,
-        String assetId,
-        String assetName,
-        String isin,
-        String eventType,
-        String eventDate,
-        BigDecimal units,
-        BigDecimal pricePerUnit,
-        BigDecimal grossAmount,
-        String sourceDocumentId
-    ) {}
-
-    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping("/upload")
     public ResponseEntity<?> uploadStatement(
         @RequestParam("file") MultipartFile file,
-        @RequestParam(value = "password", required = false) String password
+        @RequestParam(value = "password", required = false, defaultValue = "") String password
     ) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("Uploaded statement file is empty.");
+        }
+
         try {
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            
-            ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
+            body.add("file", new ByteArrayResource(file.getBytes()) {
                 @Override
                 public String getFilename() {
-                    return file.getOriginalFilename();
+                    return file.getOriginalFilename() != null ? file.getOriginalFilename() : "statement.pdf";
                 }
-            };
-            
-            body.add("file", fileResource);
-            if (password != null && !password.isEmpty()) {
-                body.add("password", password);
-            }
+            });
+            body.add("password", password);
 
-            // POST to parser sidecar with authentication header & candidate host fallbacks
-            String[] candidateUrls = new String[] {
-                sidecarUrl,
-                "http://127.0.0.1:8000",
-                "http://host.containers.internal:8000",
-                "http://172.17.0.1:8000",
-                "http://localhost:8000"
+            String[] candidates = new String[]{
+                this.sidecarUrl,
+                "http://localhost:8000",
+                "http://127.0.0.1:8000"
             };
 
             ResponseEntity<ParsedEventDto[]> response = null;
             Exception lastException = null;
 
-            for (String targetUrl : candidateUrls) {
-                if (targetUrl == null || targetUrl.isBlank()) continue;
+            for (String targetUrl : candidates) {
                 try {
                     RestClient candidateClient = RestClient.builder().baseUrl(targetUrl).build();
                     response = candidateClient.post()
@@ -1202,11 +1174,9 @@ public class StatementsController {
                         .retrieve()
                         .toEntity(ParsedEventDto[].class);
                     if (response != null && response.getStatusCode().is2xxSuccessful()) {
-                        System.out.println("Successfully connected to CAS parser sidecar at: " + targetUrl);
                         break;
                     }
                 } catch (Exception ex) {
-                    System.err.println("Sidecar parsing attempt failed for candidate [" + targetUrl + "]: " + ex.getMessage());
                     lastException = ex;
                 }
             }
@@ -1220,34 +1190,7 @@ public class StatementsController {
                 return ResponseEntity.ok(List.of());
             }
 
-            // Convert to domain entities and append to event store
-            List<TaxEvent> taxEvents = new java.util.ArrayList<>();
-            for (ParsedEventDto dto : dtoList) {
-                TaxEvent te = new TaxEvent(
-                    dto.id() != null ? dto.id() : UUID.randomUUID().toString(),
-                    dto.assetId(),
-                    dto.assetName(),
-                    dto.isin(),
-                    EventType.valueOf(dto.eventType()),
-                    LocalDate.parse(dto.eventDate()),
-                    dto.units(),
-                    dto.pricePerUnit(),
-                    dto.grossAmount(),
-                    dto.sourceDocumentId(),
-                    Instant.now()
-                );
-                taxEvents.add(te);
-            }
-
-            // Write to SQLite
-            eventStore.appendEvents(taxEvents);
-
-            // Re-project events in DuckDB
-            List<TaxEvent> allEvents = eventStore.getAllEvents();
-            duckDbProjector.projectEvents(allEvents);
-
-            // Immediately invalidate central cache so UI updates in real-time
-            cacheService.invalidateCache();
+            ingestionUseCase.ingestParsedEvents(dtoList);
 
             return ResponseEntity.ok(dtoList);
         } catch (IOException e) {
@@ -1805,6 +1748,26 @@ public class SyncController {
         }
     }
 }
+````
+
+## File: src/main/java/com/portfolioos/core/dtos/ParsedEventDto.java
+````java
+package com.portfolioos.core.dtos;
+
+import java.math.BigDecimal;
+
+public record ParsedEventDto(
+    String id,
+    String assetId,
+    String assetName,
+    String isin,
+    String eventType,
+    String eventDate,
+    BigDecimal units,
+    BigDecimal pricePerUnit,
+    BigDecimal grossAmount,
+    String sourceDocumentId
+) {}
 ````
 
 ## File: src/main/java/com/portfolioos/core/dtos/RebalancePlanDtos.java
@@ -2829,6 +2792,7 @@ public class TaxRagService {
 ````java
 package com.portfolioos.core.matcher;
 
+import org.springframework.stereotype.Component;
 import com.portfolioos.core.model.AssetCategory;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.model.Lot;
@@ -2845,6 +2809,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
+@Component
 public class FifoMatcher {
 
     public record FifoResult(List<Lot> openLots, List<MatchedLot> matchedLots) {}
@@ -3309,6 +3274,8 @@ public enum TaxTerm {
 ````java
 package com.portfolioos.core.nav;
 
+import org.springframework.stereotype.Component;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
@@ -3320,6 +3287,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Component
 public class AmfiNavSync {
 
     public record NavEntry(
@@ -5833,9 +5801,8 @@ public class Itr2CsvExporter {
                     deemedCost = actualCost.max(lowerBound);
                     statusRemark = "VALIDATED_SECTION_55_2_AC";
                 } else {
-                    // Fail visibly with flag rather than silently understating gains
-                    deemedCost = actualCost;
-                    statusRemark = "FMV_UNAVAILABLE_REVIEW_REQUIRED";
+                    System.err.println("CRITICAL ERROR: Pre-2018 lot for ISIN " + isin + " (" + name + ") has no 2018-01-31 FMV data. Sec 55(2)(ac) calculation cannot proceed safely.");
+                    throw new IllegalStateException("MISSING_FMV_DATA: Pre-2018 grandfathered equity lot for ISIN " + isin + " (" + name + ") requires 2018-01-31 FMV to compute Sec 55(2)(ac) cost basis accurately. Please configure NAV as of 31-Jan-2018 before exporting Schedule 112A.");
                 }
             } else {
                 deemedCost = actualCost;
@@ -7238,15 +7205,25 @@ import java.util.concurrent.atomic.AtomicReference;
 public class LedgerCacheService {
 
     private final EventStorePort eventStore;
-    private final AmfiNavSync amfiSync = new AmfiNavSync();
-    private final FifoMatcher fifoMatcher = new FifoMatcher();
+    private final AmfiNavSync amfiSync;
+    private final FifoMatcher fifoMatcher;
 
     private final AtomicReference<CachedLedgerState> stateHolder = new AtomicReference<>(null);
     private volatile long lastNavSyncTime = 0L;
     private final Object updateLock = new Object();
 
     public LedgerCacheService(EventStorePort eventStore) {
+        this(eventStore, new AmfiNavSync(), new FifoMatcher());
+    }
+
+    public LedgerCacheService(
+        EventStorePort eventStore,
+        AmfiNavSync amfiSync,
+        FifoMatcher fifoMatcher
+    ) {
         this.eventStore = eventStore;
+        this.amfiSync = amfiSync;
+        this.fifoMatcher = fifoMatcher;
     }
 
     public static record CachedLedgerState(
@@ -9228,6 +9205,83 @@ public class SimulationService {
 }
 ````
 
+## File: src/main/java/com/portfolioos/core/service/StatementIngestionUseCase.java
+````java
+package com.portfolioos.core.service;
+
+import com.portfolioos.core.dtos.ParsedEventDto;
+import com.portfolioos.core.model.EventType;
+import com.portfolioos.core.model.TaxEvent;
+import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.SqliteEventStore;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+public class StatementIngestionUseCase {
+
+    private final SqliteEventStore eventStore;
+    private final DuckDbProjector duckDbProjector;
+    private final LedgerCacheService cacheService;
+
+    public StatementIngestionUseCase(
+        SqliteEventStore eventStore,
+        DuckDbProjector duckDbProjector,
+        LedgerCacheService cacheService
+    ) {
+        this.eventStore = eventStore;
+        this.duckDbProjector = duckDbProjector;
+        this.cacheService = cacheService;
+    }
+
+    public List<TaxEvent> ingestParsedEvents(ParsedEventDto[] dtoList) {
+        if (dtoList == null || dtoList.length == 0) {
+            return List.of();
+        }
+
+        List<TaxEvent> taxEvents = new ArrayList<>();
+        for (ParsedEventDto dto : dtoList) {
+            TaxEvent te = new TaxEvent(
+                dto.id() != null ? dto.id() : UUID.randomUUID().toString(),
+                dto.assetId(),
+                dto.assetName(),
+                dto.isin(),
+                EventType.valueOf(dto.eventType()),
+                LocalDate.parse(dto.eventDate()),
+                dto.units(),
+                dto.pricePerUnit(),
+                dto.grossAmount(),
+                dto.sourceDocumentId(),
+                Instant.now()
+            );
+            taxEvents.add(te);
+        }
+
+        // Dual-write step 1: Write to primary SQLite Ledger
+        eventStore.appendEvents(taxEvents);
+
+        try {
+            // Dual-write step 2: Re-project events in DuckDB analytical database
+            List<TaxEvent> allEvents = eventStore.getAllEvents();
+            duckDbProjector.projectEvents(allEvents);
+        } catch (Exception e) {
+            System.err.println("CRITICAL: DuckDB projection failed during statement ingestion: " + e.getMessage());
+            throw new RuntimeException("Dual-write failure: Analytical DuckDB projection failed: " + e.getMessage(), e);
+        }
+
+        // Evict/Invalidate central ledger cache
+        cacheService.invalidateCache();
+
+        return taxEvents;
+    }
+}
+````
+
 ## File: src/main/java/com/portfolioos/core/service/TaxOptimizationService.java
 ````java
 package com.portfolioos.core.service;
@@ -11038,6 +11092,17 @@ public record CashFlow(
     LocalDate date,
     BigDecimal amount // negative for investments, positive for inflows / current valuation
 ) {}
+````
+
+## File: src/main/java/com/portfolioos/core/xirr/XirrCalculationException.java
+````java
+package com.portfolioos.core.xirr;
+
+public class XirrCalculationException extends RuntimeException {
+    public XirrCalculationException(String message) {
+        super(message);
+    }
+}
 ````
 
 ## File: src/main/java/com/portfolioos/core/xirr/XirrEngine.java
@@ -17139,7 +17204,7 @@ class Itr2CsvExporterTest {
     }
 
     @Test
-    void testPre2018LotWithoutFmvDataFlagsUnavailable() {
+    void testPre2018LotWithoutFmvDataThrowsException() {
         MatchedLot lotPreNoFmv = new MatchedLot(
             "MATCH_X", "EV_DISP_X", "LOT_PRE_NO_FMV", "INF109KC13X2",
             LocalDate.of(2017, 1, 1), LocalDate.of(2026, 5, 1),
@@ -17147,13 +17212,15 @@ class Itr2CsvExporterTest {
             new BigDecimal("100.0"), 3000L, TaxTerm.LONG_TERM, AssetCategory.EQUITY
         );
 
-        String csv = Itr2CsvExporter.generateSchedule112aCsv(
-            List.of(lotPreNoFmv), "2026-27", Map.of("INF109KC13X2", "Fund Pre No FMV"),
-            Map.of()
-        );
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> {
+            Itr2CsvExporter.generateSchedule112aCsv(
+                List.of(lotPreNoFmv), "2026-27", Map.of("INF109KC13X2", "Fund Pre No FMV"),
+                Map.of()
+            );
+        });
 
-        assertTrue(csv.contains("FMV_UNAVAILABLE_REVIEW_REQUIRED"),
-            "Pre-2018 lot without FMV data must explicitly flag FMV_UNAVAILABLE_REVIEW_REQUIRED");
+        assertTrue(ex.getMessage().contains("MISSING_FMV_DATA"),
+            "Pre-2018 lot without FMV data must throw IllegalStateException with MISSING_FMV_DATA error code");
     }
 
     @Test

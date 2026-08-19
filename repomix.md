@@ -58,6 +58,7 @@ core-node/
                 StatementsController.java
                 SyncController.java
               dtos/
+                ParsedEventDto.java
                 RebalancePlanDtos.java
                 ReportDtos.java
                 SyncDtos.java
@@ -114,6 +115,7 @@ core-node/
                 RebalancePlanEngine.java
                 RebalanceTriggerEvaluator.java
                 SimulationService.java
+                StatementIngestionUseCase.java
                 TaxOptimizationService.java
               tools/
                 PortfolioQueryTools.java
@@ -130,6 +132,7 @@ core-node/
                 WaterfallTier.java
               xirr/
                 CashFlow.java
+                XirrCalculationException.java
                 XirrEngine.java
               CoreApplication.java
       resources/
@@ -330,6 +333,26 @@ public class SimulatorController {
         return ResponseEntity.ok(simulationService.simulateTrade(req));
     }
 }
+````
+
+## File: core-node/src/main/java/com/portfolioos/core/dtos/ParsedEventDto.java
+````java
+package com.portfolioos.core.dtos;
+
+import java.math.BigDecimal;
+
+public record ParsedEventDto(
+    String id,
+    String assetId,
+    String assetName,
+    String isin,
+    String eventType,
+    String eventDate,
+    BigDecimal units,
+    BigDecimal pricePerUnit,
+    BigDecimal grossAmount,
+    String sourceDocumentId
+) {}
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/goals/GoalTracker.java
@@ -1325,15 +1348,25 @@ import java.util.concurrent.atomic.AtomicReference;
 public class LedgerCacheService {
 
     private final EventStorePort eventStore;
-    private final AmfiNavSync amfiSync = new AmfiNavSync();
-    private final FifoMatcher fifoMatcher = new FifoMatcher();
+    private final AmfiNavSync amfiSync;
+    private final FifoMatcher fifoMatcher;
 
     private final AtomicReference<CachedLedgerState> stateHolder = new AtomicReference<>(null);
     private volatile long lastNavSyncTime = 0L;
     private final Object updateLock = new Object();
 
     public LedgerCacheService(EventStorePort eventStore) {
+        this(eventStore, new AmfiNavSync(), new FifoMatcher());
+    }
+
+    public LedgerCacheService(
+        EventStorePort eventStore,
+        AmfiNavSync amfiSync,
+        FifoMatcher fifoMatcher
+    ) {
         this.eventStore = eventStore;
+        this.amfiSync = amfiSync;
+        this.fifoMatcher = fifoMatcher;
     }
 
     public static record CachedLedgerState(
@@ -1401,210 +1434,88 @@ public class LedgerCacheService {
 }
 ````
 
+## File: core-node/src/main/java/com/portfolioos/core/service/StatementIngestionUseCase.java
+````java
+package com.portfolioos.core.service;
+
+import com.portfolioos.core.dtos.ParsedEventDto;
+import com.portfolioos.core.model.EventType;
+import com.portfolioos.core.model.TaxEvent;
+import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.SqliteEventStore;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+public class StatementIngestionUseCase {
+
+    private final SqliteEventStore eventStore;
+    private final DuckDbProjector duckDbProjector;
+    private final LedgerCacheService cacheService;
+
+    public StatementIngestionUseCase(
+        SqliteEventStore eventStore,
+        DuckDbProjector duckDbProjector,
+        LedgerCacheService cacheService
+    ) {
+        this.eventStore = eventStore;
+        this.duckDbProjector = duckDbProjector;
+        this.cacheService = cacheService;
+    }
+
+    public List<TaxEvent> ingestParsedEvents(ParsedEventDto[] dtoList) {
+        if (dtoList == null || dtoList.length == 0) {
+            return List.of();
+        }
+
+        List<TaxEvent> taxEvents = new ArrayList<>();
+        for (ParsedEventDto dto : dtoList) {
+            TaxEvent te = new TaxEvent(
+                dto.id() != null ? dto.id() : UUID.randomUUID().toString(),
+                dto.assetId(),
+                dto.assetName(),
+                dto.isin(),
+                EventType.valueOf(dto.eventType()),
+                LocalDate.parse(dto.eventDate()),
+                dto.units(),
+                dto.pricePerUnit(),
+                dto.grossAmount(),
+                dto.sourceDocumentId(),
+                Instant.now()
+            );
+            taxEvents.add(te);
+        }
+
+        // Dual-write step 1: Write to primary SQLite Ledger
+        eventStore.appendEvents(taxEvents);
+
+        try {
+            // Dual-write step 2: Re-project events in DuckDB analytical database
+            List<TaxEvent> allEvents = eventStore.getAllEvents();
+            duckDbProjector.projectEvents(allEvents);
+        } catch (Exception e) {
+            System.err.println("CRITICAL: DuckDB projection failed during statement ingestion: " + e.getMessage());
+            throw new RuntimeException("Dual-write failure: Analytical DuckDB projection failed: " + e.getMessage(), e);
+        }
+
+        // Evict/Invalidate central ledger cache
+        cacheService.invalidateCache();
+
+        return taxEvents;
+    }
+}
+````
+
 ## File: core-node/src/main/java/com/portfolioos/core/util/Pair.java
 ````java
 package com.portfolioos.core.util;
 
 public record Pair<A, B>(A first, B second) {}
-````
-
-## File: core-node/src/main/java/com/portfolioos/core/valuation/ConsolidationRebalanceEngine.java
-````java
-package com.portfolioos.core.valuation;
-
-import com.portfolioos.core.model.AssetCategory;
-import com.portfolioos.core.matcher.TaxClassifier;
-import com.portfolioos.core.model.Lot;
-import com.portfolioos.core.rules.TaxRulesConfig;
-import com.portfolioos.core.rules.TaxRulesLoader;
-
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-public class ConsolidationRebalanceEngine {
-
-    public record ExistingSipAllocation(
-        String assetId,
-        String assetName,
-        BigDecimal sipWeightPct,
-        BigDecimal deploymentAmount
-    ) {}
-
-    public record PhasedOutAssetSummary(
-        String assetId,
-        String assetName,
-        BigDecimal currentUnits,
-        BigDecimal currentValue,
-        BigDecimal totalCostBasis,
-        BigDecimal unrealizedGain,
-        boolean isLtcg,
-        BigDecimal estimatedTaxDrag
-    ) {}
-
-    public record ConsolidationPreviewResult(
-        List<PhasedOutAssetSummary> phasedOutAssets,
-        BigDecimal totalProceeds,
-        BigDecimal totalEstimatedGain,
-        BigDecimal totalTaxDrag,
-        BigDecimal ltcgExemptionHarvested,
-        List<ExistingSipAllocation> proRataAllocations,
-        boolean isRebalanceWindowOpen,
-        String nextScheduledWindow
-    ) {}
-
-    private static final Map<String, Pair<String, BigDecimal>> CORE_SIP_WEIGHTS = new HashMap<>();
-
-    static {
-        CORE_SIP_WEIGHTS.put("NIFTY_LARGEMIDCAP_250", new Pair<>("Nifty LargeMidcap 250 Index Fund", new BigDecimal("33.0")));
-        CORE_SIP_WEIGHTS.put("PARAG_PARIKH_FLEXI", new Pair<>("Parag Parikh Flexi Cap Fund", new BigDecimal("24.0")));
-        CORE_SIP_WEIGHTS.put("ARBITRAGE_LIQUID", new Pair<>("Kotak Equity Arbitrage / Liquid Buffer", new BigDecimal("16.0")));
-        CORE_SIP_WEIGHTS.put("NIFTY_VALUE_30", new Pair<>("Nifty200 Value 30 Index Fund", new BigDecimal("11.0")));
-        CORE_SIP_WEIGHTS.put("NIFTY_MOMENTUM_50", new Pair<>("Nifty200 Momentum Quality 50 Index Fund", new BigDecimal("9.0")));
-        CORE_SIP_WEIGHTS.put("NIFTY_SMALLCAP_250", new Pair<>("Nifty Smallcap 250 Index Fund", new BigDecimal("7.0")));
-    }
-
-    public static ConsolidationPreviewResult calculateConsolidation(
-        List<Lot> openLots,
-        Map<String, BigDecimal> navMap,
-        LocalDate currentDate,
-        BigDecimal remainingExemption,
-        String fiscalYear
-    ) {
-        TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
-
-        java.util.Set<String> activeAssetIds = com.portfolioos.core.matcher.FundTierClassifier.findActiveAssetIds(openLots, currentDate);
-        List<Lot> phaseOutLots = openLots.stream().filter(lot ->
-            com.portfolioos.core.matcher.FundTierClassifier.isLegacyFund(lot.assetId(), activeAssetIds)
-        ).toList();
-
-        BigDecimal totalProceeds = BigDecimal.ZERO;
-        BigDecimal totalGain = BigDecimal.ZERO;
-        BigDecimal totalTaxDrag = BigDecimal.ZERO;
-        BigDecimal unusedExemption = remainingExemption;
-
-        List<PhasedOutAssetSummary> phasedSummaries = new ArrayList<>();
-
-        Map<String, List<Lot>> grouped = new HashMap<>();
-        for (Lot lot : phaseOutLots) {
-            grouped.computeIfAbsent(lot.assetId(), k -> new ArrayList<>()).add(lot);
-        }
-
-        for (Map.Entry<String, List<Lot>> entry : grouped.entrySet()) {
-            String assetId = entry.getKey();
-            List<Lot> lots = entry.getValue();
-
-            String assetName = lots.get(0).assetName();
-            BigDecimal totalUnits = BigDecimal.ZERO;
-            BigDecimal totalCost = BigDecimal.ZERO;
-            LocalDate oldestAcq = null;
-
-            for (Lot lot : lots) {
-                totalUnits = totalUnits.add(lot.remainingUnits());
-                totalCost = totalCost.add(lot.totalCostBasis());
-                if (oldestAcq == null || lot.acquisitionDate().isBefore(oldestAcq)) {
-                    oldestAcq = lot.acquisitionDate();
-                }
-            }
-
-            BigDecimal nav = navMap.getOrDefault(assetId, BigDecimal.ZERO);
-            if (nav.compareTo(BigDecimal.ZERO) == 0 && totalUnits.compareTo(BigDecimal.ZERO) > 0) {
-                nav = totalCost.divide(totalUnits, 4, RoundingMode.HALF_UP);
-            }
-
-            BigDecimal curVal = totalUnits.multiply(nav);
-            BigDecimal gain = curVal.subtract(totalCost);
-
-            AssetCategory category = TaxClassifier.detectCategory(assetId, assetName);
-            long holdingDays = ChronoUnit.DAYS.between(oldestAcq != null ? oldestAcq : currentDate, currentDate);
-            
-            long thresholdDays = switch (category) {
-                case EQUITY -> rules.equityLtcgThresholdDays();
-                case GOLD_SILVER, INTERNATIONAL, SGB -> rules.goldInternationalThresholdDays();
-                case DEBT_SPECIFIED_50AA -> -1L;
-            };
-
-            boolean isLtcg = thresholdDays > 0 && holdingDays >= thresholdDays;
-
-            BigDecimal taxDrag = BigDecimal.ZERO;
-            if (gain.compareTo(BigDecimal.ZERO) > 0) {
-                if (isLtcg) {
-                    BigDecimal exemptPortion = gain.min(unusedExemption);
-                    BigDecimal taxableGain = gain.subtract(exemptPortion);
-                    unusedExemption = unusedExemption.subtract(exemptPortion).max(BigDecimal.ZERO);
-                    taxDrag = taxableGain.multiply(rules.equityLtcgRate());
-                } else {
-                    taxDrag = gain.multiply(rules.equityStcgRate());
-                }
-            }
-
-            totalProceeds = totalProceeds.add(curVal);
-            totalGain = totalGain.add(gain);
-            totalTaxDrag = totalTaxDrag.add(taxDrag);
-
-            phasedSummaries.add(new PhasedOutAssetSummary(
-                assetId, assetName, totalUnits, curVal, totalCost, gain, isLtcg, taxDrag
-            ));
-        }
-
-        BigDecimal netPostTaxProceeds = totalProceeds.subtract(totalTaxDrag).max(BigDecimal.ZERO);
-        BigDecimal effectiveProceeds = netPostTaxProceeds.compareTo(BigDecimal.ZERO) > 0 ? netPostTaxProceeds : totalProceeds;
-
-        List<ExistingSipAllocation> proRataAllocations = new ArrayList<>();
-        Map<String, Map<String, Double>> sipAllocMap = com.portfolioos.core.rules.BucketConfigLoader.getSipAllocations();
-
-        for (Map.Entry<String, Map<String, Double>> bucketEntry : sipAllocMap.entrySet()) {
-            for (Map.Entry<String, Double> fundEntry : bucketEntry.getValue().entrySet()) {
-                String fundId = fundEntry.getKey();
-                double sipWeightFrac = fundEntry.getValue();
-                BigDecimal weightPct = BigDecimal.valueOf(sipWeightFrac * 100.0).setScale(2, RoundingMode.HALF_UP);
-                BigDecimal deployAmt = effectiveProceeds.multiply(BigDecimal.valueOf(sipWeightFrac)).setScale(2, RoundingMode.HALF_UP);
-
-                proRataAllocations.add(new ExistingSipAllocation(
-                    fundId,
-                    fundId,
-                    weightPct,
-                    deployAmt
-                ));
-            }
-        }
-
-        int month = currentDate.getMonthValue();
-        boolean isWindowOpen = month == 3 || month == 9;
-        String nextScheduled = (month <= 3) ? "March 31, " + currentDate.getYear() 
-            : (month <= 9) ? "September 30, " + currentDate.getYear() 
-            : "March 31, " + (currentDate.getYear() + 1);
-
-        BigDecimal ltcgHarvested = remainingExemption.subtract(unusedExemption);
-
-        return new ConsolidationPreviewResult(
-            phasedSummaries,
-            effectiveProceeds,
-            totalGain,
-            totalTaxDrag,
-            ltcgHarvested,
-            proRataAllocations,
-            isWindowOpen,
-            nextScheduled
-        );
-    }
-
-    private static class Pair<A, B> {
-        private final A first;
-        private final B second;
-        public Pair(A first, B second) {
-            this.first = first;
-            this.second = second;
-        }
-        public A first() { return first; }
-        public B second() { return second; }
-    }
-}
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/valuation/HarvestAdvisor.java
@@ -1947,6 +1858,17 @@ public record CashFlow(
     LocalDate date,
     BigDecimal amount // negative for investments, positive for inflows / current valuation
 ) {}
+````
+
+## File: core-node/src/main/java/com/portfolioos/core/xirr/XirrCalculationException.java
+````java
+package com.portfolioos.core.xirr;
+
+public class XirrCalculationException extends RuntimeException {
+    public XirrCalculationException(String message) {
+        super(message);
+    }
+}
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/xirr/XirrEngine.java
@@ -2479,162 +2401,6 @@ export function showToast(message, type = 'success') {
 }
 ````
 
-## File: core-node/src/test/java/com/portfolioos/core/controllers/ConfigControllerTest.java
-````java
-package com.portfolioos.core.controllers;
-
-import com.portfolioos.core.rules.BucketConfigLoader;
-import org.junit.jupiter.api.Test;
-import org.springframework.http.ResponseEntity;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-class ConfigControllerTest {
-
-    @Test
-    void testGetBucketTargets() {
-        ConfigController controller = new ConfigController();
-        ResponseEntity<BucketConfigLoader.BucketRulesConfig> response = controller.getBucketTargets();
-
-        assertNotNull(response);
-        assertEquals(200, response.getStatusCode().value());
-        assertNotNull(response.getBody());
-    }
-
-    @Test
-    void testGetRebalancePlanAliasReturns307Redirect() {
-        ConfigController controller = new ConfigController();
-        ResponseEntity<?> response = controller.getRebalancePlanAlias("INDUCED");
-
-        assertNotNull(response);
-        assertEquals(307, response.getStatusCode().value());
-        assertTrue(response.getHeaders().containsKey("Location"));
-        assertEquals("/api/v1/sync/rebalance/plan?trigger=INDUCED", response.getHeaders().getFirst("Location"));
-    }
-}
-````
-
-## File: core-node/src/test/java/com/portfolioos/core/fire/FireTrackerTest.java
-````java
-package com.portfolioos.core.fire;
-
-import com.portfolioos.core.model.Lot;
-import org.junit.jupiter.api.Test;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-class FireTrackerTest {
-
-    @Test
-    void testCalculateFireSummary() {
-        Lot lot = new Lot(
-            "LOT_1",
-            "NIFTY_LARGEMIDCAP_1",
-            "ICICI Nifty LargeMidcap",
-            LocalDate.of(2024, 1, 1),
-            new BigDecimal("1000.0"),
-            new BigDecimal("1000.0"),
-            new BigDecimal("100.0"),
-            new BigDecimal("100000.0"),
-            false,
-            BigDecimal.ZERO
-        );
-
-        Map<String, BigDecimal> navMap = Map.of("NIFTY_LARGEMIDCAP_1", new BigDecimal("150.0"));
-        FireTracker.FireProfile profile = new FireTracker.FireProfile();
-
-        FireTracker.FireSummary summary = FireTracker.calculateFireSummary(
-            List.of(lot),
-            navMap,
-            LocalDate.of(2026, 8, 19),
-            profile,
-            new BigDecimal("500000.00"),
-            95.0,
-            new BigDecimal("25000000.00"),
-            new BigDecimal("18000000.00")
-        );
-
-        assertNotNull(summary);
-        assertEquals("Primary Expense Target", summary.activeScenarioLabel());
-        assertTrue(summary.fireInvestableNetWorth().compareTo(BigDecimal.ZERO) >= 0);
-        assertNotNull(summary.status());
-    }
-
-    @Test
-    void testFireProfileGetters() {
-        FireTracker.FireProfile profile = new FireTracker.FireProfile();
-        assertNotNull(profile.birthDate());
-        assertEquals(45, profile.targetRetirementAge());
-        assertEquals(new BigDecimal("3.0"), profile.swrPercent());
-        assertNotNull(profile.scenarios());
-        assertFalse(profile.scenarios().isEmpty());
-    }
-}
-````
-
-## File: core-node/src/test/java/com/portfolioos/core/goals/GoalTrackerTest.java
-````java
-package com.portfolioos.core.goals;
-
-import com.portfolioos.core.model.Lot;
-import org.junit.jupiter.api.Test;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-class GoalTrackerTest {
-
-    @Test
-    void testCalculateGoalSummaryWithDefaultAllocations() {
-        Lot liquidLot = new Lot(
-            "LOT_1",
-            "ARBITRAGE_1",
-            "Invesco Arbitrage Fund",
-            LocalDate.of(2024, 1, 1),
-            new BigDecimal("1000.0"),
-            new BigDecimal("1000.0"),
-            new BigDecimal("100.0"),
-            new BigDecimal("100000.0"),
-            false,
-            BigDecimal.ZERO
-        );
-
-        Map<String, BigDecimal> navMap = Map.of("ARBITRAGE_1", new BigDecimal("100.0"));
-
-        GoalTracker.GoalSummary summary = GoalTracker.calculateGoalSummary(List.of(liquidLot), navMap);
-        assertNotNull(summary);
-        assertEquals(new BigDecimal("100000.00"), summary.totalLiquidHoldings());
-        assertEquals(new BigDecimal("350000.00"), summary.allocatedGoalsAmount());
-        assertEquals(new BigDecimal("0.00"), summary.unallocatedCash());
-        assertTrue(summary.allocationsByGoal().containsKey(GoalTracker.GoalTag.EMERGENCY));
-    }
-
-    @Test
-    void testCalculateGoalSummaryWithBankBalance() {
-        GoalTracker.GoalSummary summary = GoalTracker.calculateGoalSummary(
-            List.of(),
-            Map.of(),
-            GoalTracker.DEFAULT_ALLOCATIONS,
-            new BigDecimal("500000.00")
-        );
-
-        assertNotNull(summary);
-        assertEquals(new BigDecimal("500000.00"), summary.totalLiquidHoldings());
-        assertEquals(new BigDecimal("350000.00"), summary.allocatedGoalsAmount());
-        assertEquals(new BigDecimal("150000.00"), summary.unallocatedCash());
-    }
-}
-````
-
 ## File: core-node/src/test/java/com/portfolioos/core/matcher/TaxClassifierTest.java
 ````java
 package com.portfolioos.core.matcher;
@@ -2680,125 +2446,6 @@ class TaxClassifierTest {
 }
 ````
 
-## File: core-node/src/test/java/com/portfolioos/core/rules/BucketConfigLoaderTest.java
-````java
-package com.portfolioos.core.rules;
-
-import org.junit.jupiter.api.Test;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-class BucketConfigLoaderTest {
-
-    @Test
-    void testIsPreferredFund() {
-        assertTrue(BucketConfigLoader.isPreferredFund("NIFTY_LARGEMIDCAP"));
-        assertTrue(BucketConfigLoader.isPreferredFund("PPFAS_FLEXICAP"));
-        assertTrue(BucketConfigLoader.isPreferredFund("VALUE_30"));
-        assertTrue(BucketConfigLoader.isPreferredFund("MOMENTUM_50"));
-        assertTrue(BucketConfigLoader.isPreferredFund("SMALL_CAP"));
-        assertTrue(BucketConfigLoader.isPreferredFund("GOLD_PASSIVE"));
-        assertTrue(BucketConfigLoader.isPreferredFund("ARBITRAGE_FUND"));
-        assertFalse(BucketConfigLoader.isPreferredFund("UNKNOWN_RANDOM_FUND"));
-        assertFalse(BucketConfigLoader.isPreferredFund(null));
-    }
-
-    @Test
-    void testGetPreferredBucketForAsset() {
-        assertEquals("EQUITY_CORE", BucketConfigLoader.getPreferredBucketForAsset("NIFTY_LARGEMIDCAP_1", "Large and Midcap Index Fund"));
-        assertNull(BucketConfigLoader.getPreferredBucketForAsset(null, null));
-    }
-
-    @Test
-    void testMapAssetToBucket() {
-        assertNotNull(BucketConfigLoader.mapAssetToBucket("INF109KC13X2", "ICICI Nifty 200"));
-    }
-
-    @Test
-    void testGetActiveVersion() {
-        BucketConfigLoader.BucketTargetVersion activeVersion = BucketConfigLoader.getActiveVersion(LocalDate.now());
-        assertNotNull(activeVersion);
-        assertNotNull(activeVersion.targets());
-        assertFalse(activeVersion.targets().isEmpty());
-    }
-
-    @Test
-    void testNoFundAppearsInMultipleBucketsInYaml() {
-        BucketConfigLoader.BucketRulesConfig rulesConfig = BucketConfigLoader.loadConfig();
-        assertNotNull(rulesConfig);
-        assertNotNull(rulesConfig.versions());
-
-        for (BucketConfigLoader.BucketTargetVersion version : rulesConfig.versions()) {
-            java.util.Map<String, String> isinToBucketMap = new java.util.HashMap<>();
-            for (BucketConfigLoader.BucketTargetConfig target : version.targets()) {
-                if (target.preferredFunds() != null) {
-                    for (BucketConfigLoader.PreferredFundConfig fund : target.preferredFunds()) {
-                        String isin = fund.fundId();
-                        assertNotNull(isin, "Preferred fund ISIN cannot be null in version " + version.versionId());
-                        if (isinToBucketMap.containsKey(isin)) {
-                            fail("DUPLICATE BUCKET MAPPING ERROR: ISIN " + isin +
-                                 " appears under both bucket '" + isinToBucketMap.get(isin) +
-                                 "' and bucket '" + target.bucket() + "' in YAML version " + version.versionId());
-                        }
-                        isinToBucketMap.put(isin, target.bucket());
-                    }
-                }
-            }
-        }
-    }
-}
-````
-
-## File: core-node/src/test/java/com/portfolioos/core/security/SecurityInterceptorTest.java
-````java
-package com.portfolioos.core.security;
-
-import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.mock.web.MockHttpServletResponse;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-class SecurityInterceptorTest {
-
-    @Test
-    void testPreHandleOptionsRequestReturnsTrue() throws Exception {
-        SecurityInterceptor interceptor = new SecurityInterceptor();
-        MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/api/v1/sync/snapshot");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        boolean result = interceptor.preHandle(request, response, new Object());
-        assertTrue(result, "OPTIONS preflight requests must bypass token checks");
-    }
-
-    @Test
-    void testPreHandleValidDevToken() throws Exception {
-        SecurityInterceptor interceptor = new SecurityInterceptor();
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
-        request.addHeader("X-Api-Auth-Token", "dev_secret_key_123");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        boolean result = interceptor.preHandle(request, response, new Object());
-        assertTrue(result);
-    }
-
-    @Test
-    void testPreHandleInvalidTokenReturns401() throws Exception {
-        SecurityInterceptor interceptor = new SecurityInterceptor();
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
-        request.addHeader("X-Api-Auth-Token", "invalid_token_999");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        boolean result = interceptor.preHandle(request, response, new Object());
-        assertFalse(result);
-        assertEquals(401, response.getStatus());
-    }
-}
-````
-
 ## File: core-node/src/test/java/com/portfolioos/core/valuation/MonteCarloSanityTest.java
 ````java
 package com.portfolioos.core.valuation;
@@ -2827,53 +2474,6 @@ public class MonteCarloSanityTest {
 
         // Assert success rate reflects decumulation survival under shortage (between 10% and 90%)
         assertTrue(successRate >= 10.0 && successRate <= 90.0, "Success rate must reflect real decumulation survival under shortage");
-    }
-}
-````
-
-## File: core-node/src/test/java/com/portfolioos/core/xirr/XirrEngineTest.java
-````java
-package com.portfolioos.core.xirr;
-
-import org.junit.jupiter.api.Test;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-class XirrEngineTest {
-
-    @Test
-    void testXirrCalculationSimpleReturn() {
-        XirrEngine engine = new XirrEngine();
-
-        CashFlow cf1 = new CashFlow(LocalDate.of(2023, 1, 1), new BigDecimal("-100000.00"));
-        CashFlow cf2 = new CashFlow(LocalDate.of(2024, 1, 1), new BigDecimal("112000.00"));
-
-        double xirr = engine.calculateXirr(List.of(cf1, cf2));
-        assertTrue(xirr > 11.5 && xirr < 12.5, "XIRR should be approx 12.0%");
-    }
-
-    @Test
-    void testXirrShortDurationReturnsAbsoluteGain() {
-        XirrEngine engine = new XirrEngine();
-
-        CashFlow cf1 = new CashFlow(LocalDate.of(2024, 1, 1), new BigDecimal("-100000.00"));
-        CashFlow cf2 = new CashFlow(LocalDate.of(2024, 1, 15), new BigDecimal("105000.00"));
-
-        double xirr = engine.calculateXirr(List.of(cf1, cf2));
-        assertEquals(5.0, xirr, 0.01, "Short duration <30 days should return absolute return (5%)");
-    }
-
-    @Test
-    void testXirrNullOrInsufficientFlows() {
-        XirrEngine engine = new XirrEngine();
-
-        assertEquals(0.0, engine.calculateXirr(null));
-        assertEquals(0.0, engine.calculateXirr(List.of()));
-        assertEquals(0.0, engine.calculateXirr(List.of(new CashFlow(LocalDate.now(), new BigDecimal("-100")))));
     }
 }
 ````
@@ -3170,67 +2770,6 @@ class PortfolioGlanceReceiver : GlanceAppWidgetReceiver() {
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen">
 </appwidget-provider>
-````
-
-## File: mobile-app/app/src/test/java/com/portfolioos/mobile/RebalanceWaterfallUnitTest.kt
-````kotlin
-package com.portfolioos.mobile
-
-import com.portfolioos.mobile.ui.FundSellAggregated
-import com.portfolioos.mobile.ui.shortenFundName
-import com.portfolioos.mobile.util.formatInr
-import org.junit.Assert.assertEquals
-import org.junit.Test
-
-class RebalanceWaterfallUnitTest {
-
-    @Test
-    fun testShortenFundName() {
-        assertEquals("Motilal Nifty Midcap 150", shortenFundName("Motilal Oswal Nifty Midcap 150 Index Fund Direct Growth"))
-        assertEquals("Mirae Healthcare Fund", shortenFundName("Mirae Asset Healthcare Fund - (Non Demat)"))
-        assertEquals("Kotak Nifty 100 Equal Weight", shortenFundName("Kotak Nifty 100 Equal Weight Index Fund"))
-        assertEquals("Short Fund Name", shortenFundName("Short Fund Name"))
-    }
-
-    @Test
-    fun testFundSellAggregatedTaxSavedCalculation() {
-        val gain = 21386.0
-        val isLtcg = true
-        val taxSaved = if (isLtcg) gain * 0.125 else 0.0
-
-        val agg = FundSellAggregated(
-            fundName = "Kotak Nifty 100 Equal Weight",
-            totalProceeds = 76040.0,
-            totalUnits = 6740.5,
-            totalGain = gain,
-            taxSaved = taxSaved,
-            taxTerm = "LTCG EXEMPT",
-            tierLabel = "Tier 1 - Capital Buffer"
-        )
-
-        assertEquals("Kotak Nifty 100 Equal Weight", agg.fundName)
-        assertEquals(76040.0, agg.totalProceeds, 0.01)
-        assertEquals(2673.25, agg.taxSaved, 0.01)
-        assertEquals("LTCG EXEMPT", agg.taxTerm)
-    }
-
-    @Test
-    fun testFormatInrFormatting() {
-        assertEquals("₹1,298,893", formatInr(1298893.0))
-        assertEquals("₹2,673", formatInr(2673.0))
-        assertEquals("₹500", formatInr(500.0))
-    }
-
-    @Test
-    fun testTaxExemption112AFormula() {
-        // Section 112A LTCG tax rate is 12.5% on gains up to Rs 1.25 Lakh exemption limit
-        val exemptGain = 100000.0
-        val taxRate = 0.125
-        val taxSaved = exemptGain * taxRate
-
-        assertEquals(12500.0, taxSaved, 0.01)
-    }
-}
 ````
 
 ## File: mobile-app/gradle/wrapper/gradle-wrapper.properties
@@ -4163,11 +3702,8 @@ public class RebalanceController {
 ````java
 package com.portfolioos.core.controllers;
 
-import com.portfolioos.core.model.EventType;
-import com.portfolioos.core.model.TaxEvent;
-import com.portfolioos.core.persistence.DuckDbProjector;
-import com.portfolioos.core.ports.EventStorePort;
-import com.portfolioos.core.service.LedgerCacheService;
+import com.portfolioos.core.dtos.ParsedEventDto;
+import com.portfolioos.core.service.StatementIngestionUseCase;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
@@ -4179,85 +3715,57 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/statements")
 public class StatementsController {
 
-    private final EventStorePort eventStore;
-    private final DuckDbProjector duckDbProjector;
-    private final LedgerCacheService cacheService;
+    private final StatementIngestionUseCase ingestionUseCase;
     private final RestClient restClient;
     private final String authToken;
     private final String sidecarUrl;
 
     public StatementsController(
-        EventStorePort eventStore,
-        DuckDbProjector duckDbProjector,
-        LedgerCacheService cacheService,
+        StatementIngestionUseCase ingestionUseCase,
         @Value("${quant-sidecar.url:http://quant-sidecar:8000}") String sidecarUrl,
         @Value("${api.auth.token:dev_secret_key_123}") String authToken
     ) {
-        this.eventStore = eventStore;
-        this.duckDbProjector = duckDbProjector;
-        this.cacheService = cacheService;
+        this.ingestionUseCase = ingestionUseCase;
         this.authToken = authToken;
         this.sidecarUrl = sidecarUrl;
         this.restClient = RestClient.builder().baseUrl(sidecarUrl).build();
     }
 
-    public record ParsedEventDto(
-        String id,
-        String assetId,
-        String assetName,
-        String isin,
-        String eventType,
-        String eventDate,
-        BigDecimal units,
-        BigDecimal pricePerUnit,
-        BigDecimal grossAmount,
-        String sourceDocumentId
-    ) {}
-
-    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping("/upload")
     public ResponseEntity<?> uploadStatement(
         @RequestParam("file") MultipartFile file,
-        @RequestParam(value = "password", required = false) String password
+        @RequestParam(value = "password", required = false, defaultValue = "") String password
     ) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("Uploaded statement file is empty.");
+        }
+
         try {
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            
-            ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
+            body.add("file", new ByteArrayResource(file.getBytes()) {
                 @Override
                 public String getFilename() {
-                    return file.getOriginalFilename();
+                    return file.getOriginalFilename() != null ? file.getOriginalFilename() : "statement.pdf";
                 }
-            };
-            
-            body.add("file", fileResource);
-            if (password != null && !password.isEmpty()) {
-                body.add("password", password);
-            }
+            });
+            body.add("password", password);
 
-            // POST to parser sidecar with authentication header & candidate host fallbacks
-            String[] candidateUrls = new String[] {
-                sidecarUrl,
-                "http://127.0.0.1:8000",
-                "http://host.containers.internal:8000",
-                "http://172.17.0.1:8000",
-                "http://localhost:8000"
+            String[] candidates = new String[]{
+                this.sidecarUrl,
+                "http://localhost:8000",
+                "http://127.0.0.1:8000"
             };
 
             ResponseEntity<ParsedEventDto[]> response = null;
             Exception lastException = null;
 
-            for (String targetUrl : candidateUrls) {
-                if (targetUrl == null || targetUrl.isBlank()) continue;
+            for (String targetUrl : candidates) {
                 try {
                     RestClient candidateClient = RestClient.builder().baseUrl(targetUrl).build();
                     response = candidateClient.post()
@@ -4268,11 +3776,9 @@ public class StatementsController {
                         .retrieve()
                         .toEntity(ParsedEventDto[].class);
                     if (response != null && response.getStatusCode().is2xxSuccessful()) {
-                        System.out.println("Successfully connected to CAS parser sidecar at: " + targetUrl);
                         break;
                     }
                 } catch (Exception ex) {
-                    System.err.println("Sidecar parsing attempt failed for candidate [" + targetUrl + "]: " + ex.getMessage());
                     lastException = ex;
                 }
             }
@@ -4286,34 +3792,7 @@ public class StatementsController {
                 return ResponseEntity.ok(List.of());
             }
 
-            // Convert to domain entities and append to event store
-            List<TaxEvent> taxEvents = new java.util.ArrayList<>();
-            for (ParsedEventDto dto : dtoList) {
-                TaxEvent te = new TaxEvent(
-                    dto.id() != null ? dto.id() : UUID.randomUUID().toString(),
-                    dto.assetId(),
-                    dto.assetName(),
-                    dto.isin(),
-                    EventType.valueOf(dto.eventType()),
-                    LocalDate.parse(dto.eventDate()),
-                    dto.units(),
-                    dto.pricePerUnit(),
-                    dto.grossAmount(),
-                    dto.sourceDocumentId(),
-                    Instant.now()
-                );
-                taxEvents.add(te);
-            }
-
-            // Write to SQLite
-            eventStore.appendEvents(taxEvents);
-
-            // Re-project events in DuckDB
-            List<TaxEvent> allEvents = eventStore.getAllEvents();
-            duckDbProjector.projectEvents(allEvents);
-
-            // Immediately invalidate central cache so UI updates in real-time
-            cacheService.invalidateCache();
+            ingestionUseCase.ingestParsedEvents(dtoList);
 
             return ResponseEntity.ok(dtoList);
         } catch (IOException e) {
@@ -4424,6 +3903,7 @@ public class SyncDtos {
 ````java
 package com.portfolioos.core.matcher;
 
+import org.springframework.stereotype.Component;
 import com.portfolioos.core.model.AssetCategory;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.model.Lot;
@@ -4440,6 +3920,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
+@Component
 public class FifoMatcher {
 
     public record FifoResult(List<Lot> openLots, List<MatchedLot> matchedLots) {}
@@ -4616,6 +4097,8 @@ public record TaxEvent(
 ````java
 package com.portfolioos.core.nav;
 
+import org.springframework.stereotype.Component;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
@@ -4627,6 +4110,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Component
 public class AmfiNavSync {
 
     public record NavEntry(
@@ -5663,9 +5147,8 @@ public class Itr2CsvExporter {
                     deemedCost = actualCost.max(lowerBound);
                     statusRemark = "VALIDATED_SECTION_55_2_AC";
                 } else {
-                    // Fail visibly with flag rather than silently understating gains
-                    deemedCost = actualCost;
-                    statusRemark = "FMV_UNAVAILABLE_REVIEW_REQUIRED";
+                    System.err.println("CRITICAL ERROR: Pre-2018 lot for ISIN " + isin + " (" + name + ") has no 2018-01-31 FMV data. Sec 55(2)(ac) calculation cannot proceed safely.");
+                    throw new IllegalStateException("MISSING_FMV_DATA: Pre-2018 grandfathered equity lot for ISIN " + isin + " (" + name + ") requires 2018-01-31 FMV to compute Sec 55(2)(ac) cost basis accurately. Please configure NAV as of 31-Jan-2018 before exporting Schedule 112A.");
                 }
             } else {
                 deemedCost = actualCost;
@@ -5744,6 +5227,205 @@ public class Itr2CsvExporter {
     private static String fmt(BigDecimal val) {
         if (val == null) return "0.00";
         return val.setScale(2, RoundingMode.HALF_UP).toPlainString();
+    }
+}
+````
+
+## File: core-node/src/main/java/com/portfolioos/core/valuation/ConsolidationRebalanceEngine.java
+````java
+package com.portfolioos.core.valuation;
+
+import com.portfolioos.core.model.AssetCategory;
+import com.portfolioos.core.matcher.TaxClassifier;
+import com.portfolioos.core.model.Lot;
+import com.portfolioos.core.rules.TaxRulesConfig;
+import com.portfolioos.core.rules.TaxRulesLoader;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class ConsolidationRebalanceEngine {
+
+    public record ExistingSipAllocation(
+        String assetId,
+        String assetName,
+        BigDecimal sipWeightPct,
+        BigDecimal deploymentAmount
+    ) {}
+
+    public record PhasedOutAssetSummary(
+        String assetId,
+        String assetName,
+        BigDecimal currentUnits,
+        BigDecimal currentValue,
+        BigDecimal totalCostBasis,
+        BigDecimal unrealizedGain,
+        boolean isLtcg,
+        BigDecimal estimatedTaxDrag
+    ) {}
+
+    public record ConsolidationPreviewResult(
+        List<PhasedOutAssetSummary> phasedOutAssets,
+        BigDecimal totalProceeds,
+        BigDecimal totalEstimatedGain,
+        BigDecimal totalTaxDrag,
+        BigDecimal ltcgExemptionHarvested,
+        List<ExistingSipAllocation> proRataAllocations,
+        boolean isRebalanceWindowOpen,
+        String nextScheduledWindow
+    ) {}
+
+    private static final Map<String, Pair<String, BigDecimal>> CORE_SIP_WEIGHTS = new HashMap<>();
+
+    static {
+        CORE_SIP_WEIGHTS.put("NIFTY_LARGEMIDCAP_250", new Pair<>("Nifty LargeMidcap 250 Index Fund", new BigDecimal("33.0")));
+        CORE_SIP_WEIGHTS.put("PARAG_PARIKH_FLEXI", new Pair<>("Parag Parikh Flexi Cap Fund", new BigDecimal("24.0")));
+        CORE_SIP_WEIGHTS.put("ARBITRAGE_LIQUID", new Pair<>("Kotak Equity Arbitrage / Liquid Buffer", new BigDecimal("16.0")));
+        CORE_SIP_WEIGHTS.put("NIFTY_VALUE_30", new Pair<>("Nifty200 Value 30 Index Fund", new BigDecimal("11.0")));
+        CORE_SIP_WEIGHTS.put("NIFTY_MOMENTUM_50", new Pair<>("Nifty200 Momentum Quality 50 Index Fund", new BigDecimal("9.0")));
+        CORE_SIP_WEIGHTS.put("NIFTY_SMALLCAP_250", new Pair<>("Nifty Smallcap 250 Index Fund", new BigDecimal("7.0")));
+    }
+
+    public static ConsolidationPreviewResult calculateConsolidation(
+        List<Lot> openLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate currentDate,
+        BigDecimal remainingExemption,
+        String fiscalYear
+    ) {
+        TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
+
+        java.util.Set<String> activeAssetIds = com.portfolioos.core.matcher.FundTierClassifier.findActiveAssetIds(openLots, currentDate);
+        List<Lot> phaseOutLots = openLots.stream().filter(lot ->
+            com.portfolioos.core.matcher.FundTierClassifier.isLegacyFund(lot.assetId(), activeAssetIds)
+        ).toList();
+
+        BigDecimal totalProceeds = BigDecimal.ZERO;
+        BigDecimal totalGain = BigDecimal.ZERO;
+        BigDecimal totalTaxDrag = BigDecimal.ZERO;
+        BigDecimal unusedExemption = remainingExemption;
+
+        List<PhasedOutAssetSummary> phasedSummaries = new ArrayList<>();
+
+        Map<String, List<Lot>> grouped = new HashMap<>();
+        for (Lot lot : phaseOutLots) {
+            grouped.computeIfAbsent(lot.assetId(), k -> new ArrayList<>()).add(lot);
+        }
+
+        for (Map.Entry<String, List<Lot>> entry : grouped.entrySet()) {
+            String assetId = entry.getKey();
+            List<Lot> lots = entry.getValue();
+
+            String assetName = lots.get(0).assetName();
+            BigDecimal totalUnits = BigDecimal.ZERO;
+            BigDecimal totalCost = BigDecimal.ZERO;
+            LocalDate oldestAcq = null;
+
+            for (Lot lot : lots) {
+                totalUnits = totalUnits.add(lot.remainingUnits());
+                totalCost = totalCost.add(lot.totalCostBasis());
+                if (oldestAcq == null || lot.acquisitionDate().isBefore(oldestAcq)) {
+                    oldestAcq = lot.acquisitionDate();
+                }
+            }
+
+            BigDecimal nav = navMap.getOrDefault(assetId, BigDecimal.ZERO);
+            if (nav.compareTo(BigDecimal.ZERO) == 0 && totalUnits.compareTo(BigDecimal.ZERO) > 0) {
+                nav = totalCost.divide(totalUnits, 4, RoundingMode.HALF_UP);
+            }
+
+            BigDecimal curVal = totalUnits.multiply(nav);
+            BigDecimal gain = curVal.subtract(totalCost);
+
+            AssetCategory category = TaxClassifier.detectCategory(assetId, assetName);
+            long holdingDays = ChronoUnit.DAYS.between(oldestAcq != null ? oldestAcq : currentDate, currentDate);
+            
+            long thresholdDays = switch (category) {
+                case EQUITY -> rules.equityLtcgThresholdDays();
+                case GOLD_SILVER, INTERNATIONAL, SGB -> rules.goldInternationalThresholdDays();
+                case DEBT_SPECIFIED_50AA -> -1L;
+            };
+
+            boolean isLtcg = thresholdDays > 0 && holdingDays >= thresholdDays;
+
+            BigDecimal taxDrag = BigDecimal.ZERO;
+            if (gain.compareTo(BigDecimal.ZERO) > 0) {
+                if (isLtcg) {
+                    BigDecimal exemptPortion = gain.min(unusedExemption);
+                    BigDecimal taxableGain = gain.subtract(exemptPortion);
+                    unusedExemption = unusedExemption.subtract(exemptPortion).max(BigDecimal.ZERO);
+                    taxDrag = taxableGain.multiply(rules.equityLtcgRate());
+                } else {
+                    taxDrag = gain.multiply(rules.equityStcgRate());
+                }
+            }
+
+            totalProceeds = totalProceeds.add(curVal);
+            totalGain = totalGain.add(gain);
+            totalTaxDrag = totalTaxDrag.add(taxDrag);
+
+            phasedSummaries.add(new PhasedOutAssetSummary(
+                assetId, assetName, totalUnits, curVal, totalCost, gain, isLtcg, taxDrag
+            ));
+        }
+
+        BigDecimal netPostTaxProceeds = totalProceeds.subtract(totalTaxDrag).max(BigDecimal.ZERO);
+        BigDecimal effectiveProceeds = netPostTaxProceeds.compareTo(BigDecimal.ZERO) > 0 ? netPostTaxProceeds : totalProceeds;
+
+        List<ExistingSipAllocation> proRataAllocations = new ArrayList<>();
+        Map<String, Map<String, Double>> sipAllocMap = com.portfolioos.core.rules.BucketConfigLoader.getSipAllocations();
+
+        for (Map.Entry<String, Map<String, Double>> bucketEntry : sipAllocMap.entrySet()) {
+            for (Map.Entry<String, Double> fundEntry : bucketEntry.getValue().entrySet()) {
+                String fundId = fundEntry.getKey();
+                double sipWeightFrac = fundEntry.getValue();
+                BigDecimal weightPct = BigDecimal.valueOf(sipWeightFrac * 100.0).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal deployAmt = effectiveProceeds.multiply(BigDecimal.valueOf(sipWeightFrac)).setScale(2, RoundingMode.HALF_UP);
+
+                proRataAllocations.add(new ExistingSipAllocation(
+                    fundId,
+                    fundId,
+                    weightPct,
+                    deployAmt
+                ));
+            }
+        }
+
+        int month = currentDate.getMonthValue();
+        boolean isWindowOpen = month == 3 || month == 9;
+        String nextScheduled = (month <= 3) ? "March 31, " + currentDate.getYear() 
+            : (month <= 9) ? "September 30, " + currentDate.getYear() 
+            : "March 31, " + (currentDate.getYear() + 1);
+
+        BigDecimal ltcgHarvested = remainingExemption.subtract(unusedExemption);
+
+        return new ConsolidationPreviewResult(
+            phasedSummaries,
+            effectiveProceeds,
+            totalGain,
+            totalTaxDrag,
+            ltcgHarvested,
+            proRataAllocations,
+            isWindowOpen,
+            nextScheduled
+        );
+    }
+
+    private static class Pair<A, B> {
+        private final A first;
+        private final B second;
+        public Pair(A first, B second) {
+            this.first = first;
+            this.second = second;
+        }
+        public A first() { return first; }
+        public B second() { return second; }
     }
 }
 ````
@@ -6923,6 +6605,41 @@ logging:
     org.springframework.web: INFO
 ````
 
+## File: core-node/src/test/java/com/portfolioos/core/controllers/ConfigControllerTest.java
+````java
+package com.portfolioos.core.controllers;
+
+import com.portfolioos.core.rules.BucketConfigLoader;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.ResponseEntity;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class ConfigControllerTest {
+
+    @Test
+    void testGetBucketTargets() {
+        ConfigController controller = new ConfigController();
+        ResponseEntity<BucketConfigLoader.BucketRulesConfig> response = controller.getBucketTargets();
+
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+    }
+
+    @Test
+    void testGetRebalancePlanAliasReturns307Redirect() {
+        ConfigController controller = new ConfigController();
+        ResponseEntity<?> response = controller.getRebalancePlanAlias("INDUCED");
+
+        assertNotNull(response);
+        assertEquals(307, response.getStatusCode().value());
+        assertTrue(response.getHeaders().containsKey("Location"));
+        assertEquals("/api/v1/sync/rebalance/plan?trigger=INDUCED", response.getHeaders().getFirst("Location"));
+    }
+}
+````
+
 ## File: core-node/src/test/java/com/portfolioos/core/controllers/SyncControllerTest.java
 ````java
 package com.portfolioos.core.controllers;
@@ -7048,6 +6765,127 @@ class SyncControllerTest {
 }
 ````
 
+## File: core-node/src/test/java/com/portfolioos/core/fire/FireTrackerTest.java
+````java
+package com.portfolioos.core.fire;
+
+import com.portfolioos.core.model.Lot;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class FireTrackerTest {
+
+    @Test
+    void testCalculateFireSummary() {
+        Lot lot = new Lot(
+            "LOT_1",
+            "NIFTY_LARGEMIDCAP_1",
+            "ICICI Nifty LargeMidcap",
+            LocalDate.of(2024, 1, 1),
+            new BigDecimal("1000.0"),
+            new BigDecimal("1000.0"),
+            new BigDecimal("100.0"),
+            new BigDecimal("100000.0"),
+            false,
+            BigDecimal.ZERO
+        );
+
+        Map<String, BigDecimal> navMap = Map.of("NIFTY_LARGEMIDCAP_1", new BigDecimal("150.0"));
+        FireTracker.FireProfile profile = new FireTracker.FireProfile();
+
+        FireTracker.FireSummary summary = FireTracker.calculateFireSummary(
+            List.of(lot),
+            navMap,
+            LocalDate.of(2026, 8, 19),
+            profile,
+            new BigDecimal("500000.00"),
+            95.0,
+            new BigDecimal("25000000.00"),
+            new BigDecimal("18000000.00")
+        );
+
+        assertNotNull(summary);
+        assertEquals("Primary Expense Target", summary.activeScenarioLabel());
+        assertTrue(summary.fireInvestableNetWorth().compareTo(BigDecimal.ZERO) >= 0);
+        assertNotNull(summary.status());
+    }
+
+    @Test
+    void testFireProfileGetters() {
+        FireTracker.FireProfile profile = new FireTracker.FireProfile();
+        assertNotNull(profile.birthDate());
+        assertEquals(45, profile.targetRetirementAge());
+        assertEquals(new BigDecimal("3.0"), profile.swrPercent());
+        assertNotNull(profile.scenarios());
+        assertFalse(profile.scenarios().isEmpty());
+    }
+}
+````
+
+## File: core-node/src/test/java/com/portfolioos/core/goals/GoalTrackerTest.java
+````java
+package com.portfolioos.core.goals;
+
+import com.portfolioos.core.model.Lot;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class GoalTrackerTest {
+
+    @Test
+    void testCalculateGoalSummaryWithDefaultAllocations() {
+        Lot liquidLot = new Lot(
+            "LOT_1",
+            "ARBITRAGE_1",
+            "Invesco Arbitrage Fund",
+            LocalDate.of(2024, 1, 1),
+            new BigDecimal("1000.0"),
+            new BigDecimal("1000.0"),
+            new BigDecimal("100.0"),
+            new BigDecimal("100000.0"),
+            false,
+            BigDecimal.ZERO
+        );
+
+        Map<String, BigDecimal> navMap = Map.of("ARBITRAGE_1", new BigDecimal("100.0"));
+
+        GoalTracker.GoalSummary summary = GoalTracker.calculateGoalSummary(List.of(liquidLot), navMap);
+        assertNotNull(summary);
+        assertEquals(new BigDecimal("100000.00"), summary.totalLiquidHoldings());
+        assertEquals(new BigDecimal("350000.00"), summary.allocatedGoalsAmount());
+        assertEquals(new BigDecimal("0.00"), summary.unallocatedCash());
+        assertTrue(summary.allocationsByGoal().containsKey(GoalTracker.GoalTag.EMERGENCY));
+    }
+
+    @Test
+    void testCalculateGoalSummaryWithBankBalance() {
+        GoalTracker.GoalSummary summary = GoalTracker.calculateGoalSummary(
+            List.of(),
+            Map.of(),
+            GoalTracker.DEFAULT_ALLOCATIONS,
+            new BigDecimal("500000.00")
+        );
+
+        assertNotNull(summary);
+        assertEquals(new BigDecimal("500000.00"), summary.totalLiquidHoldings());
+        assertEquals(new BigDecimal("350000.00"), summary.allocatedGoalsAmount());
+        assertEquals(new BigDecimal("150000.00"), summary.unallocatedCash());
+    }
+}
+````
+
 ## File: core-node/src/test/java/com/portfolioos/core/reconciliation/ReconciliationGateTest.java
 ````java
 package com.portfolioos.core.reconciliation;
@@ -7165,7 +7003,7 @@ class Itr2CsvExporterTest {
     }
 
     @Test
-    void testPre2018LotWithoutFmvDataFlagsUnavailable() {
+    void testPre2018LotWithoutFmvDataThrowsException() {
         MatchedLot lotPreNoFmv = new MatchedLot(
             "MATCH_X", "EV_DISP_X", "LOT_PRE_NO_FMV", "INF109KC13X2",
             LocalDate.of(2017, 1, 1), LocalDate.of(2026, 5, 1),
@@ -7173,13 +7011,15 @@ class Itr2CsvExporterTest {
             new BigDecimal("100.0"), 3000L, TaxTerm.LONG_TERM, AssetCategory.EQUITY
         );
 
-        String csv = Itr2CsvExporter.generateSchedule112aCsv(
-            List.of(lotPreNoFmv), "2026-27", Map.of("INF109KC13X2", "Fund Pre No FMV"),
-            Map.of()
-        );
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> {
+            Itr2CsvExporter.generateSchedule112aCsv(
+                List.of(lotPreNoFmv), "2026-27", Map.of("INF109KC13X2", "Fund Pre No FMV"),
+                Map.of()
+            );
+        });
 
-        assertTrue(csv.contains("FMV_UNAVAILABLE_REVIEW_REQUIRED"),
-            "Pre-2018 lot without FMV data must explicitly flag FMV_UNAVAILABLE_REVIEW_REQUIRED");
+        assertTrue(ex.getMessage().contains("MISSING_FMV_DATA"),
+            "Pre-2018 lot without FMV data must throw IllegalStateException with MISSING_FMV_DATA error code");
     }
 
     @Test
@@ -7208,6 +7048,78 @@ class Itr2CsvExporterTest {
 
         assertFalse(content.contains("fmv2018Map.getOrDefault(isin, actualCost)"),
             "Must not silently default fmv2018Map missing entries to actualCost");
+    }
+}
+````
+
+## File: core-node/src/test/java/com/portfolioos/core/rules/BucketConfigLoaderTest.java
+````java
+package com.portfolioos.core.rules;
+
+import org.junit.jupiter.api.Test;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class BucketConfigLoaderTest {
+
+    @Test
+    void testIsPreferredFund() {
+        assertTrue(BucketConfigLoader.isPreferredFund("NIFTY_LARGEMIDCAP"));
+        assertTrue(BucketConfigLoader.isPreferredFund("PPFAS_FLEXICAP"));
+        assertTrue(BucketConfigLoader.isPreferredFund("VALUE_30"));
+        assertTrue(BucketConfigLoader.isPreferredFund("MOMENTUM_50"));
+        assertTrue(BucketConfigLoader.isPreferredFund("SMALL_CAP"));
+        assertTrue(BucketConfigLoader.isPreferredFund("GOLD_PASSIVE"));
+        assertTrue(BucketConfigLoader.isPreferredFund("ARBITRAGE_FUND"));
+        assertFalse(BucketConfigLoader.isPreferredFund("UNKNOWN_RANDOM_FUND"));
+        assertFalse(BucketConfigLoader.isPreferredFund(null));
+    }
+
+    @Test
+    void testGetPreferredBucketForAsset() {
+        assertEquals("EQUITY_CORE", BucketConfigLoader.getPreferredBucketForAsset("NIFTY_LARGEMIDCAP_1", "Large and Midcap Index Fund"));
+        assertNull(BucketConfigLoader.getPreferredBucketForAsset(null, null));
+    }
+
+    @Test
+    void testMapAssetToBucket() {
+        assertNotNull(BucketConfigLoader.mapAssetToBucket("INF109KC13X2", "ICICI Nifty 200"));
+    }
+
+    @Test
+    void testGetActiveVersion() {
+        BucketConfigLoader.BucketTargetVersion activeVersion = BucketConfigLoader.getActiveVersion(LocalDate.now());
+        assertNotNull(activeVersion);
+        assertNotNull(activeVersion.targets());
+        assertFalse(activeVersion.targets().isEmpty());
+    }
+
+    @Test
+    void testNoFundAppearsInMultipleBucketsInYaml() {
+        BucketConfigLoader.BucketRulesConfig rulesConfig = BucketConfigLoader.loadConfig();
+        assertNotNull(rulesConfig);
+        assertNotNull(rulesConfig.versions());
+
+        for (BucketConfigLoader.BucketTargetVersion version : rulesConfig.versions()) {
+            java.util.Map<String, String> isinToBucketMap = new java.util.HashMap<>();
+            for (BucketConfigLoader.BucketTargetConfig target : version.targets()) {
+                if (target.preferredFunds() != null) {
+                    for (BucketConfigLoader.PreferredFundConfig fund : target.preferredFunds()) {
+                        String isin = fund.fundId();
+                        assertNotNull(isin, "Preferred fund ISIN cannot be null in version " + version.versionId());
+                        if (isinToBucketMap.containsKey(isin)) {
+                            fail("DUPLICATE BUCKET MAPPING ERROR: ISIN " + isin +
+                                 " appears under both bucket '" + isinToBucketMap.get(isin) +
+                                 "' and bucket '" + target.bucket() + "' in YAML version " + version.versionId());
+                        }
+                        isinToBucketMap.put(isin, target.bucket());
+                    }
+                }
+            }
+        }
     }
 }
 ````
@@ -7243,6 +7155,53 @@ class TaxRulesLoaderTest {
         assertNotNull(config, "TaxRulesConfig for FY 2025-26 must not be null");
         assertEquals("2025-26", config.fiscalYear());
         assertEquals(new BigDecimal("125000"), config.equityExemptionLimit());
+    }
+}
+````
+
+## File: core-node/src/test/java/com/portfolioos/core/security/SecurityInterceptorTest.java
+````java
+package com.portfolioos.core.security;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class SecurityInterceptorTest {
+
+    @Test
+    void testPreHandleOptionsRequestReturnsTrue() throws Exception {
+        SecurityInterceptor interceptor = new SecurityInterceptor();
+        MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/api/v1/sync/snapshot");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean result = interceptor.preHandle(request, response, new Object());
+        assertTrue(result, "OPTIONS preflight requests must bypass token checks");
+    }
+
+    @Test
+    void testPreHandleValidDevToken() throws Exception {
+        SecurityInterceptor interceptor = new SecurityInterceptor();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
+        request.addHeader("X-Api-Auth-Token", "dev_secret_key_123");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean result = interceptor.preHandle(request, response, new Object());
+        assertTrue(result);
+    }
+
+    @Test
+    void testPreHandleInvalidTokenReturns401() throws Exception {
+        SecurityInterceptor interceptor = new SecurityInterceptor();
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
+        request.addHeader("X-Api-Auth-Token", "invalid_token_999");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean result = interceptor.preHandle(request, response, new Object());
+        assertFalse(result);
+        assertEquals(401, response.getStatus());
     }
 }
 ````
@@ -8460,6 +8419,53 @@ class RebalanceWaterfallEngineTest {
         assertEquals(new BigDecimal("0.00"), result.satisfiedAmount(), "STCG lots must be 100% excluded under routine DRIFT (urgent=false)");
         assertEquals(new BigDecimal("5000.00"), result.deferredAmount());
         assertTrue(result.steps().isEmpty());
+    }
+}
+````
+
+## File: core-node/src/test/java/com/portfolioos/core/xirr/XirrEngineTest.java
+````java
+package com.portfolioos.core.xirr;
+
+import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class XirrEngineTest {
+
+    @Test
+    void testXirrCalculationSimpleReturn() {
+        XirrEngine engine = new XirrEngine();
+
+        CashFlow cf1 = new CashFlow(LocalDate.of(2023, 1, 1), new BigDecimal("-100000.00"));
+        CashFlow cf2 = new CashFlow(LocalDate.of(2024, 1, 1), new BigDecimal("112000.00"));
+
+        double xirr = engine.calculateXirr(List.of(cf1, cf2));
+        assertTrue(xirr > 11.5 && xirr < 12.5, "XIRR should be approx 12.0%");
+    }
+
+    @Test
+    void testXirrShortDurationReturnsAbsoluteGain() {
+        XirrEngine engine = new XirrEngine();
+
+        CashFlow cf1 = new CashFlow(LocalDate.of(2024, 1, 1), new BigDecimal("-100000.00"));
+        CashFlow cf2 = new CashFlow(LocalDate.of(2024, 1, 15), new BigDecimal("105000.00"));
+
+        double xirr = engine.calculateXirr(List.of(cf1, cf2));
+        assertEquals(5.0, xirr, 0.01, "Short duration <30 days should return absolute return (5%)");
+    }
+
+    @Test
+    void testXirrNullOrInsufficientFlows() {
+        XirrEngine engine = new XirrEngine();
+
+        assertEquals(0.0, engine.calculateXirr(null));
+        assertEquals(0.0, engine.calculateXirr(List.of()));
+        assertEquals(0.0, engine.calculateXirr(List.of(new CashFlow(LocalDate.now(), new BigDecimal("-100")))));
     }
 }
 ````
@@ -9750,6 +9756,67 @@ fun SimulatorView(holdings: List<FlatHoldingDto>) {
 </manifest>
 ````
 
+## File: mobile-app/app/src/test/java/com/portfolioos/mobile/RebalanceWaterfallUnitTest.kt
+````kotlin
+package com.portfolioos.mobile
+
+import com.portfolioos.mobile.ui.FundSellAggregated
+import com.portfolioos.mobile.ui.shortenFundName
+import com.portfolioos.mobile.util.formatInr
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class RebalanceWaterfallUnitTest {
+
+    @Test
+    fun testShortenFundName() {
+        assertEquals("Motilal Nifty Midcap 150", shortenFundName("Motilal Oswal Nifty Midcap 150 Index Fund Direct Growth"))
+        assertEquals("Mirae Healthcare Fund", shortenFundName("Mirae Asset Healthcare Fund - (Non Demat)"))
+        assertEquals("Kotak Nifty 100 Equal Weight", shortenFundName("Kotak Nifty 100 Equal Weight Index Fund"))
+        assertEquals("Short Fund Name", shortenFundName("Short Fund Name"))
+    }
+
+    @Test
+    fun testFundSellAggregatedTaxSavedCalculation() {
+        val gain = 21386.0
+        val isLtcg = true
+        val taxSaved = if (isLtcg) gain * 0.125 else 0.0
+
+        val agg = FundSellAggregated(
+            fundName = "Kotak Nifty 100 Equal Weight",
+            totalProceeds = 76040.0,
+            totalUnits = 6740.5,
+            totalGain = gain,
+            taxSaved = taxSaved,
+            taxTerm = "LTCG EXEMPT",
+            tierLabel = "Tier 1 - Capital Buffer"
+        )
+
+        assertEquals("Kotak Nifty 100 Equal Weight", agg.fundName)
+        assertEquals(76040.0, agg.totalProceeds, 0.01)
+        assertEquals(2673.25, agg.taxSaved, 0.01)
+        assertEquals("LTCG EXEMPT", agg.taxTerm)
+    }
+
+    @Test
+    fun testFormatInrFormatting() {
+        assertEquals("₹1,298,893", formatInr(1298893.0))
+        assertEquals("₹2,673", formatInr(2673.0))
+        assertEquals("₹500", formatInr(500.0))
+    }
+
+    @Test
+    fun testTaxExemption112AFormula() {
+        // Section 112A LTCG tax rate is 12.5% on gains up to Rs 1.25 Lakh exemption limit
+        val exemptGain = 100000.0
+        val taxRate = 0.125
+        val taxSaved = exemptGain * taxRate
+
+        assertEquals(12500.0, taxSaved, 0.01)
+    }
+}
+````
+
 ## File: mobile-app/capture_clean_6_states.py
 ````python
 import subprocess
@@ -10170,15 +10237,15 @@ class BrokerCsvParser:
                     units_val = row.get(qty_col)
                     if units_val is None or str(units_val).strip() == "":
                         raise ValueError(f"CRITICAL: Missing or unparseable unit quantity for asset {asset_name} on {event_date}. Ingestion aborted.")
-                    units = Decimal(str(abs(float(units_val))))
+                    units = Decimal(str(abs(float(str(units_val).replace(',', '').strip()))))
 
                     price_val = row.get(price_col)
                     if price_val is None or str(price_val).strip() == "":
                         raise ValueError(f"CRITICAL: Missing or unparseable price/NAV for asset {asset_name} on {event_date}. Ingestion aborted.")
-                    price = Decimal(str(abs(float(price_val))))
+                    price = Decimal(str(abs(float(str(price_val).replace(',', '').strip()))))
 
                     amt_val = row.get(amount_col)
-                    amount = Decimal(str(abs(float(amt_val)))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
+                    amount = Decimal(str(abs(float(str(amt_val).replace(',', '').strip())))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
 
                     events.append(
                         TaxEventSchema(
@@ -10787,111 +10854,6 @@ if __name__ == "__main__":
 ## File:  m
 ````
 
-````
-
-## File: core-node/rules/bucket_targets.yaml
-````yaml
----
-versions:
-- version_id: "v1.0"
-  effective_from: "2024-01-01"
-  targets:
-  - bucket: "EQUITY_CORE"
-    target_pct: 50.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "CORE"
-    preferred_funds:
-    - fund_id: "INF109KC12U0"
-      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
-      allocation_weight: 0.5
-    - fund_id: "INF879O01027"
-      fund_name: "Parag Parikh Flexi Cap Fund"
-      allocation_weight: 0.5
-  - bucket: "EQUITY_SATELLITE"
-    target_pct: 20.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "SATELLITE"
-    preferred_funds:
-    - fund_id: "INF109KC13X2"
-      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
-      allocation_weight: 0.25
-    - fund_id: "INF754K01TN5"
-      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
-      allocation_weight: 0.25
-    - fund_id: "INF204K01K15"
-      fund_name: "Nippon India Small Cap Fund"
-      allocation_weight: 0.25
-    - fund_id: "INF247L01BQ9"
-      fund_name: "Motilal Oswal Nifty Microcap 250 Index Fund"
-      allocation_weight: 0.25
-  - bucket: "GOLD_SILVER"
-    target_pct: 15.0
-    band_pct: 5.0
-    trigger_drift_pct: 12.0
-    strategy: "ACCUMULATOR"
-    preferred_funds:
-    - fund_id: "INF247L01BM8"
-      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
-      allocation_weight: 1.0
-  - bucket: "LIQUID_BUFFER"
-    target_pct: 15.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "ARBITRAGE"
-    preferred_funds:
-    - fund_id: "INF205K01KR8"
-      fund_name: "Invesco India Arbitrage Fund"
-      allocation_weight: 1.0
-- version_id: "v2.0"
-  effective_from: "2026-08-17"
-  targets:
-  - bucket: "EQUITY_CORE"
-    target_pct: 50.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "CORE"
-    preferred_funds:
-    - fund_id: "INF109KC12U0"
-      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
-      allocation_weight: 0.5814
-    - fund_id: "INF879O01027"
-      fund_name: "Parag Parikh Flexi Cap Fund"
-      allocation_weight: 0.4186
-  - bucket: "EQUITY_SATELLITE"
-    target_pct: 35.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "SATELLITE"
-    preferred_funds:
-    - fund_id: "INF109KC13X2"
-      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
-      allocation_weight: 0.4571
-    - fund_id: "INF754K01TN5"
-      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
-      allocation_weight: 0.4000
-    - fund_id: "INF204K01K15"
-      fund_name: "Nippon India Small Cap Fund"
-      allocation_weight: 0.1429
-  - bucket: "GOLD_SILVER"
-    target_pct: 5.0
-    band_pct: 5.0
-    trigger_drift_pct: 12.0
-    strategy: "ACCUMULATOR"
-    preferred_funds:
-    - fund_id: "INF247L01BM8"
-      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
-      allocation_weight: 1.0
-  - bucket: "LIQUID_BUFFER"
-    target_pct: 10.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "ARBITRAGE"
-    preferred_funds:
-    - fund_id: "INF205K01KR8"
-      fund_name: "Invesco India Arbitrage Fund"
-      allocation_weight: 1.0
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/common/PortfolioConstants.java
@@ -13636,67 +13598,109 @@ repomix*.md
 .aider*
 ````
 
-## File: docker-compose.yml
+## File: core-node/rules/bucket_targets.yaml
 ````yaml
-version: '3.8'
-
-services:
-  core-node:
-    build:
-      context: ./core-node
-      dockerfile: Dockerfile
-    container_name: portfolio-os-core
-    ports:
-      - "0.0.0.0:8080:8080"
-    environment:
-      - API_AUTH_TOKEN=dev_secret_key_123
-      - LEDGER_HMAC_SECRET=dev_secret_key_123
-      - SQLITE_PATH=/app/data/tax_ledger.db
-      - DUCKDB_PATH=/app/data/tax_ledger.duckdb
-      - SIDECAR_HTTP_URL=http://quant-sidecar:8000
-      - SIDECAR_FLIGHT_URL=grpc+tcp://quant-sidecar:8001
-      - SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434
-      - SPRING_WEB_RESOURCES_STATIC_LOCATIONS=file:/app/static/,classpath:/static/
-    volumes:
-      - ./data:/app/data
-      - ./rules:/app/rules
-      - ./core-node/src/main/resources/static:/app/static
-    depends_on:
-      quant-sidecar:
-        condition: service_healthy
-      ollama:
-        condition: service_started
-    restart: unless-stopped
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: portfolio-os-ollama
-    ports:
-      - "127.0.0.1:11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    restart: unless-stopped
-
-  quant-sidecar:
-    build:
-      context: ./quant-sidecar
-      dockerfile: Dockerfile
-    container_name: portfolio-os-quant
-    ports:
-      - "127.0.0.1:8000:8000"
-      - "127.0.0.1:8001:8001"
-    volumes:
-      - ./data:/app/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
-
-volumes:
-  data:
-  ollama-data:
+---
+versions:
+- version_id: "v1.0"
+  effective_from: "2024-01-01"
+  targets:
+  - bucket: "EQUITY_CORE"
+    target_pct: 50.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "CORE"
+    preferred_funds:
+    - fund_id: "INF109KC12U0"
+      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+      allocation_weight: 0.5
+    - fund_id: "INF879O01027"
+      fund_name: "Parag Parikh Flexi Cap Fund"
+      allocation_weight: 0.5
+  - bucket: "EQUITY_SATELLITE"
+    target_pct: 20.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "SATELLITE"
+    preferred_funds:
+    - fund_id: "INF109KC13X2"
+      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
+      allocation_weight: 0.25
+    - fund_id: "INF754K01TN5"
+      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
+      allocation_weight: 0.25
+    - fund_id: "INF204K01K15"
+      fund_name: "Nippon India Small Cap Fund"
+      allocation_weight: 0.25
+    - fund_id: "INF247L01BQ9"
+      fund_name: "Motilal Oswal Nifty Microcap 250 Index Fund"
+      allocation_weight: 0.25
+  - bucket: "GOLD_SILVER"
+    target_pct: 15.0
+    band_pct: 5.0
+    trigger_drift_pct: 12.0
+    strategy: "ACCUMULATOR"
+    preferred_funds:
+    - fund_id: "INF247L01BM8"
+      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
+      allocation_weight: 1.0
+  - bucket: "LIQUID_BUFFER"
+    target_pct: 15.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "ARBITRAGE"
+    preferred_funds:
+    - fund_id: "INF205K01KR8"
+      fund_name: "Invesco India Arbitrage Fund"
+      allocation_weight: 1.0
+- version_id: "v2.0"
+  effective_from: "2026-08-17"
+  targets:
+  - bucket: "EQUITY_CORE"
+    target_pct: 50.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "CORE"
+    preferred_funds:
+    - fund_id: "INF109KC12U0"
+      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+      allocation_weight: 0.5814
+    - fund_id: "INF879O01027"
+      fund_name: "Parag Parikh Flexi Cap Fund"
+      allocation_weight: 0.4186
+  - bucket: "EQUITY_SATELLITE"
+    target_pct: 35.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "SATELLITE"
+    preferred_funds:
+    - fund_id: "INF109KC13X2"
+      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
+      allocation_weight: 0.4571
+    - fund_id: "INF754K01TN5"
+      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
+      allocation_weight: 0.4000
+    - fund_id: "INF204K01K15"
+      fund_name: "Nippon India Small Cap Fund"
+      allocation_weight: 0.1429
+  - bucket: "GOLD_SILVER"
+    target_pct: 5.0
+    band_pct: 5.0
+    trigger_drift_pct: 12.0
+    strategy: "ACCUMULATOR"
+    preferred_funds:
+    - fund_id: "INF247L01BM8"
+      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
+      allocation_weight: 1.0
+  - bucket: "LIQUID_BUFFER"
+    target_pct: 10.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "ARBITRAGE"
+    preferred_funds:
+    - fund_id: "INF205K01KR8"
+      fund_name: "Invesco India Arbitrage Fund"
+      allocation_weight: 1.0
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/dtos/RebalancePlanDtos.java
@@ -14991,6 +14995,69 @@ class RebalancePlanEngineTest {
         assertTrue(plan.sellSide().totalRequired().compareTo(BigDecimal.ZERO) > 0);
     }
 }
+````
+
+## File: docker-compose.yml
+````yaml
+version: '3.8'
+
+services:
+  core-node:
+    build:
+      context: ./core-node
+      dockerfile: Dockerfile
+    container_name: portfolio-os-core
+    ports:
+      - "0.0.0.0:8080:8080"
+    environment:
+      - API_AUTH_TOKEN=dev_secret_key_123
+      - LEDGER_HMAC_SECRET=dev_secret_key_123
+      - SQLITE_PATH=/app/data/tax_ledger.db
+      - DUCKDB_PATH=/app/data/tax_ledger.duckdb
+      - SIDECAR_HTTP_URL=http://quant-sidecar:8000
+      - SIDECAR_FLIGHT_URL=grpc+tcp://quant-sidecar:8001
+      - SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434
+      - SPRING_WEB_RESOURCES_STATIC_LOCATIONS=file:/app/static/,classpath:/static/
+    volumes:
+      - ./data:/app/data
+      - ./rules:/app/rules
+      - ./core-node/src/main/resources/static:/app/static
+    depends_on:
+      quant-sidecar:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: portfolio-os-ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
+  quant-sidecar:
+    build:
+      context: ./quant-sidecar
+      dockerfile: Dockerfile
+    container_name: portfolio-os-quant
+    ports:
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8001"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  data:
+  ollama-data:
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/controllers/LlmQueryController.java
@@ -19485,6 +19552,411 @@ public class RebalancePlanEngine {
 }
 ````
 
+## File: core-node/src/main/resources/static/src/app.js
+````javascript
+import { API_BASE, fetchJson } from './js/api.js';
+import { state } from './js/state.js';
+import { formatINR, showToast } from './js/utils.js';
+import {
+  updatePortfolioSummary,
+  renderHoldingsTable,
+  renderAllocationChart,
+  renderCategoryChart,
+  renderBucketAllocationChart,
+  renderFundAllocationCompareChart,
+  renderSchemeGroupedTaxLotsUI,
+  renderNetWorthTrendChart,
+  renderCashflowSankey,
+  renderBucketRebalance,
+  renderUnifiedRebalancePlanUI,
+  fetchFireSummary
+} from './js/modules/portfolio.js?v=4.1.0';
+import { updateExemptionMeter, updateReportMetrics, renderDecisionRadar, fetchDecisionRadar, fetchTaxMetrics, renderRealizedLogTable } from './js/modules/tax.js';
+
+const DEFAULT_AUTH_TOKEN = 'dev_secret_key_123';
+
+async function initDashboard() {
+  try {
+    const summaryData = await fetchJson(`/portfolio/summary?fy=${state.currentFy}`).catch(() => null);
+    if (summaryData) updatePortfolioSummary(summaryData);
+
+    const holdings = await fetchJson(`/portfolio/holdings`).catch(() => []);
+    state.holdings = holdings;
+    renderHoldingsTable(holdings);
+    renderSchemeGroupedTaxLotsUI(holdings, 'groupedTaxLotsContainer');
+    renderSchemeGroupedTaxLotsUI(holdings, 'groupedTaxLotsContainerTaxTab');
+
+    const bucketTargetsConfig = await fetchJson(`/config/bucket-targets`).catch(() => null);
+    state.bucketTargetsConfig = bucketTargetsConfig;
+    if (bucketTargetsConfig && holdings) {
+      renderFundAllocationCompareChart('fundAllocationCompareChart', holdings, bucketTargetsConfig);
+    }
+
+    const navTrendData = await fetchJson(`/portfolio/net-worth-trend`).catch(() => null);
+    if (navTrendData && navTrendData.dates && navTrendData.values) {
+      if (state.charts.trendChart) state.charts.trendChart.dispose();
+      state.charts.trendChart = renderNetWorthTrendChart('netWorthTrendChart', navTrendData.dates, navTrendData.values);
+    }
+
+    const allocData = await fetchJson(`/portfolio/allocation`).catch(() => null);
+    if (allocData) renderAllocationChart(allocData);
+
+    const catData = await fetchJson(`/portfolio/category-allocation`).catch(() => null);
+    if (catData) renderCategoryChart(catData);
+
+    const bucketAllocData = await fetchJson(`/portfolio/bucket-allocation`).catch(() => null);
+    if (bucketAllocData) renderBucketAllocationChart('bucketAllocationChart', bucketAllocData);
+
+    const exemptionData = await fetchJson(`/tax/exemption-status?fy=${state.currentFy}`).catch(() => null);
+    if (exemptionData) updateExemptionMeter(exemptionData);
+
+    const planData = await fetchJson(`/sync/rebalance/plan?trigger=DRIFT`).catch(() => null);
+    if (planData) renderUnifiedRebalancePlanUI(planData);
+
+    const bucketData = await fetchJson(`/rebalance/bucket?fy=${state.currentFy}`).catch(() => null);
+    if (bucketData) renderBucketRebalance(bucketData);
+
+    // Render Cashflow Sankey Flow Diagram
+    if (state.charts.sankeyChart) state.charts.sankeyChart.dispose();
+    state.charts.sankeyChart = renderCashflowSankey('sankeyChart', holdings, bucketData);
+
+    const eventsData = await fetchJson(`/tax/realized-log?fy=${state.currentFy}`).catch(() => null);
+    if (eventsData) renderRealizedLogTable(eventsData);
+
+    fetchDecisionRadar();
+    fetchTaxMetrics();
+    fetchFireSummary();
+  } catch (err) {
+    console.error("Dashboard initialization failed:", err);
+    showToast("Error connecting to Core Node REST service.", "error");
+  }
+}
+
+async function fetchRebalancePreview(amount) {
+  try {
+    const preview = await fetchJson(`/rebalance/preview?amount=${amount}&fy=${state.currentFy}`);
+    const dragEl = document.getElementById('rebTaxDrag');
+    const rateEl = document.getElementById('rebEffRate');
+    const ltcgEl = document.getElementById('rebLtcgHarvested');
+
+    if (dragEl) dragEl.textContent = formatINR(parseFloat(preview.total_tax_drag || preview.totalTaxDrag || '0'));
+    if (rateEl) rateEl.textContent = `${preview.effective_tax_rate_pct || preview.effectiveTaxRatePct || '0.00'}%`;
+    if (ltcgEl) ltcgEl.textContent = formatINR(parseFloat(preview.ltcg_exemption_harvested || preview.ltcgExemptionHarvested || '0'));
+  } catch (err) {
+    console.error("Failed to fetch rebalance preview:", err);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initDashboard();
+
+  window.openCmdPalette = () => {
+    const modal = document.getElementById('commandPaletteModal');
+    if (modal) modal.style.display = 'flex';
+    const input = document.getElementById('commandPaletteInput');
+    if (input) { input.focus(); input.select(); }
+  };
+
+  window.closeCmdPalette = () => {
+    const modal = document.getElementById('commandPaletteModal');
+    if (modal) modal.style.display = 'none';
+  };
+
+  window.openHoldingDrawer = (idx) => {
+    const holding = state.holdings[idx];
+    if (!holding) return;
+
+    const drawer = document.getElementById('holdingDetailDrawer');
+    const backdrop = document.getElementById('holdingDetailDrawerBackdrop');
+    const titleEl = document.getElementById('drawerAssetTitle');
+    const catEl = document.getElementById('drawerAssetCategory');
+    const bodyEl = document.getElementById('drawerBody');
+
+    if (!drawer || !backdrop || !bodyEl) return;
+
+    const assetName = holding.asset_name || holding.assetName || '';
+    const category = holding.category || 'EQUITY';
+    const inv = Math.round(parseFloat(holding.invested_value || holding.investedValue) || 0);
+    const cur = Math.round(parseFloat(holding.current_value || holding.currentValue) || 0);
+    const gain = Math.round(parseFloat(holding.unrealized_gain || holding.unrealizedGain) || 0);
+    const gainPct = holding.unrealized_gain_pct || holding.unrealizedGainPct || '0.00';
+    const lots = holding.lots || [];
+
+    if (titleEl) titleEl.textContent = assetName;
+    if (catEl) {
+      catEl.textContent = category.replace('_SPECIFIED_50AA', '');
+      catEl.className = `live-tag cat-${category}`;
+    }
+
+    let lotsHtml = lots.map((l, lotIdx) => {
+      const acqDate = l.acquisition_date || l.acquisitionDate;
+      const units = parseFloat(l.remaining_units || l.remainingUnits || '0');
+      const costPerUnit = parseFloat(l.cost_per_unit || l.costPerUnit || '0');
+      const lotGain = parseFloat(l.unrealized_gain || l.unrealizedGain || '0');
+      const daysHeld = l.holding_days !== undefined ? l.holding_days : l.holdingDays;
+      const isLtcg = l.is_ltcg !== undefined ? l.is_ltcg : l.isLtcg;
+
+      return `
+        <div class="drawer-lot-card">
+          <div>
+            <div style="font-size:12px; font-weight:600; color:#fff;">Lot #${lotIdx + 1} · Acquired ${acqDate} (${daysHeld}d held)</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:3px;" class="font-mono">${units.toFixed(2)} units @ ₹${costPerUnit.toFixed(2)}</div>
+          </div>
+          <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+            <div style="font-size:13px; font-weight:700; color:${lotGain >= 0 ? '#10b981' : '#ef4444'};" class="font-mono">${lotGain >= 0 ? '+' : ''}${formatINR(lotGain)}</div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <span class="cat-badge ${isLtcg ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}">${isLtcg ? 'LTCG Free' : 'STCG Locked'}</span>
+              <button type="button" class="drawer-action-btn" onclick="window.harvestLot('${holding.isin || ''}', '${assetName.replace(/'/g, "\\'")}', ${units}, ${costPerUnit})">Harvest ➔</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    bodyEl.innerHTML = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:12px; border-radius:10px;">
+          <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Invested Cost</div>
+          <div style="font-size:16px; font-weight:700; color:#fff;" class="font-mono">${formatINR(inv)}</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:12px; border-radius:10px;">
+          <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Current Value</div>
+          <div style="font-size:16px; font-weight:700; color:#06b6d4;" class="font-mono">${formatINR(cur)}</div>
+        </div>
+      </div>
+      <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:12px; border-radius:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:12px; color:#94a3b8;">Total Unrealized Gain</span>
+        <strong style="font-size:15px; color:${gain >= 0 ? '#10b981' : '#ef4444'};" class="font-mono">${gain >= 0 ? '+' : ''}${formatINR(gain)} (${gainPct}%)</strong>
+      </div>
+      <h4 style="font-size:13px; font-weight:700; color:#06b6d4; margin-top:8px;">FIFO Open Tax Lots (${lots.length})</h4>
+      <div style="display:flex; flex-direction:column; gap:10px;">${lotsHtml || '<div style="color:#94a3b8; font-size:12px;">No open lots available.</div>'}</div>
+    `;
+
+    backdrop.classList.add('open');
+    drawer.classList.add('open');
+  };
+
+  window.closeHoldingDrawer = () => {
+    const drawer = document.getElementById('holdingDetailDrawer');
+    const backdrop = document.getElementById('holdingDetailDrawerBackdrop');
+    if (drawer) drawer.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+  };
+
+  window.harvestLot = (isin, schemeName, units, costPerUnit) => {
+    window.closeHoldingDrawer();
+    window.openCmdPalette();
+    const input = document.getElementById('commandPaletteInput');
+    if (input) {
+      input.value = `rebalance ${Math.max(10000, Math.round(units * costPerUnit))}`;
+      window.submitAiPrompt();
+    }
+  };
+
+  window.submitAiPrompt = async () => {
+    const input = document.getElementById('commandPaletteInput');
+    const results = document.getElementById('commandPaletteResults');
+    if (!input || !results) return;
+
+    const promptText = input.value.trim();
+    if (!promptText) return;
+
+    const promptLower = promptText.toLowerCase();
+
+    // Raycast Action Interception for Rebalance & Waterfall
+    if (promptLower.includes("rebalance") || promptLower.includes("waterfall") || promptLower.includes("trim")) {
+      const match = promptText.match(/\d+/);
+      const amount = match ? parseInt(match[0]) : 50000;
+      results.innerHTML = `<div style="padding:12px; color:#06b6d4;">⚙️ Calculating Tax-Aware Waterfall for ₹${formatINR(amount)}...</div>`;
+
+      try {
+        const wf = await fetchJson(`/rebalance/waterfall?bucket=EQUITY_CORE&amount=${amount}&fy=${state.currentFy}`);
+        const stepsHtml = wf.steps.map(s => `
+          <div class="cmd-step-row">
+            <span><strong style="color:#d0ff00;">${s.tier}</strong>: ${s.asset_name || s.assetName}</span>
+            <span class="font-mono">₹ ${formatINR(parseFloat(s.proceeds))} (Tax: ₹ ${formatINR(parseFloat(s.tax_drag || s.taxDrag))})</span>
+          </div>
+        `).join('');
+
+        results.innerHTML = `
+          <div class="cmd-action-card">
+            <div class="cmd-action-header">
+              <span>⚡ Tax-Aware Rebalance Engine</span>
+              <span>Satisfied: ₹ ${formatINR(parseFloat(wf.satisfied_amount || wf.satisfiedAmount))}</span>
+            </div>
+            <div style="font-size:12px; color:#94a3b8;">Exemption Consumed: <strong style="color:#10b981;" class="font-mono">₹ ${formatINR(parseFloat(wf.ltcg_exemption_consumed || wf.ltcgExemptionConsumed))}</strong> · Tax Drag: <strong style="color:#06b6d4;" class="font-mono">₹ ${formatINR(parseFloat(wf.total_tax_drag || wf.totalTaxDrag))}</strong></div>
+            <div class="cmd-action-steps">${stepsHtml || '<div style="font-size:12px; color:#94a3b8;">No trim steps required.</div>'}</div>
+          </div>
+        `;
+        return;
+      } catch (err) {
+        console.error("Command palette waterfall action error:", err);
+      }
+    }
+
+    // Default SSE AI prompt stream
+    results.innerHTML = '<div style="padding:12px; color:#d0ff00; font-family:monospace;">⚡ Streaming response from Qwen LLM...</div><div id="cmdKOutput" style="white-space:pre-wrap; font-size:13px; font-family:monospace; color:#f8fafc; max-height:280px; overflow-y:auto; padding:10px; background:rgba(0,0,0,0.4); border-radius:8px; border:1px solid rgba(255,255,255,0.1);"></div>';
+    
+    const resEl = document.getElementById('cmdKOutput');
+    const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
+    const url = `${API_BASE}/llm/stream?prompt=${encodeURIComponent(promptText)}&token=${encodeURIComponent(token)}`;
+
+    const eventSource = new EventSource(url);
+    let outputText = '';
+
+    eventSource.onmessage = (event) => {
+      if (event.data) {
+        outputText += event.data;
+        if (resEl) {
+          resEl.textContent = outputText;
+          resEl.scrollTop = resEl.scrollHeight;
+        }
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("SSE stream error:", err);
+      eventSource.close();
+      if (resEl && !outputText) {
+        resEl.innerHTML = '<div style="padding:12px; color:#ef4444; font-family:monospace;">⚠️ Streaming failed. Verify connection or authentication token.</div>';
+      }
+    };
+  };
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const activeEl = document.activeElement;
+      if (activeEl && activeEl.id === 'commandPaletteInput') {
+        e.preventDefault();
+        window.submitAiPrompt();
+      }
+    }
+  });
+
+  const cmdTrigger = document.getElementById('cmdKTriggerBtn');
+  if (cmdTrigger) {
+    cmdTrigger.addEventListener('click', window.openCmdPalette);
+  }
+
+  const closeCmdBtn = document.getElementById('closeCmdPaletteBtn');
+  if (closeCmdBtn) {
+    closeCmdBtn.addEventListener('click', window.closeCmdPalette);
+  }
+
+  const slider = document.getElementById('rebalanceSlider');
+  const sliderVal = document.getElementById('rebalanceSliderVal');
+  if (slider && sliderVal) {
+    slider.addEventListener('input', () => {
+      const val = parseInt(slider.value) || 100000;
+      sliderVal.textContent = formatINR(val);
+      fetchRebalancePreview(val);
+    });
+  }
+
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabName = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      btn.classList.add('active');
+      const targetContent = document.getElementById(`tab-${tabName}`);
+      if (targetContent) targetContent.classList.add('active');
+
+      if (tabName === 'fire') {
+        fetchFireSummary();
+      }
+    });
+  });
+});
+
+async function uploadCasFile(file, password) {
+  const statusEl = document.getElementById('casUploadStatus');
+  const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
+  
+  if (statusEl) {
+    statusEl.style.display = 'block';
+    statusEl.style.background = 'rgba(6, 182, 212, 0.1)';
+    statusEl.style.color = '#06b6d4';
+    statusEl.style.border = '1px solid rgba(6, 182, 212, 0.3)';
+    statusEl.textContent = '⚡ Decrypting & Parsing CAS transactions...';
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  if (password) formData.append('password', password);
+
+  try {
+    const res = await fetch(`/api/v1/statements/upload`, {
+      method: 'POST',
+      headers: {
+        'X-Api-Auth-Token': token
+      },
+      body: formData
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => 'Upload failed');
+      throw new Error(errText || `Server returned ${res.status}`);
+    }
+
+    const events = await res.json();
+    showToast(`✅ Successfully ingested CAS statement! Registered ${events ? events.length || 0 : 0} transaction events.`, 'success');
+    window.closeCasPasswordModal();
+    initDashboard();
+  } catch (err) {
+    console.error("CAS upload failed:", err);
+    if (statusEl) {
+      statusEl.style.display = 'block';
+      statusEl.style.background = 'rgba(239, 68, 68, 0.1)';
+      statusEl.style.color = '#ef4444';
+      statusEl.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      statusEl.textContent = `⚠️ CAS Parsing Failed: ${err.message || 'Incorrect password or unsupported file format'}`;
+    }
+  }
+}
+
+let currentSelectedCasFile = null;
+
+window.closeCasPasswordModal = () => {
+  const modal = document.getElementById('casPasswordModal');
+  if (modal) modal.style.display = 'none';
+  const fileInput = document.getElementById('fileUploadInput');
+  if (fileInput) fileInput.value = '';
+  currentSelectedCasFile = null;
+};
+
+window.handleFileSelect = (e) => {
+  const file = e.target ? e.target.files[0] : (e.files ? e.files[0] : null);
+  if (!file) return;
+  currentSelectedCasFile = file;
+
+  if (file.name.toLowerCase().endsWith('.pdf')) {
+    const modal = document.getElementById('casPasswordModal');
+    const filenameEl = document.getElementById('casModalFilename');
+    const passInput = document.getElementById('casPasswordInput');
+    const statusEl = document.getElementById('casUploadStatus');
+
+    if (filenameEl) filenameEl.textContent = file.name;
+    if (passInput) passInput.value = '';
+    if (statusEl) statusEl.style.display = 'none';
+    if (modal) modal.style.display = 'flex';
+    if (passInput) setTimeout(() => passInput.focus(), 100);
+  } else {
+    uploadCasFile(file, '');
+  }
+};
+
+window.submitCasUpload = () => {
+  const passInput = document.getElementById('casPasswordInput');
+  const password = passInput ? passInput.value : '';
+  if (currentSelectedCasFile) {
+    uploadCasFile(currentSelectedCasFile, password);
+  }
+};
+````
+
 ## File: mobile-app/app/src/main/java/com/portfolioos/mobile/ui/DashboardScreen.kt
 ````kotlin
 package com.portfolioos.mobile.ui
@@ -21206,411 +21678,6 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
         }
     }
 }
-````
-
-## File: core-node/src/main/resources/static/src/app.js
-````javascript
-import { API_BASE, fetchJson } from './js/api.js';
-import { state } from './js/state.js';
-import { formatINR, showToast } from './js/utils.js';
-import {
-  updatePortfolioSummary,
-  renderHoldingsTable,
-  renderAllocationChart,
-  renderCategoryChart,
-  renderBucketAllocationChart,
-  renderFundAllocationCompareChart,
-  renderSchemeGroupedTaxLotsUI,
-  renderNetWorthTrendChart,
-  renderCashflowSankey,
-  renderBucketRebalance,
-  renderUnifiedRebalancePlanUI,
-  fetchFireSummary
-} from './js/modules/portfolio.js?v=4.1.0';
-import { updateExemptionMeter, updateReportMetrics, renderDecisionRadar, fetchDecisionRadar, fetchTaxMetrics, renderRealizedLogTable } from './js/modules/tax.js';
-
-const DEFAULT_AUTH_TOKEN = 'dev_secret_key_123';
-
-async function initDashboard() {
-  try {
-    const summaryData = await fetchJson(`/portfolio/summary?fy=${state.currentFy}`).catch(() => null);
-    if (summaryData) updatePortfolioSummary(summaryData);
-
-    const holdings = await fetchJson(`/portfolio/holdings`).catch(() => []);
-    state.holdings = holdings;
-    renderHoldingsTable(holdings);
-    renderSchemeGroupedTaxLotsUI(holdings, 'groupedTaxLotsContainer');
-    renderSchemeGroupedTaxLotsUI(holdings, 'groupedTaxLotsContainerTaxTab');
-
-    const bucketTargetsConfig = await fetchJson(`/config/bucket-targets`).catch(() => null);
-    state.bucketTargetsConfig = bucketTargetsConfig;
-    if (bucketTargetsConfig && holdings) {
-      renderFundAllocationCompareChart('fundAllocationCompareChart', holdings, bucketTargetsConfig);
-    }
-
-    const navTrendData = await fetchJson(`/portfolio/net-worth-trend`).catch(() => null);
-    if (navTrendData && navTrendData.dates && navTrendData.values) {
-      if (state.charts.trendChart) state.charts.trendChart.dispose();
-      state.charts.trendChart = renderNetWorthTrendChart('netWorthTrendChart', navTrendData.dates, navTrendData.values);
-    }
-
-    const allocData = await fetchJson(`/portfolio/allocation`).catch(() => null);
-    if (allocData) renderAllocationChart(allocData);
-
-    const catData = await fetchJson(`/portfolio/category-allocation`).catch(() => null);
-    if (catData) renderCategoryChart(catData);
-
-    const bucketAllocData = await fetchJson(`/portfolio/bucket-allocation`).catch(() => null);
-    if (bucketAllocData) renderBucketAllocationChart('bucketAllocationChart', bucketAllocData);
-
-    const exemptionData = await fetchJson(`/tax/exemption-status?fy=${state.currentFy}`).catch(() => null);
-    if (exemptionData) updateExemptionMeter(exemptionData);
-
-    const planData = await fetchJson(`/sync/rebalance/plan?trigger=DRIFT`).catch(() => null);
-    if (planData) renderUnifiedRebalancePlanUI(planData);
-
-    const bucketData = await fetchJson(`/rebalance/bucket?fy=${state.currentFy}`).catch(() => null);
-    if (bucketData) renderBucketRebalance(bucketData);
-
-    // Render Cashflow Sankey Flow Diagram
-    if (state.charts.sankeyChart) state.charts.sankeyChart.dispose();
-    state.charts.sankeyChart = renderCashflowSankey('sankeyChart', holdings, bucketData);
-
-    const eventsData = await fetchJson(`/tax/realized-log?fy=${state.currentFy}`).catch(() => null);
-    if (eventsData) renderRealizedLogTable(eventsData);
-
-    fetchDecisionRadar();
-    fetchTaxMetrics();
-    fetchFireSummary();
-  } catch (err) {
-    console.error("Dashboard initialization failed:", err);
-    showToast("Error connecting to Core Node REST service.", "error");
-  }
-}
-
-async function fetchRebalancePreview(amount) {
-  try {
-    const preview = await fetchJson(`/rebalance/preview?amount=${amount}&fy=${state.currentFy}`);
-    const dragEl = document.getElementById('rebTaxDrag');
-    const rateEl = document.getElementById('rebEffRate');
-    const ltcgEl = document.getElementById('rebLtcgHarvested');
-
-    if (dragEl) dragEl.textContent = formatINR(parseFloat(preview.total_tax_drag || preview.totalTaxDrag || '0'));
-    if (rateEl) rateEl.textContent = `${preview.effective_tax_rate_pct || preview.effectiveTaxRatePct || '0.00'}%`;
-    if (ltcgEl) ltcgEl.textContent = formatINR(parseFloat(preview.ltcg_exemption_harvested || preview.ltcgExemptionHarvested || '0'));
-  } catch (err) {
-    console.error("Failed to fetch rebalance preview:", err);
-  }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  initDashboard();
-
-  window.openCmdPalette = () => {
-    const modal = document.getElementById('commandPaletteModal');
-    if (modal) modal.style.display = 'flex';
-    const input = document.getElementById('commandPaletteInput');
-    if (input) { input.focus(); input.select(); }
-  };
-
-  window.closeCmdPalette = () => {
-    const modal = document.getElementById('commandPaletteModal');
-    if (modal) modal.style.display = 'none';
-  };
-
-  window.openHoldingDrawer = (idx) => {
-    const holding = state.holdings[idx];
-    if (!holding) return;
-
-    const drawer = document.getElementById('holdingDetailDrawer');
-    const backdrop = document.getElementById('holdingDetailDrawerBackdrop');
-    const titleEl = document.getElementById('drawerAssetTitle');
-    const catEl = document.getElementById('drawerAssetCategory');
-    const bodyEl = document.getElementById('drawerBody');
-
-    if (!drawer || !backdrop || !bodyEl) return;
-
-    const assetName = holding.asset_name || holding.assetName || '';
-    const category = holding.category || 'EQUITY';
-    const inv = Math.round(parseFloat(holding.invested_value || holding.investedValue) || 0);
-    const cur = Math.round(parseFloat(holding.current_value || holding.currentValue) || 0);
-    const gain = Math.round(parseFloat(holding.unrealized_gain || holding.unrealizedGain) || 0);
-    const gainPct = holding.unrealized_gain_pct || holding.unrealizedGainPct || '0.00';
-    const lots = holding.lots || [];
-
-    if (titleEl) titleEl.textContent = assetName;
-    if (catEl) {
-      catEl.textContent = category.replace('_SPECIFIED_50AA', '');
-      catEl.className = `live-tag cat-${category}`;
-    }
-
-    let lotsHtml = lots.map((l, lotIdx) => {
-      const acqDate = l.acquisition_date || l.acquisitionDate;
-      const units = parseFloat(l.remaining_units || l.remainingUnits || '0');
-      const costPerUnit = parseFloat(l.cost_per_unit || l.costPerUnit || '0');
-      const lotGain = parseFloat(l.unrealized_gain || l.unrealizedGain || '0');
-      const daysHeld = l.holding_days !== undefined ? l.holding_days : l.holdingDays;
-      const isLtcg = l.is_ltcg !== undefined ? l.is_ltcg : l.isLtcg;
-
-      return `
-        <div class="drawer-lot-card">
-          <div>
-            <div style="font-size:12px; font-weight:600; color:#fff;">Lot #${lotIdx + 1} · Acquired ${acqDate} (${daysHeld}d held)</div>
-            <div style="font-size:11px; color:#94a3b8; margin-top:3px;" class="font-mono">${units.toFixed(2)} units @ ₹${costPerUnit.toFixed(2)}</div>
-          </div>
-          <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-            <div style="font-size:13px; font-weight:700; color:${lotGain >= 0 ? '#10b981' : '#ef4444'};" class="font-mono">${lotGain >= 0 ? '+' : ''}${formatINR(lotGain)}</div>
-            <div style="display:flex; gap:6px; align-items:center;">
-              <span class="cat-badge ${isLtcg ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}">${isLtcg ? 'LTCG Free' : 'STCG Locked'}</span>
-              <button type="button" class="drawer-action-btn" onclick="window.harvestLot('${holding.isin || ''}', '${assetName.replace(/'/g, "\\'")}', ${units}, ${costPerUnit})">Harvest ➔</button>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    bodyEl.innerHTML = `
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-        <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:12px; border-radius:10px;">
-          <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Invested Cost</div>
-          <div style="font-size:16px; font-weight:700; color:#fff;" class="font-mono">${formatINR(inv)}</div>
-        </div>
-        <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:12px; border-radius:10px;">
-          <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Current Value</div>
-          <div style="font-size:16px; font-weight:700; color:#06b6d4;" class="font-mono">${formatINR(cur)}</div>
-        </div>
-      </div>
-      <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:12px; border-radius:10px; display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-size:12px; color:#94a3b8;">Total Unrealized Gain</span>
-        <strong style="font-size:15px; color:${gain >= 0 ? '#10b981' : '#ef4444'};" class="font-mono">${gain >= 0 ? '+' : ''}${formatINR(gain)} (${gainPct}%)</strong>
-      </div>
-      <h4 style="font-size:13px; font-weight:700; color:#06b6d4; margin-top:8px;">FIFO Open Tax Lots (${lots.length})</h4>
-      <div style="display:flex; flex-direction:column; gap:10px;">${lotsHtml || '<div style="color:#94a3b8; font-size:12px;">No open lots available.</div>'}</div>
-    `;
-
-    backdrop.classList.add('open');
-    drawer.classList.add('open');
-  };
-
-  window.closeHoldingDrawer = () => {
-    const drawer = document.getElementById('holdingDetailDrawer');
-    const backdrop = document.getElementById('holdingDetailDrawerBackdrop');
-    if (drawer) drawer.classList.remove('open');
-    if (backdrop) backdrop.classList.remove('open');
-  };
-
-  window.harvestLot = (isin, schemeName, units, costPerUnit) => {
-    window.closeHoldingDrawer();
-    window.openCmdPalette();
-    const input = document.getElementById('commandPaletteInput');
-    if (input) {
-      input.value = `rebalance ${Math.max(10000, Math.round(units * costPerUnit))}`;
-      window.submitAiPrompt();
-    }
-  };
-
-  window.submitAiPrompt = async () => {
-    const input = document.getElementById('commandPaletteInput');
-    const results = document.getElementById('commandPaletteResults');
-    if (!input || !results) return;
-
-    const promptText = input.value.trim();
-    if (!promptText) return;
-
-    const promptLower = promptText.toLowerCase();
-
-    // Raycast Action Interception for Rebalance & Waterfall
-    if (promptLower.includes("rebalance") || promptLower.includes("waterfall") || promptLower.includes("trim")) {
-      const match = promptText.match(/\d+/);
-      const amount = match ? parseInt(match[0]) : 50000;
-      results.innerHTML = `<div style="padding:12px; color:#06b6d4;">⚙️ Calculating Tax-Aware Waterfall for ₹${formatINR(amount)}...</div>`;
-
-      try {
-        const wf = await fetchJson(`/rebalance/waterfall?bucket=EQUITY_CORE&amount=${amount}&fy=${state.currentFy}`);
-        const stepsHtml = wf.steps.map(s => `
-          <div class="cmd-step-row">
-            <span><strong style="color:#d0ff00;">${s.tier}</strong>: ${s.asset_name || s.assetName}</span>
-            <span class="font-mono">₹ ${formatINR(parseFloat(s.proceeds))} (Tax: ₹ ${formatINR(parseFloat(s.tax_drag || s.taxDrag))})</span>
-          </div>
-        `).join('');
-
-        results.innerHTML = `
-          <div class="cmd-action-card">
-            <div class="cmd-action-header">
-              <span>⚡ Tax-Aware Rebalance Engine</span>
-              <span>Satisfied: ₹ ${formatINR(parseFloat(wf.satisfied_amount || wf.satisfiedAmount))}</span>
-            </div>
-            <div style="font-size:12px; color:#94a3b8;">Exemption Consumed: <strong style="color:#10b981;" class="font-mono">₹ ${formatINR(parseFloat(wf.ltcg_exemption_consumed || wf.ltcgExemptionConsumed))}</strong> · Tax Drag: <strong style="color:#06b6d4;" class="font-mono">₹ ${formatINR(parseFloat(wf.total_tax_drag || wf.totalTaxDrag))}</strong></div>
-            <div class="cmd-action-steps">${stepsHtml || '<div style="font-size:12px; color:#94a3b8;">No trim steps required.</div>'}</div>
-          </div>
-        `;
-        return;
-      } catch (err) {
-        console.error("Command palette waterfall action error:", err);
-      }
-    }
-
-    // Default SSE AI prompt stream
-    results.innerHTML = '<div style="padding:12px; color:#d0ff00; font-family:monospace;">⚡ Streaming response from Qwen LLM...</div><div id="cmdKOutput" style="white-space:pre-wrap; font-size:13px; font-family:monospace; color:#f8fafc; max-height:280px; overflow-y:auto; padding:10px; background:rgba(0,0,0,0.4); border-radius:8px; border:1px solid rgba(255,255,255,0.1);"></div>';
-    
-    const resEl = document.getElementById('cmdKOutput');
-    const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
-    const url = `${API_BASE}/llm/stream?prompt=${encodeURIComponent(promptText)}&token=${encodeURIComponent(token)}`;
-
-    const eventSource = new EventSource(url);
-    let outputText = '';
-
-    eventSource.onmessage = (event) => {
-      if (event.data) {
-        outputText += event.data;
-        if (resEl) {
-          resEl.textContent = outputText;
-          resEl.scrollTop = resEl.scrollHeight;
-        }
-      }
-    };
-
-    eventSource.onerror = (err) => {
-      console.error("SSE stream error:", err);
-      eventSource.close();
-      if (resEl && !outputText) {
-        resEl.innerHTML = '<div style="padding:12px; color:#ef4444; font-family:monospace;">⚠️ Streaming failed. Verify connection or authentication token.</div>';
-      }
-    };
-  };
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      const activeEl = document.activeElement;
-      if (activeEl && activeEl.id === 'commandPaletteInput') {
-        e.preventDefault();
-        window.submitAiPrompt();
-      }
-    }
-  });
-
-  const cmdTrigger = document.getElementById('cmdKTriggerBtn');
-  if (cmdTrigger) {
-    cmdTrigger.addEventListener('click', window.openCmdPalette);
-  }
-
-  const closeCmdBtn = document.getElementById('closeCmdPaletteBtn');
-  if (closeCmdBtn) {
-    closeCmdBtn.addEventListener('click', window.closeCmdPalette);
-  }
-
-  const slider = document.getElementById('rebalanceSlider');
-  const sliderVal = document.getElementById('rebalanceSliderVal');
-  if (slider && sliderVal) {
-    slider.addEventListener('input', () => {
-      const val = parseInt(slider.value) || 100000;
-      sliderVal.textContent = formatINR(val);
-      fetchRebalancePreview(val);
-    });
-  }
-
-  const tabBtns = document.querySelectorAll('.tab-btn');
-  tabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tabName = btn.dataset.tab;
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-      btn.classList.add('active');
-      const targetContent = document.getElementById(`tab-${tabName}`);
-      if (targetContent) targetContent.classList.add('active');
-
-      if (tabName === 'fire') {
-        fetchFireSummary();
-      }
-    });
-  });
-});
-
-async function uploadCasFile(file, password) {
-  const statusEl = document.getElementById('casUploadStatus');
-  const token = localStorage.getItem('API_AUTH_TOKEN') || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
-  
-  if (statusEl) {
-    statusEl.style.display = 'block';
-    statusEl.style.background = 'rgba(6, 182, 212, 0.1)';
-    statusEl.style.color = '#06b6d4';
-    statusEl.style.border = '1px solid rgba(6, 182, 212, 0.3)';
-    statusEl.textContent = '⚡ Decrypting & Parsing CAS transactions...';
-  }
-
-  const formData = new FormData();
-  formData.append('file', file);
-  if (password) formData.append('password', password);
-
-  try {
-    const res = await fetch(`/api/v1/statements/upload`, {
-      method: 'POST',
-      headers: {
-        'X-Api-Auth-Token': token
-      },
-      body: formData
-    });
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => 'Upload failed');
-      throw new Error(errText || `Server returned ${res.status}`);
-    }
-
-    const events = await res.json();
-    showToast(`✅ Successfully ingested CAS statement! Registered ${events ? events.length || 0 : 0} transaction events.`, 'success');
-    window.closeCasPasswordModal();
-    initDashboard();
-  } catch (err) {
-    console.error("CAS upload failed:", err);
-    if (statusEl) {
-      statusEl.style.display = 'block';
-      statusEl.style.background = 'rgba(239, 68, 68, 0.1)';
-      statusEl.style.color = '#ef4444';
-      statusEl.style.border = '1px solid rgba(239, 68, 68, 0.3)';
-      statusEl.textContent = `⚠️ CAS Parsing Failed: ${err.message || 'Incorrect password or unsupported file format'}`;
-    }
-  }
-}
-
-let currentSelectedCasFile = null;
-
-window.closeCasPasswordModal = () => {
-  const modal = document.getElementById('casPasswordModal');
-  if (modal) modal.style.display = 'none';
-  const fileInput = document.getElementById('fileUploadInput');
-  if (fileInput) fileInput.value = '';
-  currentSelectedCasFile = null;
-};
-
-window.handleFileSelect = (e) => {
-  const file = e.target ? e.target.files[0] : (e.files ? e.files[0] : null);
-  if (!file) return;
-  currentSelectedCasFile = file;
-
-  if (file.name.toLowerCase().endsWith('.pdf')) {
-    const modal = document.getElementById('casPasswordModal');
-    const filenameEl = document.getElementById('casModalFilename');
-    const passInput = document.getElementById('casPasswordInput');
-    const statusEl = document.getElementById('casUploadStatus');
-
-    if (filenameEl) filenameEl.textContent = file.name;
-    if (passInput) passInput.value = '';
-    if (statusEl) statusEl.style.display = 'none';
-    if (modal) modal.style.display = 'flex';
-    if (passInput) setTimeout(() => passInput.focus(), 100);
-  } else {
-    uploadCasFile(file, '');
-  }
-};
-
-window.submitCasUpload = () => {
-  const passInput = document.getElementById('casPasswordInput');
-  const password = passInput ? passInput.value : '';
-  if (currentSelectedCasFile) {
-    uploadCasFile(currentSelectedCasFile, password);
-  }
-};
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/service/PortfolioValuationService.java

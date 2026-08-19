@@ -56,15 +56,15 @@ class BrokerCsvParser:
                     units_val = row.get(qty_col)
                     if units_val is None or str(units_val).strip() == "":
                         raise ValueError(f"CRITICAL: Missing or unparseable unit quantity for asset {asset_name} on {event_date}. Ingestion aborted.")
-                    units = Decimal(str(abs(float(units_val))))
+                    units = Decimal(str(abs(float(str(units_val).replace(',', '').strip()))))
 
                     price_val = row.get(price_col)
                     if price_val is None or str(price_val).strip() == "":
                         raise ValueError(f"CRITICAL: Missing or unparseable price/NAV for asset {asset_name} on {event_date}. Ingestion aborted.")
-                    price = Decimal(str(abs(float(price_val))))
+                    price = Decimal(str(abs(float(str(price_val).replace(',', '').strip()))))
 
                     amt_val = row.get(amount_col)
-                    amount = Decimal(str(abs(float(amt_val)))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
+                    amount = Decimal(str(abs(float(str(amt_val).replace(',', '').strip())))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
 
                     events.append(
                         TaxEventSchema(

@@ -19,15 +19,25 @@ import java.util.concurrent.atomic.AtomicReference;
 public class LedgerCacheService {
 
     private final EventStorePort eventStore;
-    private final AmfiNavSync amfiSync = new AmfiNavSync();
-    private final FifoMatcher fifoMatcher = new FifoMatcher();
+    private final AmfiNavSync amfiSync;
+    private final FifoMatcher fifoMatcher;
 
     private final AtomicReference<CachedLedgerState> stateHolder = new AtomicReference<>(null);
     private volatile long lastNavSyncTime = 0L;
     private final Object updateLock = new Object();
 
     public LedgerCacheService(EventStorePort eventStore) {
+        this(eventStore, new AmfiNavSync(), new FifoMatcher());
+    }
+
+    public LedgerCacheService(
+        EventStorePort eventStore,
+        AmfiNavSync amfiSync,
+        FifoMatcher fifoMatcher
+    ) {
         this.eventStore = eventStore;
+        this.amfiSync = amfiSync;
+        this.fifoMatcher = fifoMatcher;
     }
 
     public static record CachedLedgerState(
