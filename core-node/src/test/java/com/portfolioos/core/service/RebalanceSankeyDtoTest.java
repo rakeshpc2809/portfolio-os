@@ -50,14 +50,14 @@ class RebalanceSankeyDtoTest {
         Lot coreLot = new Lot("lot-1", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", acqDate, new BigDecimal("4500"), new BigDecimal("4500"), nav, new BigDecimal("450000.00"), false, null);
         Lot satLot = new Lot("lot-2", "INF204K01K15", "Motilal Oswal Smallcap Fund", acqDate, new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("150000.00"), false, null);
         Lot goldLot = new Lot("lot-3", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", acqDate, new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("150000.00"), false, null);
-        Lot liqLot = new Lot("lot-4", "INF209K01157", "Invesco India Arbitrage Fund", acqDate, new BigDecimal("2500"), new BigDecimal("2500"), nav, new BigDecimal("250000.00"), false, null);
+        Lot liqLot = new Lot("lot-4", "INF205K01KR8", "Invesco India Arbitrage Fund", acqDate, new BigDecimal("2500"), new BigDecimal("2500"), nav, new BigDecimal("250000.00"), false, null);
 
         List<Lot> openLots = List.of(coreLot, satLot, goldLot, liqLot);
         Map<String, BigDecimal> navMap = Map.of(
             "INF109KC12U0", nav,
             "INF204K01K15", nav,
             "INF247L01BM8", nav,
-            "INF209K01157", nav
+            "INF205K01KR8", nav
         );
 
         // Targets: Core = 60%, Satellite = 20%, Gold = 10%, Liquid = 10%

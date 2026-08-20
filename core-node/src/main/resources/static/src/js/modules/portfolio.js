@@ -2040,10 +2040,12 @@ function renderTargetFundProgression(plan, holdings, bucketTargetsConfig) {
     fundMap[shortName].targetPct = Math.max(fundMap[shortName].targetPct, targetPct);
   });
 
+  const totalPostNetWorth = Object.values(fundMap).reduce((sum, f) => sum + Math.max(0, f.curVal - f.sellAmt + f.buyAmt), 0);
+
   const fundItems = Object.values(fundMap).map(f => {
     const postVal = Math.max(0, f.curVal - f.sellAmt + f.buyAmt);
     const curPct = totalNetWorth > 0 ? (f.curVal / totalNetWorth) * 100 : 0;
-    const postPct = totalNetWorth > 0 ? (postVal / totalNetWorth) * 100 : 0;
+    const postPct = totalPostNetWorth > 0 ? (postVal / totalPostNetWorth) * 100 : 0;
     return {
       shortName: f.shortName,
       curPct,

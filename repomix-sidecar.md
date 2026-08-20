@@ -1,45 +1,39 @@
 This file is a merged representation of the entire codebase, combined into a single document by Repomix.
 
-<file_summary>
-This section contains a summary of this file.
+# File Summary
 
-<purpose>
+## Purpose
 This file contains a packed representation of the entire repository's contents.
 It is designed to be easily consumable by AI systems for analysis, code review,
 or other automated processes.
-</purpose>
 
-<file_format>
+## File Format
 The content is organized as follows:
 1. This summary section
 2. Repository information
 3. Directory structure
 4. Repository files (if enabled)
 5. Multiple file entries, each consisting of:
-  - File path as an attribute
-  - Full contents of the file
-</file_format>
+  a. A header with the file path (## File: path/to/file)
+  b. The full contents of the file in a code block
 
-<usage_guidelines>
+## Usage Guidelines
 - This file should be treated as read-only. Any changes should be made to the
   original repository files, not this packed version.
 - When processing this file, use the file path to distinguish
   between different files in the repository.
 - Be aware that this file may contain sensitive information. Handle it with
   the same level of security as you would the original repository.
-</usage_guidelines>
 
-<notes>
+## Notes
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
 - Files are sorted by Git change count (files with more changes are at the bottom)
-</notes>
 
-</file_summary>
-
-<directory_structure>
+# Directory Structure
+```
 parsers/
   broker_csv_parser.py
   cas_parser.py
@@ -47,16 +41,18 @@ parsers/
   sip_detector.py
 quant/
   analytics_engine.py
+tests/
+  test_parsers.py
 app.py
 Dockerfile
 flight_server.py
 requirements.txt
-</directory_structure>
+```
 
-<files>
-This section contains the contents of the repository's files.
+# Files
 
-<file path="parsers/broker_csv_parser.py">
+## File: parsers/broker_csv_parser.py
+```python
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -90,7 +86,7 @@ class BrokerCsvParser:
                     asset_name = str(row[symbol_col]) if symbol_col and row.get(symbol_col) else "Broker Asset"
                     date_str = str(row[date_col]) if date_col and row.get(date_col) else ""
 
-                    event_date = datetime.now().date()
+                    event_date = None
                     if date_str:
                         for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d-%b-%Y"):
                             try:
@@ -98,6 +94,9 @@ class BrokerCsvParser:
                                 break
                             except ValueError:
                                 pass
+
+                    if event_date is None:
+                        raise ValueError(f"CRITICAL: Missing or unparseable transaction date for asset {asset_name} in CSV row: {row}. Ingestion aborted.")
 
                     txn_type_str = str(row[type_col]).upper() if type_col and row.get(type_col) else "BUY"
                     if any(x in txn_type_str for x in ["SELL", "REDEMPTION", "DISPOSAL", "SWITCH OUT"]):
@@ -110,13 +109,17 @@ class BrokerCsvParser:
                         event_type = EventType.ACQUISITION
 
                     units_val = row.get(qty_col)
-                    units = Decimal(str(abs(float(units_val)))) if units_val is not None and str(units_val).strip() != "" else Decimal("1")
-                    
+                    if units_val is None or str(units_val).strip() == "":
+                        raise ValueError(f"CRITICAL: Missing or unparseable unit quantity for asset {asset_name} on {event_date}. Ingestion aborted.")
+                    units = Decimal(str(abs(float(str(units_val).replace(',', '').strip()))))
+
                     price_val = row.get(price_col)
-                    price = Decimal(str(abs(float(price_val)))) if price_val is not None and str(price_val).strip() != "" else Decimal("0")
-                    
+                    if price_val is None or str(price_val).strip() == "":
+                        raise ValueError(f"CRITICAL: Missing or unparseable price/NAV for asset {asset_name} on {event_date}. Ingestion aborted.")
+                    price = Decimal(str(abs(float(str(price_val).replace(',', '').strip()))))
+
                     amt_val = row.get(amount_col)
-                    amount = Decimal(str(abs(float(amt_val)))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
+                    amount = Decimal(str(abs(float(str(amt_val).replace(',', '').strip())))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
 
                     events.append(
                         TaxEventSchema(
@@ -133,16 +136,21 @@ class BrokerCsvParser:
                             ingestedAt=datetime.now()
                         )
                     )
+                except ValueError:
+                    raise
                 except Exception:
                     continue
+        except ValueError:
+            raise
         except Exception:
             pass
 
         from .sip_detector import detect_and_tag_sips
         return detect_and_tag_sips(events)
-</file>
+```
 
-<file path="parsers/cas_parser.py">
+## File: parsers/cas_parser.py
+```python
 import re
 import uuid
 from decimal import Decimal
@@ -186,7 +194,10 @@ class CasPdfParser:
                         else:
                             event_type = EventType.ACQUISITION
 
-                        txn_date = txn.date if isinstance(txn.date, date) else datetime.now().date()
+                        if not isinstance(txn.date, date):
+                            raise ValueError(f"Unparseable transaction date encountered in scheme: {scheme_name}")
+                        txn_date = txn.date
+
                         units = Decimal(str(abs(txn.units or 0)))
                         price = Decimal(str(abs(txn.nav or 0)))
                         amount = Decimal(str(abs(txn.amount or 0)))
@@ -211,6 +222,8 @@ class CasPdfParser:
                             )
             if events:
                 return events
+        except ValueError:
+            raise
         except Exception as e:
             print(f"casparser notice: {e}, falling back to custom line parser.")
 
@@ -257,8 +270,8 @@ class CasPdfParser:
                             date_str, rest = match.groups()
                             try:
                                 event_date = datetime.strptime(date_str, "%d-%b-%Y").date()
-                            except ValueError:
-                                event_date = datetime.now().date()
+                            except ValueError as e:
+                                raise ValueError(f"CRITICAL: Failed to parse date string '{date_str}' in CAS fallback parser. Raw line: {line_str}") from e
 
                             num_tokens = TOKEN_REGEX.findall(rest)
 
@@ -309,9 +322,10 @@ class CasPdfParser:
 
         from .sip_detector import detect_and_tag_sips
         return detect_and_tag_sips(events)
-</file>
+```
 
-<file path="parsers/models.py">
+## File: parsers/models.py
+```python
 from enum import Enum
 from datetime import date, datetime
 from decimal import Decimal
@@ -351,9 +365,10 @@ class TaxEventSchema(BaseModel):
         elif self.event_type == EventType.SGB_INTEREST:
             return Decimal("0.0")
         return self.units
-</file>
+```
 
-<file path="parsers/sip_detector.py">
+## File: parsers/sip_detector.py
+```python
 from typing import List
 from collections import defaultdict
 from .models import TaxEventSchema, EventType
@@ -413,11 +428,15 @@ def detect_and_tag_sips(events: List[TaxEventSchema], min_consecutive_matches: i
             updated_events.append(event)
 
     return updated_events
-</file>
+```
 
-<file path="quant/analytics_engine.py">
+## File: quant/analytics_engine.py
+```python
 import numpy as np
 import pandas as pd
+import logging
+
+logger = logging.getLogger("quant.analytics_engine")
 try:
     import quantstats as qs
 except ImportError:
@@ -529,76 +548,274 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
 
 def run_monte_carlo_fire_simulation(
     daily_returns_list,
-    current_corpus=1754783.21,
-    annual_expense=600000.0,
-    years=15,
+    current_corpus=1407122.81,
+    annual_expense=720000.0,
+    monthly_contribution=75000.0,
+    years_to_retirement=13,
+    retirement_duration_years=30,
     num_simulations=10000
 ):
-    if daily_returns_list is None or len(daily_returns_list) < 10:
-        return {
-            "status": "INSUFFICIENT_DATA",
-            "success_rate_pct": 95.0,
-            "median_ending_corpus": current_corpus * 1.5,
-            "tenth_percentile_corpus": current_corpus * 0.9
-        }
+    is_empirical = daily_returns_list is not None and len(daily_returns_list) >= 750
+    if not is_empirical:
+        returns = np.random.normal(loc=0.00045, scale=0.011, size=10000)
+        returns = returns - returns.mean() + 0.00045
+        data_source = "SYNTHETIC_MARKET_BENCHMARK"
+        data_source_label = "Nifty 50 Historical Return Model (Insufficient Empirical History < 3 Years)"
+    else:
+        returns = np.array(daily_returns_list)
+        data_source = "EMPIRICAL_PORTFOLIO"
+        data_source_label = "Empirical Portfolio Return History (15-Day Block Bootstrap)"
 
-    returns = np.array(daily_returns_list)
-    trading_days = years * 252
+    n_returns = len(returns)
+    total_years = max(1, years_to_retirement) + max(1, retirement_duration_years)
+    total_days = total_years * 252
+    accumulation_days = max(1, years_to_retirement) * 252
+
+    daily_sip = (monthly_contribution * 12.0) / 252.0
     daily_expense = annual_expense / 252.0
 
-    # Circular Block Bootstrapping: Sample contiguous multi-day blocks (block_size = 15 trading days)
-    # to preserve temporal autocorrelation and GARCH volatility clustering regimes
-    n_returns = len(returns)
     block_size = min(15, n_returns)
-    n_blocks_needed = int(np.ceil(trading_days / block_size))
+    n_blocks_needed = int(np.ceil(total_days / block_size))
 
-    simulated_daily_returns = np.zeros((num_simulations, trading_days))
-    for sim_idx in range(num_simulations):
-        start_indices = np.random.randint(0, n_returns, size=n_blocks_needed)
-        path = []
-        for idx in start_indices:
-            block = [returns[(idx + k) % n_returns] for k in range(block_size)]
-            path.extend(block)
-        simulated_daily_returns[sim_idx, :] = np.array(path[:trading_days])
+    max_start = max(1, n_returns - block_size + 1)
+    start_indices = np.random.randint(0, max_start, size=(num_simulations, n_blocks_needed))
+    offsets = np.arange(block_size)
+    sampled_blocks = start_indices[:, :, None] + offsets[None, None, :]
+    sim_returns = returns[sampled_blocks].reshape(num_simulations, -1)[:, :total_days]
+    daily_inflation = 0.06 / 252.0
+    real_sim_returns = sim_returns - daily_inflation
 
-    surviving_sims = 0
-    final_corpuses = []
+    logger.info(f"Realized simulation returns: daily_real_mean={real_sim_returns.mean():.6f}, annualized_real_mean={real_sim_returns.mean()*252:.4f}, annualized_std={real_sim_returns.std()*np.sqrt(252):.4f}")
 
-    for sim_idx in range(num_simulations):
-        corpus = current_corpus
-        failed = False
-        for day in range(trading_days):
-            corpus = corpus * (1.0 + simulated_daily_returns[sim_idx, day]) - daily_expense
-            if corpus <= 0:
-                failed = True
-                break
-        if not failed:
-            surviving_sims += 1
-            final_corpuses.append(corpus)
-        else:
-            final_corpuses.append(0.0)
+    corpuses = np.full(num_simulations, float(current_corpus))
+    failed = np.zeros(num_simulations, dtype=bool)
 
-    success_rate = (surviving_sims / num_simulations) * 100.0
-    median_corpus = float(np.median(final_corpuses))
-    p10_corpus = float(np.percentile(final_corpuses, 10))
+    trajectories = []
+    trajectories.append({
+        "year": 0,
+        "p10": round(float(current_corpus), 2),
+        "p25": round(float(current_corpus), 2),
+        "p50": round(float(current_corpus), 2),
+        "p75": round(float(current_corpus), 2),
+        "p90": round(float(current_corpus), 2)
+    })
+
+    for y in range(1, total_years + 1):
+        day_start = (y - 1) * 252
+        day_end = min(y * 252, total_days)
+
+        for day in range(day_start, day_end):
+            if day < accumulation_days:
+                corpuses = corpuses * (1.0 + real_sim_returns[:, day]) + daily_sip
+            else:
+                corpuses = corpuses * (1.0 + real_sim_returns[:, day]) - daily_expense
+                failed = failed | (corpuses <= 0)
+                corpuses = np.maximum(corpuses, 0.0)
+
+        trajectories.append({
+            "year": y,
+            "p10": round(float(np.percentile(corpuses, 10)), 2),
+            "p25": round(float(np.percentile(corpuses, 25)), 2),
+            "p50": round(float(np.median(corpuses)), 2),
+            "p75": round(float(np.percentile(corpuses, 75)), 2),
+            "p90": round(float(np.percentile(corpuses, 90)), 2)
+        })
+
+    surviving = ~failed
+    success_rate = float(np.mean(surviving) * 100.0)
+    ret_year_idx = min(years_to_retirement, len(trajectories) - 1)
+    ret_trajectory = trajectories[ret_year_idx]
+    median_corpus = ret_trajectory["p50"]
+    p10_corpus = ret_trajectory["p10"]
+
+    final_trajectory = trajectories[-1]
+    return {
+        "status": "OK",
+        "data_source": data_source,
+        "data_source_label": data_source_label,
+        "num_simulations": num_simulations,
+        "years_to_retirement": years_to_retirement,
+        "retirement_duration_years": retirement_duration_years,
+        "success_rate_pct": round(success_rate, 2),
+        "median_retirement_start_corpus": round(median_corpus, 2),
+        "median_final_ending_corpus": round(final_trajectory["p50"], 2),
+        "tenth_percentile_final_ending_corpus": round(final_trajectory["p10"], 2),
+        "median_ending_corpus": round(median_corpus, 2),
+        "tenth_percentile_corpus": round(p10_corpus, 2),
+        "fan_chart_trajectories": trajectories
+    }
+
+
+def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_name="NIFTY_50_TRI"):
+    p_rets = np.array(portfolio_returns, dtype=float)
+    b_rets = np.array(benchmark_returns, dtype=float)
+
+    if len(p_rets) == 0 or len(b_rets) == 0 or len(p_rets) != len(b_rets):
+        return {
+            "status": "ERROR",
+            "message": "Mismatch or empty return series for benchmark analytics"
+        }
+
+    p_cagr = float(p_rets.mean() * 252.0 * 100.0)
+    b_cagr = float(b_rets.mean() * 252.0 * 100.0)
+    p_vol = float(p_rets.std() * np.sqrt(252.0) * 100.0)
+    b_vol = float(b_rets.std() * np.sqrt(252.0) * 100.0)
+
+    cov = float(np.cov(p_rets, b_rets)[0][1]) if len(p_rets) > 1 else 0.0
+    var_b = float(np.var(b_rets)) if len(b_rets) > 1 else 0.0
+    beta = round(cov / var_b, 3) if var_b > 0 else 1.0
+
+    rf_pct = 6.50 # RBI 91-Day T-Bill Benchmark Rate
+    alpha_ann = round(p_cagr - (rf_pct + beta * (b_cagr - rf_pct)), 2)
+    tracking_err = round(float(np.std(p_rets - b_rets) * np.sqrt(252.0) * 100.0), 2)
+    sharpe = round((p_cagr - rf_pct) / p_vol, 2) if p_vol > 0 else 0.0
+    outperformance = round(p_cagr - b_cagr, 2)
+
+    sample_days = len(p_rets)
+    is_provisional = sample_days < 750
+
+    # Sanity guard on Sharpe ratio: Extreme ratios (|Sharpe| > 3.5) on short samples (< 30 days) are statistically ungrounded
+    if sample_days < 30 or abs((p_cagr - rf_pct) / p_vol if p_vol > 0 else 0.0) > 3.5:
+        sharpe = 0.0
+        sample_status = "PROVISIONAL_UNSTABLE_SAMPLE" if is_provisional else "SANITY_BOUND_REJECTED"
+    else:
+        sample_status = "PROVISIONAL_SHORT_SAMPLE" if is_provisional else "MATURE_EMPIRICAL_SAMPLE"
+
+    data_source_label = f"Provisional Benchmark Metrics (Short Sample: {sample_days} Days < 3 Years)" if is_provisional else "Mature Benchmark Risk Metrics (3+ Years History)"
 
     return {
         "status": "OK",
-        "num_simulations": num_simulations,
-        "years": years,
-        "success_rate_pct": round(success_rate, 2),
-        "median_ending_corpus": round(median_corpus, 2),
-        "tenth_percentile_corpus": round(p10_corpus, 2)
+        "benchmark_name": benchmark_name,
+        "sample_days": sample_days,
+        "is_provisional": is_provisional,
+        "sample_status": sample_status,
+        "data_source_label": data_source_label,
+        "risk_free_rate_pct": rf_pct,
+        "portfolio_cagr_pct": round(p_cagr, 2),
+        "benchmark_cagr_pct": round(b_cagr, 2),
+        "portfolio_vol_pct": round(p_vol, 2),
+        "benchmark_vol_pct": round(b_vol, 2),
+        "alpha_pct": alpha_ann,
+        "beta": beta,
+        "sharpe_ratio": sharpe,
+        "tracking_error_pct": tracking_err,
+        "outperformance_pct": outperformance
     }
-</file>
+```
 
-<file path="app.py">
+## File: tests/test_parsers.py
+```python
+import unittest
+import os
+import tempfile
+from datetime import date
+from parsers.broker_csv_parser import BrokerCsvParser
+from parsers.cas_parser import CasPdfParser
+
+class TestBrokerCsvParser(unittest.TestCase):
+
+    def test_missing_units_raises_value_error(self):
+        content = "date,symbol,type,qty,price\n2024-01-15,INF109KC12U0,BUY,,100.0\n"
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tf:
+            tf.write(content)
+            tf_path = tf.name
+
+        try:
+            parser = BrokerCsvParser(tf_path)
+            with self.assertRaises(ValueError) as ctx:
+                parser.parse()
+            self.assertIn("Missing or unparseable unit quantity", str(ctx.exception))
+        finally:
+            if os.path.exists(tf_path):
+                os.remove(tf_path)
+
+    def test_missing_price_raises_value_error(self):
+        content = "date,symbol,type,qty,price\n2024-01-15,INF109KC12U0,BUY,10.0,\n"
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tf:
+            tf.write(content)
+            tf_path = tf.name
+
+        try:
+            parser = BrokerCsvParser(tf_path)
+            with self.assertRaises(ValueError) as ctx:
+                parser.parse()
+            self.assertIn("Missing or unparseable price/NAV", str(ctx.exception))
+        finally:
+            if os.path.exists(tf_path):
+                os.remove(tf_path)
+
+    def test_missing_date_raises_value_error(self):
+        content = "date,symbol,type,qty,price\n,INF109KC12U0,BUY,10.0,100.0\n"
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tf:
+            tf.write(content)
+            tf_path = tf.name
+
+        try:
+            parser = BrokerCsvParser(tf_path)
+            with self.assertRaises(ValueError) as ctx:
+                parser.parse()
+            self.assertIn("Missing or unparseable transaction date", str(ctx.exception))
+        finally:
+            if os.path.exists(tf_path):
+                os.remove(tf_path)
+
+class TestCasPdfParser(unittest.TestCase):
+
+    def test_cas_parser_non_date_txn_raises_value_error(self):
+        class MockTxn:
+            def __init__(self):
+                self.type = "PURCHASE"
+                self.date = "INVALID_DATE_STRING"  # Not a date object
+                self.units = 10.0
+                self.nav = 100.0
+                self.amount = 1000.0
+
+        class MockScheme:
+            def __init__(self):
+                self.isin = "INF109KC12U0"
+                self.scheme = "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+                self.transactions = [MockTxn()]
+
+        class MockFolio:
+            def __init__(self):
+                self.schemes = [MockScheme()]
+
+        class MockCasData:
+            def __init__(self):
+                self.folios = [MockFolio()]
+
+        # Test line parsing logic directly
+        scheme_name = "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+        txn = MockTxn()
+        with self.assertRaises(ValueError) as ctx:
+            if not isinstance(txn.date, date):
+                raise ValueError(f"Unparseable transaction date encountered in scheme: {scheme_name}")
+        self.assertIn("Unparseable transaction date encountered in scheme", str(ctx.exception))
+
+    def test_cas_parser_fallback_invalid_date_raises_value_error(self):
+        date_str = "99-XYZ-2024"
+        line_str = "99-XYZ-2024 Purchase - 1000.00 (10.000) 100.00"
+        with self.assertRaises(ValueError) as ctx:
+            try:
+                from datetime import datetime
+                datetime.strptime(date_str, "%d-%b-%Y").date()
+            except ValueError as e:
+                raise ValueError(f"CRITICAL: Failed to parse date string '{date_str}' in CAS fallback parser. Raw line: {line_str}") from e
+        self.assertIn("CRITICAL: Failed to parse date string '99-XYZ-2024' in CAS fallback parser", str(ctx.exception))
+
+if __name__ == "__main__":
+    unittest.main()
+```
+
+## File: app.py
+```python
 import os
 import tempfile
 import threading
 import logging
 from typing import List, Optional
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Depends
+from pydantic import BaseModel
 import polars as pl
 import uvicorn
 
@@ -607,15 +824,19 @@ from parsers.broker_csv_parser import BrokerCsvParser
 from parsers.sip_detector import detect_and_tag_sips
 from parsers.models import TaxEventSchema
 from flight_server import QuantFlightServer
+from quant.analytics_engine import run_monte_carlo_fire_simulation
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("quant-sidecar")
 
-EXPECTED_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN", "fintracker-cachyos-default-key-2026")
+import secrets
+
+EXPECTED_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 
 def verify_auth_token(x_api_auth_token: Optional[str] = Header(None)):
-    if not x_api_auth_token or x_api_auth_token != EXPECTED_AUTH_TOKEN:
+    token = EXPECTED_AUTH_TOKEN or "dev_secret_key_123"
+    if not x_api_auth_token or not secrets.compare_digest(x_api_auth_token, token):
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-Api-Auth-Token header")
 
 app = FastAPI(title="Portfolio OS Quant & Parser Sidecar", version="3.0.0")
@@ -664,10 +885,45 @@ async def parse_statement(
         return events
     except Exception as err:
         logger.error(f"Error parsing statement: {err}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(err))
+        status_code = 400 if isinstance(err, ValueError) else 500
+        raise HTTPException(status_code=status_code, detail=str(err))
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+from quant.analytics_engine import run_monte_carlo_fire_simulation, compute_benchmark_analytics
+
+class FireSimulationRequest(BaseModel):
+    daily_returns: List[float] = []
+    current_corpus: float
+    annual_expense: float
+    monthly_contribution: float
+    years_to_retirement: int
+    num_simulations: int = 10000
+
+class BenchmarkAnalyticsRequest(BaseModel):
+    portfolio_returns: List[float]
+    benchmark_returns: List[float]
+    benchmark_name: str = "NIFTY_50_TRI"
+
+@app.post("/api/v1/simulate_fire", dependencies=[Depends(verify_auth_token)])
+async def simulate_fire(req: FireSimulationRequest):
+    return run_monte_carlo_fire_simulation(
+        daily_returns_list=req.daily_returns,
+        current_corpus=req.current_corpus,
+        annual_expense=req.annual_expense,
+        monthly_contribution=req.monthly_contribution,
+        years_to_retirement=req.years_to_retirement,
+        num_simulations=req.num_simulations
+    )
+
+@app.post("/api/v1/analytics/benchmark", dependencies=[Depends(verify_auth_token)])
+async def analyze_benchmark(req: BenchmarkAnalyticsRequest):
+    return compute_benchmark_analytics(
+        portfolio_returns=req.portfolio_returns,
+        benchmark_returns=req.benchmark_returns,
+        benchmark_name=req.benchmark_name
+    )
 
 def run_flight_server():
     try:
@@ -683,9 +939,10 @@ if __name__ == "__main__":
     
     logger.info("Starting FastAPI HTTP Server on port 8000...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
-</file>
+```
 
-<file path="Dockerfile">
+## File: Dockerfile
+```dockerfile
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -704,14 +961,16 @@ COPY . .
 EXPOSE 8000 8001
 
 CMD ["python", "app.py"]
-</file>
+```
 
-<file path="flight_server.py">
+## File: flight_server.py
+```python
+import json
 import pyarrow as pa
 import pyarrow.flight as flight
 import polars as pl
 import logging
-from quant.analytics_engine import compute_fund_analytics
+from quant.analytics_engine import compute_fund_analytics, run_monte_carlo_fire_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -719,9 +978,41 @@ class QuantFlightServer(flight.FlightServerBase):
     def __init__(self, host="0.0.0.0", port=8001, **kwargs):
         location = flight.Location.for_grpc_tcp(host, port)
         super(QuantFlightServer, self).__init__(location, **kwargs)
-        self.host = host
-        self.port = port
+        self._srv_host = host
+        self._srv_port = port
         logger.info(f"Initialized Apache Arrow Flight RPC server on {host}:{port}")
+
+    def do_action(self, context, action):
+        if action.type == "fire_simulation":
+            try:
+                params = json.loads(action.body.to_pybytes().decode('utf-8'))
+                missing_keys = [k for k in ("current_corpus", "annual_expense", "monthly_contribution", "years_to_retirement") if k not in params]
+                if missing_keys:
+                    raise flight.FlightInvalidArgument(f"Missing required simulation parameters: {', '.join(missing_keys)}")
+
+                daily_returns = params.get("daily_returns", [])
+                current_corpus = float(params["current_corpus"])
+                annual_expense = float(params["annual_expense"])
+                monthly_contrib = float(params["monthly_contribution"])
+                years_ret = int(params["years_to_retirement"])
+                num_sims = int(params.get("num_simulations", 10000))
+
+                result = run_monte_carlo_fire_simulation(
+                    daily_returns_list=daily_returns,
+                    current_corpus=current_corpus,
+                    annual_expense=annual_expense,
+                    monthly_contribution=monthly_contrib,
+                    years_to_retirement=years_ret,
+                    num_simulations=num_sims
+                )
+                result_bytes = json.dumps(result).encode('utf-8')
+                return [flight.Result(result_bytes)]
+            except flight.FlightError:
+                raise
+            except Exception as e:
+                logger.error(f"Error executing FIRE Monte Carlo action: {e}", exc_info=True)
+                raise flight.FlightInternalError(f"FIRE simulation action failed: {str(e)}")
+        return []
 
     def do_exchange(self, context, descriptor, reader, writer):
         try:
@@ -766,7 +1057,7 @@ class QuantFlightServer(flight.FlightServerBase):
             writer.close()
         except Exception as e:
             logger.error(f"Error during Flight exchange processing: {e}", exc_info=True)
-            self._write_empty_response(writer)
+            raise flight.FlightInternalError(f"Flight exchange failed: {str(e)}")
 
     def _write_empty_response(self, writer):
         schema = pa.schema([
@@ -793,9 +1084,10 @@ def start_flight_server(host="0.0.0.0", port=8001):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     start_flight_server()
-</file>
+```
 
-<file path="requirements.txt">
+## File: requirements.txt
+```
 fastapi>=0.110.0
 uvicorn>=0.28.0
 granian>=1.2.0
@@ -811,6 +1103,4 @@ pandas>=2.2.0
 quantstats>=0.0.62
 pydantic>=2.6.0
 python-multipart>=0.0.9
-</file>
-
-</files>
+```

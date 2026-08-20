@@ -6461,7 +6461,11 @@ public class BucketConfigLoader {
     }
 
     public static Map<String, Map<String, Double>> getSipAllocations() {
-        BucketTargetVersion version = getActiveVersion(LocalDate.now());
+        return getSipAllocations(LocalDate.now());
+    }
+
+    public static Map<String, Map<String, Double>> getSipAllocations(LocalDate date) {
+        BucketTargetVersion version = getActiveVersion(date);
         Map<String, Map<String, Double>> result = new LinkedHashMap<>();
 
         if (version != null && version.targets() != null) {
@@ -6479,6 +6483,30 @@ public class BucketConfigLoader {
             }
         }
         return result;
+    }
+
+    public static Map<String, Double> getRenormalizedSipAllocations(LocalDate date) {
+        Map<String, Map<String, Double>> fullAlloc = getSipAllocations(date);
+        Map<String, Double> nonGoldAlloc = new LinkedHashMap<>();
+        double totalWeight = 0.0;
+
+        for (Map.Entry<String, Map<String, Double>> bucketEntry : fullAlloc.entrySet()) {
+            if ("GOLD_SILVER".equalsIgnoreCase(bucketEntry.getKey())) {
+                continue; // Gold is dampener-driven, excluded from flat monthly SIP
+            }
+            for (Map.Entry<String, Double> fundEntry : bucketEntry.getValue().entrySet()) {
+                nonGoldAlloc.put(fundEntry.getKey(), fundEntry.getValue());
+                totalWeight += fundEntry.getValue();
+            }
+        }
+
+        Map<String, Double> renormalized = new LinkedHashMap<>();
+        if (totalWeight > 0.0) {
+            for (Map.Entry<String, Double> entry : nonGoldAlloc.entrySet()) {
+                renormalized.put(entry.getKey(), entry.getValue() / totalWeight);
+            }
+        }
+        return renormalized;
     }
 
     public static BucketTargetVersion getActiveVersion(LocalDate date) {
@@ -6565,7 +6593,7 @@ public class BucketConfigLoader {
             }
             case "LIQUID_BUFFER" -> {
                 return List.of(
-                    new PreferredFundConfig("INF209K01157", "Invesco India Arbitrage Fund", 1.00)
+                    new PreferredFundConfig("INF205K01KR8", "Invesco India Arbitrage Fund", 1.00)
                 );
             }
             default -> {
@@ -6586,7 +6614,10 @@ public class BucketConfigLoader {
         locations.add(new File("/app/rules/bucket_targets.yaml"));
 
         for (File f : locations) {
-            if (f.exists()) return f;
+            if (f.exists()) {
+                System.out.println("BucketConfigLoader: Loaded config from " + f.getAbsolutePath());
+                return f;
+            }
         }
         return locations.get(0);
     }
@@ -10110,16 +10141,7 @@ public class ConsolidationRebalanceEngine {
         String nextScheduledWindow
     ) {}
 
-    private static final Map<String, Pair<String, BigDecimal>> CORE_SIP_WEIGHTS = new HashMap<>();
 
-    static {
-        CORE_SIP_WEIGHTS.put("NIFTY_LARGEMIDCAP_250", new Pair<>("Nifty LargeMidcap 250 Index Fund", new BigDecimal("33.0")));
-        CORE_SIP_WEIGHTS.put("PARAG_PARIKH_FLEXI", new Pair<>("Parag Parikh Flexi Cap Fund", new BigDecimal("24.0")));
-        CORE_SIP_WEIGHTS.put("ARBITRAGE_LIQUID", new Pair<>("Kotak Equity Arbitrage / Liquid Buffer", new BigDecimal("16.0")));
-        CORE_SIP_WEIGHTS.put("NIFTY_VALUE_30", new Pair<>("Nifty200 Value 30 Index Fund", new BigDecimal("11.0")));
-        CORE_SIP_WEIGHTS.put("NIFTY_MOMENTUM_50", new Pair<>("Nifty200 Momentum Quality 50 Index Fund", new BigDecimal("9.0")));
-        CORE_SIP_WEIGHTS.put("NIFTY_SMALLCAP_250", new Pair<>("Nifty Smallcap 250 Index Fund", new BigDecimal("7.0")));
-    }
 
     public static ConsolidationPreviewResult calculateConsolidation(
         List<Lot> openLots,
@@ -10208,22 +10230,20 @@ public class ConsolidationRebalanceEngine {
         BigDecimal effectiveProceeds = netPostTaxProceeds.compareTo(BigDecimal.ZERO) > 0 ? netPostTaxProceeds : totalProceeds;
 
         List<ExistingSipAllocation> proRataAllocations = new ArrayList<>();
-        Map<String, Map<String, Double>> sipAllocMap = com.portfolioos.core.rules.BucketConfigLoader.getSipAllocations();
+        Map<String, Double> sipAllocMap = com.portfolioos.core.rules.BucketConfigLoader.getRenormalizedSipAllocations(currentDate);
 
-        for (Map.Entry<String, Map<String, Double>> bucketEntry : sipAllocMap.entrySet()) {
-            for (Map.Entry<String, Double> fundEntry : bucketEntry.getValue().entrySet()) {
-                String fundId = fundEntry.getKey();
-                double sipWeightFrac = fundEntry.getValue();
-                BigDecimal weightPct = BigDecimal.valueOf(sipWeightFrac * 100.0).setScale(2, RoundingMode.HALF_UP);
-                BigDecimal deployAmt = effectiveProceeds.multiply(BigDecimal.valueOf(sipWeightFrac)).setScale(2, RoundingMode.HALF_UP);
+        for (Map.Entry<String, Double> fundEntry : sipAllocMap.entrySet()) {
+            String fundId = fundEntry.getKey();
+            double sipWeightFrac = fundEntry.getValue();
+            BigDecimal weightPct = BigDecimal.valueOf(sipWeightFrac * 100.0).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal deployAmt = effectiveProceeds.multiply(BigDecimal.valueOf(sipWeightFrac)).setScale(2, RoundingMode.HALF_UP);
 
-                proRataAllocations.add(new ExistingSipAllocation(
-                    fundId,
-                    fundId,
-                    weightPct,
-                    deployAmt
-                ));
-            }
+            proRataAllocations.add(new ExistingSipAllocation(
+                fundId,
+                fundId,
+                weightPct,
+                deployAmt
+            ));
         }
 
         int month = currentDate.getMonthValue();
@@ -10246,16 +10266,7 @@ public class ConsolidationRebalanceEngine {
         );
     }
 
-    private static class Pair<A, B> {
-        private final A first;
-        private final B second;
-        public Pair(A first, B second) {
-            this.first = first;
-            this.second = second;
-        }
-        public A first() { return first; }
-        public B second() { return second; }
-    }
+
 }
 ````
 
@@ -13455,10 +13466,12 @@ function renderTargetFundProgression(plan, holdings, bucketTargetsConfig) {
     fundMap[shortName].targetPct = Math.max(fundMap[shortName].targetPct, targetPct);
   });
 
+  const totalPostNetWorth = Object.values(fundMap).reduce((sum, f) => sum + Math.max(0, f.curVal - f.sellAmt + f.buyAmt), 0);
+
   const fundItems = Object.values(fundMap).map(f => {
     const postVal = Math.max(0, f.curVal - f.sellAmt + f.buyAmt);
     const curPct = totalNetWorth > 0 ? (f.curVal / totalNetWorth) * 100 : 0;
-    const postPct = totalNetWorth > 0 ? (postVal / totalNetWorth) * 100 : 0;
+    const postPct = totalPostNetWorth > 0 ? (postVal / totalPostNetWorth) * 100 : 0;
     return {
       shortName: f.shortName,
       curPct,
@@ -17931,16 +17944,12 @@ class LegacyFundWaterfallAuditTest {
         com.portfolioos.core.matcher.FifoMatcher.FifoResult fifoResult = matcher.processEvents(events);
         List<Lot> openLots = fifoResult.openLots();
 
-        Map<String, BigDecimal> navMap = new HashMap<>();
-        for (Lot lot : openLots) {
-            navMap.put(lot.assetId(), lot.costPerUnit() != null ? lot.costPerUnit() : new BigDecimal("100.00"));
-        }
+        Map<String, BigDecimal> navMap = Map.of();
 
         LocalDate today = LocalDate.of(2026, 8, 16);
         BigDecimal totalVal = BigDecimal.ZERO;
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), BigDecimal.ONE);
-            totalVal = totalVal.add(lot.remainingUnits().multiply(nav));
+            totalVal = totalVal.add(lot.remainingUnits().multiply(lot.costPerUnit()));
         }
 
         RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
@@ -17949,18 +17958,48 @@ class LegacyFundWaterfallAuditTest {
         );
 
         assertNotNull(plan);
+        assertNotNull(plan.sellSide(), "SellSide plan must not be null");
+        assertNotNull(plan.sellSide().waterfall(), "Waterfall tiers list must not be null");
+
         System.out.println("=== REAL PORTFOLIO FRESH E2E BASELINE ===");
-        if (plan.sellSide() != null && plan.sellSide().waterfall() != null) {
-            System.out.println("Total Required Pool: ₹" + plan.sellSide().totalRequired());
-            for (WaterfallTierDto tier : plan.sellSide().waterfall()) {
-                System.out.println("Tier: " + tier.tierLabel() + " (" + tier.tier() + ") -> Sold: ₹" + tier.sold());
-                if (tier.lots() != null) {
-                    for (RebalanceLotImpactDto lot : tier.lots()) {
-                        System.out.println("   Lot " + lot.lotId() + " (" + lot.fundName() + "): ₹" + lot.saleProceeds());
-                    }
+        BigDecimal totalSold = BigDecimal.ZERO;
+        BigDecimal legacySold = BigDecimal.ZERO;
+        BigDecimal coreSold = BigDecimal.ZERO;
+
+        System.out.println("Total Required Pool: ₹" + plan.sellSide().totalRequired());
+        for (WaterfallTierDto tier : plan.sellSide().waterfall()) {
+            System.out.println("Tier: " + tier.tierLabel() + " (" + tier.tier() + ") -> Sold: ₹" + tier.sold());
+            BigDecimal tierSold = tier.sold() != null ? tier.sold() : BigDecimal.ZERO;
+            totalSold = totalSold.add(tierSold);
+
+            if ("LEGACY_FUND".equals(tier.tier())) {
+                legacySold = legacySold.add(tierSold);
+            } else if ("CORE_FUND".equals(tier.tier())) {
+                coreSold = coreSold.add(tierSold);
+            }
+
+            if (tier.lots() != null) {
+                for (RebalanceLotImpactDto lot : tier.lots()) {
+                    System.out.println("   Lot " + lot.lotId() + " (" + lot.fundName() + "): ₹" + lot.saleProceeds());
                 }
             }
         }
+
+        // 1. Invariant Assertion: Legacy fund tier MUST exhaust available LTCG lots up to 50% scheme cap first
+        assertEquals(new BigDecimal("130583.52"), legacySold.setScale(2, java.math.RoundingMode.HALF_UP),
+            "Legacy tier must sell exactly ₹130,583.52 (exhausting 50% scheme cap for all legacy LTCG lots) before touching core");
+
+        // 2. Invariant Assertion: Core fund tier supplies remaining available LTCG lots
+        assertEquals(new BigDecimal("124494.74"), coreSold.setScale(2, java.math.RoundingMode.HALF_UP),
+            "Core tier must sell exactly ₹124,494.74 (all remaining LTCG core lots available)");
+
+        // 3. Invariant Assertion: Remaining shortfall of ₹34,763.95 MUST be STCG lots that are deferred under Rule 2a
+        BigDecimal actualExecuted = legacySold.add(coreSold);
+        BigDecimal expectedDeferred = new BigDecimal("34763.95");
+        assertEquals(new BigDecimal("289842.21"), plan.sellSide().totalRequired(),
+            "Total required sell pool under per-lot cost basis must equal ₹289,842.21");
+        assertEquals(0, plan.sellSide().totalRequired().subtract(actualExecuted).compareTo(expectedDeferred),
+            "STCG Protection Invariant: Deferred shortfall must equal exactly ₹34,763.95 (all unexecuted lots are STCG < 365 days)");
     }
 }
 ````
@@ -18146,14 +18185,14 @@ class RebalanceSankeyDtoTest {
         Lot coreLot = new Lot("lot-1", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", acqDate, new BigDecimal("4500"), new BigDecimal("4500"), nav, new BigDecimal("450000.00"), false, null);
         Lot satLot = new Lot("lot-2", "INF204K01K15", "Motilal Oswal Smallcap Fund", acqDate, new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("150000.00"), false, null);
         Lot goldLot = new Lot("lot-3", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", acqDate, new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("150000.00"), false, null);
-        Lot liqLot = new Lot("lot-4", "INF209K01157", "Invesco India Arbitrage Fund", acqDate, new BigDecimal("2500"), new BigDecimal("2500"), nav, new BigDecimal("250000.00"), false, null);
+        Lot liqLot = new Lot("lot-4", "INF205K01KR8", "Invesco India Arbitrage Fund", acqDate, new BigDecimal("2500"), new BigDecimal("2500"), nav, new BigDecimal("250000.00"), false, null);
 
         List<Lot> openLots = List.of(coreLot, satLot, goldLot, liqLot);
         Map<String, BigDecimal> navMap = Map.of(
             "INF109KC12U0", nav,
             "INF204K01K15", nav,
             "INF247L01BM8", nav,
-            "INF209K01157", nav
+            "INF205K01KR8", nav
         );
 
         // Targets: Core = 60%, Satellite = 20%, Gold = 10%, Liquid = 10%
@@ -18985,7 +19024,7 @@ class BucketAllocationTest {
         assertEquals(BucketEngine.Bucket.GOLD_SILVER, goldBucket, "Gold/Silver category match must take priority over legacy check");
 
         // Arbitrage: should match LIQUID_BUFFER category FIRST
-        BucketEngine.Bucket liquidBucket = BucketEngine.classifyAssetToBucket("INF209K01157", "Invesco India Arbitrage Fund", activeOrPreferred);
+        BucketEngine.Bucket liquidBucket = BucketEngine.classifyAssetToBucket("INF205K01KR8", "Invesco India Arbitrage Fund", activeOrPreferred);
         assertEquals(BucketEngine.Bucket.LIQUID_BUFFER, liquidBucket, "Liquid/Arbitrage keyword match must take priority over legacy check");
 
         // Preferred Core Fund: matches EQUITY_CORE
@@ -19007,7 +19046,7 @@ class BucketAllocationTest {
         Lot coreLot = new Lot("lot-1", "INF109KC12U0", "ICICI LargeMidcap 250", date, new BigDecimal("4500"), new BigDecimal("4500"), nav, new BigDecimal("450000.00"), false, null);
         Lot satLot = new Lot("lot-2", "INF204K01K15", "Motilal Oswal Smallcap Fund", date, new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("150000.00"), false, null);
         Lot goldLot = new Lot("lot-3", "INF247L01BM8", "Motilal Gold Silver FoF", date, new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("150000.00"), false, null);
-        Lot liqLot = new Lot("lot-4", "INF209K01157", "Invesco Arbitrage Fund", date, new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("150000.00"), false, null);
+        Lot liqLot = new Lot("lot-4", "INF205K01KR8", "Invesco Arbitrage Fund", date, new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("150000.00"), false, null);
         Lot legLot = new Lot("lot-5", "INF109K01234", "Nifty 100 EW Fund", date, new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
 
         List<Lot> openLots = List.of(coreLot, satLot, goldLot, liqLot, legLot);
@@ -19015,7 +19054,7 @@ class BucketAllocationTest {
             "INF109KC12U0", nav,
             "INF204K01K15", nav,
             "INF247L01BM8", nav,
-            "INF209K01157", nav,
+            "INF205K01KR8", nav,
             "INF109K01234", nav
         );
 
@@ -19026,7 +19065,7 @@ class BucketAllocationTest {
             new BucketEngine.BucketTarget(BucketEngine.Bucket.LIQUID_BUFFER, new BigDecimal("15.00"), new BigDecimal("5.00"))
         );
 
-        Set<String> activeOrPreferred = Set.of("INF109KC12U0", "INF204K01K15", "INF247L01BM8", "INF209K01157");
+        Set<String> activeOrPreferred = Set.of("INF109KC12U0", "INF204K01K15", "INF247L01BM8", "INF205K01KR8");
 
         BucketEngine.RebalanceEngineResult result = BucketEngine.evaluateRebalance(
             openLots, List.of(), navMap, date, BigDecimal.ZERO, BigDecimal.ZERO, targets, "2026-27", activeOrPreferred
@@ -19082,7 +19121,30 @@ class BucketAllocationTest {
         assertEquals(0, new BigDecimal("10.00").compareTo(legStatus.currentPct()));
         assertEquals(0, BigDecimal.ZERO.compareTo(legStatus.targetPct()), "Target % for LEGACY_HOLDINGS must be 0");
         assertEquals(0, new BigDecimal("10.00").compareTo(legStatus.driftPct()));
-        assertFalse(legStatus.isDrifted(), "LEGACY_HOLDINGS isDrifted must be forced false");
+        assertFalse(statusMap.get(BucketEngine.Bucket.LEGACY_HOLDINGS).isDrifted(), "LEGACY_HOLDINGS must never be marked drifted");
+    }
+
+    @Test
+    @DisplayName("Renormalized SIP allocations test: Gold/Silver excluded, 6 non-Gold funds sum to 1.0 (100%)")
+    void testRenormalizedSipAllocationsExcludingGold() {
+        LocalDate date = LocalDate.of(2026, 8, 20); // v2.0 active
+        Map<String, Double> renormalized = com.portfolioos.core.rules.BucketConfigLoader.getRenormalizedSipAllocations(date);
+
+        assertEquals(6, renormalized.size(), "Renormalized map must contain exactly 6 non-Gold funds");
+        assertFalse(renormalized.containsKey("INF247L01BM8"), "Gold FoF must be excluded from flat monthly SIP");
+
+        double sum = 0.0;
+        for (double w : renormalized.values()) {
+            sum += w;
+        }
+        assertEquals(1.0, sum, 1e-6, "Sum of renormalized non-Gold SIP weights must equal 100% (1.0)");
+
+        assertEquals(0.3060, renormalized.get("INF109KC12U0"), 0.001, "ICICI LargeMidcap 250 must be ~30.60%");
+        assertEquals(0.2203, renormalized.get("INF879O01027"), 0.001, "Parag Parikh Flexi Cap must be ~22.03%");
+        assertEquals(0.1684, renormalized.get("INF109KC13X2"), 0.001, "ICICI Value 30 must be ~16.84%");
+        assertEquals(0.1474, renormalized.get("INF754K01TN5"), 0.001, "Edelweiss Momentum must be ~14.74%");
+        assertEquals(0.1053, renormalized.get("INF205K01KR8"), 0.001, "Invesco Arbitrage must be ~10.53%");
+        assertEquals(0.0526, renormalized.get("INF204K01K15"), 0.001, "Nippon Small Cap must be ~5.26%");
     }
 }
 ````

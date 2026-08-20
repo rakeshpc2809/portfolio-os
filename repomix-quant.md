@@ -1,9 +1,9 @@
-This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
 
 # File Summary
 
 ## Purpose
-This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+This file contains a packed representation of the entire repository's contents.
 It is designed to be easily consumable by AI systems for analysis, code review,
 or other automated processes.
 
@@ -28,95 +28,30 @@ The content is organized as follows:
 ## Notes
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
-- Only files matching these patterns are included: quant-sidecar/**/*
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
 - Files are sorted by Git change count (files with more changes are at the bottom)
 
 # Directory Structure
 ```
-quant-sidecar/
-  parsers/
-    broker_csv_parser.py
-    cas_parser.py
-    models.py
-    sip_detector.py
-  quant/
-    analytics_engine.py
-  app.py
-  Dockerfile
-  flight_server.py
-  requirements.txt
+parsers/
+  broker_csv_parser.py
+  cas_parser.py
+  models.py
+  sip_detector.py
+quant/
+  analytics_engine.py
+tests/
+  test_parsers.py
+app.py
+Dockerfile
+flight_server.py
+requirements.txt
 ```
 
 # Files
 
-## File: quant-sidecar/parsers/models.py
-```python
-from enum import Enum
-from datetime import date, datetime
-from decimal import Decimal
-from typing import Optional
-from pydantic import BaseModel, Field
-
-class EventType(str, Enum):
-    ACQUISITION = "ACQUISITION"
-    SIP_INSTALMENT = "SIP_INSTALMENT"
-    DISPOSAL = "DISPOSAL"
-    BONUS = "BONUS"
-    SPLIT = "SPLIT"
-    DIVIDEND_REINVEST = "DIVIDEND_REINVEST"
-    SGB_INTEREST = "SGB_INTEREST"
-    SGB_MATURITY = "SGB_MATURITY"
-    MERGER = "MERGER"
-
-class TaxEventSchema(BaseModel):
-    id: str
-    asset_id: str = Field(..., alias="assetId")
-    asset_name: str = Field(..., alias="assetName")
-    isin: Optional[str] = None
-    event_type: EventType = Field(..., alias="eventType")
-    event_date: date = Field(..., alias="eventDate")
-    units: Decimal
-    price_per_unit: Decimal = Field(..., alias="pricePerUnit")
-    gross_amount: Decimal = Field(..., alias="grossAmount")
-    source_document_id: str = Field(..., alias="sourceDocumentId")
-    ingested_at: datetime = Field(default_factory=datetime.utcnow, alias="ingestedAt")
-
-    class Config:
-        populate_by_name = True
-
-    def unit_delta(self) -> Decimal:
-        if self.event_type == EventType.DISPOSAL or self.event_type == EventType.SGB_MATURITY:
-            return -self.units
-        elif self.event_type == EventType.SGB_INTEREST:
-            return Decimal("0.0")
-        return self.units
-```
-
-## File: quant-sidecar/Dockerfile
-```dockerfile
-FROM python:3.12-slim
-
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-EXPOSE 8000 8001
-
-CMD ["python", "app.py"]
-```
-
-## File: quant-sidecar/parsers/broker_csv_parser.py
+## File: parsers/broker_csv_parser.py
 ```python
 import uuid
 from datetime import datetime
@@ -151,7 +86,7 @@ class BrokerCsvParser:
                     asset_name = str(row[symbol_col]) if symbol_col and row.get(symbol_col) else "Broker Asset"
                     date_str = str(row[date_col]) if date_col and row.get(date_col) else ""
 
-                    event_date = datetime.now().date()
+                    event_date = None
                     if date_str:
                         for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d-%b-%Y"):
                             try:
@@ -159,6 +94,9 @@ class BrokerCsvParser:
                                 break
                             except ValueError:
                                 pass
+
+                    if event_date is None:
+                        raise ValueError(f"CRITICAL: Missing or unparseable transaction date for asset {asset_name} in CSV row: {row}. Ingestion aborted.")
 
                     txn_type_str = str(row[type_col]).upper() if type_col and row.get(type_col) else "BUY"
                     if any(x in txn_type_str for x in ["SELL", "REDEMPTION", "DISPOSAL", "SWITCH OUT"]):
@@ -171,13 +109,17 @@ class BrokerCsvParser:
                         event_type = EventType.ACQUISITION
 
                     units_val = row.get(qty_col)
-                    units = Decimal(str(abs(float(units_val)))) if units_val is not None and str(units_val).strip() != "" else Decimal("1")
-                    
+                    if units_val is None or str(units_val).strip() == "":
+                        raise ValueError(f"CRITICAL: Missing or unparseable unit quantity for asset {asset_name} on {event_date}. Ingestion aborted.")
+                    units = Decimal(str(abs(float(str(units_val).replace(',', '').strip()))))
+
                     price_val = row.get(price_col)
-                    price = Decimal(str(abs(float(price_val)))) if price_val is not None and str(price_val).strip() != "" else Decimal("0")
-                    
+                    if price_val is None or str(price_val).strip() == "":
+                        raise ValueError(f"CRITICAL: Missing or unparseable price/NAV for asset {asset_name} on {event_date}. Ingestion aborted.")
+                    price = Decimal(str(abs(float(str(price_val).replace(',', '').strip()))))
+
                     amt_val = row.get(amount_col)
-                    amount = Decimal(str(abs(float(amt_val)))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
+                    amount = Decimal(str(abs(float(str(amt_val).replace(',', '').strip())))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
 
                     events.append(
                         TaxEventSchema(
@@ -194,8 +136,12 @@ class BrokerCsvParser:
                             ingestedAt=datetime.now()
                         )
                     )
+                except ValueError:
+                    raise
                 except Exception:
                     continue
+        except ValueError:
+            raise
         except Exception:
             pass
 
@@ -203,7 +149,7 @@ class BrokerCsvParser:
         return detect_and_tag_sips(events)
 ```
 
-## File: quant-sidecar/parsers/cas_parser.py
+## File: parsers/cas_parser.py
 ```python
 import re
 import uuid
@@ -248,7 +194,10 @@ class CasPdfParser:
                         else:
                             event_type = EventType.ACQUISITION
 
-                        txn_date = txn.date if isinstance(txn.date, date) else datetime.now().date()
+                        if not isinstance(txn.date, date):
+                            raise ValueError(f"Unparseable transaction date encountered in scheme: {scheme_name}")
+                        txn_date = txn.date
+
                         units = Decimal(str(abs(txn.units or 0)))
                         price = Decimal(str(abs(txn.nav or 0)))
                         amount = Decimal(str(abs(txn.amount or 0)))
@@ -273,6 +222,8 @@ class CasPdfParser:
                             )
             if events:
                 return events
+        except ValueError:
+            raise
         except Exception as e:
             print(f"casparser notice: {e}, falling back to custom line parser.")
 
@@ -319,8 +270,8 @@ class CasPdfParser:
                             date_str, rest = match.groups()
                             try:
                                 event_date = datetime.strptime(date_str, "%d-%b-%Y").date()
-                            except ValueError:
-                                event_date = datetime.now().date()
+                            except ValueError as e:
+                                raise ValueError(f"CRITICAL: Failed to parse date string '{date_str}' in CAS fallback parser. Raw line: {line_str}") from e
 
                             num_tokens = TOKEN_REGEX.findall(rest)
 
@@ -373,7 +324,50 @@ class CasPdfParser:
         return detect_and_tag_sips(events)
 ```
 
-## File: quant-sidecar/parsers/sip_detector.py
+## File: parsers/models.py
+```python
+from enum import Enum
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Optional
+from pydantic import BaseModel, Field
+
+class EventType(str, Enum):
+    ACQUISITION = "ACQUISITION"
+    SIP_INSTALMENT = "SIP_INSTALMENT"
+    DISPOSAL = "DISPOSAL"
+    BONUS = "BONUS"
+    SPLIT = "SPLIT"
+    DIVIDEND_REINVEST = "DIVIDEND_REINVEST"
+    SGB_INTEREST = "SGB_INTEREST"
+    SGB_MATURITY = "SGB_MATURITY"
+    MERGER = "MERGER"
+
+class TaxEventSchema(BaseModel):
+    id: str
+    asset_id: str = Field(..., alias="assetId")
+    asset_name: str = Field(..., alias="assetName")
+    isin: Optional[str] = None
+    event_type: EventType = Field(..., alias="eventType")
+    event_date: date = Field(..., alias="eventDate")
+    units: Decimal
+    price_per_unit: Decimal = Field(..., alias="pricePerUnit")
+    gross_amount: Decimal = Field(..., alias="grossAmount")
+    source_document_id: str = Field(..., alias="sourceDocumentId")
+    ingested_at: datetime = Field(default_factory=datetime.utcnow, alias="ingestedAt")
+
+    class Config:
+        populate_by_name = True
+
+    def unit_delta(self) -> Decimal:
+        if self.event_type == EventType.DISPOSAL or self.event_type == EventType.SGB_MATURITY:
+            return -self.units
+        elif self.event_type == EventType.SGB_INTEREST:
+            return Decimal("0.0")
+        return self.units
+```
+
+## File: parsers/sip_detector.py
 ```python
 from typing import List
 from collections import defaultdict
@@ -436,282 +430,7 @@ def detect_and_tag_sips(events: List[TaxEventSchema], min_consecutive_matches: i
     return updated_events
 ```
 
-## File: quant-sidecar/requirements.txt
-```
-fastapi>=0.110.0
-uvicorn>=0.28.0
-granian>=1.2.0
-polars>=0.20.15
-pyarrow>=15.0.0
-pdfplumber>=0.11.0
-casparser>=0.7.0
-casparser-isin>=0.3.0
-numpy>=1.26.0
-scipy>=1.12.0
-yfinance>=0.2.37
-pandas>=2.2.0
-quantstats>=0.0.62
-pydantic>=2.6.0
-python-multipart>=0.0.9
-```
-
-## File: quant-sidecar/flight_server.py
-```python
-import json
-import pyarrow as pa
-import pyarrow.flight as flight
-import polars as pl
-import logging
-from quant.analytics_engine import compute_fund_analytics, run_monte_carlo_fire_simulation
-
-logger = logging.getLogger(__name__)
-
-class QuantFlightServer(flight.FlightServerBase):
-    def __init__(self, host="0.0.0.0", port=8001, **kwargs):
-        location = flight.Location.for_grpc_tcp(host, port)
-        super(QuantFlightServer, self).__init__(location, **kwargs)
-        self._srv_host = host
-        self._srv_port = port
-        logger.info(f"Initialized Apache Arrow Flight RPC server on {host}:{port}")
-
-    def do_action(self, context, action):
-        if action.type == "fire_simulation":
-            try:
-                params = json.loads(action.body.to_pybytes().decode('utf-8'))
-                missing_keys = [k for k in ("current_corpus", "annual_expense", "monthly_contribution", "years_to_retirement") if k not in params]
-                if missing_keys:
-                    raise flight.FlightInvalidArgument(f"Missing required simulation parameters: {', '.join(missing_keys)}")
-
-                daily_returns = params.get("daily_returns", [])
-                current_corpus = float(params["current_corpus"])
-                annual_expense = float(params["annual_expense"])
-                monthly_contrib = float(params["monthly_contribution"])
-                years_ret = int(params["years_to_retirement"])
-                num_sims = int(params.get("num_simulations", 10000))
-
-                result = run_monte_carlo_fire_simulation(
-                    daily_returns_list=daily_returns,
-                    current_corpus=current_corpus,
-                    annual_expense=annual_expense,
-                    monthly_contribution=monthly_contrib,
-                    years_to_retirement=years_ret,
-                    num_simulations=num_sims
-                )
-                result_bytes = json.dumps(result).encode('utf-8')
-                return [flight.Result(result_bytes)]
-            except flight.FlightError:
-                raise
-            except Exception as e:
-                logger.error(f"Error executing FIRE Monte Carlo action: {e}", exc_info=True)
-                raise flight.FlightInternalError(f"FIRE simulation action failed: {str(e)}")
-        return []
-
-    def do_exchange(self, context, descriptor, reader, writer):
-        try:
-            table = reader.read_all()
-            if table.num_rows == 0:
-                self._write_empty_response(writer)
-                return
-
-            df = pl.from_arrow(table)
-            results = []
-            unique_codes = df["amfi_code"].unique().to_list()
-
-            for code in unique_codes:
-                fund_df = df.filter(pl.col("amfi_code") == code)
-                nav_values = fund_df["nav_value"].to_list()
-                dates_list = fund_df["nav_date"].to_list() if "nav_date" in fund_df.columns else None
-
-                analytics = compute_fund_analytics(nav_values, dates=dates_list)
-
-                results.append({
-                    "amfi_code": str(code),
-                    "status": str(analytics.get("status", "OK")),
-                    "sharpe": float(analytics.get("sharpe", 0.0)),
-                    "sortino": float(analytics.get("sortino", 0.0)),
-                    "calmar": float(analytics.get("calmar", 0.0)),
-                    "max_drawdown": float(analytics.get("max_drawdown", 0.0)),
-                    "volatility_annual": float(analytics.get("volatility_annual", 0.0)),
-                    "var_95": float(analytics.get("var_95", 0.0)),
-                    "cvar_95": float(analytics.get("cvar_95", 0.0)),
-                    "beta": float(analytics.get("beta", 0.0))
-                })
-
-            if results:
-                out_df = pl.DataFrame(results)
-                out_table = out_df.to_arrow()
-            else:
-                self._write_empty_response(writer)
-                return
-
-            writer.begin(out_table.schema)
-            writer.write_table(out_table)
-            writer.close()
-        except Exception as e:
-            logger.error(f"Error during Flight exchange processing: {e}", exc_info=True)
-            raise flight.FlightInternalError(f"Flight exchange failed: {str(e)}")
-
-    def _write_empty_response(self, writer):
-        schema = pa.schema([
-            ("amfi_code", pa.string()),
-            ("status", pa.string()),
-            ("sharpe", pa.float64()),
-            ("sortino", pa.float64()),
-            ("calmar", pa.float64()),
-            ("max_drawdown", pa.float64()),
-            ("volatility_annual", pa.float64()),
-            ("var_95", pa.float64()),
-            ("cvar_95", pa.float64()),
-            ("beta", pa.float64())
-        ])
-        out_table = pa.Table.from_batches([], schema)
-        writer.begin(schema)
-        writer.write_table(out_table)
-        writer.close()
-
-def start_flight_server(host="0.0.0.0", port=8001):
-    server = QuantFlightServer(host, port)
-    server.serve()
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    start_flight_server()
-```
-
-## File: quant-sidecar/app.py
-```python
-import os
-import tempfile
-import threading
-import logging
-from typing import List, Optional
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Depends
-from pydantic import BaseModel
-import polars as pl
-import uvicorn
-
-from parsers.cas_parser import CasPdfParser
-from parsers.broker_csv_parser import BrokerCsvParser
-from parsers.sip_detector import detect_and_tag_sips
-from parsers.models import TaxEventSchema
-from flight_server import QuantFlightServer
-from quant.analytics_engine import run_monte_carlo_fire_simulation
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("quant-sidecar")
-
-import secrets
-
-EXPECTED_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
-
-def verify_auth_token(x_api_auth_token: Optional[str] = Header(None)):
-    token = EXPECTED_AUTH_TOKEN or "fintracker-cachyos-default-key-2026"
-    if not x_api_auth_token or not secrets.compare_digest(x_api_auth_token, token):
-        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-Api-Auth-Token header")
-
-app = FastAPI(title="Portfolio OS Quant & Parser Sidecar", version="3.0.0")
-
-@app.get("/health")
-def health_check():
-    return {"status": "UP", "engine": "Polars + FastAPI + Arrow Flight", "version": "3.0.0"}
-
-@app.post("/api/v1/parse", response_model=List[TaxEventSchema], dependencies=[Depends(verify_auth_token)])
-async def parse_statement(
-    file: UploadFile = File(...),
-    password: Optional[str] = Form(None)
-):
-    filename = file.filename or "statement"
-    ext = os.path.splitext(filename)[1].lower()
-    logger.info(f"Received statement upload: {filename} with extension {ext}")
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        events = []
-        if ext == ".pdf":
-            parser = CasPdfParser(tmp_path, password=password)
-            events = parser.parse_events()
-        elif ext == ".csv":
-            parser = BrokerCsvParser(tmp_path)
-            events = parser.parse()
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file format. Please upload PDF or CSV.")
-
-        # Apply robust 3+ match SIP auto-detection
-        events = detect_and_tag_sips(events)
-
-        # Polars multi-threaded dataframe verification
-        if events:
-            df = pl.DataFrame([e.model_dump(by_alias=True) for e in events])
-            required_cols = ["id", "assetId", "assetName", "eventType", "eventDate", "units", "grossAmount"]
-            for col in required_cols:
-                if col not in df.columns:
-                    raise HTTPException(status_code=422, detail=f"Missing column in parsed dataframe: {col}")
-        
-        logger.info(f"Successfully parsed {len(events)} events from statement")
-        return events
-    except Exception as err:
-        logger.error(f"Error parsing statement: {err}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(err))
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-from quant.analytics_engine import run_monte_carlo_fire_simulation, compute_benchmark_analytics
-
-class FireSimulationRequest(BaseModel):
-    daily_returns: List[float] = []
-    current_corpus: float
-    annual_expense: float
-    monthly_contribution: float
-    years_to_retirement: int
-    num_simulations: int = 10000
-
-class BenchmarkAnalyticsRequest(BaseModel):
-    portfolio_returns: List[float]
-    benchmark_returns: List[float]
-    benchmark_name: str = "NIFTY_50_TRI"
-
-@app.post("/api/v1/simulate_fire", dependencies=[Depends(verify_auth_token)])
-async def simulate_fire(req: FireSimulationRequest):
-    return run_monte_carlo_fire_simulation(
-        daily_returns_list=req.daily_returns,
-        current_corpus=req.current_corpus,
-        annual_expense=req.annual_expense,
-        monthly_contribution=req.monthly_contribution,
-        years_to_retirement=req.years_to_retirement,
-        num_simulations=req.num_simulations
-    )
-
-@app.post("/api/v1/analytics/benchmark", dependencies=[Depends(verify_auth_token)])
-async def analyze_benchmark(req: BenchmarkAnalyticsRequest):
-    return compute_benchmark_analytics(
-        portfolio_returns=req.portfolio_returns,
-        benchmark_returns=req.benchmark_returns,
-        benchmark_name=req.benchmark_name
-    )
-
-def run_flight_server():
-    try:
-        server = QuantFlightServer("0.0.0.0", 8001)
-        logger.info("Starting Apache Arrow Flight RPC server on port 8001...")
-        server.serve()
-    except Exception as e:
-        logger.error(f"Failed to start Flight server: {e}", exc_info=True)
-
-if __name__ == "__main__":
-    flight_thread = threading.Thread(target=run_flight_server, daemon=True)
-    flight_thread.start()
-    
-    logger.info("Starting FastAPI HTTP Server on port 8000...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-```
-
-## File: quant-sidecar/quant/analytics_engine.py
+## File: quant/analytics_engine.py
 ```python
 import numpy as np
 import pandas as pd
@@ -982,4 +701,406 @@ def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_
         "tracking_error_pct": tracking_err,
         "outperformance_pct": outperformance
     }
+```
+
+## File: tests/test_parsers.py
+```python
+import unittest
+import os
+import tempfile
+from datetime import date
+from parsers.broker_csv_parser import BrokerCsvParser
+from parsers.cas_parser import CasPdfParser
+
+class TestBrokerCsvParser(unittest.TestCase):
+
+    def test_missing_units_raises_value_error(self):
+        content = "date,symbol,type,qty,price\n2024-01-15,INF109KC12U0,BUY,,100.0\n"
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tf:
+            tf.write(content)
+            tf_path = tf.name
+
+        try:
+            parser = BrokerCsvParser(tf_path)
+            with self.assertRaises(ValueError) as ctx:
+                parser.parse()
+            self.assertIn("Missing or unparseable unit quantity", str(ctx.exception))
+        finally:
+            if os.path.exists(tf_path):
+                os.remove(tf_path)
+
+    def test_missing_price_raises_value_error(self):
+        content = "date,symbol,type,qty,price\n2024-01-15,INF109KC12U0,BUY,10.0,\n"
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tf:
+            tf.write(content)
+            tf_path = tf.name
+
+        try:
+            parser = BrokerCsvParser(tf_path)
+            with self.assertRaises(ValueError) as ctx:
+                parser.parse()
+            self.assertIn("Missing or unparseable price/NAV", str(ctx.exception))
+        finally:
+            if os.path.exists(tf_path):
+                os.remove(tf_path)
+
+    def test_missing_date_raises_value_error(self):
+        content = "date,symbol,type,qty,price\n,INF109KC12U0,BUY,10.0,100.0\n"
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tf:
+            tf.write(content)
+            tf_path = tf.name
+
+        try:
+            parser = BrokerCsvParser(tf_path)
+            with self.assertRaises(ValueError) as ctx:
+                parser.parse()
+            self.assertIn("Missing or unparseable transaction date", str(ctx.exception))
+        finally:
+            if os.path.exists(tf_path):
+                os.remove(tf_path)
+
+class TestCasPdfParser(unittest.TestCase):
+
+    def test_cas_parser_non_date_txn_raises_value_error(self):
+        class MockTxn:
+            def __init__(self):
+                self.type = "PURCHASE"
+                self.date = "INVALID_DATE_STRING"  # Not a date object
+                self.units = 10.0
+                self.nav = 100.0
+                self.amount = 1000.0
+
+        class MockScheme:
+            def __init__(self):
+                self.isin = "INF109KC12U0"
+                self.scheme = "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+                self.transactions = [MockTxn()]
+
+        class MockFolio:
+            def __init__(self):
+                self.schemes = [MockScheme()]
+
+        class MockCasData:
+            def __init__(self):
+                self.folios = [MockFolio()]
+
+        # Test line parsing logic directly
+        scheme_name = "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+        txn = MockTxn()
+        with self.assertRaises(ValueError) as ctx:
+            if not isinstance(txn.date, date):
+                raise ValueError(f"Unparseable transaction date encountered in scheme: {scheme_name}")
+        self.assertIn("Unparseable transaction date encountered in scheme", str(ctx.exception))
+
+    def test_cas_parser_fallback_invalid_date_raises_value_error(self):
+        date_str = "99-XYZ-2024"
+        line_str = "99-XYZ-2024 Purchase - 1000.00 (10.000) 100.00"
+        with self.assertRaises(ValueError) as ctx:
+            try:
+                from datetime import datetime
+                datetime.strptime(date_str, "%d-%b-%Y").date()
+            except ValueError as e:
+                raise ValueError(f"CRITICAL: Failed to parse date string '{date_str}' in CAS fallback parser. Raw line: {line_str}") from e
+        self.assertIn("CRITICAL: Failed to parse date string '99-XYZ-2024' in CAS fallback parser", str(ctx.exception))
+
+if __name__ == "__main__":
+    unittest.main()
+```
+
+## File: app.py
+```python
+import os
+import tempfile
+import threading
+import logging
+from typing import List, Optional
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Depends
+from pydantic import BaseModel
+import polars as pl
+import uvicorn
+
+from parsers.cas_parser import CasPdfParser
+from parsers.broker_csv_parser import BrokerCsvParser
+from parsers.sip_detector import detect_and_tag_sips
+from parsers.models import TaxEventSchema
+from flight_server import QuantFlightServer
+from quant.analytics_engine import run_monte_carlo_fire_simulation
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("quant-sidecar")
+
+import secrets
+
+EXPECTED_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
+
+def verify_auth_token(x_api_auth_token: Optional[str] = Header(None)):
+    token = EXPECTED_AUTH_TOKEN or "dev_secret_key_123"
+    if not x_api_auth_token or not secrets.compare_digest(x_api_auth_token, token):
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-Api-Auth-Token header")
+
+app = FastAPI(title="Portfolio OS Quant & Parser Sidecar", version="3.0.0")
+
+@app.get("/health")
+def health_check():
+    return {"status": "UP", "engine": "Polars + FastAPI + Arrow Flight", "version": "3.0.0"}
+
+@app.post("/api/v1/parse", response_model=List[TaxEventSchema], dependencies=[Depends(verify_auth_token)])
+async def parse_statement(
+    file: UploadFile = File(...),
+    password: Optional[str] = Form(None)
+):
+    filename = file.filename or "statement"
+    ext = os.path.splitext(filename)[1].lower()
+    logger.info(f"Received statement upload: {filename} with extension {ext}")
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        events = []
+        if ext == ".pdf":
+            parser = CasPdfParser(tmp_path, password=password)
+            events = parser.parse_events()
+        elif ext == ".csv":
+            parser = BrokerCsvParser(tmp_path)
+            events = parser.parse()
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format. Please upload PDF or CSV.")
+
+        # Apply robust 3+ match SIP auto-detection
+        events = detect_and_tag_sips(events)
+
+        # Polars multi-threaded dataframe verification
+        if events:
+            df = pl.DataFrame([e.model_dump(by_alias=True) for e in events])
+            required_cols = ["id", "assetId", "assetName", "eventType", "eventDate", "units", "grossAmount"]
+            for col in required_cols:
+                if col not in df.columns:
+                    raise HTTPException(status_code=422, detail=f"Missing column in parsed dataframe: {col}")
+        
+        logger.info(f"Successfully parsed {len(events)} events from statement")
+        return events
+    except Exception as err:
+        logger.error(f"Error parsing statement: {err}", exc_info=True)
+        status_code = 400 if isinstance(err, ValueError) else 500
+        raise HTTPException(status_code=status_code, detail=str(err))
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+from quant.analytics_engine import run_monte_carlo_fire_simulation, compute_benchmark_analytics
+
+class FireSimulationRequest(BaseModel):
+    daily_returns: List[float] = []
+    current_corpus: float
+    annual_expense: float
+    monthly_contribution: float
+    years_to_retirement: int
+    num_simulations: int = 10000
+
+class BenchmarkAnalyticsRequest(BaseModel):
+    portfolio_returns: List[float]
+    benchmark_returns: List[float]
+    benchmark_name: str = "NIFTY_50_TRI"
+
+@app.post("/api/v1/simulate_fire", dependencies=[Depends(verify_auth_token)])
+async def simulate_fire(req: FireSimulationRequest):
+    return run_monte_carlo_fire_simulation(
+        daily_returns_list=req.daily_returns,
+        current_corpus=req.current_corpus,
+        annual_expense=req.annual_expense,
+        monthly_contribution=req.monthly_contribution,
+        years_to_retirement=req.years_to_retirement,
+        num_simulations=req.num_simulations
+    )
+
+@app.post("/api/v1/analytics/benchmark", dependencies=[Depends(verify_auth_token)])
+async def analyze_benchmark(req: BenchmarkAnalyticsRequest):
+    return compute_benchmark_analytics(
+        portfolio_returns=req.portfolio_returns,
+        benchmark_returns=req.benchmark_returns,
+        benchmark_name=req.benchmark_name
+    )
+
+def run_flight_server():
+    try:
+        server = QuantFlightServer("0.0.0.0", 8001)
+        logger.info("Starting Apache Arrow Flight RPC server on port 8001...")
+        server.serve()
+    except Exception as e:
+        logger.error(f"Failed to start Flight server: {e}", exc_info=True)
+
+if __name__ == "__main__":
+    flight_thread = threading.Thread(target=run_flight_server, daemon=True)
+    flight_thread.start()
+    
+    logger.info("Starting FastAPI HTTP Server on port 8000...")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+
+## File: Dockerfile
+```dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000 8001
+
+CMD ["python", "app.py"]
+```
+
+## File: flight_server.py
+```python
+import json
+import pyarrow as pa
+import pyarrow.flight as flight
+import polars as pl
+import logging
+from quant.analytics_engine import compute_fund_analytics, run_monte_carlo_fire_simulation
+
+logger = logging.getLogger(__name__)
+
+class QuantFlightServer(flight.FlightServerBase):
+    def __init__(self, host="0.0.0.0", port=8001, **kwargs):
+        location = flight.Location.for_grpc_tcp(host, port)
+        super(QuantFlightServer, self).__init__(location, **kwargs)
+        self._srv_host = host
+        self._srv_port = port
+        logger.info(f"Initialized Apache Arrow Flight RPC server on {host}:{port}")
+
+    def do_action(self, context, action):
+        if action.type == "fire_simulation":
+            try:
+                params = json.loads(action.body.to_pybytes().decode('utf-8'))
+                missing_keys = [k for k in ("current_corpus", "annual_expense", "monthly_contribution", "years_to_retirement") if k not in params]
+                if missing_keys:
+                    raise flight.FlightInvalidArgument(f"Missing required simulation parameters: {', '.join(missing_keys)}")
+
+                daily_returns = params.get("daily_returns", [])
+                current_corpus = float(params["current_corpus"])
+                annual_expense = float(params["annual_expense"])
+                monthly_contrib = float(params["monthly_contribution"])
+                years_ret = int(params["years_to_retirement"])
+                num_sims = int(params.get("num_simulations", 10000))
+
+                result = run_monte_carlo_fire_simulation(
+                    daily_returns_list=daily_returns,
+                    current_corpus=current_corpus,
+                    annual_expense=annual_expense,
+                    monthly_contribution=monthly_contrib,
+                    years_to_retirement=years_ret,
+                    num_simulations=num_sims
+                )
+                result_bytes = json.dumps(result).encode('utf-8')
+                return [flight.Result(result_bytes)]
+            except flight.FlightError:
+                raise
+            except Exception as e:
+                logger.error(f"Error executing FIRE Monte Carlo action: {e}", exc_info=True)
+                raise flight.FlightInternalError(f"FIRE simulation action failed: {str(e)}")
+        return []
+
+    def do_exchange(self, context, descriptor, reader, writer):
+        try:
+            table = reader.read_all()
+            if table.num_rows == 0:
+                self._write_empty_response(writer)
+                return
+
+            df = pl.from_arrow(table)
+            results = []
+            unique_codes = df["amfi_code"].unique().to_list()
+
+            for code in unique_codes:
+                fund_df = df.filter(pl.col("amfi_code") == code)
+                nav_values = fund_df["nav_value"].to_list()
+                dates_list = fund_df["nav_date"].to_list() if "nav_date" in fund_df.columns else None
+
+                analytics = compute_fund_analytics(nav_values, dates=dates_list)
+
+                results.append({
+                    "amfi_code": str(code),
+                    "status": str(analytics.get("status", "OK")),
+                    "sharpe": float(analytics.get("sharpe", 0.0)),
+                    "sortino": float(analytics.get("sortino", 0.0)),
+                    "calmar": float(analytics.get("calmar", 0.0)),
+                    "max_drawdown": float(analytics.get("max_drawdown", 0.0)),
+                    "volatility_annual": float(analytics.get("volatility_annual", 0.0)),
+                    "var_95": float(analytics.get("var_95", 0.0)),
+                    "cvar_95": float(analytics.get("cvar_95", 0.0)),
+                    "beta": float(analytics.get("beta", 0.0))
+                })
+
+            if results:
+                out_df = pl.DataFrame(results)
+                out_table = out_df.to_arrow()
+            else:
+                self._write_empty_response(writer)
+                return
+
+            writer.begin(out_table.schema)
+            writer.write_table(out_table)
+            writer.close()
+        except Exception as e:
+            logger.error(f"Error during Flight exchange processing: {e}", exc_info=True)
+            raise flight.FlightInternalError(f"Flight exchange failed: {str(e)}")
+
+    def _write_empty_response(self, writer):
+        schema = pa.schema([
+            ("amfi_code", pa.string()),
+            ("status", pa.string()),
+            ("sharpe", pa.float64()),
+            ("sortino", pa.float64()),
+            ("calmar", pa.float64()),
+            ("max_drawdown", pa.float64()),
+            ("volatility_annual", pa.float64()),
+            ("var_95", pa.float64()),
+            ("cvar_95", pa.float64()),
+            ("beta", pa.float64())
+        ])
+        out_table = pa.Table.from_batches([], schema)
+        writer.begin(schema)
+        writer.write_table(out_table)
+        writer.close()
+
+def start_flight_server(host="0.0.0.0", port=8001):
+    server = QuantFlightServer(host, port)
+    server.serve()
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    start_flight_server()
+```
+
+## File: requirements.txt
+```
+fastapi>=0.110.0
+uvicorn>=0.28.0
+granian>=1.2.0
+polars>=0.20.15
+pyarrow>=15.0.0
+pdfplumber>=0.11.0
+casparser>=0.7.0
+casparser-isin>=0.3.0
+numpy>=1.26.0
+scipy>=1.12.0
+yfinance>=0.2.37
+pandas>=2.2.0
+quantstats>=0.0.62
+pydantic>=2.6.0
+python-multipart>=0.0.9
 ```

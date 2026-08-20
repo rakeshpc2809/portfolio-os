@@ -46,16 +46,7 @@ public class ConsolidationRebalanceEngine {
         String nextScheduledWindow
     ) {}
 
-    private static final Map<String, Pair<String, BigDecimal>> CORE_SIP_WEIGHTS = new HashMap<>();
 
-    static {
-        CORE_SIP_WEIGHTS.put("NIFTY_LARGEMIDCAP_250", new Pair<>("Nifty LargeMidcap 250 Index Fund", new BigDecimal("33.0")));
-        CORE_SIP_WEIGHTS.put("PARAG_PARIKH_FLEXI", new Pair<>("Parag Parikh Flexi Cap Fund", new BigDecimal("24.0")));
-        CORE_SIP_WEIGHTS.put("ARBITRAGE_LIQUID", new Pair<>("Kotak Equity Arbitrage / Liquid Buffer", new BigDecimal("16.0")));
-        CORE_SIP_WEIGHTS.put("NIFTY_VALUE_30", new Pair<>("Nifty200 Value 30 Index Fund", new BigDecimal("11.0")));
-        CORE_SIP_WEIGHTS.put("NIFTY_MOMENTUM_50", new Pair<>("Nifty200 Momentum Quality 50 Index Fund", new BigDecimal("9.0")));
-        CORE_SIP_WEIGHTS.put("NIFTY_SMALLCAP_250", new Pair<>("Nifty Smallcap 250 Index Fund", new BigDecimal("7.0")));
-    }
 
     public static ConsolidationPreviewResult calculateConsolidation(
         List<Lot> openLots,
@@ -144,22 +135,20 @@ public class ConsolidationRebalanceEngine {
         BigDecimal effectiveProceeds = netPostTaxProceeds.compareTo(BigDecimal.ZERO) > 0 ? netPostTaxProceeds : totalProceeds;
 
         List<ExistingSipAllocation> proRataAllocations = new ArrayList<>();
-        Map<String, Map<String, Double>> sipAllocMap = com.portfolioos.core.rules.BucketConfigLoader.getSipAllocations();
+        Map<String, Double> sipAllocMap = com.portfolioos.core.rules.BucketConfigLoader.getRenormalizedSipAllocations(currentDate);
 
-        for (Map.Entry<String, Map<String, Double>> bucketEntry : sipAllocMap.entrySet()) {
-            for (Map.Entry<String, Double> fundEntry : bucketEntry.getValue().entrySet()) {
-                String fundId = fundEntry.getKey();
-                double sipWeightFrac = fundEntry.getValue();
-                BigDecimal weightPct = BigDecimal.valueOf(sipWeightFrac * 100.0).setScale(2, RoundingMode.HALF_UP);
-                BigDecimal deployAmt = effectiveProceeds.multiply(BigDecimal.valueOf(sipWeightFrac)).setScale(2, RoundingMode.HALF_UP);
+        for (Map.Entry<String, Double> fundEntry : sipAllocMap.entrySet()) {
+            String fundId = fundEntry.getKey();
+            double sipWeightFrac = fundEntry.getValue();
+            BigDecimal weightPct = BigDecimal.valueOf(sipWeightFrac * 100.0).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal deployAmt = effectiveProceeds.multiply(BigDecimal.valueOf(sipWeightFrac)).setScale(2, RoundingMode.HALF_UP);
 
-                proRataAllocations.add(new ExistingSipAllocation(
-                    fundId,
-                    fundId,
-                    weightPct,
-                    deployAmt
-                ));
-            }
+            proRataAllocations.add(new ExistingSipAllocation(
+                fundId,
+                fundId,
+                weightPct,
+                deployAmt
+            ));
         }
 
         int month = currentDate.getMonthValue();
@@ -182,14 +171,5 @@ public class ConsolidationRebalanceEngine {
         );
     }
 
-    private static class Pair<A, B> {
-        private final A first;
-        private final B second;
-        public Pair(A first, B second) {
-            this.first = first;
-            this.second = second;
-        }
-        public A first() { return first; }
-        public B second() { return second; }
-    }
+
 }

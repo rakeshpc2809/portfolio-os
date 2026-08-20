@@ -204,7 +204,11 @@ public class BucketConfigLoader {
     }
 
     public static Map<String, Map<String, Double>> getSipAllocations() {
-        BucketTargetVersion version = getActiveVersion(LocalDate.now());
+        return getSipAllocations(LocalDate.now());
+    }
+
+    public static Map<String, Map<String, Double>> getSipAllocations(LocalDate date) {
+        BucketTargetVersion version = getActiveVersion(date);
         Map<String, Map<String, Double>> result = new LinkedHashMap<>();
 
         if (version != null && version.targets() != null) {
@@ -222,6 +226,30 @@ public class BucketConfigLoader {
             }
         }
         return result;
+    }
+
+    public static Map<String, Double> getRenormalizedSipAllocations(LocalDate date) {
+        Map<String, Map<String, Double>> fullAlloc = getSipAllocations(date);
+        Map<String, Double> nonGoldAlloc = new LinkedHashMap<>();
+        double totalWeight = 0.0;
+
+        for (Map.Entry<String, Map<String, Double>> bucketEntry : fullAlloc.entrySet()) {
+            if ("GOLD_SILVER".equalsIgnoreCase(bucketEntry.getKey())) {
+                continue; // Gold is dampener-driven, excluded from flat monthly SIP
+            }
+            for (Map.Entry<String, Double> fundEntry : bucketEntry.getValue().entrySet()) {
+                nonGoldAlloc.put(fundEntry.getKey(), fundEntry.getValue());
+                totalWeight += fundEntry.getValue();
+            }
+        }
+
+        Map<String, Double> renormalized = new LinkedHashMap<>();
+        if (totalWeight > 0.0) {
+            for (Map.Entry<String, Double> entry : nonGoldAlloc.entrySet()) {
+                renormalized.put(entry.getKey(), entry.getValue() / totalWeight);
+            }
+        }
+        return renormalized;
     }
 
     public static BucketTargetVersion getActiveVersion(LocalDate date) {
@@ -308,7 +336,7 @@ public class BucketConfigLoader {
             }
             case "LIQUID_BUFFER" -> {
                 return List.of(
-                    new PreferredFundConfig("INF209K01157", "Invesco India Arbitrage Fund", 1.00)
+                    new PreferredFundConfig("INF205K01KR8", "Invesco India Arbitrage Fund", 1.00)
                 );
             }
             default -> {
@@ -329,7 +357,10 @@ public class BucketConfigLoader {
         locations.add(new File("/app/rules/bucket_targets.yaml"));
 
         for (File f : locations) {
-            if (f.exists()) return f;
+            if (f.exists()) {
+                System.out.println("BucketConfigLoader: Loaded config from " + f.getAbsolutePath());
+                return f;
+            }
         }
         return locations.get(0);
     }

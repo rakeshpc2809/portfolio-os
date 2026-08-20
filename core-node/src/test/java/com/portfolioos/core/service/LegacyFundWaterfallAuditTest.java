@@ -311,16 +311,12 @@ class LegacyFundWaterfallAuditTest {
         com.portfolioos.core.matcher.FifoMatcher.FifoResult fifoResult = matcher.processEvents(events);
         List<Lot> openLots = fifoResult.openLots();
 
-        Map<String, BigDecimal> navMap = new HashMap<>();
-        for (Lot lot : openLots) {
-            navMap.put(lot.assetId(), lot.costPerUnit() != null ? lot.costPerUnit() : new BigDecimal("100.00"));
-        }
+        Map<String, BigDecimal> navMap = Map.of();
 
         LocalDate today = LocalDate.of(2026, 8, 16);
         BigDecimal totalVal = BigDecimal.ZERO;
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), BigDecimal.ONE);
-            totalVal = totalVal.add(lot.remainingUnits().multiply(nav));
+            totalVal = totalVal.add(lot.remainingUnits().multiply(lot.costPerUnit()));
         }
 
         RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
@@ -329,17 +325,47 @@ class LegacyFundWaterfallAuditTest {
         );
 
         assertNotNull(plan);
+        assertNotNull(plan.sellSide(), "SellSide plan must not be null");
+        assertNotNull(plan.sellSide().waterfall(), "Waterfall tiers list must not be null");
+
         System.out.println("=== REAL PORTFOLIO FRESH E2E BASELINE ===");
-        if (plan.sellSide() != null && plan.sellSide().waterfall() != null) {
-            System.out.println("Total Required Pool: ₹" + plan.sellSide().totalRequired());
-            for (WaterfallTierDto tier : plan.sellSide().waterfall()) {
-                System.out.println("Tier: " + tier.tierLabel() + " (" + tier.tier() + ") -> Sold: ₹" + tier.sold());
-                if (tier.lots() != null) {
-                    for (RebalanceLotImpactDto lot : tier.lots()) {
-                        System.out.println("   Lot " + lot.lotId() + " (" + lot.fundName() + "): ₹" + lot.saleProceeds());
-                    }
+        BigDecimal totalSold = BigDecimal.ZERO;
+        BigDecimal legacySold = BigDecimal.ZERO;
+        BigDecimal coreSold = BigDecimal.ZERO;
+
+        System.out.println("Total Required Pool: ₹" + plan.sellSide().totalRequired());
+        for (WaterfallTierDto tier : plan.sellSide().waterfall()) {
+            System.out.println("Tier: " + tier.tierLabel() + " (" + tier.tier() + ") -> Sold: ₹" + tier.sold());
+            BigDecimal tierSold = tier.sold() != null ? tier.sold() : BigDecimal.ZERO;
+            totalSold = totalSold.add(tierSold);
+
+            if ("LEGACY_FUND".equals(tier.tier())) {
+                legacySold = legacySold.add(tierSold);
+            } else if ("CORE_FUND".equals(tier.tier())) {
+                coreSold = coreSold.add(tierSold);
+            }
+
+            if (tier.lots() != null) {
+                for (RebalanceLotImpactDto lot : tier.lots()) {
+                    System.out.println("   Lot " + lot.lotId() + " (" + lot.fundName() + "): ₹" + lot.saleProceeds());
                 }
             }
         }
+
+        // 1. Invariant Assertion: Legacy fund tier MUST exhaust available LTCG lots up to 50% scheme cap first
+        assertEquals(new BigDecimal("130583.52"), legacySold.setScale(2, java.math.RoundingMode.HALF_UP),
+            "Legacy tier must sell exactly ₹130,583.52 (exhausting 50% scheme cap for all legacy LTCG lots) before touching core");
+
+        // 2. Invariant Assertion: Core fund tier supplies remaining available LTCG lots
+        assertEquals(new BigDecimal("124494.74"), coreSold.setScale(2, java.math.RoundingMode.HALF_UP),
+            "Core tier must sell exactly ₹124,494.74 (all remaining LTCG core lots available)");
+
+        // 3. Invariant Assertion: Remaining shortfall of ₹34,763.95 MUST be STCG lots that are deferred under Rule 2a
+        BigDecimal actualExecuted = legacySold.add(coreSold);
+        BigDecimal expectedDeferred = new BigDecimal("34763.95");
+        assertEquals(new BigDecimal("289842.21"), plan.sellSide().totalRequired(),
+            "Total required sell pool under per-lot cost basis must equal ₹289,842.21");
+        assertEquals(0, plan.sellSide().totalRequired().subtract(actualExecuted).compareTo(expectedDeferred),
+            "STCG Protection Invariant: Deferred shortfall must equal exactly ₹34,763.95 (all unexecuted lots are STCG < 365 days)");
     }
 }
