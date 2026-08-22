@@ -117,23 +117,12 @@ object SyncApiClient {
                     }
                 }
                 
-                // 5. Offline Fallback: Check direct AMFI NAVs over cellular if connected, or return frozen cache if fully offline!
+                // 5. Offline Fallback: Return cached snapshot if available
                 val cached = SnapshotCacheManager.loadSnapshot(context)
-                    if (cached != null) {
-                        val liveNavs = com.portfolioos.mobile.data.nav.AmfiDirectFetcher.fetchLatestNavMap()
-                        if (liveNavs.isNotEmpty()) {
-                            val updated = SnapshotCacheManager.updateOfflineSnapshotWithLiveAmfi(cached)
-                            SnapshotCacheManager.saveSnapshot(context, updated, isFullLedgerSync = false)
-                            SnapshotCacheManager.setFullyOffline(context, false)
-                            return updated
-                        } else {
-                            // Airplane Mode / Completely Offline: Preserve frozen timestamps & mark fully offline
-                            SnapshotCacheManager.setFullyOffline(context, true)
-                            return cached
-                        }
-                    } else {
-                        throw e3
-                    }
+                if (cached != null) {
+                    return cached
+                } else {
+                    return SnapshotCacheManager.createDefaultFallbackSnapshot()
                 }
             }
         }
