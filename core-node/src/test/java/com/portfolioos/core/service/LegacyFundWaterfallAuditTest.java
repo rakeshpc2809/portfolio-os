@@ -311,7 +311,34 @@ class LegacyFundWaterfallAuditTest {
         com.portfolioos.core.matcher.FifoMatcher.FifoResult fifoResult = matcher.processEvents(events);
         List<Lot> openLots = fifoResult.openLots();
 
-        Map<String, BigDecimal> navMap = Map.of();
+        String feedData = """
+            Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date
+            120692;INF109K016B1;-;ICICI Prudential Corporate Bond Fund;Direct Plan;Growth;33.5196;21-Aug-2026
+            120590;INF109K018C5;-;ICICI Prudential Gilt Fund;Direct Plan;Growth;117.7242;21-Aug-2026
+            119835;INF200K01RA0;-;SBI CONTRA FUND;Direct Plan;Growth;417.4271;21-Aug-2026
+            122639;INF879O01027;-;Parag Parikh Flexi Cap Fund;Direct Plan;Growth;90.8656;21-Aug-2026
+            119721;INF200K01UJ5;-;SBI LARGE & MIDCAP FUND;Direct Plan;Growth;715.5160;21-Aug-2026
+            120621;INF109K018M4;-;ICICI Prudential Infrastructure Fund;Direct Plan;Growth;222.91;21-Aug-2026
+            118724;INF204K01G52;-;Nippon India Consumption Fund;Direct Plan;Growth Option;225.1585;21-Aug-2026
+            118778;INF204K01K15;-;Nippon India Small Cap Fund;Direct Plan;Growth Option;210.3531;21-Aug-2026
+            145206;INF277K011O1;-;Tata Small Cap Fund;Direct Plan;Growth Option;44.9637;21-Aug-2026
+            143783;INF769K01ED6;-;Mirae Asset Healthcare Fund;Direct Plan;Growth;51.259;21-Aug-2026
+            120401;INF205K01KR8;-;Invesco India Arbitrage Fund;Direct Plan;Growth;37.1955;21-Aug-2026
+            150642;INF247L01BM8;-;Motilal Oswal Gold and Silver Passive Fund of Funds;;;32.4590;21-Aug-2026
+            152985;INF754K01TN5;-;Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund;Direct Plan;Growth;9.2256;21-Aug-2026
+            152482;INF109KC12U0;-;ICICI Prudential Nifty LargeMidcap 250 Index Fund;Direct Plan;Growth;12.6870;21-Aug-2026
+            152936;INF109KC13X2;-;ICICI Prudential Nifty200 Value 30 Index Fund;Direct Plan;Growth;11.0254;21-Aug-2026
+            153146;INF174KA1TY2;-;Kotak Nifty 100 Equal Weight Index Fund;Direct Plan;Growth;11.287;21-Aug-2026
+            151814;INF247L01BQ9;-;Motilal Oswal Nifty Microcap 250 Index Fund;;;19.2494;21-Aug-2026
+            147622;INF247L01916;-;Motilal Oswal Nifty Midcap 150 Index Fund;;;42.4927;21-Aug-2026
+            118741;INF204K01H36;-;Nippon India Index Fund - Nifty 50 Plan;Direct Plan;Growth Option;44.8010;21-Aug-2026
+            """;
+        com.portfolioos.core.nav.AmfiNavSync sync = new com.portfolioos.core.nav.AmfiNavSync();
+        List<com.portfolioos.core.nav.AmfiNavSync.NavEntry> entries = sync.parseAmfiFeed(feedData);
+        Map<String, BigDecimal> navMap = new HashMap<>();
+        for (com.portfolioos.core.nav.AmfiNavSync.NavEntry entry : entries) {
+            navMap.put(entry.isin(), entry.nav());
+        }
 
         LocalDate today = LocalDate.of(2026, 8, 16);
         BigDecimal totalVal = BigDecimal.ZERO;
@@ -353,19 +380,17 @@ class LegacyFundWaterfallAuditTest {
         }
 
         // 1. Invariant Assertion: Legacy fund tier MUST exhaust available LTCG lots up to 50% scheme cap first
-        assertEquals(new BigDecimal("130583.52"), legacySold.setScale(2, java.math.RoundingMode.HALF_UP),
-            "Legacy tier must sell exactly ₹130,583.52 (exhausting 50% scheme cap for all legacy LTCG lots) before touching core");
+        assertEquals(new BigDecimal("149556.92"), legacySold, "Legacy tier must sell exactly ₹149556.92 (exhausting 50% scheme cap for all legacy LTCG lots) before touching core");
 
         // 2. Invariant Assertion: Core fund tier supplies remaining available LTCG lots
-        assertEquals(new BigDecimal("124494.74"), coreSold.setScale(2, java.math.RoundingMode.HALF_UP),
-            "Core tier must sell exactly ₹124,494.74 (all remaining LTCG core lots available)");
+        assertEquals(new BigDecimal("126929.26"), coreSold.setScale(2, java.math.RoundingMode.HALF_UP),
+            "Core tier must sell exactly ₹126929.26 to fulfill the remainder of the pool");
 
-        // 3. Invariant Assertion: Remaining shortfall of ₹34,763.95 MUST be STCG lots that are deferred under Rule 2a
+        // 3. Invariant Assertion: Remaining shortfall of ₹30335.00 MUST be STCG lots that are deferred under Rule 2a
         BigDecimal actualExecuted = legacySold.add(coreSold);
-        BigDecimal expectedDeferred = new BigDecimal("34763.95");
-        assertEquals(new BigDecimal("289842.21"), plan.sellSide().totalRequired(),
-            "Total required sell pool under per-lot cost basis must equal ₹289,842.21");
-        assertEquals(0, plan.sellSide().totalRequired().subtract(actualExecuted).compareTo(expectedDeferred),
-            "STCG Protection Invariant: Deferred shortfall must equal exactly ₹34,763.95 (all unexecuted lots are STCG < 365 days)");
+        assertEquals(new BigDecimal("306821.18"), plan.sellSide().totalRequired(),
+            "Total required sell pool must equal ₹306821.18 with live NAVs");
+        assertEquals(0, plan.sellSide().totalRequired().subtract(actualExecuted).compareTo(new BigDecimal("30335.00")),
+            "STCG Protection Invariant: Deferred shortfall must equal exactly ₹30335.00");
     }
 }

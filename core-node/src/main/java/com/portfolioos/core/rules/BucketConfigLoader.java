@@ -113,17 +113,14 @@ public class BucketConfigLoader {
 
         File ruleFile = findConfigFile();
         if (ruleFile == null || !ruleFile.exists()) {
-            cachedRules = createDefaultConfig();
-            saveConfigToDisk(cachedRules);
-            return cachedRules;
+            throw new IllegalStateException("CONFIG_FALLBACK_ALERT: bucket_targets.yaml not found on disk. Portfolio engine cannot safely compute plans without valid bucket target configurations. Ensure the rules directory is correctly mounted.");
         }
 
         try {
             ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
             Map<String, Object> data = mapper.readValue(ruleFile, Map.class);
             if (data == null || !data.containsKey("versions")) {
-                cachedRules = createDefaultConfig();
-                return cachedRules;
+                throw new IllegalStateException("CONFIG_FALLBACK_ALERT: bucket_targets.yaml is missing the required 'versions' key. Portfolio engine cannot compute targets.");
             }
 
             List<Map<String, Object>> verList = (List<Map<String, Object>>) data.get("versions");
@@ -167,9 +164,7 @@ public class BucketConfigLoader {
             cachedRules = new BucketRulesConfig(parsedVersions);
             return cachedRules;
         } catch (Exception e) {
-            System.err.println("Failed to load bucket_targets.yaml, falling back to defaults: " + e.getMessage());
-            cachedRules = createDefaultConfig();
-            return cachedRules;
+            throw new IllegalStateException("CONFIG_FALLBACK_ALERT: Failed to load bucket_targets.yaml: " + e.getMessage(), e);
         }
     }
 

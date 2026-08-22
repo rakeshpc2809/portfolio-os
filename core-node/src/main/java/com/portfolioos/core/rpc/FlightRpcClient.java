@@ -207,9 +207,12 @@ public class FlightRpcClient {
 
             String token = resolveAuthToken();
 
+            String targetHost = System.getenv("QUANT_SIDECAR_HOST");
+            if (targetHost == null || targetHost.isBlank()) targetHost = "127.0.0.1";
+
             java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create("http://127.0.0.1:8000/api/v1/simulate_fire"))
+                .uri(java.net.URI.create("http://" + targetHost + ":8000/api/v1/simulate_fire"))
                 .header("Content-Type", "application/json")
                 .header("X-Api-Auth-Token", token)
                 .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
@@ -238,9 +241,12 @@ public class FlightRpcClient {
 
             String token = resolveAuthToken();
 
+            String targetHost = System.getenv("QUANT_SIDECAR_HOST");
+            if (targetHost == null || targetHost.isBlank()) targetHost = "127.0.0.1";
+
             java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create("http://127.0.0.1:8000/api/v1/analytics/benchmark"))
+                .uri(java.net.URI.create("http://" + targetHost + ":8000/api/v1/analytics/benchmark"))
                 .header("Content-Type", "application/json")
                 .header("X-Api-Auth-Token", token)
                 .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))

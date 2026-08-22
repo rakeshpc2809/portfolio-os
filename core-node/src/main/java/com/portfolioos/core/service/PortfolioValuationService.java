@@ -62,7 +62,10 @@ public class PortfolioValuationService {
 
         for (Lot lot : openLots) {
             totalInvested = totalInvested.add(lot.totalCostBasis());
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: " + lot.assetId() + " in PortfolioValuationService.");
+            }
+            BigDecimal nav = navMap.get(lot.assetId());
             totalCurrentValue = totalCurrentValue.add(lot.remainingUnits().multiply(nav));
         }
 
@@ -138,7 +141,10 @@ public class PortfolioValuationService {
             List<Lot> lots = entry.getValue();
 
             String assetName = lots.get(0).assetName();
-            BigDecimal currentNav = navMap.getOrDefault(assetId, lots.get(0).costPerUnit());
+            if (navMap == null || !navMap.containsKey(assetId)) {
+                throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: " + assetId + " in PortfolioValuationService.");
+            }
+            BigDecimal currentNav = navMap.get(assetId);
             boolean isStale = !navMap.containsKey(assetId);
             String category = TaxClassifier.detectCategory(assetId, assetName).name();
 
@@ -567,7 +573,10 @@ public class PortfolioValuationService {
         Map<String, Double> fundValuations = new HashMap<>();
 
         for (Lot lot : state.fifoResult().openLots()) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: " + lot.assetId() + " in PortfolioValuationService.");
+            }
+            BigDecimal nav = navMap.get(lot.assetId());
             double currentVal = lot.remainingUnits().multiply(nav).doubleValue();
             fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), 0.0) + currentVal);
         }
@@ -666,7 +675,10 @@ public class PortfolioValuationService {
             openLots = state.fifoResult().openLots();
             matchedLots = state.fifoResult().matchedLots();
             for (Lot lot : openLots) {
-                BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+                if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                    throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: " + lot.assetId() + " in PortfolioValuationService.");
+                }
+                BigDecimal nav = navMap.get(lot.assetId());
                 double currentVal = lot.remainingUnits().multiply(nav).doubleValue();
                 fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), 0.0) + currentVal);
             }
@@ -711,7 +723,10 @@ public class PortfolioValuationService {
 
         Map<String, BigDecimal> fundValuations = new HashMap<>();
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ZERO);
+            if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: " + lot.assetId() + " in PortfolioValuationService.");
+            }
+            BigDecimal nav = navMap.get(lot.assetId());
             BigDecimal val = lot.remainingUnits() != null ? lot.remainingUnits().multiply(nav) : BigDecimal.ZERO;
             fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
         }

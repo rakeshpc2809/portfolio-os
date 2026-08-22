@@ -41,11 +41,12 @@ public class SyncController {
 
     private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
-    private final DuckDbProjector duckDbProjector = new DuckDbProjector();
+    private final DuckDbProjector duckDbProjector;
     private final FlightRpcClient flightRpcClient = new FlightRpcClient();
 
-    public SyncController(LedgerCacheService cacheService) {
+    public SyncController(LedgerCacheService cacheService, DuckDbProjector duckDbProjector) {
         this.cacheService = cacheService;
+        this.duckDbProjector = duckDbProjector;
     }
 
     private static String detectFineBucket(String assetName) {
@@ -90,7 +91,10 @@ public class SyncController {
         BigDecimal totalPortfolioInvested = BigDecimal.ZERO;
 
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: " + lot.assetId() + " in SyncController snapshot generation.");
+            }
+            BigDecimal nav = navMap.get(lot.assetId());
             totalPortfolioCurrentVal = totalPortfolioCurrentVal.add(lot.remainingUnits().multiply(nav));
             totalPortfolioInvested = totalPortfolioInvested.add(lot.totalCostBasis());
         }
@@ -323,7 +327,12 @@ public class SyncController {
         }
 
         BigDecimal totalCurrentVal = openLots.stream()
-            .map(l -> l.remainingUnits().multiply(navMap.getOrDefault(l.assetId(), l.costPerUnit())))
+            .map(l -> {
+                if (navMap == null || !navMap.containsKey(l.assetId())) {
+                    throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: " + l.assetId() + " in SyncController.");
+                }
+                return l.remainingUnits().multiply(navMap.get(l.assetId()));
+            })
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // 4. Asset Allocation Drift Signal
@@ -412,7 +421,10 @@ public class SyncController {
 
         BigDecimal totalCurrentVal = BigDecimal.ZERO;
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: " + lot.assetId() + " in SyncController.");
+            }
+            BigDecimal nav = navMap.get(lot.assetId());
             totalCurrentVal = totalCurrentVal.add(lot.remainingUnits().multiply(nav));
         }
 
@@ -491,7 +503,12 @@ public class SyncController {
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
         BigDecimal totalVal = openLots.stream()
-            .map(l -> l.remainingUnits().multiply(navMap.getOrDefault(l.assetId(), l.costPerUnit())))
+            .map(l -> {
+                if (navMap == null || !navMap.containsKey(l.assetId())) {
+                    throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: " + l.assetId() + " in SyncController.");
+                }
+                return l.remainingUnits().multiply(navMap.get(l.assetId()));
+            })
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());

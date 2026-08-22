@@ -147,4 +147,48 @@ class RebalanceWaterfallEngineTest {
         assertEquals(new BigDecimal("5000.00"), result.deferredAmount());
         assertTrue(result.steps().isEmpty());
     }
+
+    @Test
+    void testCoreLotTaxEfficiencySortingMultipleNavScales() {
+        LocalDate today = LocalDate.of(2026, 8, 1);
+        LocalDate acqOld = LocalDate.of(2020, 1, 1); // Very old -> LTCG
+
+        // Lot 1: High NAV, low % gain
+        // Cost 800, NAV 1000 -> Absolute Gain 200, % Gain 20%
+        Lot highNavLowPctGain = new Lot("L_HIGH_NAV", "FUND_HIGH", "High NAV Fund",
+            acqOld, new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("800"), new BigDecimal("8000"), false, BigDecimal.ZERO);
+
+        // Lot 2: Low NAV, high % gain
+        // Cost 20, NAV 40 -> Absolute Gain 20, % Gain 50%
+        Lot lowNavHighPctGain = new Lot("L_LOW_NAV", "FUND_LOW", "Low NAV Fund",
+            acqOld, new BigDecimal("250"), new BigDecimal("250"), new BigDecimal("20"), new BigDecimal("5000"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "FUND_HIGH", new BigDecimal("1000"),
+            "FUND_LOW", new BigDecimal("40")
+        );
+
+        // We only want to sell 1000 INR worth of funds. 
+        // A perfectly tax-optimized sort should pick the lot with the LOWEST % gain first (Lot 1), 
+        // regardless of its absolute gain being mathematically larger (200 > 20).
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("1000"),
+            List.of(highNavLowPctGain, lowNavHighPctGain),
+            navMap,
+            new BigDecimal("125000"),
+            false,
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(result);
+        assertEquals(new BigDecimal("1000.00"), result.satisfiedAmount());
+        assertFalse(result.steps().isEmpty());
+
+        // The first step should be selling from FUND_HIGH because it has a 20% tax exposure per rupee,
+        // compared to FUND_LOW which has a 50% tax exposure per rupee.
+        assertEquals("FUND_HIGH", result.steps().get(0).assetId(), 
+            "The lot with the lowest % gain should be selected first, proving cross-NAV-scale sorting works.");
+    }
 }
