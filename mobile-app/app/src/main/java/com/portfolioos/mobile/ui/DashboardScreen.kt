@@ -344,8 +344,8 @@ fun DashboardScreen(
                                 }
                             }
                         } else {
-                            LaunchedEffect(initialPage, snapshot) {
-                                if (snapshot != null) {
+                            LaunchedEffect(initialPage) {
+                                if (initialPage != 0) {
                                     pagerState.scrollToPage(initialPage)
                                 }
                             }
