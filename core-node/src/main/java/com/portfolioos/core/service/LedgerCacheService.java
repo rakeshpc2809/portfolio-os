@@ -18,6 +18,8 @@ import java.util.concurrent.atomic.AtomicReference;
 @Service
 public class LedgerCacheService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(LedgerCacheService.class);
+
     private final EventStorePort eventStore;
     private final AmfiNavSync amfiSync;
     private final FifoMatcher fifoMatcher;
@@ -26,6 +28,7 @@ public class LedgerCacheService {
     private volatile long lastNavSyncTime = 0L;
     private final Object updateLock = new Object();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public LedgerCacheService(EventStorePort eventStore) {
         this(eventStore, new AmfiNavSync(), new FifoMatcher());
     }
@@ -65,7 +68,12 @@ public class LedgerCacheService {
                     Map<String, BigDecimal> navMap = null;
                     try {
                         navMap = amfiSync.getNavMap();
+                        if (navMap == null || navMap.isEmpty()) {
+                            log.warn("AMFI_NAV_SYNC_ALERT: navMap returned empty or null after AMFI sync attempt!");
+                            health = "DEGRADED_AMFI_EMPTY";
+                        }
                     } catch (Exception amfiEx) {
+                        log.warn("AMFI_NAV_SYNC_ALERT: Exception during AMFI NAV sync: {}", amfiEx.getMessage());
                         health = "DEGRADED_AMFI_TIMEOUT";
                         navMap = current != null ? current.navMap() : java.util.Collections.emptyMap();
                     }

@@ -53,6 +53,7 @@ public class RebalanceWaterfallEngine {
         new CoreLtcgTierStrategy()
     );
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RebalanceWaterfallEngine.class);
     private static final WaterfallTierStrategy URGENT_STCG_STRATEGY = new CoreStcgUrgentTierStrategy();
 
     public static WaterfallResult buildTrimWaterfall(
@@ -93,7 +94,11 @@ public class RebalanceWaterfallEngine {
 
         Map<String, BigDecimal> legacySchemeValueMap = new HashMap<>();
         for (Lot lot : legacyLots) {
-            BigDecimal nav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+            boolean hasNav = navMap != null && navMap.containsKey(lot.assetId());
+            if (!hasNav) {
+                log.warn("AMFI_NAV_SYNC_ALERT: Missing ISIN {} in navMap during waterfall engine calculation, using fallback costPerUnit {}", lot.assetId(), lot.costPerUnit());
+            }
+            BigDecimal nav = hasNav ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
             BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
             legacySchemeValueMap.put(lot.assetId(), legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
         }

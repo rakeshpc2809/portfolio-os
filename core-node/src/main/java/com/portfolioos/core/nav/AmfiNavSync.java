@@ -36,26 +36,33 @@ public class AmfiNavSync {
         String[] lines = feedContent.split("\\r?\\n");
         for (String line : lines) {
             String[] parts = line.split(";");
-            if (parts.length >= 6) {
+            if (parts.length >= 5) {
                 String schemeCode = parts[0].trim();
-                String isinGrowth = parts[1].trim();
-                if (isinGrowth.isEmpty()) {
-                    isinGrowth = null;
-                }
-                String schemeName = parts[3].trim();
-                String navStr = parts[4].trim();
+                String isin1 = parts.length > 1 ? parts[1].trim() : null;
+                String isin2 = parts.length > 2 ? parts[2].trim() : null;
+                String schemeName = parts.length > 3 ? parts[3].trim() : "";
 
-                try {
-                    BigDecimal nav = new BigDecimal(navStr);
-                    entries.add(new NavEntry(
-                        schemeCode,
-                        isinGrowth,
-                        schemeName,
-                        nav,
-                        today
-                    ));
-                } catch (Exception e) {
-                    // Skip headers or corrupted rows
+                BigDecimal nav = null;
+                for (int i = 4; i < parts.length; i++) {
+                    try {
+                        String token = parts[i].trim();
+                        if (!token.isEmpty()) {
+                            nav = new BigDecimal(token);
+                            break;
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                if (nav != null) {
+                    if (isin1 != null && !isin1.isEmpty() && !"-".equals(isin1)) {
+                        entries.add(new NavEntry(schemeCode, isin1, schemeName, nav, today));
+                    }
+                    if (isin2 != null && !isin2.isEmpty() && !"-".equals(isin2) && !isin2.equalsIgnoreCase(isin1)) {
+                        entries.add(new NavEntry(schemeCode, isin2, schemeName, nav, today));
+                    }
+                    if ((isin1 == null || isin1.isEmpty() || "-".equals(isin1)) && (isin2 == null || isin2.isEmpty() || "-".equals(isin2))) {
+                        entries.add(new NavEntry(schemeCode, null, schemeName, nav, today));
+                    }
                 }
             }
         }
@@ -70,7 +77,7 @@ public class AmfiNavSync {
             }
 
             try {
-                URI uri = new URI("https://www.amfiindia.com/spages/NAVAll.txt");
+                URI uri = new URI("https://portal.amfiindia.com/spages/NAVAll.txt");
                 URLConnection conn = uri.toURL().openConnection();
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(5000);

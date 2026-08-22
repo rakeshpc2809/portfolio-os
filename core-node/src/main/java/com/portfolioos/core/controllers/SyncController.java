@@ -37,6 +37,8 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/v1/sync")
 public class SyncController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SyncController.class);
+
     private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
     private final DuckDbProjector duckDbProjector = new DuckDbProjector();
@@ -130,7 +132,11 @@ public class SyncController {
                     holdingCashflows.add(new CashFlow(event.eventDate(), event.grossAmount()));
                 }
             }
-            BigDecimal nav = navMap.getOrDefault(assetId, lots.get(0).costPerUnit());
+            boolean isNavMissing = !navMap.containsKey(assetId);
+            BigDecimal nav = navMap.getOrDefault(assetId, avgCost);
+            if (isNavMissing) {
+                log.warn("AMFI NAV missing for asset ISIN {}: falling back to weighted average cost basis {}", assetId, avgCost);
+            }
             BigDecimal holdingCurVal = totalUnits.multiply(nav);
             holdingCashflows.add(new CashFlow(today, holdingCurVal));
 
