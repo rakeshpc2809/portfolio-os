@@ -98,7 +98,10 @@ public class RebalanceWaterfallEngine {
             if (!hasNav) {
                 log.warn("AMFI_NAV_SYNC_ALERT: Missing ISIN {} in navMap during waterfall engine calculation, using fallback costPerUnit {}", lot.assetId(), lot.costPerUnit());
             }
-            BigDecimal nav = hasNav ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+            if (!hasNav && lot.costPerUnit() == null) {
+                throw new IllegalStateException("CRITICAL VALUATION ERROR: Asset ISIN " + lot.assetId() + " is missing both live NAV and lot costPerUnit basis.");
+            }
+            BigDecimal nav = hasNav ? navMap.get(lot.assetId()) : lot.costPerUnit();
             BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
             legacySchemeValueMap.put(lot.assetId(), legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
         }

@@ -19,14 +19,14 @@ class SecurityInterceptorTest {
     }
 
     @Test
-    void testPreHandleValidDevToken() throws Exception {
+    void testPreHandleValidConfiguredToken() throws Exception {
         SecurityInterceptor interceptor = new SecurityInterceptor();
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
-        request.addHeader("X-Api-Auth-Token", "dev_secret_key_123");
+        request.addHeader("X-Api-Auth-Token", "test-auth-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         boolean result = interceptor.preHandle(request, response, new Object());
-        assertTrue(result);
+        assertTrue(result, "Valid API_AUTH_TOKEN header must pass authentication");
     }
 
     @Test

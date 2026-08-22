@@ -28,13 +28,9 @@ public class SecurityInterceptor implements HandlerInterceptor {
         }
 
         byte[] expectedBytes = token.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] devBytes = "dev_secret_key_123".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] fallbackBytes = "fintracker-cachyos-default-key-2026".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         byte[] clientBytes = clientHeader != null ? clientHeader.getBytes(java.nio.charset.StandardCharsets.UTF_8) : new byte[0];
 
-        boolean isValid = java.security.MessageDigest.isEqual(expectedBytes, clientBytes)
-            || java.security.MessageDigest.isEqual(devBytes, clientBytes)
-            || java.security.MessageDigest.isEqual(fallbackBytes, clientBytes);
+        boolean isValid = java.security.MessageDigest.isEqual(expectedBytes, clientBytes);
 
         if (!isValid) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
