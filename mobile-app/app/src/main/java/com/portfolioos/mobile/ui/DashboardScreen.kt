@@ -1050,6 +1050,7 @@ fun OverlapConcentrationPlaceholderView(
     holdings: List<FlatHoldingDto>,
     overlapReport: OverlapReportDto? = null
 ) {
+    Log.d("SyncAnalytics", "OverlapConcentrationPlaceholderView Composition: overlapReport isNull=${overlapReport == null}, stockConcentrations.size=${overlapReport?.stockConcentrations?.size ?: 0}")
     val bucketCounts = remember(holdings) {
         holdings.groupBy { it.assetBucket }
     }
@@ -1576,6 +1577,7 @@ fun RebalanceWaterfallView(
     rebalancePlan: com.portfolioos.mobile.model.RebalancePlanDto?,
     fireSummary: FireSummaryResponseDto? = null
 ) {
+    Log.d("SyncAnalytics", "RebalanceWaterfallView Composition: fireSummary isNull=${fireSummary == null}, successRate=${fireSummary?.monteCarloSuccessRatePct}, medianCorpus=${fireSummary?.monteCarloMedianCorpus}")
     val sellSide = rebalancePlan?.sellSide
     val buySide = rebalancePlan?.buySide
     val buyBuckets = remember(buySide) { buySide?.buckets.orEmpty() }
