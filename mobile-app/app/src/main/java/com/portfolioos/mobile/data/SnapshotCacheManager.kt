@@ -84,18 +84,6 @@ object SnapshotCacheManager {
         }
         editor.apply()
     }
-
-    fun createDefaultFallbackSnapshot(): SyncSnapshot {
-        return SyncSnapshot(
-            syncInfo = SyncInfoDto(
-                fiscalYear = "2026-27",
-                formattedCurrentValue = "₹18,21,604",
-                currentValue = 1821603.88
-            )
-        )
-    }
-
-    fun updateOfflineSnapshotWithLiveAmfi(snapshot: SyncSnapshot?): SyncSnapshot {
-        return snapshot ?: createDefaultFallbackSnapshot()
-    }
 }
+
+

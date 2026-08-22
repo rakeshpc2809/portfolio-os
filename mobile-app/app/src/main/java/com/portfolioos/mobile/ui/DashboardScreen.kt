@@ -708,10 +708,10 @@ fun HoldingsView(
     benchmarkAnalytics: BenchmarkAnalyticsDto? = null,
     onSimulateSale: (FlatHoldingDto) -> Unit = {}
 ) {
-    val alphaStr = benchmarkAnalytics?.let { "%+.2f%%".format(it.alpha) } ?: "+4.20%"
-    val betaStr = benchmarkAnalytics?.let { "%.2f".format(it.beta) } ?: "0.88"
-    val sharpeStr = benchmarkAnalytics?.let { "%.2f".format(it.sharpeRatio) } ?: "1.45"
-    val trackErrStr = benchmarkAnalytics?.let { "%.2f%%".format(it.trackingError * 100) } ?: "3.10%"
+    val alphaStr = benchmarkAnalytics?.let { "%+.2f%%".format(it.alpha) } ?: "--"
+    val betaStr = benchmarkAnalytics?.let { "%.2f".format(it.beta) } ?: "--"
+    val sharpeStr = benchmarkAnalytics?.let { "%.2f".format(it.sharpeRatio) } ?: "--"
+    val trackErrStr = benchmarkAnalytics?.let { "%.2f%%".format(it.trackingError * 100) } ?: "--"
     val benchLabel = benchmarkAnalytics?.benchmarkName ?: "vs Nifty 50 TRI"
 
     LazyColumn(
@@ -1589,9 +1589,9 @@ fun RebalanceWaterfallView(
     val totalRequired = sellSide?.totalRequired ?: 0.0
     val totalToInvest = buySide?.totalToInvest ?: totalRequired
 
-    val successRateStr = fireSummary?.let { "%.1f%% Success Rate".format(it.monteCarloSuccessRatePct) } ?: "72.8% Success Rate"
-    val medianCorpusVal = fireSummary?.monteCarloMedianCorpus?.toDoubleOrNull() ?: 19910714.95
-    val p10CorpusVal = fireSummary?.monteCarloTenthPercentileCorpus?.toDoubleOrNull() ?: 11640118.96
+    val successRateStr = fireSummary?.let { "%.1f%% Success Rate".format(it.monteCarloSuccessRatePct) } ?: "--% Success Rate"
+    val medianCorpusVal = fireSummary?.monteCarloMedianCorpus?.toDoubleOrNull() ?: 0.0
+    val p10CorpusVal = fireSummary?.monteCarloTenthPercentileCorpus?.toDoubleOrNull() ?: 0.0
     val medianCorpusStr = formatInr(medianCorpusVal)
     val p10CorpusStr = formatInr(p10CorpusVal)
 

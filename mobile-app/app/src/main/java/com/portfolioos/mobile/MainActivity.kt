@@ -82,8 +82,8 @@ class MainActivity : FragmentActivity() {
                         if (isManualRefresh) {
                             isRefreshing = true
                         } else if (snapshot == null) {
-                            snapshot = SnapshotCacheManager.loadSnapshot(applicationContext) ?: SnapshotCacheManager.createDefaultFallbackSnapshot()
-                            isLoading = false
+                            snapshot = SnapshotCacheManager.loadSnapshot(applicationContext)
+                            isLoading = (snapshot == null)
                         }
                         try {
                             val newSnapshot = SyncApiClient.fetchSnapshotWithFallback(applicationContext)
@@ -94,9 +94,6 @@ class MainActivity : FragmentActivity() {
                             isFullyOffline = SnapshotCacheManager.isFullyOffline(applicationContext)
                         } catch (e: Exception) {
                             e.printStackTrace()
-                            if (snapshot == null) {
-                                snapshot = SnapshotCacheManager.createDefaultFallbackSnapshot()
-                            }
                         } finally {
                             isLoading = false
                             isRefreshing = false

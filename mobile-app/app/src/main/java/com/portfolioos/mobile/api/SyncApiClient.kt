@@ -119,11 +119,7 @@ object SyncApiClient {
                 
                 // 5. Offline Fallback: Return cached snapshot if available
                 val cached = SnapshotCacheManager.loadSnapshot(context)
-                if (cached != null) {
-                    return cached
-                } else {
-                    return SnapshotCacheManager.createDefaultFallbackSnapshot()
-                }
+                return cached ?: throw java.io.IOException("No network connection available to sync snapshot and no local cache present.")
             }
         }
     }
