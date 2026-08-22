@@ -58,7 +58,7 @@ object SnapshotCacheManager {
     }
 
     fun getAuthToken(context: Context): String {
-        return getPrefs(context).getString(KEY_AUTH_TOKEN, "dev_secret_key_123") ?: "dev_secret_key_123"
+        return getPrefs(context).getString(KEY_AUTH_TOKEN, com.portfolioos.mobile.BuildConfig.DEFAULT_AUTH_TOKEN) ?: com.portfolioos.mobile.BuildConfig.DEFAULT_AUTH_TOKEN
     }
 
     fun loadSnapshot(context: Context): SyncSnapshot? {
