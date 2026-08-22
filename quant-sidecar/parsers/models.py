@@ -37,3 +37,11 @@ class TaxEventSchema(BaseModel):
         elif self.event_type == EventType.SGB_INTEREST:
             return Decimal("0.0")
         return self.units
+
+import uuid
+
+def generate_deterministic_event_id(isin: Optional[str], asset_name: str, event_date: date, event_type: EventType, units: Decimal, amount: Decimal) -> str:
+    asset_key = isin if isin else asset_name.replace(" ", "_").upper()[:20]
+    raw_key = f"{asset_key}|{event_date.isoformat()}|{event_type.value if hasattr(event_type, 'value') else str(event_type)}|{units:.4f}|{amount:.2f}"
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, raw_key))
+

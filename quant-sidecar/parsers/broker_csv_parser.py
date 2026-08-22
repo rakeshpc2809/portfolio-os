@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
 import polars as pl
-from .models import TaxEventSchema, EventType
+from .models import TaxEventSchema, EventType, generate_deterministic_event_id
 
 class BrokerCsvParser:
     def __init__(self, csv_path: str, broker_type: str = "generic"):
@@ -68,7 +68,7 @@ class BrokerCsvParser:
 
                     events.append(
                         TaxEventSchema(
-                            id=str(uuid.uuid4()),
+                            id=generate_deterministic_event_id(None, asset_name, event_date, event_type, units, amount),
                             assetId=asset_name.replace(" ", "_").upper()[:20],
                             assetName=asset_name,
                             isin=None,

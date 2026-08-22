@@ -154,7 +154,7 @@ public class SqliteEventStore implements EventStorePort {
         if (events.isEmpty()) return List.of();
 
         List<String> hashes = new ArrayList<>();
-        String checkSql = "SELECT event_hash FROM tax_events WHERE asset_id = ? AND event_type = ? AND event_date = ? AND units = ? AND gross_amount = ? LIMIT 1";
+        String checkSql = "SELECT event_hash FROM tax_events WHERE id = ? OR ((isin = ? OR asset_id = ? OR asset_name = ?) AND event_type = ? AND event_date = ? AND ABS(CAST(units AS REAL) - ?) < 0.0001 AND ABS(CAST(gross_amount AS REAL) - ?) < 0.01) LIMIT 1";
         String insertSql = "INSERT INTO tax_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at, previous_hash, event_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = getConnection()) {
@@ -167,11 +167,14 @@ public class SqliteEventStore implements EventStorePort {
                 if (prevHash == null) prevHash = "GENESIS";
 
                 for (TaxEvent event : events) {
-                    checkStmt.setString(1, event.assetId());
-                    checkStmt.setString(2, event.eventType().name());
-                    checkStmt.setString(3, event.eventDate().toString());
-                    checkStmt.setString(4, event.units().toPlainString());
-                    checkStmt.setString(5, event.grossAmount().toPlainString());
+                    checkStmt.setString(1, event.id());
+                    checkStmt.setString(2, event.isin() != null ? event.isin() : "");
+                    checkStmt.setString(3, event.assetId());
+                    checkStmt.setString(4, event.assetName());
+                    checkStmt.setString(5, event.eventType().name());
+                    checkStmt.setString(6, event.eventDate().toString());
+                    checkStmt.setDouble(7, event.units().doubleValue());
+                    checkStmt.setDouble(8, event.grossAmount().doubleValue());
 
                     try (ResultSet rs = checkStmt.executeQuery()) {
                         if (rs.next()) {
