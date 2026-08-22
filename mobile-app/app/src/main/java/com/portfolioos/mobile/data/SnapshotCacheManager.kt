@@ -15,6 +15,7 @@ object SnapshotCacheManager {
     private const val KEY_IS_FULLY_OFFLINE = "key_is_fully_offline"
     private const val KEY_BIOMETRIC_LOCK = "key_biometric_lock"
     private const val KEY_CUSTOM_URL = "key_custom_url"
+    private const val KEY_AUTH_TOKEN = "key_auth_token"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -57,7 +58,7 @@ object SnapshotCacheManager {
     }
 
     fun getAuthToken(context: Context): String {
-        return "dev_secret_key_123"
+        return getPrefs(context).getString(KEY_AUTH_TOKEN, "dev_secret_key_123") ?: "dev_secret_key_123"
     }
 
     fun loadSnapshot(context: Context): SyncSnapshot? {

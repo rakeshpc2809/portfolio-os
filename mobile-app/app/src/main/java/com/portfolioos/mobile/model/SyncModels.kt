@@ -263,12 +263,12 @@ data class PairwiseOverlapDto(
     @SerializedName("fund_a") val fundA: String = "",
     @SerializedName("fund_b") val fundB: String = "",
     @SerializedName("overlap_percentage") val overlapPercentage: Double = 0.0,
-    @SerializedName("common_holdings_count") val commonHoldingsCount: Int = 0
+    @SerializedName("common_stock_count") val commonHoldingsCount: Int = 0
 )
 
 @Immutable
 data class OverlapReportDto(
     @SerializedName("coverage_type") val coverageType: String = "",
     @SerializedName("pairwise_matrix") val pairwiseMatrix: List<PairwiseOverlapDto> = emptyList(),
-    @SerializedName("portfolio_stock_concentrations") val stockConcentrations: List<StockConcentrationDto> = emptyList()
+    @SerializedName("portfolio_top_stock_concentrations") val stockConcentrations: List<StockConcentrationDto> = emptyList()
 )

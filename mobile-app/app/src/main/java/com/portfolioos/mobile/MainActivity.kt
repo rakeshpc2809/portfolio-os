@@ -82,8 +82,8 @@ class MainActivity : FragmentActivity() {
                         if (isManualRefresh) {
                             isRefreshing = true
                         } else if (snapshot == null) {
-                            snapshot = SnapshotCacheManager.loadSnapshot(applicationContext)
-                            isLoading = (snapshot == null)
+                            snapshot = SnapshotCacheManager.loadSnapshot(applicationContext) ?: SnapshotCacheManager.createDefaultFallbackSnapshot()
+                            isLoading = false
                         }
                         try {
                             val newSnapshot = SyncApiClient.fetchSnapshotWithFallback(applicationContext)

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.util.Log
 import com.portfolioos.mobile.api.SyncApiClient
 import com.portfolioos.mobile.data.SnapshotCacheManager
 import com.portfolioos.mobile.model.BenchmarkAnalyticsDto
@@ -123,9 +124,10 @@ fun DashboardScreen(
 
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    LaunchedEffect(snapshot) {
+    LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val token = SnapshotCacheManager.getAuthToken(context).ifEmpty { "dev_secret_key_123" }
+            val token = SnapshotCacheManager.getAuthToken(context)
+            Log.d("SyncAnalytics", "Initiating REST analytics fetch with token: $token")
             val urls = listOf(
                 SyncApiClient.USB_BASE_URL,
                 SyncApiClient.WIFI_BASE_URL,
@@ -133,18 +135,18 @@ fun DashboardScreen(
             )
             for (baseUrl in urls) {
                 try {
+                    Log.d("SyncAnalytics", "Attempting fetch from base URL: $baseUrl")
                     val service = SyncApiClient.createService(baseUrl)
                     val bench = service.getBenchmarkAnalytics(token)
                     val fire = service.getFireSummary(token)
                     val overlap = service.getOverlapAnalytics(token)
-                    if (bench != null) {
-                        benchmarkData = bench
-                        fireSummaryData = fire
-                        overlapData = overlap
-                        break
-                    }
+                    Log.d("SyncAnalytics", "SUCCESS fetching analytics from $baseUrl: bench=${bench.alpha}, fire=${fire.monteCarloSuccessRatePct}, overlapStocks=${overlap.stockConcentrations.size}")
+                    benchmarkData = bench
+                    fireSummaryData = fire
+                    overlapData = overlap
+                    break
                 } catch (e: Exception) {
-                    // Try next URL
+                    Log.e("SyncAnalytics", "Failed fetching analytics from $baseUrl: ${e.message}", e)
                 }
             }
         }
@@ -1055,8 +1057,24 @@ fun OverlapConcentrationPlaceholderView(
     // Top Stock Concentration Look-Through derived from overlapReport API or holdings list
     val topStocks = remember(holdings, overlapReport) {
         if (overlapReport != null && overlapReport.stockConcentrations.isNotEmpty()) {
-            overlapReport.stockConcentrations.map {
-                it.stockSymbol to Pair(it.companyName, it.portfolioWeightPct)
+            overlapReport.stockConcentrations.map { sc ->
+                val sym = sc.stockSymbol
+                val name = sc.companyName.ifEmpty {
+                    when (sym) {
+                        "HDFCBANK" -> "HDFC Bank Ltd"
+                        "ICICIBANK" -> "ICICI Bank Ltd"
+                        "RELIANCE" -> "Reliance Industries Ltd"
+                        "COALINDIA" -> "Coal India Ltd"
+                        "BAJFINANCE" -> "Bajaj Finance Ltd"
+                        "SBIN" -> "State Bank of India"
+                        "AMAZON" -> "Amazon.com Inc"
+                        "NTPC" -> "NTPC Ltd"
+                        "ALPHABET" -> "Alphabet Inc"
+                        "POWERGRID" -> "Power Grid Corp"
+                        else -> sym
+                    }
+                }
+                sym to Pair(name, sc.portfolioWeightPct)
             }
         } else {
             val totalVal = holdings.sumOf { it.currentValue }.coerceAtLeast(1.0)
