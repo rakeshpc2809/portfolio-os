@@ -1596,44 +1596,6 @@ TaxTerm term1095 = TaxClassifier.classifyTaxTerm(
 assertEquals(TaxTerm.LONG_TERM, term1095);
 ````
 
-## File: core-node/src/test/java/com/portfolioos/core/nav/AmfiNavSyncTest.java
-````java
-class AmfiNavSyncTest {
-⋮----
-void testParseAmfiFeed_MultiColumnDirectPlanFormat() {
-AmfiNavSync sync = new AmfiNavSync();
-⋮----
-List<AmfiNavSync.NavEntry> entries = sync.parseAmfiFeed(feedData);
-assertNotNull(entries);
-assertFalse(entries.isEmpty());
-⋮----
-// Verify INF209KA12Z1 (Growth ISIN)
-AmfiNavSync.NavEntry growthEntry = entries.stream()
-.filter(e -> "INF209KA12Z1".equals(e.isin()))
-.findFirst()
-.orElse(null);
-assertNotNull(growthEntry);
-assertEquals(new BigDecimal("106.9996"), growthEntry.nav());
-⋮----
-// Verify INF209KA13Z9 (Reinvestment ISIN)
-AmfiNavSync.NavEntry reincEntry = entries.stream()
-.filter(e -> "INF209KA13Z9".equals(e.isin()))
-⋮----
-assertNotNull(reincEntry);
-assertEquals(new BigDecimal("106.9996"), reincEntry.nav());
-⋮----
-// Verify Parag Parikh Flexi Cap
-AmfiNavSync.NavEntry ppfcEntry = entries.stream()
-.filter(e -> "INF879O01027".equals(e.isin()))
-⋮----
-assertNotNull(ppfcEntry);
-assertEquals(new BigDecimal("90.7427"), ppfcEntry.nav());
-⋮----
-// Assert hyphen (-) is never indexed as an ISIN key
-boolean containsHyphen = entries.stream().anyMatch(e -> "-".equals(e.isin()));
-assertFalse(containsHyphen, "Hyphen '-' must never be indexed as an ISIN");
-````
-
 ## File: core-node/src/test/java/com/portfolioos/core/rules/FireActionRuleEngineTest.java
 ````java
 public class FireActionRuleEngineTest {
@@ -3154,6 +3116,49 @@ OllamaOptions.create().withModel("nomic-embed-text")
 public org.springframework.ai.vectorstore.VectorStore vectorStore(
 ````
 
+## File: core-node/src/main/java/com/portfolioos/core/controllers/ConfigController.java
+````java
+public class ConfigController {
+⋮----
+public ResponseEntity<BucketConfigLoader.BucketRulesConfig> getBucketTargets() {
+return ResponseEntity.ok(BucketConfigLoader.loadConfig());
+⋮----
+public ResponseEntity<?> updateBucketTargets(@RequestBody Map<String, Object> req) {
+⋮----
+String effectiveFrom = (String) req.getOrDefault("effectiveFrom", req.get("effective_from"));
+List<Map<String, Object>> targetsList = (List<Map<String, Object>>) req.get("targets");
+⋮----
+if (targetsList == null || targetsList.isEmpty()) {
+return ResponseEntity.badRequest().body(Map.of("error", "Missing 'targets' array in request body"));
+⋮----
+List<BucketConfigLoader.BucketTargetConfig> newTargets = targetsList.stream().map(tMap -> {
+String bName = (String) tMap.get("bucket");
+double tPct = ((Number) tMap.get("targetPct") != null ? (Number) tMap.get("targetPct") : (Number) tMap.get("target_pct")).doubleValue();
+double bPct = ((Number) tMap.get("bandPct") != null ? (Number) tMap.get("bandPct") : (Number) tMap.get("band_pct")).doubleValue();
+⋮----
+if (tMap.containsKey("preferredFunds") || tMap.containsKey("preferred_funds")) {
+List<Map<String, Object>> pfList = (List<Map<String, Object>>) tMap.getOrDefault("preferredFunds", tMap.get("preferred_funds"));
+⋮----
+prefFunds.add(new BucketConfigLoader.PreferredFundConfig(
+(String) pfMap.get("fundId"),
+(String) pfMap.get("fundName"),
+((Number) pfMap.get("allocationWeight")).doubleValue()
+⋮----
+prefFunds = BucketConfigLoader.getDefaultPreferredFundsForBucket(bName);
+⋮----
+}).toList();
+⋮----
+BucketConfigLoader.updateBucketTargets(newTargets, effectiveFrom);
+⋮----
+return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+⋮----
+return ResponseEntity.internalServerError().body(Map.of("error", "Failed to update bucket targets: " + e.getMessage()));
+⋮----
+public ResponseEntity<?> getRebalancePlanAlias(@RequestParam(value = "trigger", required = false, defaultValue = "INDUCED") String triggerType) {
+// Forwarding to SyncController endpoint logic
+return ResponseEntity.status(307).header("Location", "/api/v1/sync/rebalance/plan?trigger=" + triggerType).build();
+````
+
 ## File: core-node/src/main/java/com/portfolioos/core/controllers/RebalanceController.java
 ````java
 public class RebalanceController {
@@ -3603,56 +3608,6 @@ throw new RuntimeException("Failed to clear trigger history", e);
 public void close() {
 if (dataSource != null && !dataSource.isClosed()) {
 dataSource.close();
-````
-
-## File: core-node/src/main/java/com/portfolioos/core/service/LedgerCacheService.java
-````java
-public class LedgerCacheService {
-⋮----
-private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(LedgerCacheService.class);
-⋮----
-private final Object updateLock = new Object();
-⋮----
-this(eventStore, new AmfiNavSync(), new FifoMatcher());
-⋮----
-String healthStatus // HEALTHY, DEGRADED_AMFI_TIMEOUT
-⋮----
-public void refreshCacheInBackground() {
-⋮----
-String currentHash = eventStore.getLatestEventHash();
-long now = System.currentTimeMillis();
-⋮----
-CachedLedgerState current = stateHolder.get();
-if (current == null || current.ledgerHash() == null || !currentHash.equals(current.ledgerHash()) || (now - lastNavSyncTime) >= 30_000) {
-List<TaxEvent> events = eventStore.getAllEvents();
-FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(events);
-⋮----
-navMap = amfiSync.getNavMap();
-if (navMap == null || navMap.isEmpty()) {
-log.warn("AMFI_NAV_SYNC_ALERT: navMap returned empty or null after AMFI sync attempt!");
-⋮----
-log.warn("AMFI_NAV_SYNC_ALERT: Exception during AMFI NAV sync: {}", amfiEx.getMessage());
-⋮----
-navMap = current != null ? current.navMap() : java.util.Collections.emptyMap();
-⋮----
-stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash, now, health));
-⋮----
-System.err.println("Background cache refresh warning: " + e.getMessage());
-⋮----
-public CachedLedgerState getCachedState() {
-⋮----
-refreshCacheInBackground();
-current = stateHolder.get();
-⋮----
-current = new CachedLedgerState(
-Collections.emptyList(),
-new FifoMatcher.FifoResult(Collections.emptyList(), Collections.emptyList()),
-Collections.emptyMap(),
-⋮----
-System.currentTimeMillis(),
-⋮----
-public void invalidateCache() {
-stateHolder.set(null);
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/service/StatementIngestionUseCase.java
@@ -4237,6 +4192,44 @@ assertEquals(new BigDecimal("500000.00"), summary.totalLiquidHoldings());
 assertEquals(new BigDecimal("150000.00"), summary.unallocatedCash());
 ````
 
+## File: core-node/src/test/java/com/portfolioos/core/nav/AmfiNavSyncTest.java
+````java
+class AmfiNavSyncTest {
+⋮----
+void testParseAmfiFeed_MultiColumnDirectPlanFormat() {
+AmfiNavSync sync = new AmfiNavSync();
+⋮----
+List<AmfiNavSync.NavEntry> entries = sync.parseAmfiFeed(feedData);
+assertNotNull(entries);
+assertFalse(entries.isEmpty());
+⋮----
+// Verify INF209KA12Z1 (Growth ISIN)
+AmfiNavSync.NavEntry growthEntry = entries.stream()
+.filter(e -> "INF209KA12Z1".equals(e.isin()))
+.findFirst()
+.orElse(null);
+assertNotNull(growthEntry);
+assertEquals(new BigDecimal("106.9996"), growthEntry.nav());
+⋮----
+// Verify INF209KA13Z9 (Reinvestment ISIN)
+AmfiNavSync.NavEntry reincEntry = entries.stream()
+.filter(e -> "INF209KA13Z9".equals(e.isin()))
+⋮----
+assertNotNull(reincEntry);
+assertEquals(new BigDecimal("106.9996"), reincEntry.nav());
+⋮----
+// Verify Parag Parikh Flexi Cap
+AmfiNavSync.NavEntry ppfcEntry = entries.stream()
+.filter(e -> "INF879O01027".equals(e.isin()))
+⋮----
+assertNotNull(ppfcEntry);
+assertEquals(new BigDecimal("90.7427"), ppfcEntry.nav());
+⋮----
+// Assert hyphen (-) is never indexed as an ISIN key
+boolean containsHyphen = entries.stream().anyMatch(e -> "-".equals(e.isin()));
+assertFalse(containsHyphen, "Hyphen '-' must never be indexed as an ISIN");
+````
+
 ## File: core-node/src/test/java/com/portfolioos/core/reconciliation/ReconciliationGateTest.java
 ````java
 class ReconciliationGateTest {
@@ -4326,33 +4319,6 @@ TaxRulesConfig config = TaxRulesLoader.loadRules("2025-26");
 assertNotNull(config, "TaxRulesConfig for FY 2025-26 must not be null");
 assertEquals("2025-26", config.fiscalYear());
 assertEquals(new BigDecimal("125000"), config.equityExemptionLimit());
-````
-
-## File: core-node/src/test/java/com/portfolioos/core/security/SecurityInterceptorTest.java
-````java
-class SecurityInterceptorTest {
-⋮----
-void testPreHandleOptionsRequestReturnsTrue() throws Exception {
-SecurityInterceptor interceptor = new SecurityInterceptor();
-MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/api/v1/sync/snapshot");
-MockHttpServletResponse response = new MockHttpServletResponse();
-⋮----
-boolean result = interceptor.preHandle(request, response, new Object());
-assertTrue(result, "OPTIONS preflight requests must bypass token checks");
-⋮----
-void testPreHandleValidDevToken() throws Exception {
-⋮----
-MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
-request.addHeader("X-Api-Auth-Token", "dev_secret_key_123");
-⋮----
-assertTrue(result);
-⋮----
-void testPreHandleInvalidTokenReturns401() throws Exception {
-⋮----
-request.addHeader("X-Api-Auth-Token", "invalid_token_999");
-⋮----
-assertFalse(result);
-assertEquals(401, response.getStatus());
 ````
 
 ## File: core-node/src/test/java/com/portfolioos/core/service/DuckDbProjectorNetWorthAccountingTest.java
@@ -6169,49 +6135,6 @@ return rollingHigh.subtract(currentVal)
 public static String deriveTriggerType(double drawdownPct) {
 ````
 
-## File: core-node/src/main/java/com/portfolioos/core/controllers/ConfigController.java
-````java
-public class ConfigController {
-⋮----
-public ResponseEntity<BucketConfigLoader.BucketRulesConfig> getBucketTargets() {
-return ResponseEntity.ok(BucketConfigLoader.loadConfig());
-⋮----
-public ResponseEntity<?> updateBucketTargets(@RequestBody Map<String, Object> req) {
-⋮----
-String effectiveFrom = (String) req.getOrDefault("effectiveFrom", req.get("effective_from"));
-List<Map<String, Object>> targetsList = (List<Map<String, Object>>) req.get("targets");
-⋮----
-if (targetsList == null || targetsList.isEmpty()) {
-return ResponseEntity.badRequest().body(Map.of("error", "Missing 'targets' array in request body"));
-⋮----
-List<BucketConfigLoader.BucketTargetConfig> newTargets = targetsList.stream().map(tMap -> {
-String bName = (String) tMap.get("bucket");
-double tPct = ((Number) tMap.get("targetPct") != null ? (Number) tMap.get("targetPct") : (Number) tMap.get("target_pct")).doubleValue();
-double bPct = ((Number) tMap.get("bandPct") != null ? (Number) tMap.get("bandPct") : (Number) tMap.get("band_pct")).doubleValue();
-⋮----
-if (tMap.containsKey("preferredFunds") || tMap.containsKey("preferred_funds")) {
-List<Map<String, Object>> pfList = (List<Map<String, Object>>) tMap.getOrDefault("preferredFunds", tMap.get("preferred_funds"));
-⋮----
-prefFunds.add(new BucketConfigLoader.PreferredFundConfig(
-(String) pfMap.get("fundId"),
-(String) pfMap.get("fundName"),
-((Number) pfMap.get("allocationWeight")).doubleValue()
-⋮----
-prefFunds = BucketConfigLoader.getDefaultPreferredFundsForBucket(bName);
-⋮----
-}).toList();
-⋮----
-BucketConfigLoader.updateBucketTargets(newTargets, effectiveFrom);
-⋮----
-return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-⋮----
-return ResponseEntity.internalServerError().body(Map.of("error", "Failed to update bucket targets: " + e.getMessage()));
-⋮----
-public ResponseEntity<?> getRebalancePlanAlias(@RequestParam(value = "trigger", required = false, defaultValue = "INDUCED") String triggerType) {
-// Forwarding to SyncController endpoint logic
-return ResponseEntity.status(307).header("Location", "/api/v1/sync/rebalance/plan?trigger=" + triggerType).build();
-````
-
 ## File: core-node/src/main/java/com/portfolioos/core/controllers/StatementsController.java
 ````java
 public class StatementsController {
@@ -6254,6 +6177,23 @@ return ResponseEntity.ok(dtoList);
 return ResponseEntity.internalServerError().body("File reading failed: " + e.getMessage());
 ⋮----
 return ResponseEntity.internalServerError().body("Upload and parsing failed: " + e.getMessage());
+````
+
+## File: core-node/src/main/java/com/portfolioos/core/dtos/RebalancePlanDtos.java
+````java
+public class RebalancePlanDtos {
+⋮----
+String type, // DRAWDOWN, DRIFT, SCHEDULED, GOLD_FLOOR_BACKSTOP, MANUAL_LUMPSUM
+String legacyTriggerType, // INDUCED (for DRAWDOWN/DRIFT), SCHEDULED, MANUAL_LUMPSUM
+⋮----
+("DRAWDOWN".equals(type) || "DRIFT".equals(type)) ? "INDUCED" : type,
+⋮----
+public boolean isInduced() {
+return "INDUCED".equals(legacyTriggerType);
+⋮----
+String skippedReason, // FULLY_DEPLOYED, NOT_APPLICABLE, INSUFFICIENT, null
+⋮----
+String regime, // SEC_112A_EXEMPT, SEC_112A_TAXABLE_12_5, SLAB_RATE_STCG
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/dtos/ReportDtos.java
@@ -6453,66 +6393,6 @@ openLotsQueue.set(j, current.withAssetDetails(newAssetId, newAssetName, newOrigi
 return new FifoResult(openLotsQueue, matchedLots);
 ````
 
-## File: core-node/src/main/java/com/portfolioos/core/nav/AmfiNavSync.java
-````java
-public class AmfiNavSync {
-⋮----
-private static final Object lock = new Object();
-⋮----
-public List<NavEntry> parseAmfiFeed(String feedContent) {
-⋮----
-LocalDate today = LocalDate.now();
-⋮----
-String[] lines = feedContent.split("\\r?\\n");
-⋮----
-String[] parts = line.split(";");
-⋮----
-String schemeCode = parts[0].trim();
-String isin1 = parts.length > 1 ? parts[1].trim() : null;
-String isin2 = parts.length > 2 ? parts[2].trim() : null;
-String schemeName = parts.length > 3 ? parts[3].trim() : "";
-⋮----
-String token = parts[i].trim();
-if (!token.isEmpty()) {
-nav = new BigDecimal(token);
-⋮----
-if (isin1 != null && !isin1.isEmpty() && !"-".equals(isin1)) {
-entries.add(new NavEntry(schemeCode, isin1, schemeName, nav, today));
-⋮----
-if (isin2 != null && !isin2.isEmpty() && !"-".equals(isin2) && !isin2.equalsIgnoreCase(isin1)) {
-entries.add(new NavEntry(schemeCode, isin2, schemeName, nav, today));
-⋮----
-if ((isin1 == null || isin1.isEmpty() || "-".equals(isin1)) && (isin2 == null || isin2.isEmpty() || "-".equals(isin2))) {
-entries.add(new NavEntry(schemeCode, null, schemeName, nav, today));
-⋮----
-public List<NavEntry> fetchLatestNavsFromAmfi() {
-long now = System.currentTimeMillis();
-⋮----
-URI uri = new URI("https://portal.amfiindia.com/spages/NAVAll.txt");
-URLConnection conn = uri.toURL().openConnection();
-conn.setConnectTimeout(5000);
-conn.setReadTimeout(5000);
-⋮----
-StringBuilder sb = new StringBuilder();
-try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-⋮----
-while ((line = reader.readLine()) != null) {
-sb.append(line).append("\n");
-⋮----
-List<NavEntry> parsed = parseAmfiFeed(sb.toString());
-if (!parsed.isEmpty()) {
-⋮----
-lastFetchTimeMs = System.currentTimeMillis();
-⋮----
-System.err.println("AMFI fetch error: " + e.getMessage());
-⋮----
-public Map<String, BigDecimal> getNavMap() {
-List<NavEntry> entries = fetchLatestNavsFromAmfi();
-⋮----
-if (entry.isin() != null && entry.nav() != null) {
-navMap.put(entry.isin(), entry.nav());
-````
-
 ## File: core-node/src/main/java/com/portfolioos/core/reporting/Itr2CsvExporter.java
 ````java
 public class Itr2CsvExporter {
@@ -6605,35 +6485,54 @@ private static String fmt(BigDecimal val) {
 return val.setScale(2, RoundingMode.HALF_UP).toPlainString();
 ````
 
-## File: core-node/src/main/java/com/portfolioos/core/security/SecurityInterceptor.java
+## File: core-node/src/main/java/com/portfolioos/core/service/LedgerCacheService.java
 ````java
-public class SecurityInterceptor implements HandlerInterceptor {
+public class LedgerCacheService {
 ⋮----
-public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(LedgerCacheService.class);
 ⋮----
-String token = System.getenv("API_AUTH_TOKEN");
-if (token == null || token.trim().isEmpty()) {
-throw new IllegalStateException("SECURITY CRITICAL: API_AUTH_TOKEN environment variable is required and cannot be empty.");
+private final Object updateLock = new Object();
 ⋮----
-String clientHeader = request.getHeader("X-Api-Auth-Token");
+this(eventStore, new AmfiNavSync(), new FifoMatcher());
 ⋮----
-String authHeader = request.getHeader("Authorization");
-if (authHeader != null && authHeader.startsWith("Bearer ")) {
-clientHeader = authHeader.substring(7);
+String healthStatus // HEALTHY, DEGRADED_AMFI_TIMEOUT
 ⋮----
-byte[] expectedBytes = token.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-byte[] devBytes = "dev_secret_key_123".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-byte[] fallbackBytes = "fintracker-cachyos-default-key-2026".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-byte[] clientBytes = clientHeader != null ? clientHeader.getBytes(java.nio.charset.StandardCharsets.UTF_8) : new byte[0];
+public void refreshCacheInBackground() {
 ⋮----
-boolean isValid = java.security.MessageDigest.isEqual(expectedBytes, clientBytes)
-|| java.security.MessageDigest.isEqual(devBytes, clientBytes)
-|| java.security.MessageDigest.isEqual(fallbackBytes, clientBytes);
+String currentHash = eventStore.getLatestEventHash();
+long now = System.currentTimeMillis();
 ⋮----
-response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-response.setContentType("application/json");
-response.getWriter().write("{\"message\":\"Unauthorized: Missing or invalid X-Api-Auth-Token header or token parameter.\"}");
+CachedLedgerState current = stateHolder.get();
+if (current == null || current.ledgerHash() == null || !currentHash.equals(current.ledgerHash()) || (now - lastNavSyncTime) >= 30_000) {
+List<TaxEvent> events = eventStore.getAllEvents();
+FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(events);
+⋮----
+navMap = amfiSync.getNavMap();
+if (navMap == null || navMap.isEmpty()) {
+log.warn("AMFI_NAV_SYNC_ALERT: navMap returned empty or null after AMFI sync attempt!");
+⋮----
+log.warn("AMFI_NAV_SYNC_ALERT: Exception during AMFI NAV sync: {}", amfiEx.getMessage());
+⋮----
+navMap = current != null ? current.navMap() : java.util.Collections.emptyMap();
+⋮----
+stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash, now, health));
+⋮----
+System.err.println("Background cache refresh warning: " + e.getMessage());
+⋮----
+public CachedLedgerState getCachedState() {
+⋮----
+refreshCacheInBackground();
+current = stateHolder.get();
+⋮----
+current = new CachedLedgerState(
+Collections.emptyList(),
+new FifoMatcher.FifoResult(Collections.emptyList(), Collections.emptyList()),
+Collections.emptyMap(),
+⋮----
+System.currentTimeMillis(),
+⋮----
+public void invalidateCache() {
+stateHolder.set(null);
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/service/RebalanceTriggerEvaluator.java
@@ -7212,6 +7111,33 @@ assertTrue(exporterFile.exists());
 String content = java.nio.file.Files.readString(exporterFile.toPath());
 ⋮----
 assertFalse(content.contains("fmv2018Map.getOrDefault(isin, actualCost)"),
+````
+
+## File: core-node/src/test/java/com/portfolioos/core/security/SecurityInterceptorTest.java
+````java
+class SecurityInterceptorTest {
+⋮----
+void testPreHandleOptionsRequestReturnsTrue() throws Exception {
+SecurityInterceptor interceptor = new SecurityInterceptor();
+MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/api/v1/sync/snapshot");
+MockHttpServletResponse response = new MockHttpServletResponse();
+⋮----
+boolean result = interceptor.preHandle(request, response, new Object());
+assertTrue(result, "OPTIONS preflight requests must bypass token checks");
+⋮----
+void testPreHandleValidConfiguredToken() throws Exception {
+⋮----
+MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
+request.addHeader("X-Api-Auth-Token", "test-auth-token");
+⋮----
+assertTrue(result, "Valid API_AUTH_TOKEN header must pass authentication");
+⋮----
+void testPreHandleInvalidTokenReturns401() throws Exception {
+⋮----
+request.addHeader("X-Api-Auth-Token", "invalid_token_999");
+⋮----
+assertFalse(result);
+assertEquals(401, response.getStatus());
 ````
 
 ## File: core-node/src/test/java/com/portfolioos/core/service/LegacyFundWaterfallAuditTest.java
@@ -8541,23 +8467,6 @@ versions:
       allocation_weight: 1.0
 ````
 
-## File: core-node/src/main/java/com/portfolioos/core/dtos/RebalancePlanDtos.java
-````java
-public class RebalancePlanDtos {
-⋮----
-String type, // DRAWDOWN, DRIFT, SCHEDULED, GOLD_FLOOR_BACKSTOP, MANUAL_LUMPSUM
-String legacyTriggerType, // INDUCED (for DRAWDOWN/DRIFT), SCHEDULED, MANUAL_LUMPSUM
-⋮----
-("DRAWDOWN".equals(type) || "DRIFT".equals(type)) ? "INDUCED" : type,
-⋮----
-public boolean isInduced() {
-return "INDUCED".equals(legacyTriggerType);
-⋮----
-String skippedReason, // FULLY_DEPLOYED, NOT_APPLICABLE, INSUFFICIENT, null
-⋮----
-String regime, // SEC_112A_EXEMPT, SEC_112A_TAXABLE_12_5, SLAB_RATE_STCG
-````
-
 ## File: core-node/src/main/java/com/portfolioos/core/matcher/FundTierClassifier.java
 ````java
 public class FundTierClassifier {
@@ -8584,6 +8493,66 @@ if (com.portfolioos.core.rules.BucketConfigLoader.isPreferredFund(assetId)) {
 public static boolean isLegacyFund(String assetId, Set<String> activeAssetIds) {
 ⋮----
 return classify(assetId) == FundTier.LEGACY;
+````
+
+## File: core-node/src/main/java/com/portfolioos/core/nav/AmfiNavSync.java
+````java
+public class AmfiNavSync {
+⋮----
+private static final Object lock = new Object();
+⋮----
+public List<NavEntry> parseAmfiFeed(String feedContent) {
+⋮----
+LocalDate today = LocalDate.now();
+⋮----
+String[] lines = feedContent.split("\\r?\\n");
+⋮----
+String[] parts = line.split(";");
+⋮----
+String schemeCode = parts[0].trim();
+String isin1 = parts.length > 1 ? parts[1].trim() : null;
+String isin2 = parts.length > 2 ? parts[2].trim() : null;
+String schemeName = parts.length > 3 ? parts[3].trim() : "";
+⋮----
+String token = parts[i].trim();
+if (!token.isEmpty()) {
+nav = new BigDecimal(token);
+⋮----
+if (isin1 != null && !isin1.isEmpty() && !"-".equals(isin1)) {
+entries.add(new NavEntry(schemeCode, isin1, schemeName, nav, today));
+⋮----
+if (isin2 != null && !isin2.isEmpty() && !"-".equals(isin2) && !isin2.equalsIgnoreCase(isin1)) {
+entries.add(new NavEntry(schemeCode, isin2, schemeName, nav, today));
+⋮----
+if ((isin1 == null || isin1.isEmpty() || "-".equals(isin1)) && (isin2 == null || isin2.isEmpty() || "-".equals(isin2))) {
+entries.add(new NavEntry(schemeCode, null, schemeName, nav, today));
+⋮----
+public List<NavEntry> fetchLatestNavsFromAmfi() {
+long now = System.currentTimeMillis();
+⋮----
+URI uri = new URI("https://portal.amfiindia.com/spages/NAVAll.txt");
+URLConnection conn = uri.toURL().openConnection();
+conn.setConnectTimeout(5000);
+conn.setReadTimeout(5000);
+⋮----
+StringBuilder sb = new StringBuilder();
+try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+⋮----
+while ((line = reader.readLine()) != null) {
+sb.append(line).append("\n");
+⋮----
+List<NavEntry> parsed = parseAmfiFeed(sb.toString());
+if (!parsed.isEmpty()) {
+⋮----
+lastFetchTimeMs = System.currentTimeMillis();
+⋮----
+System.err.println("AMFI fetch error: " + e.getMessage());
+⋮----
+public Map<String, BigDecimal> getNavMap() {
+List<NavEntry> entries = fetchLatestNavsFromAmfi();
+⋮----
+if (entry.isin() != null && entry.nav() != null) {
+navMap.put(entry.isin(), entry.nav());
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/rpc/FlightRpcClient.java
@@ -8751,6 +8720,33 @@ if (activeProfiles.contains("test") && System.getProperty("API_AUTH_TOKEN") != n
 token = System.getProperty("API_AUTH_TOKEN");
 ⋮----
 throw new IllegalStateException("Missing required environment variable 'API_AUTH_TOKEN'. FlightRpcClient refuses unauthenticated RPC call.");
+````
+
+## File: core-node/src/main/java/com/portfolioos/core/security/SecurityInterceptor.java
+````java
+public class SecurityInterceptor implements HandlerInterceptor {
+⋮----
+public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+⋮----
+String token = System.getenv("API_AUTH_TOKEN");
+if (token == null || token.trim().isEmpty()) {
+throw new IllegalStateException("SECURITY CRITICAL: API_AUTH_TOKEN environment variable is required and cannot be empty.");
+⋮----
+String clientHeader = request.getHeader("X-Api-Auth-Token");
+⋮----
+String authHeader = request.getHeader("Authorization");
+if (authHeader != null && authHeader.startsWith("Bearer ")) {
+clientHeader = authHeader.substring(7);
+⋮----
+byte[] expectedBytes = token.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+byte[] clientBytes = clientHeader != null ? clientHeader.getBytes(java.nio.charset.StandardCharsets.UTF_8) : new byte[0];
+⋮----
+boolean isValid = java.security.MessageDigest.isEqual(expectedBytes, clientBytes);
+⋮----
+response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+response.setContentType("application/json");
+response.getWriter().write("{\"message\":\"Unauthorized: Missing or invalid X-Api-Auth-Token header or token parameter.\"}");
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/tools/PortfolioQueryTools.java
@@ -9551,195 +9547,6 @@ assetResults.add(new AssetReconciliationResult(assetId, isMatched, calcUnits, de
 return new MultiAssetReconciliationResult(allMatched, assetResults, summary);
 ````
 
-## File: core-node/src/main/java/com/portfolioos/core/valuation/RebalanceWaterfallEngine.java
-````java
-public class RebalanceWaterfallEngine {
-⋮----
-public interface WaterfallTierStrategy {
-WaterfallTier tier();
-List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules);
-⋮----
-private static final List<WaterfallTierStrategy> REGULAR_STRATEGIES = List.of(
-new LegacyTierStrategy(),
-new LossHarvestTierStrategy(),
-new CoreLtcgTierStrategy()
-⋮----
-private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RebalanceWaterfallEngine.class);
-private static final WaterfallTierStrategy URGENT_STCG_STRATEGY = new CoreStcgUrgentTierStrategy();
-⋮----
-public static WaterfallResult buildTrimWaterfall(
-⋮----
-TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
-LocalDate today = currentDate != null ? currentDate : LocalDate.now();
-⋮----
-java.util.Set<String> activeAssetIds = FundTierClassifier.findActiveAssetIds(openLots, today);
-⋮----
-if (FundTierClassifier.isLegacyFund(lot.assetId(), activeAssetIds)) {
-legacyLots.add(lot);
-⋮----
-BucketEngine.Bucket lotBucket = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
-⋮----
-coreLots.add(lot);
-⋮----
-boolean hasNav = navMap != null && navMap.containsKey(lot.assetId());
-⋮----
-log.warn("AMFI_NAV_SYNC_ALERT: Missing ISIN {} in navMap during waterfall engine calculation, using fallback costPerUnit {}", lot.assetId(), lot.costPerUnit());
-⋮----
-BigDecimal nav = hasNav ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
-BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
-legacySchemeValueMap.put(lot.assetId(), legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
-⋮----
-strategiesToRun.add(URGENT_STCG_STRATEGY);
-⋮----
-if (remainingTarget.compareTo(BigDecimal.ZERO) <= 0) break;
-List<Lot> candidateLots = strategy.selectLots(legacyLots, coreLots, navMap, today, rules);
-⋮----
-if (strategy.tier() == WaterfallTier.LEGACY_FUND) {
-BigDecimal schemeTotal = legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
-BigDecimal maxSchemeTrim = schemeTotal.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
-BigDecimal alreadyTrimmed = legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
-BigDecimal schemeCapRemaining = maxSchemeTrim.subtract(alreadyTrimmed).max(BigDecimal.ZERO);
-if (schemeCapRemaining.compareTo(BigDecimal.ZERO) <= 0) continue;
-lotTarget = lotTarget.min(schemeCapRemaining);
-⋮----
-LotProcessResult res = processLot(strategy.tier(), lot, navMap, lotTarget, unusedExemption, rules, today, urgent);
-if (res != null && res.proceeds().compareTo(BigDecimal.ZERO) > 0) {
-steps.add(res.step());
-satisfiedAmount = satisfiedAmount.add(res.proceeds());
-remainingTarget = remainingTarget.subtract(res.proceeds());
-unusedExemption = res.newUnusedExemption();
-totalTaxDrag = totalTaxDrag.add(res.taxDrag());
-⋮----
-legacySchemeTrimmedMap.put(lot.assetId(),
-legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(res.proceeds()));
-⋮----
-BigDecimal deferredAmount = remainingTarget.max(BigDecimal.ZERO);
-⋮----
-if (deferredAmount.compareTo(BigDecimal.ZERO) > 0) {
-⋮----
-BigDecimal exemptionConsumed = initialExemption.subtract(unusedExemption);
-⋮----
-return new WaterfallResult(
-⋮----
-satisfiedAmount.setScale(2, RoundingMode.HALF_UP),
-deferredAmount.setScale(2, RoundingMode.HALF_UP),
-⋮----
-totalTaxDrag.setScale(2, RoundingMode.HALF_UP),
-exemptionConsumed.setScale(2, RoundingMode.HALF_UP)
-⋮----
-private static LotProcessResult processLot(
-⋮----
-BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
-BigDecimal lotValue = lot.remainingUnits().multiply(nav);
-if (lotValue.compareTo(BigDecimal.ZERO) <= 0) return null;
-⋮----
-BigDecimal redemption = lotValue.min(remainingTarget);
-BigDecimal unitsSold = nav.compareTo(BigDecimal.ZERO) > 0 ? redemption.divide(nav, 4, RoundingMode.HALF_UP) : BigDecimal.ZERO;
-BigDecimal costBasis = unitsSold.multiply(lot.costPerUnit());
-BigDecimal gain = redemption.subtract(costBasis);
-⋮----
-AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
-long threshold = getThresholdDays(cat, rules);
-long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
-⋮----
-// USER DIRECTIVE (Fix 2a): STCG lots are 100% EXCLUDED during DRIFT or SCHEDULED rebalancing.
-// Under DRAWDOWN or urgent de-risking (urgent == true), controlled STCG realization IS allowed
-// with tax drag explicitly calculated and logged as a trade-off.
-⋮----
-if (gain.compareTo(BigDecimal.ZERO) > 0) {
-⋮----
-BigDecimal exempt = gain.min(newExemption);
-BigDecimal taxable = gain.subtract(exempt);
-newExemption = newExemption.subtract(exempt).max(BigDecimal.ZERO);
-taxDrag = taxable.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
-⋮----
-BigDecimal stcgRate = (cat == AssetCategory.EQUITY) ? rules.equityStcgRate() : new BigDecimal("0.20");
-taxDrag = gain.multiply(stcgRate).setScale(2, RoundingMode.HALF_UP);
-⋮----
-WaterfallStep step = new WaterfallStep(
-⋮----
-lot.lotId(),
-lot.assetId(),
-lot.assetName(),
-⋮----
-redemption.setScale(2, RoundingMode.HALF_UP),
-gain.setScale(2, RoundingMode.HALF_UP),
-⋮----
-return new LotProcessResult(step, redemption, taxDrag, newExemption);
-⋮----
-private static void sortLotsByTaxCost(List<Lot> lots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
-lots.sort((l1, l2) -> {
-BigDecimal nav1 = navMap.getOrDefault(l1.assetId(), l1.costPerUnit());
-BigDecimal gain1 = nav1.subtract(l1.costPerUnit());
-AssetCategory cat1 = TaxClassifier.detectCategory(l1.assetId(), l1.assetName());
-long thresh1 = getThresholdDays(cat1, rules);
-long days1 = ChronoUnit.DAYS.between(l1.acquisitionDate(), today);
-⋮----
-int rank1 = gain1.compareTo(BigDecimal.ZERO) < 0 ? 0 : (isLtcg1 ? 1 : 2);
-⋮----
-BigDecimal nav2 = navMap.getOrDefault(l2.assetId(), l2.costPerUnit());
-BigDecimal gain2 = nav2.subtract(l2.costPerUnit());
-AssetCategory cat2 = TaxClassifier.detectCategory(l2.assetId(), l2.assetName());
-long thresh2 = getThresholdDays(cat2, rules);
-long days2 = ChronoUnit.DAYS.between(l2.acquisitionDate(), today);
-⋮----
-int rank2 = gain2.compareTo(BigDecimal.ZERO) < 0 ? 0 : (isLtcg2 ? 1 : 2);
-⋮----
-return Integer.compare(rank1, rank2);
-⋮----
-private static long getThresholdDays(AssetCategory category, TaxRulesConfig rules) {
-⋮----
-case EQUITY -> rules.equityLtcgThresholdDays();
-case GOLD_SILVER, INTERNATIONAL, SGB -> rules.goldInternationalThresholdDays();
-⋮----
-// --- Strategy Implementations ---
-⋮----
-private static class LegacyTierStrategy implements WaterfallTierStrategy {
-⋮----
-public WaterfallTier tier() { return WaterfallTier.LEGACY_FUND; }
-⋮----
-public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
-List<Lot> lots = legacyLots.stream().filter(l -> {
-BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
-BigDecimal gain = nav.subtract(l.costPerUnit());
-if (gain.compareTo(BigDecimal.ZERO) < 0) return true; // Always allow loss harvest
-AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
-⋮----
-long holdingDays = ChronoUnit.DAYS.between(l.acquisitionDate(), today);
-return threshold > 0 && holdingDays >= threshold; // Strictly ONLY LTCG lots allowed
-}).collect(java.util.stream.Collectors.toList());
-⋮----
-sortLotsByTaxCost(lots, navMap, today, rules);
-⋮----
-private static class LossHarvestTierStrategy implements WaterfallTierStrategy {
-⋮----
-public WaterfallTier tier() { return WaterfallTier.LOSS_HARVEST; }
-⋮----
-return coreLots.stream().filter(l -> {
-⋮----
-return nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0;
-}).sorted(Comparator.comparing(l -> {
-⋮----
-return nav.subtract(l.costPerUnit());
-})).toList();
-⋮----
-private static class CoreLtcgTierStrategy implements WaterfallTierStrategy {
-⋮----
-public WaterfallTier tier() { return WaterfallTier.LTCG_WITHIN_EXEMPTION; }
-⋮----
-return selectCoreLotsByHoldingCondition(coreLots, navMap, today, rules, true);
-⋮----
-private static class CoreStcgUrgentTierStrategy implements WaterfallTierStrategy {
-⋮----
-public WaterfallTier tier() { return WaterfallTier.STCG_URGENT_ONLY; }
-⋮----
-return selectCoreLotsByHoldingCondition(coreLots, navMap, today, rules, false);
-⋮----
-private static List<Lot> selectCoreLotsByHoldingCondition(
-⋮----
-if (nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0) return false;
-````
-
 ## File: core-node/src/main/java/com/portfolioos/core/persistence/DuckDbProjector.java
 ````java
 public class DuckDbProjector {
@@ -10102,6 +9909,198 @@ res.put("total_rows", rows.size());
 res.put("rows", rows);
 ````
 
+## File: core-node/src/main/java/com/portfolioos/core/valuation/RebalanceWaterfallEngine.java
+````java
+public class RebalanceWaterfallEngine {
+⋮----
+public interface WaterfallTierStrategy {
+WaterfallTier tier();
+List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules);
+⋮----
+private static final List<WaterfallTierStrategy> REGULAR_STRATEGIES = List.of(
+new LegacyTierStrategy(),
+new LossHarvestTierStrategy(),
+new CoreLtcgTierStrategy()
+⋮----
+private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RebalanceWaterfallEngine.class);
+private static final WaterfallTierStrategy URGENT_STCG_STRATEGY = new CoreStcgUrgentTierStrategy();
+⋮----
+public static WaterfallResult buildTrimWaterfall(
+⋮----
+TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
+LocalDate today = currentDate != null ? currentDate : LocalDate.now();
+⋮----
+java.util.Set<String> activeAssetIds = FundTierClassifier.findActiveAssetIds(openLots, today);
+⋮----
+if (FundTierClassifier.isLegacyFund(lot.assetId(), activeAssetIds)) {
+legacyLots.add(lot);
+⋮----
+BucketEngine.Bucket lotBucket = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
+⋮----
+coreLots.add(lot);
+⋮----
+boolean hasNav = navMap != null && navMap.containsKey(lot.assetId());
+⋮----
+log.warn("AMFI_NAV_SYNC_ALERT: Missing ISIN {} in navMap during waterfall engine calculation, using fallback costPerUnit {}", lot.assetId(), lot.costPerUnit());
+⋮----
+if (!hasNav && lot.costPerUnit() == null) {
+throw new IllegalStateException("CRITICAL VALUATION ERROR: Asset ISIN " + lot.assetId() + " is missing both live NAV and lot costPerUnit basis.");
+⋮----
+BigDecimal nav = hasNav ? navMap.get(lot.assetId()) : lot.costPerUnit();
+BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
+legacySchemeValueMap.put(lot.assetId(), legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
+⋮----
+strategiesToRun.add(URGENT_STCG_STRATEGY);
+⋮----
+if (remainingTarget.compareTo(BigDecimal.ZERO) <= 0) break;
+List<Lot> candidateLots = strategy.selectLots(legacyLots, coreLots, navMap, today, rules);
+⋮----
+if (strategy.tier() == WaterfallTier.LEGACY_FUND) {
+BigDecimal schemeTotal = legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
+BigDecimal maxSchemeTrim = schemeTotal.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
+BigDecimal alreadyTrimmed = legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
+BigDecimal schemeCapRemaining = maxSchemeTrim.subtract(alreadyTrimmed).max(BigDecimal.ZERO);
+if (schemeCapRemaining.compareTo(BigDecimal.ZERO) <= 0) continue;
+lotTarget = lotTarget.min(schemeCapRemaining);
+⋮----
+LotProcessResult res = processLot(strategy.tier(), lot, navMap, lotTarget, unusedExemption, rules, today, urgent);
+if (res != null && res.proceeds().compareTo(BigDecimal.ZERO) > 0) {
+steps.add(res.step());
+satisfiedAmount = satisfiedAmount.add(res.proceeds());
+remainingTarget = remainingTarget.subtract(res.proceeds());
+unusedExemption = res.newUnusedExemption();
+totalTaxDrag = totalTaxDrag.add(res.taxDrag());
+⋮----
+legacySchemeTrimmedMap.put(lot.assetId(),
+legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(res.proceeds()));
+⋮----
+BigDecimal deferredAmount = remainingTarget.max(BigDecimal.ZERO);
+⋮----
+if (deferredAmount.compareTo(BigDecimal.ZERO) > 0) {
+⋮----
+BigDecimal exemptionConsumed = initialExemption.subtract(unusedExemption);
+⋮----
+return new WaterfallResult(
+⋮----
+satisfiedAmount.setScale(2, RoundingMode.HALF_UP),
+deferredAmount.setScale(2, RoundingMode.HALF_UP),
+⋮----
+totalTaxDrag.setScale(2, RoundingMode.HALF_UP),
+exemptionConsumed.setScale(2, RoundingMode.HALF_UP)
+⋮----
+private static LotProcessResult processLot(
+⋮----
+BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+BigDecimal lotValue = lot.remainingUnits().multiply(nav);
+if (lotValue.compareTo(BigDecimal.ZERO) <= 0) return null;
+⋮----
+BigDecimal redemption = lotValue.min(remainingTarget);
+BigDecimal unitsSold = nav.compareTo(BigDecimal.ZERO) > 0 ? redemption.divide(nav, 4, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+BigDecimal costBasis = unitsSold.multiply(lot.costPerUnit());
+BigDecimal gain = redemption.subtract(costBasis);
+⋮----
+AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
+long threshold = getThresholdDays(cat, rules);
+long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
+⋮----
+// USER DIRECTIVE (Fix 2a): STCG lots are 100% EXCLUDED during DRIFT or SCHEDULED rebalancing.
+// Under DRAWDOWN or urgent de-risking (urgent == true), controlled STCG realization IS allowed
+// with tax drag explicitly calculated and logged as a trade-off.
+⋮----
+if (gain.compareTo(BigDecimal.ZERO) > 0) {
+⋮----
+BigDecimal exempt = gain.min(newExemption);
+BigDecimal taxable = gain.subtract(exempt);
+newExemption = newExemption.subtract(exempt).max(BigDecimal.ZERO);
+taxDrag = taxable.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+⋮----
+BigDecimal stcgRate = (cat == AssetCategory.EQUITY) ? rules.equityStcgRate() : new BigDecimal("0.20");
+taxDrag = gain.multiply(stcgRate).setScale(2, RoundingMode.HALF_UP);
+⋮----
+WaterfallStep step = new WaterfallStep(
+⋮----
+lot.lotId(),
+lot.assetId(),
+lot.assetName(),
+⋮----
+redemption.setScale(2, RoundingMode.HALF_UP),
+gain.setScale(2, RoundingMode.HALF_UP),
+⋮----
+return new LotProcessResult(step, redemption, taxDrag, newExemption);
+⋮----
+private static void sortLotsByTaxCost(List<Lot> lots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
+lots.sort((l1, l2) -> {
+BigDecimal nav1 = navMap.getOrDefault(l1.assetId(), l1.costPerUnit());
+BigDecimal gain1 = nav1.subtract(l1.costPerUnit());
+AssetCategory cat1 = TaxClassifier.detectCategory(l1.assetId(), l1.assetName());
+long thresh1 = getThresholdDays(cat1, rules);
+long days1 = ChronoUnit.DAYS.between(l1.acquisitionDate(), today);
+⋮----
+int rank1 = gain1.compareTo(BigDecimal.ZERO) < 0 ? 0 : (isLtcg1 ? 1 : 2);
+⋮----
+BigDecimal nav2 = navMap.getOrDefault(l2.assetId(), l2.costPerUnit());
+BigDecimal gain2 = nav2.subtract(l2.costPerUnit());
+AssetCategory cat2 = TaxClassifier.detectCategory(l2.assetId(), l2.assetName());
+long thresh2 = getThresholdDays(cat2, rules);
+long days2 = ChronoUnit.DAYS.between(l2.acquisitionDate(), today);
+⋮----
+int rank2 = gain2.compareTo(BigDecimal.ZERO) < 0 ? 0 : (isLtcg2 ? 1 : 2);
+⋮----
+return Integer.compare(rank1, rank2);
+⋮----
+private static long getThresholdDays(AssetCategory category, TaxRulesConfig rules) {
+⋮----
+case EQUITY -> rules.equityLtcgThresholdDays();
+case GOLD_SILVER, INTERNATIONAL, SGB -> rules.goldInternationalThresholdDays();
+⋮----
+// --- Strategy Implementations ---
+⋮----
+private static class LegacyTierStrategy implements WaterfallTierStrategy {
+⋮----
+public WaterfallTier tier() { return WaterfallTier.LEGACY_FUND; }
+⋮----
+public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
+List<Lot> lots = legacyLots.stream().filter(l -> {
+BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+BigDecimal gain = nav.subtract(l.costPerUnit());
+if (gain.compareTo(BigDecimal.ZERO) < 0) return true; // Always allow loss harvest
+AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
+⋮----
+long holdingDays = ChronoUnit.DAYS.between(l.acquisitionDate(), today);
+return threshold > 0 && holdingDays >= threshold; // Strictly ONLY LTCG lots allowed
+}).collect(java.util.stream.Collectors.toList());
+⋮----
+sortLotsByTaxCost(lots, navMap, today, rules);
+⋮----
+private static class LossHarvestTierStrategy implements WaterfallTierStrategy {
+⋮----
+public WaterfallTier tier() { return WaterfallTier.LOSS_HARVEST; }
+⋮----
+return coreLots.stream().filter(l -> {
+⋮----
+return nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0;
+}).sorted(Comparator.comparing(l -> {
+⋮----
+return nav.subtract(l.costPerUnit());
+})).toList();
+⋮----
+private static class CoreLtcgTierStrategy implements WaterfallTierStrategy {
+⋮----
+public WaterfallTier tier() { return WaterfallTier.LTCG_WITHIN_EXEMPTION; }
+⋮----
+return selectCoreLotsByHoldingCondition(coreLots, navMap, today, rules, true);
+⋮----
+private static class CoreStcgUrgentTierStrategy implements WaterfallTierStrategy {
+⋮----
+public WaterfallTier tier() { return WaterfallTier.STCG_URGENT_ONLY; }
+⋮----
+return selectCoreLotsByHoldingCondition(coreLots, navMap, today, rules, false);
+⋮----
+private static List<Lot> selectCoreLotsByHoldingCondition(
+⋮----
+if (nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0) return false;
+````
+
 ## File: core-node/src/test/java/com/portfolioos/core/service/RebalanceSankeyDtoTest.java
 ````java
 class RebalanceSankeyDtoTest {
@@ -10263,6 +10262,111 @@ boolean hasStcg = allSellLots.stream().anyMatch(l -> "SLAB_RATE_STCG".equals(l.t
 boolean hasExemptOrTaxable = allSellLots.stream().anyMatch(l -> l.taxImpact().regime().startsWith("SEC_112A"));
 ⋮----
 assertTrue(hasStcg || hasExemptOrTaxable, "Waterfall lots must carry evaluated tax regimes");
+````
+
+## File: rules/bucket_targets.yaml
+````yaml
+---
+versions:
+- version_id: "v1.0"
+  effective_from: "2024-01-01"
+  targets:
+  - bucket: "EQUITY_CORE"
+    target_pct: 50.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "CORE"
+    preferred_funds:
+    - fund_id: "INF109KC12U0"
+      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+      allocation_weight: 0.5
+    - fund_id: "INF879O01027"
+      fund_name: "Parag Parikh Flexi Cap Fund"
+      allocation_weight: 0.5
+  - bucket: "EQUITY_SATELLITE"
+    target_pct: 20.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "SATELLITE"
+    preferred_funds:
+    - fund_id: "INF109KC13X2"
+      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
+      allocation_weight: 0.25
+    - fund_id: "INF754K01TN5"
+      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
+      allocation_weight: 0.25
+    - fund_id: "INF204K01K15"
+      fund_name: "Nippon India Small Cap Fund"
+      allocation_weight: 0.25
+    - fund_id: "INF247L01BQ9"
+      fund_name: "Motilal Oswal Nifty Microcap 250 Index Fund"
+      allocation_weight: 0.25
+  - bucket: "GOLD_SILVER"
+    target_pct: 15.0
+    band_pct: 5.0
+    trigger_drift_pct: 12.0
+    strategy: "ACCUMULATOR"
+    preferred_funds:
+    - fund_id: "INF247L01BM8"
+      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
+      allocation_weight: 1.0
+  - bucket: "LIQUID_BUFFER"
+    target_pct: 15.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "ARBITRAGE"
+    preferred_funds:
+    - fund_id: "INF205K01KR8"
+      fund_name: "Invesco India Arbitrage Fund"
+      allocation_weight: 1.0
+- version_id: "v2.0"
+  effective_from: "2026-08-17"
+  targets:
+  - bucket: "EQUITY_CORE"
+    target_pct: 50.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "CORE"
+    preferred_funds:
+    - fund_id: "INF109KC12U0"
+      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+      allocation_weight: 0.5814
+    - fund_id: "INF879O01027"
+      fund_name: "Parag Parikh Flexi Cap Fund"
+      allocation_weight: 0.4186
+  - bucket: "EQUITY_SATELLITE"
+    target_pct: 35.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "SATELLITE"
+    preferred_funds:
+    - fund_id: "INF109KC13X2"
+      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
+      allocation_weight: 0.4571
+    - fund_id: "INF754K01TN5"
+      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
+      allocation_weight: 0.4000
+    - fund_id: "INF204K01K15"
+      fund_name: "Nippon India Small Cap Fund"
+      allocation_weight: 0.1429
+  - bucket: "GOLD_SILVER"
+    target_pct: 5.0
+    band_pct: 5.0
+    trigger_drift_pct: 12.0
+    strategy: "ACCUMULATOR"
+    preferred_funds:
+    - fund_id: "INF247L01BM8"
+      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
+      allocation_weight: 1.0
+  - bucket: "LIQUID_BUFFER"
+    target_pct: 10.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "ARBITRAGE"
+    preferred_funds:
+    - fund_id: "INF205K01KR8"
+      fund_name: "Invesco India Arbitrage Fund"
+      allocation_weight: 1.0
 ````
 
 ## File: mobile-app/app/src/main/java/com/portfolioos/mobile/MainActivity.kt
@@ -10495,111 +10599,6 @@ class MainActivity : FragmentActivity() {
         activePage.value = intent.getIntExtra("TARGET_PAGE", 0)
     }
 }
-````
-
-## File: rules/bucket_targets.yaml
-````yaml
----
-versions:
-- version_id: "v1.0"
-  effective_from: "2024-01-01"
-  targets:
-  - bucket: "EQUITY_CORE"
-    target_pct: 50.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "CORE"
-    preferred_funds:
-    - fund_id: "INF109KC12U0"
-      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
-      allocation_weight: 0.5
-    - fund_id: "INF879O01027"
-      fund_name: "Parag Parikh Flexi Cap Fund"
-      allocation_weight: 0.5
-  - bucket: "EQUITY_SATELLITE"
-    target_pct: 20.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "SATELLITE"
-    preferred_funds:
-    - fund_id: "INF109KC13X2"
-      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
-      allocation_weight: 0.25
-    - fund_id: "INF754K01TN5"
-      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
-      allocation_weight: 0.25
-    - fund_id: "INF204K01K15"
-      fund_name: "Nippon India Small Cap Fund"
-      allocation_weight: 0.25
-    - fund_id: "INF247L01BQ9"
-      fund_name: "Motilal Oswal Nifty Microcap 250 Index Fund"
-      allocation_weight: 0.25
-  - bucket: "GOLD_SILVER"
-    target_pct: 15.0
-    band_pct: 5.0
-    trigger_drift_pct: 12.0
-    strategy: "ACCUMULATOR"
-    preferred_funds:
-    - fund_id: "INF247L01BM8"
-      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
-      allocation_weight: 1.0
-  - bucket: "LIQUID_BUFFER"
-    target_pct: 15.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "ARBITRAGE"
-    preferred_funds:
-    - fund_id: "INF205K01KR8"
-      fund_name: "Invesco India Arbitrage Fund"
-      allocation_weight: 1.0
-- version_id: "v2.0"
-  effective_from: "2026-08-17"
-  targets:
-  - bucket: "EQUITY_CORE"
-    target_pct: 50.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "CORE"
-    preferred_funds:
-    - fund_id: "INF109KC12U0"
-      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
-      allocation_weight: 0.5814
-    - fund_id: "INF879O01027"
-      fund_name: "Parag Parikh Flexi Cap Fund"
-      allocation_weight: 0.4186
-  - bucket: "EQUITY_SATELLITE"
-    target_pct: 35.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "SATELLITE"
-    preferred_funds:
-    - fund_id: "INF109KC13X2"
-      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
-      allocation_weight: 0.4571
-    - fund_id: "INF754K01TN5"
-      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
-      allocation_weight: 0.4000
-    - fund_id: "INF204K01K15"
-      fund_name: "Nippon India Small Cap Fund"
-      allocation_weight: 0.1429
-  - bucket: "GOLD_SILVER"
-    target_pct: 5.0
-    band_pct: 5.0
-    trigger_drift_pct: 12.0
-    strategy: "ACCUMULATOR"
-    preferred_funds:
-    - fund_id: "INF247L01BM8"
-      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
-      allocation_weight: 1.0
-  - bucket: "LIQUID_BUFFER"
-    target_pct: 10.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "ARBITRAGE"
-    preferred_funds:
-    - fund_id: "INF205K01KR8"
-      fund_name: "Invesco India Arbitrage Fund"
-      allocation_weight: 1.0
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/controllers/SyncController.java
@@ -10954,268 +10953,6 @@ return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
 return ResponseEntity.internalServerError().body(Map.of("error", "Failed to update bucket targets: " + e.getMessage()));
 ````
 
-## File: core-node/src/main/java/com/portfolioos/core/rules/BucketConfigLoader.java
-````java
-public class BucketConfigLoader {
-⋮----
-public static String mapAssetToBucket(String assetId, String assetName) {
-String pref = getPreferredBucketForAsset(assetId, assetName);
-⋮----
-return com.portfolioos.core.valuation.BucketEngine.classifyAssetToBucket(assetId, assetName).name();
-⋮----
-public static String getPreferredBucketForAsset(String assetId, String assetName) {
-⋮----
-BucketTargetVersion version = getActiveVersion(LocalDate.now());
-if (version != null && version.targets() != null) {
-for (BucketTargetConfig target : version.targets()) {
-if (target.preferredFunds() != null) {
-for (PreferredFundConfig fund : target.preferredFunds()) {
-if (assetId != null && fund.fundId() != null && assetId.equalsIgnoreCase(fund.fundId())) {
-return target.bucket();
-⋮----
-if (assetName != null && fund.fundName() != null &&
-assetName.toUpperCase().contains(fund.fundName().toUpperCase())) {
-⋮----
-String idUpper = assetId.toUpperCase();
-if (idUpper.startsWith("NIFTY_LARGEMIDCAP") || idUpper.contains("LARGEMIDCAP")) {
-⋮----
-String nameUpper = assetName.toUpperCase();
-if (nameUpper.contains("LARGE AND MIDCAP") || nameUpper.contains("LARGEMIDCAP")) {
-⋮----
-public static boolean isPreferredFund(String assetId) {
-⋮----
-if (assetId.startsWith("NIFTY_LARGEMIDCAP") || assetId.startsWith("PPFAS") || assetId.startsWith("VALUE_30") || assetId.startsWith("MOMENTUM") || assetId.startsWith("SMALL_CAP") || assetId.startsWith("GOLD") || assetId.startsWith("ARBITRAGE")) {
-⋮----
-if (assetId.equalsIgnoreCase(fund.fundId()) ||
-(fund.fundName() != null && assetId.equalsIgnoreCase(fund.fundName()))) {
-⋮----
-String effectiveFrom, // YYYY-MM-DD
-⋮----
-public static synchronized BucketRulesConfig loadConfig() {
-⋮----
-File ruleFile = findConfigFile();
-if (ruleFile == null || !ruleFile.exists()) {
-cachedRules = createDefaultConfig();
-saveConfigToDisk(cachedRules);
-⋮----
-ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-Map<String, Object> data = mapper.readValue(ruleFile, Map.class);
-if (data == null || !data.containsKey("versions")) {
-⋮----
-List<Map<String, Object>> verList = (List<Map<String, Object>>) data.get("versions");
-⋮----
-String vId = (String) vMap.getOrDefault("version_id", "v1.0");
-String effFrom = (String) vMap.getOrDefault("effective_from", "2024-01-01");
-List<Map<String, Object>> tList = (List<Map<String, Object>>) vMap.get("targets");
-⋮----
-String bName = (String) tMap.get("bucket");
-double tPct = ((Number) tMap.get("target_pct")).doubleValue();
-double bPct = ((Number) tMap.get("band_pct")).doubleValue();
-⋮----
-double tdPct = tMap.containsKey("trigger_drift_pct")
-? ((Number) tMap.get("trigger_drift_pct")).doubleValue()
-⋮----
-String strat = (String) tMap.getOrDefault("strategy", "");
-⋮----
-if (tMap.containsKey("preferred_funds")) {
-List<Map<String, Object>> pfList = (List<Map<String, Object>>) tMap.get("preferred_funds");
-⋮----
-prefFunds.add(new PreferredFundConfig(
-(String) pfMap.get("fund_id"),
-(String) pfMap.get("fund_name"),
-((Number) pfMap.get("allocation_weight")).doubleValue()
-⋮----
-prefFunds = getDefaultPreferredFundsForBucket(bName);
-⋮----
-targetConfigs.add(new BucketTargetConfig(bName, tPct, bPct, tdPct, strat, prefFunds));
-⋮----
-parsedVersions.add(new BucketTargetVersion(vId, effFrom, targetConfigs));
-⋮----
-cachedRules = new BucketRulesConfig(parsedVersions);
-⋮----
-System.err.println("Failed to load bucket_targets.yaml, falling back to defaults: " + e.getMessage());
-⋮----
-public static List<BucketEngine.BucketTarget> getActiveBucketTargets(LocalDate date) {
-BucketRulesConfig config = loadConfig();
-if (config == null || config.versions().isEmpty()) {
-⋮----
-String targetDateStr = (date != null ? date : LocalDate.now()).toString();
-⋮----
-BucketTargetVersion activeVer = config.versions().stream()
-.filter(v -> v.effectiveFrom().compareTo(targetDateStr) <= 0)
-.max(Comparator.comparing(BucketTargetVersion::effectiveFrom))
-.orElse(config.versions().get(0));
-⋮----
-for (BucketTargetConfig tc : activeVer.targets()) {
-⋮----
-b = BucketEngine.Bucket.valueOf(tc.bucket());
-⋮----
-result.add(new BucketEngine.BucketTarget(
-⋮----
-BigDecimal.valueOf(tc.targetPct()).setScale(2, RoundingMode.HALF_UP),
-BigDecimal.valueOf(tc.bandPct()).setScale(2, RoundingMode.HALF_UP)
-⋮----
-return result.isEmpty() ? BucketEngine.DEFAULT_TARGETS : result;
-⋮----
-public static Map<String, Map<String, Double>> getSipAllocations() {
-return getSipAllocations(LocalDate.now());
-⋮----
-public static Map<String, Map<String, Double>> getSipAllocations(LocalDate date) {
-BucketTargetVersion version = getActiveVersion(date);
-⋮----
-double bucketTargetFrac = target.targetPct() / 100.0;
-⋮----
-double overallSipWeight = bucketTargetFrac * fund.allocationWeight();
-fundSipWeights.put(fund.fundId(), overallSipWeight);
-⋮----
-result.put(target.bucket(), fundSipWeights);
-⋮----
-public static Map<String, Double> getRenormalizedSipAllocations(LocalDate date) {
-Map<String, Map<String, Double>> fullAlloc = getSipAllocations(date);
-⋮----
-for (Map.Entry<String, Map<String, Double>> bucketEntry : fullAlloc.entrySet()) {
-if ("GOLD_SILVER".equalsIgnoreCase(bucketEntry.getKey())) {
-continue; // Gold is dampener-driven, excluded from flat monthly SIP
-⋮----
-for (Map.Entry<String, Double> fundEntry : bucketEntry.getValue().entrySet()) {
-nonGoldAlloc.put(fundEntry.getKey(), fundEntry.getValue());
-totalWeight += fundEntry.getValue();
-⋮----
-for (Map.Entry<String, Double> entry : nonGoldAlloc.entrySet()) {
-renormalized.put(entry.getKey(), entry.getValue() / totalWeight);
-⋮----
-public static BucketTargetVersion getActiveVersion(LocalDate date) {
-⋮----
-return config.versions().stream()
-⋮----
-public static synchronized void updateBucketTargets(List<BucketTargetConfig> newTargets, String effectiveFrom) {
-validateNewTargets(newTargets);
-⋮----
-String effDate = (effectiveFrom != null && !effectiveFrom.isBlank()) ? effectiveFrom : LocalDate.now().toString();
-BucketRulesConfig currentConfig = loadConfig();
-List<BucketTargetVersion> versions = new ArrayList<>(currentConfig.versions());
-⋮----
-String newVersionId = "v" + (versions.size() + 1) + ".0";
-versions.add(new BucketTargetVersion(newVersionId, effDate, newTargets));
-⋮----
-BucketRulesConfig updatedConfig = new BucketRulesConfig(versions);
-⋮----
-saveConfigToDisk(updatedConfig);
-⋮----
-public static void validateNewTargets(List<BucketTargetConfig> newTargets) {
-if (newTargets == null || newTargets.isEmpty()) {
-throw new IllegalArgumentException("Bucket targets list cannot be empty");
-⋮----
-Set<String> requiredBuckets = Set.of("EQUITY_CORE", "EQUITY_SATELLITE", "GOLD_SILVER", "LIQUID_BUFFER");
-⋮----
-if (tc.bucket() == null || !requiredBuckets.contains(tc.bucket())) {
-throw new IllegalArgumentException("Invalid bucket name: " + tc.bucket() + ". Allowed: " + requiredBuckets);
-⋮----
-providedBuckets.add(tc.bucket());
-⋮----
-if (tc.targetPct() < 0.0 || tc.targetPct() > 100.0) {
-throw new IllegalArgumentException("Target percentage for " + tc.bucket() + " must be between 0.0% and 100.0%");
-⋮----
-if (tc.bandPct() < 1.0 || tc.bandPct() > 20.0) {
-throw new IllegalArgumentException("Band tolerance for " + tc.bucket() + " must be between 1.0% and 20.0%");
-⋮----
-if (tc.triggerDriftPct() < 0.0 || tc.triggerDriftPct() > 100.0) {
-throw new IllegalArgumentException("Trigger drift percentage for " + tc.bucket() + " must be between 0.0% and 100.0%");
-⋮----
-sumPct += tc.targetPct();
-⋮----
-if (!providedBuckets.containsAll(requiredBuckets)) {
-throw new IllegalArgumentException("All 4 buckets must be defined: " + requiredBuckets);
-⋮----
-if (Math.abs(sumPct - 100.0) > 0.05) {
-throw new IllegalArgumentException(String.format("Bucket target percentages must sum to 100.0%% (provided sum: %.2f%%)", sumPct));
-⋮----
-public static List<PreferredFundConfig> getDefaultPreferredFundsForBucket(String bucketName) {
-if (bucketName == null) return List.of();
-⋮----
-return List.of(
-new PreferredFundConfig("INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", 0.50),
-new PreferredFundConfig("INF879O01027", "Parag Parikh Flexi Cap Fund", 0.50)
-⋮----
-new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 0.25),
-new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 0.25),
-new PreferredFundConfig("INF204K01K15", "Nippon India Small Cap Fund", 0.25),
-new PreferredFundConfig("INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund", 0.25)
-⋮----
-new PreferredFundConfig("INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", 1.00)
-⋮----
-new PreferredFundConfig("INF205K01KR8", "Invesco India Arbitrage Fund", 1.00)
-⋮----
-return List.of();
-⋮----
-private static File findConfigFile() {
-String rulesDirEnv = System.getenv("RULES_DIR");
-⋮----
-if (rulesDirEnv != null && !rulesDirEnv.isBlank()) {
-locations.add(new File(rulesDirEnv, "bucket_targets.yaml"));
-⋮----
-locations.add(new File("rules/bucket_targets.yaml"));
-locations.add(new File("../rules/bucket_targets.yaml"));
-locations.add(new File("../../rules/bucket_targets.yaml"));
-locations.add(new File("/app/rules/bucket_targets.yaml"));
-⋮----
-if (f.exists()) {
-System.out.println("BucketConfigLoader: Loaded config from " + f.getAbsolutePath());
-⋮----
-return locations.get(0);
-⋮----
-private static BucketRulesConfig createDefaultConfig() {
-List<BucketTargetConfig> defaults = List.of(
-new BucketTargetConfig("EQUITY_CORE", 50.0, 5.0, 5.0, "CORE", getDefaultPreferredFundsForBucket("EQUITY_CORE")),
-new BucketTargetConfig("EQUITY_SATELLITE", 20.0, 5.0, 5.0, "SATELLITE", getDefaultPreferredFundsForBucket("EQUITY_SATELLITE")),
-new BucketTargetConfig("GOLD_SILVER", 15.0, 5.0, 12.0, "ACCUMULATOR", getDefaultPreferredFundsForBucket("GOLD_SILVER")),
-new BucketTargetConfig("LIQUID_BUFFER", 15.0, 5.0, 5.0, "ARBITRAGE", getDefaultPreferredFundsForBucket("LIQUID_BUFFER"))
-⋮----
-return new BucketRulesConfig(List.of(
-new BucketTargetVersion("v1.0", "2024-01-01", defaults)
-⋮----
-private static void saveConfigToDisk(BucketRulesConfig config) {
-⋮----
-File targetFile = findConfigFile();
-File parentDir = targetFile.getParentFile();
-if (parentDir != null && !parentDir.exists()) {
-parentDir.mkdirs();
-⋮----
-for (BucketTargetVersion v : config.versions()) {
-⋮----
-vMap.put("version_id", v.versionId());
-vMap.put("effective_from", v.effectiveFrom());
-⋮----
-for (BucketTargetConfig tc : v.targets()) {
-⋮----
-tMap.put("bucket", tc.bucket());
-tMap.put("target_pct", tc.targetPct());
-tMap.put("band_pct", tc.bandPct());
-tMap.put("trigger_drift_pct", tc.triggerDriftPct());
-tMap.put("strategy", tc.strategy());
-⋮----
-if (tc.preferredFunds() != null && !tc.preferredFunds().isEmpty()) {
-⋮----
-for (PreferredFundConfig pf : tc.preferredFunds()) {
-⋮----
-pfMap.put("fund_id", pf.fundId());
-pfMap.put("fund_name", pf.fundName());
-pfMap.put("allocation_weight", pf.allocationWeight());
-pfList.add(pfMap);
-⋮----
-tMap.put("preferred_funds", pfList);
-⋮----
-tList.add(tMap);
-⋮----
-vMap.put("targets", tList);
-verList.add(vMap);
-⋮----
-root.put("versions", verList);
-mapper.writeValue(targetFile, root);
-⋮----
-System.err.println("Failed to write bucket_targets.yaml: " + e.getMessage());
-````
-
 ## File: core-node/src/main/java/com/portfolioos/core/service/RebalancePlanEngine.java
 ````java
 public class RebalancePlanEngine {
@@ -11533,6 +11270,268 @@ alloc = totalAmount.multiply(BigDecimal.valueOf(pf.allocationWeight())).setScale
 remaining = remaining.subtract(alloc);
 ⋮----
 funds.add(new FundAllocationDto(pf.fundId(), pf.fundName(), alloc));
+````
+
+## File: core-node/src/main/java/com/portfolioos/core/rules/BucketConfigLoader.java
+````java
+public class BucketConfigLoader {
+⋮----
+public static String mapAssetToBucket(String assetId, String assetName) {
+String pref = getPreferredBucketForAsset(assetId, assetName);
+⋮----
+return com.portfolioos.core.valuation.BucketEngine.classifyAssetToBucket(assetId, assetName).name();
+⋮----
+public static String getPreferredBucketForAsset(String assetId, String assetName) {
+⋮----
+BucketTargetVersion version = getActiveVersion(LocalDate.now());
+if (version != null && version.targets() != null) {
+for (BucketTargetConfig target : version.targets()) {
+if (target.preferredFunds() != null) {
+for (PreferredFundConfig fund : target.preferredFunds()) {
+if (assetId != null && fund.fundId() != null && assetId.equalsIgnoreCase(fund.fundId())) {
+return target.bucket();
+⋮----
+if (assetName != null && fund.fundName() != null &&
+assetName.toUpperCase().contains(fund.fundName().toUpperCase())) {
+⋮----
+String idUpper = assetId.toUpperCase();
+if (idUpper.startsWith("NIFTY_LARGEMIDCAP") || idUpper.contains("LARGEMIDCAP")) {
+⋮----
+String nameUpper = assetName.toUpperCase();
+if (nameUpper.contains("LARGE AND MIDCAP") || nameUpper.contains("LARGEMIDCAP")) {
+⋮----
+public static boolean isPreferredFund(String assetId) {
+⋮----
+if (assetId.startsWith("NIFTY_LARGEMIDCAP") || assetId.startsWith("PPFAS") || assetId.startsWith("VALUE_30") || assetId.startsWith("MOMENTUM") || assetId.startsWith("SMALL_CAP") || assetId.startsWith("GOLD") || assetId.startsWith("ARBITRAGE")) {
+⋮----
+if (assetId.equalsIgnoreCase(fund.fundId()) ||
+(fund.fundName() != null && assetId.equalsIgnoreCase(fund.fundName()))) {
+⋮----
+String effectiveFrom, // YYYY-MM-DD
+⋮----
+public static synchronized BucketRulesConfig loadConfig() {
+⋮----
+File ruleFile = findConfigFile();
+if (ruleFile == null || !ruleFile.exists()) {
+cachedRules = createDefaultConfig();
+saveConfigToDisk(cachedRules);
+⋮----
+ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+Map<String, Object> data = mapper.readValue(ruleFile, Map.class);
+if (data == null || !data.containsKey("versions")) {
+⋮----
+List<Map<String, Object>> verList = (List<Map<String, Object>>) data.get("versions");
+⋮----
+String vId = (String) vMap.getOrDefault("version_id", "v1.0");
+String effFrom = (String) vMap.getOrDefault("effective_from", "2024-01-01");
+List<Map<String, Object>> tList = (List<Map<String, Object>>) vMap.get("targets");
+⋮----
+String bName = (String) tMap.get("bucket");
+double tPct = ((Number) tMap.get("target_pct")).doubleValue();
+double bPct = ((Number) tMap.get("band_pct")).doubleValue();
+⋮----
+double tdPct = tMap.containsKey("trigger_drift_pct")
+? ((Number) tMap.get("trigger_drift_pct")).doubleValue()
+⋮----
+String strat = (String) tMap.getOrDefault("strategy", "");
+⋮----
+if (tMap.containsKey("preferred_funds")) {
+List<Map<String, Object>> pfList = (List<Map<String, Object>>) tMap.get("preferred_funds");
+⋮----
+prefFunds.add(new PreferredFundConfig(
+(String) pfMap.get("fund_id"),
+(String) pfMap.get("fund_name"),
+((Number) pfMap.get("allocation_weight")).doubleValue()
+⋮----
+prefFunds = getDefaultPreferredFundsForBucket(bName);
+⋮----
+targetConfigs.add(new BucketTargetConfig(bName, tPct, bPct, tdPct, strat, prefFunds));
+⋮----
+parsedVersions.add(new BucketTargetVersion(vId, effFrom, targetConfigs));
+⋮----
+cachedRules = new BucketRulesConfig(parsedVersions);
+⋮----
+System.err.println("Failed to load bucket_targets.yaml, falling back to defaults: " + e.getMessage());
+⋮----
+public static List<BucketEngine.BucketTarget> getActiveBucketTargets(LocalDate date) {
+BucketRulesConfig config = loadConfig();
+if (config == null || config.versions().isEmpty()) {
+⋮----
+String targetDateStr = (date != null ? date : LocalDate.now()).toString();
+⋮----
+BucketTargetVersion activeVer = config.versions().stream()
+.filter(v -> v.effectiveFrom().compareTo(targetDateStr) <= 0)
+.max(Comparator.comparing(BucketTargetVersion::effectiveFrom))
+.orElse(config.versions().get(0));
+⋮----
+for (BucketTargetConfig tc : activeVer.targets()) {
+⋮----
+b = BucketEngine.Bucket.valueOf(tc.bucket());
+⋮----
+result.add(new BucketEngine.BucketTarget(
+⋮----
+BigDecimal.valueOf(tc.targetPct()).setScale(2, RoundingMode.HALF_UP),
+BigDecimal.valueOf(tc.bandPct()).setScale(2, RoundingMode.HALF_UP)
+⋮----
+return result.isEmpty() ? BucketEngine.DEFAULT_TARGETS : result;
+⋮----
+public static Map<String, Map<String, Double>> getSipAllocations() {
+return getSipAllocations(LocalDate.now());
+⋮----
+public static Map<String, Map<String, Double>> getSipAllocations(LocalDate date) {
+BucketTargetVersion version = getActiveVersion(date);
+⋮----
+double bucketTargetFrac = target.targetPct() / 100.0;
+⋮----
+double overallSipWeight = bucketTargetFrac * fund.allocationWeight();
+fundSipWeights.put(fund.fundId(), overallSipWeight);
+⋮----
+result.put(target.bucket(), fundSipWeights);
+⋮----
+public static Map<String, Double> getRenormalizedSipAllocations(LocalDate date) {
+Map<String, Map<String, Double>> fullAlloc = getSipAllocations(date);
+⋮----
+for (Map.Entry<String, Map<String, Double>> bucketEntry : fullAlloc.entrySet()) {
+if ("GOLD_SILVER".equalsIgnoreCase(bucketEntry.getKey())) {
+continue; // Gold is dampener-driven, excluded from flat monthly SIP
+⋮----
+for (Map.Entry<String, Double> fundEntry : bucketEntry.getValue().entrySet()) {
+nonGoldAlloc.put(fundEntry.getKey(), fundEntry.getValue());
+totalWeight += fundEntry.getValue();
+⋮----
+for (Map.Entry<String, Double> entry : nonGoldAlloc.entrySet()) {
+renormalized.put(entry.getKey(), entry.getValue() / totalWeight);
+⋮----
+public static BucketTargetVersion getActiveVersion(LocalDate date) {
+⋮----
+return config.versions().stream()
+⋮----
+public static synchronized void updateBucketTargets(List<BucketTargetConfig> newTargets, String effectiveFrom) {
+validateNewTargets(newTargets);
+⋮----
+String effDate = (effectiveFrom != null && !effectiveFrom.isBlank()) ? effectiveFrom : LocalDate.now().toString();
+BucketRulesConfig currentConfig = loadConfig();
+List<BucketTargetVersion> versions = new ArrayList<>(currentConfig.versions());
+⋮----
+String newVersionId = "v" + (versions.size() + 1) + ".0";
+versions.add(new BucketTargetVersion(newVersionId, effDate, newTargets));
+⋮----
+BucketRulesConfig updatedConfig = new BucketRulesConfig(versions);
+⋮----
+saveConfigToDisk(updatedConfig);
+⋮----
+public static void validateNewTargets(List<BucketTargetConfig> newTargets) {
+if (newTargets == null || newTargets.isEmpty()) {
+throw new IllegalArgumentException("Bucket targets list cannot be empty");
+⋮----
+Set<String> requiredBuckets = Set.of("EQUITY_CORE", "EQUITY_SATELLITE", "GOLD_SILVER", "LIQUID_BUFFER");
+⋮----
+if (tc.bucket() == null || !requiredBuckets.contains(tc.bucket())) {
+throw new IllegalArgumentException("Invalid bucket name: " + tc.bucket() + ". Allowed: " + requiredBuckets);
+⋮----
+providedBuckets.add(tc.bucket());
+⋮----
+if (tc.targetPct() < 0.0 || tc.targetPct() > 100.0) {
+throw new IllegalArgumentException("Target percentage for " + tc.bucket() + " must be between 0.0% and 100.0%");
+⋮----
+if (tc.bandPct() < 1.0 || tc.bandPct() > 20.0) {
+throw new IllegalArgumentException("Band tolerance for " + tc.bucket() + " must be between 1.0% and 20.0%");
+⋮----
+if (tc.triggerDriftPct() < 0.0 || tc.triggerDriftPct() > 100.0) {
+throw new IllegalArgumentException("Trigger drift percentage for " + tc.bucket() + " must be between 0.0% and 100.0%");
+⋮----
+sumPct += tc.targetPct();
+⋮----
+if (!providedBuckets.containsAll(requiredBuckets)) {
+throw new IllegalArgumentException("All 4 buckets must be defined: " + requiredBuckets);
+⋮----
+if (Math.abs(sumPct - 100.0) > 0.05) {
+throw new IllegalArgumentException(String.format("Bucket target percentages must sum to 100.0%% (provided sum: %.2f%%)", sumPct));
+⋮----
+public static List<PreferredFundConfig> getDefaultPreferredFundsForBucket(String bucketName) {
+if (bucketName == null) return List.of();
+⋮----
+return List.of(
+new PreferredFundConfig("INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", 0.50),
+new PreferredFundConfig("INF879O01027", "Parag Parikh Flexi Cap Fund", 0.50)
+⋮----
+new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 0.25),
+new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 0.25),
+new PreferredFundConfig("INF204K01K15", "Nippon India Small Cap Fund", 0.25),
+new PreferredFundConfig("INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund", 0.25)
+⋮----
+new PreferredFundConfig("INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", 1.00)
+⋮----
+new PreferredFundConfig("INF205K01KR8", "Invesco India Arbitrage Fund", 1.00)
+⋮----
+return List.of();
+⋮----
+private static File findConfigFile() {
+String rulesDirEnv = System.getenv("RULES_DIR");
+⋮----
+if (rulesDirEnv != null && !rulesDirEnv.isBlank()) {
+locations.add(new File(rulesDirEnv, "bucket_targets.yaml"));
+⋮----
+locations.add(new File("rules/bucket_targets.yaml"));
+locations.add(new File("../rules/bucket_targets.yaml"));
+locations.add(new File("../../rules/bucket_targets.yaml"));
+locations.add(new File("/app/rules/bucket_targets.yaml"));
+⋮----
+if (f.exists()) {
+System.out.println("BucketConfigLoader: Loaded config from " + f.getAbsolutePath());
+⋮----
+return locations.get(0);
+⋮----
+private static BucketRulesConfig createDefaultConfig() {
+List<BucketTargetConfig> defaults = List.of(
+new BucketTargetConfig("EQUITY_CORE", 50.0, 5.0, 5.0, "CORE", getDefaultPreferredFundsForBucket("EQUITY_CORE")),
+new BucketTargetConfig("EQUITY_SATELLITE", 20.0, 5.0, 5.0, "SATELLITE", getDefaultPreferredFundsForBucket("EQUITY_SATELLITE")),
+new BucketTargetConfig("GOLD_SILVER", 15.0, 5.0, 12.0, "ACCUMULATOR", getDefaultPreferredFundsForBucket("GOLD_SILVER")),
+new BucketTargetConfig("LIQUID_BUFFER", 15.0, 5.0, 5.0, "ARBITRAGE", getDefaultPreferredFundsForBucket("LIQUID_BUFFER"))
+⋮----
+return new BucketRulesConfig(List.of(
+new BucketTargetVersion("v1.0", "2024-01-01", defaults)
+⋮----
+private static void saveConfigToDisk(BucketRulesConfig config) {
+⋮----
+File targetFile = findConfigFile();
+File parentDir = targetFile.getParentFile();
+if (parentDir != null && !parentDir.exists()) {
+parentDir.mkdirs();
+⋮----
+for (BucketTargetVersion v : config.versions()) {
+⋮----
+vMap.put("version_id", v.versionId());
+vMap.put("effective_from", v.effectiveFrom());
+⋮----
+for (BucketTargetConfig tc : v.targets()) {
+⋮----
+tMap.put("bucket", tc.bucket());
+tMap.put("target_pct", tc.targetPct());
+tMap.put("band_pct", tc.bandPct());
+tMap.put("trigger_drift_pct", tc.triggerDriftPct());
+tMap.put("strategy", tc.strategy());
+⋮----
+if (tc.preferredFunds() != null && !tc.preferredFunds().isEmpty()) {
+⋮----
+for (PreferredFundConfig pf : tc.preferredFunds()) {
+⋮----
+pfMap.put("fund_id", pf.fundId());
+pfMap.put("fund_name", pf.fundName());
+pfMap.put("allocation_weight", pf.allocationWeight());
+pfList.add(pfMap);
+⋮----
+tMap.put("preferred_funds", pfList);
+⋮----
+tList.add(tMap);
+⋮----
+vMap.put("targets", tList);
+verList.add(vMap);
+⋮----
+root.put("versions", verList);
+mapper.writeValue(targetFile, root);
+⋮----
+System.err.println("Failed to write bucket_targets.yaml: " + e.getMessage());
 ````
 
 ## File: core-node/src/main/java/com/portfolioos/core/service/PortfolioValuationService.java

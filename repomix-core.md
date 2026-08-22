@@ -3718,13 +3718,9 @@ if (authHeader != null && authHeader.startsWith("Bearer ")) {
 clientHeader = authHeader.substring(7);
 ⋮----
 byte[] expectedBytes = token.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-byte[] devBytes = "dev_secret_key_123".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-byte[] fallbackBytes = "fintracker-cachyos-default-key-2026".getBytes(java.nio.charset.StandardCharsets.UTF_8);
 byte[] clientBytes = clientHeader != null ? clientHeader.getBytes(java.nio.charset.StandardCharsets.UTF_8) : new byte[0];
 ⋮----
-boolean isValid = java.security.MessageDigest.isEqual(expectedBytes, clientBytes)
-|| java.security.MessageDigest.isEqual(devBytes, clientBytes)
-|| java.security.MessageDigest.isEqual(fallbackBytes, clientBytes);
+boolean isValid = java.security.MessageDigest.isEqual(expectedBytes, clientBytes);
 ⋮----
 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 response.setContentType("application/json");
@@ -5624,7 +5620,10 @@ boolean hasNav = navMap != null && navMap.containsKey(lot.assetId());
 ⋮----
 log.warn("AMFI_NAV_SYNC_ALERT: Missing ISIN {} in navMap during waterfall engine calculation, using fallback costPerUnit {}", lot.assetId(), lot.costPerUnit());
 ⋮----
-BigDecimal nav = hasNav ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+if (!hasNav && lot.costPerUnit() == null) {
+throw new IllegalStateException("CRITICAL VALUATION ERROR: Asset ISIN " + lot.assetId() + " is missing both live NAV and lot costPerUnit basis.");
+⋮----
+BigDecimal nav = hasNav ? navMap.get(lot.assetId()) : lot.costPerUnit();
 BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
 legacySchemeValueMap.put(lot.assetId(), legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
 ⋮----
@@ -7995,12 +7994,12 @@ MockHttpServletResponse response = new MockHttpServletResponse();
 boolean result = interceptor.preHandle(request, response, new Object());
 assertTrue(result, "OPTIONS preflight requests must bypass token checks");
 ⋮----
-void testPreHandleValidDevToken() throws Exception {
+void testPreHandleValidConfiguredToken() throws Exception {
 ⋮----
 MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
-request.addHeader("X-Api-Auth-Token", "dev_secret_key_123");
+request.addHeader("X-Api-Auth-Token", "test-auth-token");
 ⋮----
-assertTrue(result);
+assertTrue(result, "Valid API_AUTH_TOKEN header must pass authentication");
 ⋮----
 void testPreHandleInvalidTokenReturns401() throws Exception {
 ⋮----
