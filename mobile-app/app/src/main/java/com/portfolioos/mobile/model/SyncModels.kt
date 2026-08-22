@@ -255,7 +255,7 @@ data class BenchmarkAnalyticsDto(
 data class StockConcentrationDto(
     @SerializedName("stock_symbol") val stockSymbol: String = "",
     @SerializedName("company_name") val companyName: String = "",
-    @SerializedName("portfolio_weight_pct") val portfolioWeightPct: Double = 0.0
+    @SerializedName("portfolio_percentage") val portfolioWeightPct: Double = 0.0
 )
 
 @Immutable

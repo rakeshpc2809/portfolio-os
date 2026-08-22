@@ -125,14 +125,27 @@ fun DashboardScreen(
 
     LaunchedEffect(snapshot) {
         withContext(Dispatchers.IO) {
-            try {
-                val token = SnapshotCacheManager.getAuthToken(context)
-                val service = SyncApiClient.createService(SyncApiClient.WIFI_BASE_URL)
-                benchmarkData = service.getBenchmarkAnalytics(token)
-                fireSummaryData = service.getFireSummary(token)
-                overlapData = service.getOverlapAnalytics(token)
-            } catch (e: Exception) {
-                // Keep default or current
+            val token = SnapshotCacheManager.getAuthToken(context).ifEmpty { "dev_secret_key_123" }
+            val urls = listOf(
+                SyncApiClient.USB_BASE_URL,
+                SyncApiClient.WIFI_BASE_URL,
+                SyncApiClient.EMULATOR_BASE_URL
+            )
+            for (baseUrl in urls) {
+                try {
+                    val service = SyncApiClient.createService(baseUrl)
+                    val bench = service.getBenchmarkAnalytics(token)
+                    val fire = service.getFireSummary(token)
+                    val overlap = service.getOverlapAnalytics(token)
+                    if (bench != null) {
+                        benchmarkData = bench
+                        fireSummaryData = fire
+                        overlapData = overlap
+                        break
+                    }
+                } catch (e: Exception) {
+                    // Try next URL
+                }
             }
         }
     }
