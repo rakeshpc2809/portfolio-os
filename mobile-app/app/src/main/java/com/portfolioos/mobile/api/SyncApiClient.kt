@@ -29,6 +29,22 @@ interface SyncApiService {
         @Header("X-Api-Auth-Token") token: String,
         @Body request: TradeSimulationRequestDto
     ): TradeSimulationResultDto
+
+    @GET("api/v1/analytics/overlap")
+    suspend fun getOverlapAnalytics(
+        @Header("X-Api-Auth-Token") token: String
+    ): com.portfolioos.mobile.model.OverlapReportDto
+
+    @GET("api/v1/fire/summary")
+    suspend fun getFireSummary(
+        @Header("X-Api-Auth-Token") token: String
+    ): com.portfolioos.mobile.model.FireSummaryResponseDto
+
+    @GET("api/v1/analytics/benchmark")
+    suspend fun getBenchmarkAnalytics(
+        @Header("X-Api-Auth-Token") token: String,
+        @Query("benchmark") benchmark: String = "NIFTY_50_TRI"
+    ): com.portfolioos.mobile.model.BenchmarkAnalyticsDto
 }
 
 object SyncApiClient {
