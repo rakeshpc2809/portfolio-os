@@ -154,7 +154,7 @@ public class SqliteEventStore implements EventStorePort {
         if (events.isEmpty()) return List.of();
 
         List<String> hashes = new ArrayList<>();
-        String checkSql = "SELECT event_hash FROM tax_events WHERE id = ? OR ((isin = ? OR asset_id = ? OR asset_name = ?) AND event_type = ? AND event_date = ? AND ABS(CAST(units AS REAL) - ?) < 0.0001 AND ABS(CAST(gross_amount AS REAL) - ?) < 0.01) LIMIT 1";
+        String checkSql = "SELECT event_hash FROM tax_events WHERE id = ? OR ((COALESCE(isin, '') = ? OR asset_id = ? OR asset_name = ?) AND event_type = ? AND event_date = ? AND ABS(CAST(units AS REAL) - ?) < 0.0001 AND ABS(CAST(gross_amount AS REAL) - ?) < 0.01) LIMIT 1";
         String insertSql = "INSERT INTO tax_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at, previous_hash, event_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = getConnection()) {
