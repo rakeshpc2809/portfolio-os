@@ -18,6 +18,8 @@ dependency-reduced-pom.xml
 # Gradle
 .gradle/
 build/
+local.properties
+**/local.properties
 
 # Python
 __pycache__/
