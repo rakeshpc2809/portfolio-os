@@ -34,7 +34,13 @@ interface SyncApiService {
 object SyncApiClient {
     const val USB_BASE_URL = "http://127.0.0.1:8080/"
     const val EMULATOR_BASE_URL = "http://10.0.2.2:8080/"
-    const val WIFI_BASE_URL = "http://192.168.1.13:8080/"
+    const val WIFI_BASE_URL = "http://192.168.1.10:8080/"
+    val WIFI_CANDIDATE_URLS = listOf(
+        "http://192.168.1.10:8080/",
+        "http://192.168.1.13:8080/",
+        "http://192.168.0.10:8080/",
+        "http://192.168.1.2:8080/"
+    )
 
     fun createService(baseUrl: String = USB_BASE_URL): SyncApiService {
         val logging = HttpLoggingInterceptor().apply {
@@ -84,14 +90,19 @@ object SyncApiClient {
                 SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
                 return snapshot
             } catch (e2: Exception) {
-                // 4. Try Wi-Fi LAN IP
-                try {
-                    val snapshot = createService(WIFI_BASE_URL).getSnapshot(token = authToken)
-                    SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
-                    return snapshot
-                } catch (e3: Exception) {
-                    // 5. Offline Fallback: Check direct AMFI NAVs over cellular if connected, or return frozen cache if fully offline!
-                    val cached = SnapshotCacheManager.loadSnapshot(context)
+                // 4. Try Wi-Fi LAN Candidate IPs
+                for (wifiUrl in WIFI_CANDIDATE_URLS) {
+                    try {
+                        val snapshot = createService(wifiUrl).getSnapshot(token = authToken)
+                        SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
+                        return snapshot
+                    } catch (e3: Exception) {
+                        // continue to next candidate IP
+                    }
+                }
+                
+                // 5. Offline Fallback: Check direct AMFI NAVs over cellular if connected, or return frozen cache if fully offline!
+                val cached = SnapshotCacheManager.loadSnapshot(context)
                     if (cached != null) {
                         val liveNavs = com.portfolioos.mobile.data.nav.AmfiDirectFetcher.fetchLatestNavMap()
                         if (liveNavs.isNotEmpty()) {
