@@ -101,8 +101,14 @@ public class BucketConfigLoader {
     ) {}
 
     public record BucketRulesConfig(
+        String configSource,
+        String configFilePath,
         List<BucketTargetVersion> versions
-    ) {}
+    ) {
+        public BucketRulesConfig(List<BucketTargetVersion> versions) {
+            this("YAML_FILE", "rules/bucket_targets.yaml", versions);
+        }
+    }
 
     private static BucketRulesConfig cachedRules = null;
 
@@ -113,6 +119,7 @@ public class BucketConfigLoader {
 
         File ruleFile = findConfigFile();
         if (ruleFile == null || !ruleFile.exists()) {
+            System.err.println("CONFIG_SOURCE_AUDIT: [FALLBACK_DEFAULT] File rules/bucket_targets.yaml not found! Using fallback defaults.");
             cachedRules = createDefaultConfig();
             saveConfigToDisk(cachedRules);
             return cachedRules;
@@ -122,10 +129,12 @@ public class BucketConfigLoader {
             ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
             Map<String, Object> data = mapper.readValue(ruleFile, Map.class);
             if (data == null) {
+                System.err.println("CONFIG_SOURCE_AUDIT: [FALLBACK_DEFAULT] YAML file empty! Using fallback defaults.");
                 cachedRules = createDefaultConfig();
                 return cachedRules;
             }
 
+            System.out.println("CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from " + ruleFile.getAbsolutePath());
             List<BucketTargetVersion> parsedVersions = new ArrayList<>();
 
             if (data.containsKey("portfolio")) {
@@ -216,7 +225,7 @@ public class BucketConfigLoader {
                 return cachedRules;
             }
 
-            cachedRules = new BucketRulesConfig(parsedVersions);
+            cachedRules = new BucketRulesConfig("YAML_FILE", ruleFile.getAbsolutePath(), parsedVersions);
             return cachedRules;
         } catch (Exception e) {
             System.err.println("Failed to load bucket_targets.yaml, falling back to defaults: " + e.getMessage());
@@ -461,7 +470,7 @@ public class BucketConfigLoader {
             new BucketTargetConfig("GOLD_SILVER", 15.0, 5.0, 12.0, "ACCUMULATOR", getDefaultPreferredFundsForBucket("GOLD_SILVER")),
             new BucketTargetConfig("LIQUID_BUFFER", 15.0, 5.0, 5.0, "ARBITRAGE", getDefaultPreferredFundsForBucket("LIQUID_BUFFER"))
         );
-        return new BucketRulesConfig(List.of(
+        return new BucketRulesConfig("FALLBACK_DEFAULT", "in-memory-defaults", List.of(
             new BucketTargetVersion("v1.0", "2024-01-01", defaults)
         ));
     }
