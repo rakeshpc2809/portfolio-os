@@ -498,8 +498,7 @@ public class RebalancePlanEngine {
 
             BucketEngine.BucketStatus status = statusMap.get(target.bucket());
             BigDecimal curVal = status != null ? status.currentValue() : BigDecimal.ZERO;
-            double currentPct = (liveCorpus.compareTo(BigDecimal.ZERO) > 0) ?
-                Math.round((curVal.doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct;
+            double currentPct = (status != null && status.currentPct() != null) ? status.currentPct().doubleValue() : targetPct;
 
             BigDecimal amountAllocated = BigDecimal.ZERO;
             BigDecimal shortfall = bucketShortfalls.getOrDefault(target.bucket(), BigDecimal.ZERO);

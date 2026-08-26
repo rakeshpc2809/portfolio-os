@@ -233,11 +233,20 @@ public class BucketEngine {
             bucketsToEvaluate = List.of(Bucket.values());
         }
 
+        BigDecimal totalActiveValue = BigDecimal.ZERO;
+        for (Bucket bucket : bucketsToEvaluate) {
+            if (bucket != Bucket.LEGACY_HOLDINGS) {
+                totalActiveValue = totalActiveValue.add(bucketValues.getOrDefault(bucket, BigDecimal.ZERO));
+            }
+        }
+
         for (Bucket bucket : bucketsToEvaluate) {
             BigDecimal curVal = bucketValues.getOrDefault(bucket, BigDecimal.ZERO);
             BigDecimal curPct = BigDecimal.ZERO;
-            if (totalPortfolioValue.compareTo(BigDecimal.ZERO) > 0) {
-                curPct = curVal.multiply(new BigDecimal("100")).divide(totalPortfolioValue, 2, RoundingMode.HALF_UP);
+            if (bucket == Bucket.LEGACY_HOLDINGS) {
+                curPct = BigDecimal.ZERO;
+            } else if (totalActiveValue.compareTo(BigDecimal.ZERO) > 0) {
+                curPct = curVal.multiply(new BigDecimal("100")).divide(totalActiveValue, 2, RoundingMode.HALF_UP);
             }
 
             BucketTarget tgt = targetMap.get(bucket);
