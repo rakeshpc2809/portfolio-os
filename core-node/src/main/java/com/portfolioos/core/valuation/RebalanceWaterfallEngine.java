@@ -131,7 +131,7 @@ public class RebalanceWaterfallEngine {
                 BigDecimal lotTarget = remainingTarget;
                 if (strategy.tier() == WaterfallTier.LEGACY_FUND) {
                     BigDecimal schemeTotal = legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
-                    BigDecimal maxSchemeTrim = schemeTotal.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal maxSchemeTrim = schemeTotal.multiply(new BigDecimal("1.00")).setScale(2, RoundingMode.HALF_UP);
                     BigDecimal alreadyTrimmed = legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
                     BigDecimal schemeCapRemaining = maxSchemeTrim.subtract(alreadyTrimmed).max(BigDecimal.ZERO);
                     if (schemeCapRemaining.compareTo(BigDecimal.ZERO) <= 0) continue;
@@ -294,13 +294,51 @@ public class RebalanceWaterfallEngine {
         }
     }
 
+    private static List<Lot> filterOverweightCoreLots(List<Lot> coreLots, Map<String, BigDecimal> navMap) {
+        if (coreLots == null || coreLots.isEmpty()) return List.of();
+
+        BigDecimal lmValue = BigDecimal.ZERO;
+        BigDecimal ppfcValue = BigDecimal.ZERO;
+
+        for (Lot l : coreLots) {
+            BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+            BigDecimal val = l.remainingUnits().multiply(nav);
+            if ("INF109KC12U0".equalsIgnoreCase(l.assetId())) {
+                lmValue = lmValue.add(val);
+            } else if ("INF879O01027".equalsIgnoreCase(l.assetId())) {
+                ppfcValue = ppfcValue.add(val);
+            }
+        }
+
+        BigDecimal totalCore = lmValue.add(ppfcValue);
+        if (totalCore.compareTo(BigDecimal.ZERO) <= 0) return coreLots;
+
+        // Target ratio: LargeMid250 = 60%, PPFC = 40%
+        BigDecimal lmRatio = lmValue.divide(totalCore, 4, RoundingMode.HALF_UP);
+        String targetTrimIsin = null;
+        if (lmRatio.compareTo(new BigDecimal("0.60")) > 0) {
+            targetTrimIsin = "INF109KC12U0"; // Trim LargeMid250 only, protect PPFC
+        } else if (lmRatio.compareTo(new BigDecimal("0.60")) < 0) {
+            targetTrimIsin = "INF879O01027"; // Trim PPFC only, protect LargeMid250
+        }
+
+        if (targetTrimIsin != null) {
+            String finalTargetIsin = targetTrimIsin;
+            List<Lot> filtered = coreLots.stream().filter(l -> finalTargetIsin.equalsIgnoreCase(l.assetId())).toList();
+            if (!filtered.isEmpty()) return filtered;
+        }
+
+        return coreLots;
+    }
+
     private static class LossHarvestTierStrategy implements WaterfallTierStrategy {
         @Override
         public WaterfallTier tier() { return WaterfallTier.LOSS_HARVEST; }
 
         @Override
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
-            return coreLots.stream().filter(l -> {
+            List<Lot> eligibleCore = filterOverweightCoreLots(coreLots, navMap);
+            return eligibleCore.stream().filter(l -> {
                 BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
                 return nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0;
             }).sorted(Comparator.comparing(l -> {
@@ -337,7 +375,8 @@ public class RebalanceWaterfallEngine {
         TaxRulesConfig rules,
         boolean requireLtcg
     ) {
-        return coreLots.stream().filter(l -> {
+        List<Lot> eligibleCore = filterOverweightCoreLots(coreLots, navMap);
+        return eligibleCore.stream().filter(l -> {
             BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
             if (nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0) return false;
             AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());

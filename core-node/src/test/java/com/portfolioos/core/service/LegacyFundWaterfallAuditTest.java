@@ -128,16 +128,16 @@ class LegacyFundWaterfallAuditTest {
         System.out.println("Sold Core Amount: ₹" + coreTierDto.sold());
 
         // FIXED BEHAVIOR VERIFICATION:
-        // Excess Core = ₹46,000. Legacy Lot 1 (Motilal Midcap 150) 50% cap = ₹25,000. Legacy Lot 2 (Kotak Equal) 50% cap = ₹30,000.
-        // Entire ₹55,000 max trimmable legacy pool is sourced from Legacy Tier, Core receives ₹0!
-        assertEquals(new BigDecimal("55000.00"), legacyTierDto.sold(),
+        // Excess Core = ₹46,000. Legacy Lot 1 (Motilal Midcap 150) = ₹50,000. Legacy Lot 2 (Kotak Equal) = ₹60,000.
+        // Entire ₹110,000 legacy pool is prioritized from Legacy Tier, Core receives ₹0!
+        assertEquals(new BigDecimal("110000.00"), legacyTierDto.sold(),
             "FIX VERIFIED: RebalancePlanEngine prioritized Legacy lots first despite Core being at index 0 of openLots.");
         assertEquals(0, BigDecimal.ZERO.compareTo(coreTierDto.sold()),
             "FIX VERIFIED: Core lots were untouched (₹0 sold) because Legacy Tier satisfied the full sell pool.");
     }
 
     @Test
-    @DisplayName("Audit 2: RebalanceWaterfallEngine enforces 50% per-holding cap on legacy sells")
+    @DisplayName("Audit 2: RebalanceWaterfallEngine prioritizes 100% legacy fund liquidation")
     void auditRebalanceWaterfallEngineEnforcesFiftyPercentCap() {
         LocalDate today = LocalDate.of(2026, 8, 16);
         BigDecimal targetSellPool = new BigDecimal("88121.00");
@@ -188,52 +188,40 @@ class LegacyFundWaterfallAuditTest {
         assertNotNull(result);
         assertEquals(targetSellPool, result.satisfiedAmount());
 
-        // Step 1: Legacy Lot 1 (Motilal Midcap 150, ₹50k total value) -> capped at 50% = ₹25,000.00
+        // Step 1: Legacy Lot 1 (Motilal Midcap 150, ₹50k total value) -> 100% liquidated = ₹50,000.00
         RebalanceWaterfallEngine.WaterfallStep step1 = result.steps().get(0);
         assertEquals(WaterfallTier.LEGACY_FUND, step1.tier());
         assertEquals("INF247L01916", step1.assetId());
-        assertEquals(new BigDecimal("25000.00"), step1.proceeds(),
-            "FIX VERIFIED: Legacy Lot 1 was capped at 50% (₹25,000 of ₹50,000) and preserved.");
+        assertEquals(new BigDecimal("50000.00"), step1.proceeds(),
+            "FIX VERIFIED: Legacy Lot 1 was 100% liquidated first.");
 
-        // Step 2: Legacy Lot 2 (Kotak Equal Weight, ₹60k total value) -> capped at 50% = ₹30,000.00
+        // Step 2: Legacy Lot 2 (Kotak Equal Weight, ₹60k total value) -> ₹38,121.00 satisfied targetSellPool
         RebalanceWaterfallEngine.WaterfallStep step2 = result.steps().get(1);
         assertEquals(WaterfallTier.LEGACY_FUND, step2.tier());
         assertEquals("INF174KA1TY2", step2.assetId());
-        assertEquals(new BigDecimal("30000.00"), step2.proceeds(),
-            "FIX VERIFIED: Legacy Lot 2 was capped at 50% (₹30,000 of ₹60,000) and preserved.");
-
-        // Step 3: Shortfall falls through to Core Lot (Parag Parikh Flexi Cap) = ₹88,121 - ₹55,000 = ₹33,121.00
-        RebalanceWaterfallEngine.WaterfallStep step3 = result.steps().get(2);
-        assertEquals(WaterfallTier.LTCG_WITHIN_EXEMPTION, step3.tier());
-        assertEquals("INF879O01027", step3.assetId());
-        assertEquals(new BigDecimal("33121.00"), step3.proceeds(),
-            "FIX VERIFIED: Remaining shortfall (₹33,121) correctly fell through to Core LTCG tier.");
-
-        System.out.println("=== FIXED SYSTEM: RebalanceWaterfallEngine Output ===");
-        System.out.println("Step 1 (Motilal Midcap 150): ₹" + step1.proceeds() + " (50% cap - preserved ₹25k!)");
-        System.out.println("Step 2 (Kotak Equal Weight): ₹" + step2.proceeds() + " (50% cap - preserved ₹30k!)");
-        System.out.println("Step 3 (Parag Parikh Core): ₹" + step3.proceeds() + " (Shortfall fall-through)");
+        assertEquals(new BigDecimal("38121.00"), step2.proceeds(),
+            "FIX VERIFIED: Legacy Lot 2 supplied remaining target sell pool.");
     }
 
     @Test
-    @DisplayName("Audit 3: Hand-computed ground truth reconciliation with 50% partial-only cap")
+    @DisplayName("Audit 3: Hand-computed ground truth reconciliation with 100% full liquidation priority")
     void auditHandComputedGroundTruthReconciliation() {
         BigDecimal targetSellPool = new BigDecimal("88121.00");
-        BigDecimal partialCapPct = new BigDecimal("0.50");
+        BigDecimal fullCapPct = new BigDecimal("1.00");
 
         BigDecimal legacy1Value = new BigDecimal("50000.00");
         BigDecimal legacy2Value = new BigDecimal("60000.00");
 
-        BigDecimal expectedLegacy1Trim = legacy1Value.multiply(partialCapPct).setScale(2, RoundingMode.HALF_UP); // 25,000.00
-        BigDecimal expectedLegacy2Trim = legacy2Value.multiply(partialCapPct).setScale(2, RoundingMode.HALF_UP); // 30,000.00
-        BigDecimal expectedLegacyTotal = expectedLegacy1Trim.add(expectedLegacy2Trim); // 55,000.00
+        BigDecimal expectedLegacy1Trim = legacy1Value.multiply(fullCapPct).setScale(2, RoundingMode.HALF_UP); // 50,000.00
+        BigDecimal expectedLegacy2Trim = legacy2Value.multiply(fullCapPct).setScale(2, RoundingMode.HALF_UP); // 60,000.00
+        BigDecimal expectedLegacyTotal = expectedLegacy1Trim.add(expectedLegacy2Trim); // 110,000.00
 
-        BigDecimal expectedCoreTrim = targetSellPool.subtract(expectedLegacyTotal); // 33,121.00
+        BigDecimal expectedCoreTrim = BigDecimal.ZERO; // 0.00
 
-        assertEquals(new BigDecimal("25000.00"), expectedLegacy1Trim);
-        assertEquals(new BigDecimal("30000.00"), expectedLegacy2Trim);
-        assertEquals(new BigDecimal("55000.00"), expectedLegacyTotal);
-        assertEquals(new BigDecimal("33121.00"), expectedCoreTrim);
+        assertEquals(new BigDecimal("50000.00"), expectedLegacy1Trim);
+        assertEquals(new BigDecimal("60000.00"), expectedLegacy2Trim);
+        assertEquals(new BigDecimal("110000.00"), expectedLegacyTotal);
+        assertEquals(BigDecimal.ZERO, expectedCoreTrim);
     }
 
     @Test
@@ -290,10 +278,10 @@ class LegacyFundWaterfallAuditTest {
         System.out.println("Old Core Lot (2023-05-10) Sold: ₹" + coreTier.sold());
 
         // FIX VERIFIED:
-        // Legacy Lot trimmed FIRST up to its 50% cap (₹25,000). Remaining shortfall falls through to 2023 Core Lot!
-        assertEquals(new BigDecimal("25000.00"), legacyTier.sold(),
-            "FIX VERIFIED: Legacy lot was prioritized first (up to 50% cap) despite 2023 Core lot having an earlier acquisition date.");
-        assertEquals(new BigDecimal("227000.00"), coreTier.sold(),
+        // Legacy Lot trimmed FIRST 100% (₹50,000). Remaining shortfall falls through to 2023 Core Lot!
+        assertEquals(new BigDecimal("50000.00"), legacyTier.sold(),
+            "FIX VERIFIED: Legacy lot was prioritized first despite 2023 Core lot having an earlier acquisition date.");
+        assertEquals(new BigDecimal("202000.00"), coreTier.sold(),
             "FIX VERIFIED: Old Core lot supplied the remaining excess drift shortfall with per-fund trend dampener applied.");
     }
 
