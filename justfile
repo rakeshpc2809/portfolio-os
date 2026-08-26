@@ -20,4 +20,4 @@ restart:
 
 # Run maven test suite
 test:
-    LEDGER_HMAC_SECRET=testsecret API_AUTH_TOKEN=testtoken /home/rakeshpc/.m2/wrapper/dists/apache-maven-3.9.6/a53741d1/bin/mvn test -f core-node/pom.xml
+    LEDGER_HMAC_SECRET=testsecret API_AUTH_TOKEN=test-auth-token /home/rakeshpc/.m2/wrapper/dists/apache-maven-3.9.6/a53741d1/bin/mvn test -f core-node/pom.xml

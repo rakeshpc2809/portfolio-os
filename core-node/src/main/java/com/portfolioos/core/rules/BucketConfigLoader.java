@@ -240,17 +240,26 @@ public class BucketConfigLoader {
 
         List<BucketEngine.BucketTarget> result = new ArrayList<>();
         for (BucketTargetConfig tc : activeVer.targets()) {
-            BucketEngine.Bucket b;
+            BucketEngine.Bucket b = null;
             try {
-                b = BucketEngine.Bucket.valueOf(tc.bucket());
+                b = BucketEngine.Bucket.valueOf(tc.bucket().toUpperCase());
             } catch (Exception e) {
-                continue;
+                switch (tc.bucket().toLowerCase()) {
+                    case "core" -> b = BucketEngine.Bucket.EQUITY_CORE;
+                    case "satellite_value" -> b = BucketEngine.Bucket.SATELLITE_VALUE;
+                    case "satellite_momentum" -> b = BucketEngine.Bucket.SATELLITE_MOMENTUM;
+                    case "satellite_smallcap" -> b = BucketEngine.Bucket.SATELLITE_SMALLCAP;
+                    case "hedge_commodity" -> b = BucketEngine.Bucket.HEDGE_COMMODITY;
+                    case "liquidity_arbitrage" -> b = BucketEngine.Bucket.LIQUIDITY_ARBITRAGE;
+                }
             }
-            result.add(new BucketEngine.BucketTarget(
-                b,
-                BigDecimal.valueOf(tc.targetPct()).setScale(2, RoundingMode.HALF_UP),
-                BigDecimal.valueOf(tc.bandPct()).setScale(2, RoundingMode.HALF_UP)
-            ));
+            if (b != null) {
+                result.add(new BucketEngine.BucketTarget(
+                    b,
+                    BigDecimal.valueOf(tc.targetPct()).setScale(2, RoundingMode.HALF_UP),
+                    BigDecimal.valueOf(tc.bandPct()).setScale(2, RoundingMode.HALF_UP)
+                ));
+            }
         }
         return result.isEmpty() ? BucketEngine.DEFAULT_TARGETS : result;
     }

@@ -191,6 +191,14 @@ public class BucketEngine {
                 bucketValues.put(b, bucketValues.get(b).add(val));
                 if (b == Bucket.SATELLITE_VALUE || b == Bucket.SATELLITE_MOMENTUM || b == Bucket.SATELLITE_SMALLCAP) {
                     bucketValues.put(Bucket.EQUITY_SATELLITE, bucketValues.get(Bucket.EQUITY_SATELLITE).add(val));
+                } else if (b == Bucket.HEDGE_COMMODITY) {
+                    bucketValues.put(Bucket.GOLD_SILVER, bucketValues.get(Bucket.GOLD_SILVER).add(val));
+                } else if (b == Bucket.LIQUIDITY_ARBITRAGE) {
+                    bucketValues.put(Bucket.LIQUID_BUFFER, bucketValues.get(Bucket.LIQUID_BUFFER).add(val));
+                } else if (b == Bucket.GOLD_SILVER) {
+                    bucketValues.put(Bucket.HEDGE_COMMODITY, bucketValues.get(Bucket.HEDGE_COMMODITY).add(val));
+                } else if (b == Bucket.LIQUID_BUFFER) {
+                    bucketValues.put(Bucket.LIQUIDITY_ARBITRAGE, bucketValues.get(Bucket.LIQUIDITY_ARBITRAGE).add(val));
                 }
                 
                 totalPortfolioValue = totalPortfolioValue.add(val);
