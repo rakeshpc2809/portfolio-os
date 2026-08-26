@@ -389,27 +389,41 @@ public class BucketConfigLoader {
 
     public static List<PreferredFundConfig> getDefaultPreferredFundsForBucket(String bucketName) {
         if (bucketName == null) return List.of();
-        switch (bucketName) {
-            case "EQUITY_CORE" -> {
+        switch (bucketName.toUpperCase()) {
+            case "EQUITY_CORE", "CORE" -> {
                 return List.of(
-                    new PreferredFundConfig("INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", 0.50),
-                    new PreferredFundConfig("INF879O01027", "Parag Parikh Flexi Cap Fund", 0.50)
+                    new PreferredFundConfig("INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", 0.60),
+                    new PreferredFundConfig("INF879O01027", "Parag Parikh Flexi Cap Fund", 0.40)
                 );
             }
             case "EQUITY_SATELLITE" -> {
                 return List.of(
-                    new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 0.25),
-                    new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 0.25),
-                    new PreferredFundConfig("INF204K01K15", "Nippon India Small Cap Fund", 0.25),
-                    new PreferredFundConfig("INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund", 0.25)
+                    new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 0.33),
+                    new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 0.33),
+                    new PreferredFundConfig("INF204K01K15", "Nippon India Small Cap Fund", 0.34)
                 );
             }
-            case "GOLD_SILVER" -> {
+            case "SATELLITE_VALUE" -> {
+                return List.of(
+                    new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 1.00)
+                );
+            }
+            case "SATELLITE_MOMENTUM" -> {
+                return List.of(
+                    new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 1.00)
+                );
+            }
+            case "SATELLITE_SMALLCAP" -> {
+                return List.of(
+                    new PreferredFundConfig("INF204K01K15", "Nippon India Small Cap Fund", 1.00)
+                );
+            }
+            case "GOLD_SILVER", "HEDGE_COMMODITY" -> {
                 return List.of(
                     new PreferredFundConfig("INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", 1.00)
                 );
             }
-            case "LIQUID_BUFFER" -> {
+            case "LIQUID_BUFFER", "LIQUIDITY_ARBITRAGE" -> {
                 return List.of(
                     new PreferredFundConfig("INF205K01KR8", "Invesco India Arbitrage Fund", 1.00)
                 );

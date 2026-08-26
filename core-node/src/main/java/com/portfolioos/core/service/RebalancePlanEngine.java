@@ -639,7 +639,13 @@ public class RebalancePlanEngine {
         List<BucketConfigLoader.PreferredFundConfig> prefFunds = List.of();
         if (activeVersion != null && activeVersion.targets() != null) {
             for (BucketConfigLoader.BucketTargetConfig tc : activeVersion.targets()) {
-                if (bucket.name().equals(tc.bucket())) {
+                String tcB = tc.bucket().toUpperCase();
+                if (bucket.name().equals(tcB) ||
+                    (bucket == BucketEngine.Bucket.EQUITY_CORE && "CORE".equals(tcB)) ||
+                    (bucket == BucketEngine.Bucket.GOLD_SILVER && "HEDGE_COMMODITY".equals(tcB)) ||
+                    (bucket == BucketEngine.Bucket.LIQUID_BUFFER && "LIQUIDITY_ARBITRAGE".equals(tcB)) ||
+                    (bucket == BucketEngine.Bucket.HEDGE_COMMODITY && "GOLD_SILVER".equals(tcB)) ||
+                    (bucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE && "LIQUID_BUFFER".equals(tcB))) {
                     prefFunds = tc.preferredFunds();
                     break;
                 }
