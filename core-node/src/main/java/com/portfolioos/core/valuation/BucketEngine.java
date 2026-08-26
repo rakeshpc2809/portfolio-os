@@ -20,14 +20,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class BucketEngine {
+
+    private static final Logger log = LoggerFactory.getLogger(BucketEngine.class);
 
     public enum Bucket {
         EQUITY_CORE,
         EQUITY_SATELLITE,
         GOLD_SILVER,
         LIQUID_BUFFER,
-        LEGACY_HOLDINGS
+        LEGACY_HOLDINGS,
+        SATELLITE_VALUE,
+        SATELLITE_MOMENTUM,
+        SATELLITE_SMALLCAP,
+        HEDGE_COMMODITY,
+        LIQUIDITY_ARBITRAGE
     }
 
     public record BucketTarget(
@@ -85,10 +95,27 @@ public class BucketEngine {
     }
 
     public static Bucket classifyAssetToBucket(String assetId, String assetName, java.util.Set<String> activeOrPreferredAssetIds) {
-        String nameUpper = assetName.toUpperCase();
+        String nameUpper = assetName != null ? assetName.toUpperCase() : "";
         AssetCategory category = TaxClassifier.detectCategory(assetId, assetName);
 
-        // Step 1: Category / Asset Type match FIRST (Gold/Silver & Liquid Buffer are structurally exempt from LEGACY_HOLDINGS)
+        // Step 1: Read preferred fund mapping directly from YAML / BucketConfigLoader
+        String mappedBucketName = com.portfolioos.core.rules.BucketConfigLoader.getPreferredBucketForAsset(assetId, assetName);
+        if (mappedBucketName != null) {
+            try {
+                return Bucket.valueOf(mappedBucketName.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                switch (mappedBucketName.toLowerCase()) {
+                    case "core" -> { return Bucket.EQUITY_CORE; }
+                    case "satellite_value" -> { return Bucket.SATELLITE_VALUE; }
+                    case "satellite_momentum" -> { return Bucket.SATELLITE_MOMENTUM; }
+                    case "satellite_smallcap" -> { return Bucket.SATELLITE_SMALLCAP; }
+                    case "hedge_commodity" -> { return Bucket.HEDGE_COMMODITY; }
+                    case "liquidity_arbitrage" -> { return Bucket.LIQUIDITY_ARBITRAGE; }
+                }
+            }
+        }
+
+        // Step 2: Category / Asset Type match
         if (category == AssetCategory.GOLD_SILVER || category == AssetCategory.SGB) {
             return Bucket.GOLD_SILVER;
         }
@@ -100,15 +127,7 @@ public class BucketEngine {
             return Bucket.LIQUID_BUFFER;
         }
 
-        // Step 2: Read preferred fund mapping directly from YAML / BucketConfigLoader
-        String mappedBucketName = com.portfolioos.core.rules.BucketConfigLoader.getPreferredBucketForAsset(assetId, assetName);
-        if (mappedBucketName != null) {
-            try {
-                return Bucket.valueOf(mappedBucketName);
-            } catch (IllegalArgumentException ignored) {}
-        }
-
-        // Step 3: Legacy check (for remaining equity funds, if activeOrPreferredAssetIds is provided and asset is not in it, map to LEGACY_HOLDINGS)
+        // Step 3: Legacy check
         if (activeOrPreferredAssetIds != null && !activeOrPreferredAssetIds.isEmpty() && !activeOrPreferredAssetIds.contains(assetId)) {
             return Bucket.LEGACY_HOLDINGS;
         }
@@ -160,17 +179,24 @@ public class BucketEngine {
             bucketValues.put(b, BigDecimal.ZERO);
             bucketAssetLots.put(b, new HashMap<>());
         }
-
-        for (Lot lot : openLots) {
-            Bucket bucket = classifyAssetToBucket(lot.assetId(), lot.assetName(), activeOrPreferredAssetIds);
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
-            BigDecimal lotValue = lot.remainingUnits().multiply(nav);
-            
-            totalPortfolioValue = totalPortfolioValue.add(lotValue);
-            bucketValues.put(bucket, bucketValues.get(bucket).add(lotValue));
-
-            Map<String, List<Lot>> assetMap = bucketAssetLots.get(bucket);
-            assetMap.computeIfAbsent(lot.assetId(), k -> new ArrayList<>()).add(lot);
+        if (openLots != null) {
+            for (Lot lot : openLots) {
+                boolean hasNav = navMap != null && navMap.containsKey(lot.assetId()) && navMap.get(lot.assetId()) != null;
+                if (!hasNav) {
+                    throw new IllegalStateException("CRITICAL VALUATION ERROR: Asset ISIN " + lot.assetId() + " (" + lot.assetName() + ") is missing live AMFI NAV in navMap.");
+                }
+                BigDecimal nav = navMap.get(lot.assetId());
+                BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
+                Bucket b = classifyAssetToBucket(lot.assetId(), lot.assetName(), activeOrPreferredAssetIds);
+                bucketValues.put(b, bucketValues.get(b).add(val));
+                if (b == Bucket.SATELLITE_VALUE || b == Bucket.SATELLITE_MOMENTUM || b == Bucket.SATELLITE_SMALLCAP) {
+                    bucketValues.put(Bucket.EQUITY_SATELLITE, bucketValues.get(Bucket.EQUITY_SATELLITE).add(val));
+                }
+                
+                totalPortfolioValue = totalPortfolioValue.add(val);
+                Map<String, List<Lot>> assetMap = bucketAssetLots.get(b);
+                assetMap.computeIfAbsent(lot.assetId(), k -> new ArrayList<>()).add(lot);
+            }
         }
 
         Map<Bucket, BucketTarget> targetMap = new HashMap<>();
@@ -185,8 +211,22 @@ public class BucketEngine {
         int day = currentDate.getDayOfMonth();
         boolean isCalendarReviewDate = (month == 3 && day >= 10 && day <= 20) || (month == 9 && day >= 10 && day <= 20);
 
-        for (Bucket bucket : Bucket.values()) {
-            BigDecimal curVal = bucketValues.get(bucket);
+        List<Bucket> bucketsToEvaluate = new ArrayList<>();
+        if (targets != null && !targets.isEmpty()) {
+            for (BucketTarget t : targets) {
+                if (!bucketsToEvaluate.contains(t.bucket())) {
+                    bucketsToEvaluate.add(t.bucket());
+                }
+            }
+            if (!bucketsToEvaluate.contains(Bucket.LEGACY_HOLDINGS)) {
+                bucketsToEvaluate.add(Bucket.LEGACY_HOLDINGS);
+            }
+        } else {
+            bucketsToEvaluate = List.of(Bucket.values());
+        }
+
+        for (Bucket bucket : bucketsToEvaluate) {
+            BigDecimal curVal = bucketValues.getOrDefault(bucket, BigDecimal.ZERO);
             BigDecimal curPct = BigDecimal.ZERO;
             if (totalPortfolioValue.compareTo(BigDecimal.ZERO) > 0) {
                 curPct = curVal.multiply(new BigDecimal("100")).divide(totalPortfolioValue, 2, RoundingMode.HALF_UP);

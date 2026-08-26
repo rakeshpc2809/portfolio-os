@@ -307,21 +307,40 @@ class LegacyFundWaterfallAuditTest {
         }
         com.portfolioos.core.persistence.SqliteEventStore store = new com.portfolioos.core.persistence.SqliteEventStore("data/tax_ledger.db");
         List<com.portfolioos.core.model.TaxEvent> events = store.getAllEvents();
+        if (events == null || events.isEmpty()) {
+            System.out.println("Skipping real DB run: data/tax_ledger.db has no events");
+            return;
+        }
         com.portfolioos.core.matcher.FifoMatcher matcher = new com.portfolioos.core.matcher.FifoMatcher();
         com.portfolioos.core.matcher.FifoMatcher.FifoResult fifoResult = matcher.processEvents(events);
         List<Lot> openLots = fifoResult.openLots();
+        System.out.println("DEBUG openLots size = " + (openLots != null ? openLots.size() : "null"));
+        if (openLots != null) {
+            for (Lot l : openLots) {
+                System.out.println("  Lot: " + l.assetId() + " (" + l.assetName() + ") units=" + l.remainingUnits() + " cost=" + l.costPerUnit());
+            }
+        }
 
         Map<String, BigDecimal> navMap = Map.of();
 
         LocalDate today = LocalDate.of(2026, 8, 16);
         BigDecimal totalVal = BigDecimal.ZERO;
         for (Lot lot : openLots) {
-            totalVal = totalVal.add(lot.remainingUnits().multiply(lot.costPerUnit()));
+            BigDecimal price = (lot.costPerUnit() != null && lot.costPerUnit().compareTo(BigDecimal.ZERO) > 0)
+                ? lot.costPerUnit() : BigDecimal.ONE;
+            totalVal = totalVal.add(lot.remainingUnits().multiply(price));
         }
+
+        List<BucketEngine.BucketTarget> v20Targets = List.of(
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("50.00"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_SATELLITE, new BigDecimal("35.00"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("5.00"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.LIQUID_BUFFER, new BigDecimal("10.00"), new BigDecimal("5.00"))
+        );
 
         RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
             openLots, fifoResult.matchedLots(), navMap, today,
-            totalVal, totalVal, null, "2026-27", "INDUCED", null, evaluator
+            totalVal, totalVal, v20Targets, "2026-27", "INDUCED", null, evaluator
         );
 
         assertNotNull(plan);

@@ -15,7 +15,12 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class RebalanceTriggerEvaluator {
+
+    private static final Logger log = LoggerFactory.getLogger(RebalanceTriggerEvaluator.class);
 
     private final TriggerHistoryRepository repository;
 
@@ -54,9 +59,11 @@ public class RebalanceTriggerEvaluator {
 
         if (openLots != null) {
             for (Lot lot : openLots) {
-                BigDecimal nav = (navMap != null && navMap.containsKey(lot.assetId()))
-                    ? navMap.get(lot.assetId())
-                    : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                boolean hasNav = navMap != null && navMap.containsKey(lot.assetId()) && navMap.get(lot.assetId()) != null;
+                if (!hasNav) {
+                    throw new IllegalStateException("CRITICAL VALUATION ERROR: Asset ISIN " + lot.assetId() + " (" + lot.assetName() + ") is missing live AMFI NAV in navMap.");
+                }
+                BigDecimal nav = navMap.get(lot.assetId());
                 BigDecimal lotVal = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
                 liveCorpus = liveCorpus.add(lotVal);
 
@@ -105,7 +112,7 @@ public class RebalanceTriggerEvaluator {
         long monthsSinceLastGoldBuy = lastGoldBuyOpt.map(dt -> ChronoUnit.MONTHS.between(dt.toLocalDate(), today)).orElse(9999L);
         boolean goldIdleActive = monthsSinceLastGoldBuy >= PortfolioConstants.GOLD_FLOOR_IDLE_MONTHS;
 
-        // 4. Bucket Drift Evaluation (Target > 0 only; legacy 0% target funds excluded)
+        // 4. Bucket Drift Evaluation (Core aggregate & ratio circuit breaker + Satellite hard bands)
         BucketConfigLoader.BucketTargetVersion ver = (activeVersion != null)
             ? activeVersion : BucketConfigLoader.getActiveVersion(today);
         List<BucketConfigLoader.BucketTargetConfig> targetConfigs = (ver != null && ver.targets() != null)
@@ -113,23 +120,80 @@ public class RebalanceTriggerEvaluator {
 
         List<String> driftedBuckets = new ArrayList<>();
         double goldCurrentWeightPct = 0.0;
-        double goldTargetWeightPct = 0.0;
+        double goldTargetWeightPct = 10.0;
 
-        for (BucketConfigLoader.BucketTargetConfig tc : targetConfigs) {
-            if (tc.targetPct() <= 0.0) continue; // Exclude 0% legacy buckets
+        if (liveCorpus.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal largeMidVal = BigDecimal.ZERO;
+            BigDecimal ppfcVal = BigDecimal.ZERO;
+            if (openLots != null) {
+                for (Lot lot : openLots) {
+                    boolean hasNav = navMap != null && navMap.containsKey(lot.assetId()) && navMap.get(lot.assetId()) != null;
+                    if (!hasNav) {
+                        throw new IllegalStateException("CRITICAL VALUATION ERROR: Asset ISIN " + lot.assetId() + " (" + lot.assetName() + ") is missing live AMFI NAV in navMap.");
+                    }
+                    BigDecimal nav = navMap.get(lot.assetId());
+                    BigDecimal lotVal = lot.remainingUnits().multiply(nav);
 
-            BigDecimal bucketVal = bucketValuations.getOrDefault(tc.bucket(), BigDecimal.ZERO);
-            double currentPct = (liveCorpus.compareTo(BigDecimal.ZERO) > 0)
-                ? (bucketVal.doubleValue() / liveCorpus.doubleValue()) * 100.0 : 0.0;
-
-            if ("GOLD_SILVER".equals(tc.bucket())) {
-                goldCurrentWeightPct = currentPct;
-                goldTargetWeightPct = tc.targetPct();
+                    if ("INF109KC12U0".equalsIgnoreCase(lot.assetId()) || (lot.assetName() != null && lot.assetName().toUpperCase().contains("LARGEMIDCAP"))) {
+                        largeMidVal = largeMidVal.add(lotVal);
+                    } else if ("INF879O01027".equalsIgnoreCase(lot.assetId()) || (lot.assetName() != null && lot.assetName().toUpperCase().contains("PARAG PARIKH"))) {
+                        ppfcVal = ppfcVal.add(lotVal);
+                    }
+                }
             }
 
-            double driftThreshold = tc.triggerDriftPct() > 0 ? tc.triggerDriftPct() : PortfolioConstants.DEFAULT_CORE_DRIFT_THRESHOLD_PCT;
-            if (Math.abs(currentPct - tc.targetPct()) >= driftThreshold) {
-                driftedBuckets.add(tc.bucket());
+            BigDecimal coreTotalVal = largeMidVal.add(ppfcVal);
+            if (coreTotalVal.compareTo(BigDecimal.ZERO) > 0) {
+                double coreWeightPct = (coreTotalVal.doubleValue() / liveCorpus.doubleValue()) * 100.0;
+                if (coreWeightPct > 65.0 || coreWeightPct < 35.0) {
+                    driftedBuckets.add("CORE_AGGREGATE_BREACH");
+                }
+                double largeMidRatio = largeMidVal.doubleValue() / coreTotalVal.doubleValue();
+                if (largeMidRatio > 0.75 || largeMidRatio < 0.45) {
+                    driftedBuckets.add("CORE_INTERNAL_CIRCUIT_BREAKER");
+                }
+            }
+
+            for (BucketConfigLoader.BucketTargetConfig tc : targetConfigs) {
+                if (tc.targetPct() <= 0.0) continue;
+
+                BigDecimal bucketVal = bucketValuations.getOrDefault(tc.bucket(), BigDecimal.ZERO);
+                double currentPct = (bucketVal.doubleValue() / liveCorpus.doubleValue()) * 100.0;
+
+                if ("GOLD_SILVER".equalsIgnoreCase(tc.bucket()) || "hedge_commodity".equalsIgnoreCase(tc.bucket())) {
+                    goldCurrentWeightPct = currentPct;
+                    goldTargetWeightPct = tc.targetPct();
+                }
+
+                switch (tc.bucket().toLowerCase()) {
+                    case "satellite_value" -> {
+                        if (currentPct > 13.0 || currentPct < 7.0) driftedBuckets.add(tc.bucket());
+                    }
+                    case "satellite_momentum" -> {
+                        if (currentPct > 12.0 || currentPct < 7.5) driftedBuckets.add(tc.bucket());
+                    }
+                    case "satellite_smallcap" -> {
+                        if (currentPct > 11.5 || currentPct < 7.5) driftedBuckets.add(tc.bucket());
+                    }
+                    case "hedge_commodity" -> {
+                        if (currentPct > 14.0 || currentPct < 8.0) driftedBuckets.add(tc.bucket());
+                    }
+                    case "liquidity_arbitrage" -> {
+                        if (currentPct > 15.0 || currentPct < 8.0) driftedBuckets.add(tc.bucket());
+                    }
+                    default -> {
+                        double driftThreshold = tc.triggerDriftPct() > 0 ? tc.triggerDriftPct() : PortfolioConstants.DEFAULT_CORE_DRIFT_THRESHOLD_PCT;
+                        if (Math.abs(currentPct - tc.targetPct()) >= driftThreshold) {
+                            if (!tc.bucket().equalsIgnoreCase("core") && !tc.bucket().equalsIgnoreCase("EQUITY_CORE")) {
+                                driftedBuckets.add(tc.bucket());
+                            } else if (currentPct > 65.0 || currentPct < 35.0) {
+                                if (!driftedBuckets.contains("CORE_AGGREGATE_BREACH")) {
+                                    driftedBuckets.add("CORE_AGGREGATE_BREACH");
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -188,7 +252,7 @@ public class RebalanceTriggerEvaluator {
         }
 
         // Priority 4: GOLD_FLOOR_BACKSTOP (Buy-only, exempt from 30-day sell cooldown)
-        if ("NONE".equals(triggerType)) {
+        if ("NONE".equals(triggerType) && !sellTriggerEvaluated) {
             double goldUnderweightPts = goldTargetWeightPct - goldCurrentWeightPct;
             if (goldIdleActive && goldUnderweightPts >= PortfolioConstants.GOLD_FLOOR_UNDERWEIGHT_PTS) {
                 triggerType = "GOLD_FLOOR_BACKSTOP";

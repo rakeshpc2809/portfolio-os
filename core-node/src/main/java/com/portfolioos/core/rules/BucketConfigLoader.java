@@ -121,47 +121,99 @@ public class BucketConfigLoader {
         try {
             ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
             Map<String, Object> data = mapper.readValue(ruleFile, Map.class);
-            if (data == null || !data.containsKey("versions")) {
+            if (data == null) {
                 cachedRules = createDefaultConfig();
                 return cachedRules;
             }
 
-            List<Map<String, Object>> verList = (List<Map<String, Object>>) data.get("versions");
             List<BucketTargetVersion> parsedVersions = new ArrayList<>();
 
-            for (Map<String, Object> vMap : verList) {
-                String vId = (String) vMap.getOrDefault("version_id", "v1.0");
-                String effFrom = (String) vMap.getOrDefault("effective_from", "2024-01-01");
-                List<Map<String, Object>> tList = (List<Map<String, Object>>) vMap.get("targets");
+            if (data.containsKey("portfolio")) {
+                Map<String, Object> portMap = (Map<String, Object>) data.get("portfolio");
+                String vId = "v" + portMap.getOrDefault("version", "2.3");
+                String effFrom = "2026-08-26";
+                Map<String, Object> bucketsMap = (Map<String, Object>) portMap.get("buckets");
                 List<BucketTargetConfig> targetConfigs = new ArrayList<>();
 
-                for (Map<String, Object> tMap : tList) {
-                    String bName = (String) tMap.get("bucket");
-                    double tPct = ((Number) tMap.get("target_pct")).doubleValue();
-                    double bPct = ((Number) tMap.get("band_pct")).doubleValue();
-                    
-                    double tdPct = tMap.containsKey("trigger_drift_pct") 
-                        ? ((Number) tMap.get("trigger_drift_pct")).doubleValue() 
-                        : bPct;
-                    String strat = (String) tMap.getOrDefault("strategy", "");
+                if (bucketsMap != null) {
+                    for (Map.Entry<String, Object> entry : bucketsMap.entrySet()) {
+                        String bKey = entry.getKey();
+                        Map<String, Object> bData = (Map<String, Object>) entry.getValue();
 
-                    List<PreferredFundConfig> prefFunds = new ArrayList<>();
-                    if (tMap.containsKey("preferred_funds")) {
-                        List<Map<String, Object>> pfList = (List<Map<String, Object>>) tMap.get("preferred_funds");
-                        for (Map<String, Object> pfMap : pfList) {
-                            prefFunds.add(new PreferredFundConfig(
-                                (String) pfMap.get("fund_id"),
-                                (String) pfMap.get("fund_name"),
-                                ((Number) pfMap.get("allocation_weight")).doubleValue()
-                            ));
+                        double tPct = ((Number) bData.getOrDefault("target_weight", 0.10)).doubleValue() * 100.0;
+
+                        Map<String, Object> bands = (Map<String, Object>) bData.get("drift_bands");
+                        double minW = (bands != null && bands.containsKey("min_weight"))
+                            ? ((Number) bands.get("min_weight")).doubleValue() * 100.0 : tPct - 5.0;
+                        double maxW = (bands != null && bands.containsKey("max_weight"))
+                            ? ((Number) bands.get("max_weight")).doubleValue() * 100.0 : tPct + 5.0;
+
+                        double bPct = Math.max(Math.abs(tPct - minW), Math.abs(maxW - tPct));
+                        double tdPct = bPct;
+
+                        List<PreferredFundConfig> prefFunds = new ArrayList<>();
+
+                        if (bData.containsKey("funds")) {
+                            Map<String, Object> fundsMap = (Map<String, Object>) bData.get("funds");
+                            for (Map.Entry<String, Object> fEntry : fundsMap.entrySet()) {
+                                Map<String, Object> fData = (Map<String, Object>) fEntry.getValue();
+                                String isin = (String) fData.get("isin");
+                                double subW = ((Number) fData.getOrDefault("target_sub_weight", 0.5)).doubleValue();
+                                String fName = fEntry.getKey().equals("largemid_250") ? "ICICI Prudential Nifty LargeMidcap 250 Index Fund" : "Parag Parikh Flexi Cap Fund";
+                                prefFunds.add(new PreferredFundConfig(isin, fName, subW));
+                            }
+                        } else if (bData.containsKey("fund_isin")) {
+                            String isin = (String) bData.get("fund_isin");
+                            String fName = getFundNameByIsin(isin);
+                            prefFunds.add(new PreferredFundConfig(isin, fName, 1.0));
+                        } else {
+                            prefFunds = getDefaultPreferredFundsForBucket(bKey);
                         }
-                    } else {
-                        prefFunds = getDefaultPreferredFundsForBucket(bName);
-                    }
 
-                    targetConfigs.add(new BucketTargetConfig(bName, tPct, bPct, tdPct, strat, prefFunds));
+                        targetConfigs.add(new BucketTargetConfig(bKey, tPct, bPct, tdPct, bKey, prefFunds));
+                    }
                 }
                 parsedVersions.add(new BucketTargetVersion(vId, effFrom, targetConfigs));
+            } else if (data.containsKey("versions")) {
+                List<Map<String, Object>> verList = (List<Map<String, Object>>) data.get("versions");
+
+                for (Map<String, Object> vMap : verList) {
+                    String vId = (String) vMap.getOrDefault("version_id", "v1.0");
+                    String effFrom = (String) vMap.getOrDefault("effective_from", "2024-01-01");
+                    List<Map<String, Object>> tList = (List<Map<String, Object>>) vMap.get("targets");
+                    List<BucketTargetConfig> targetConfigs = new ArrayList<>();
+
+                    for (Map<String, Object> tMap : tList) {
+                        String bName = (String) tMap.get("bucket");
+                        double tPct = ((Number) tMap.get("target_pct")).doubleValue();
+                        double bPct = ((Number) tMap.get("band_pct")).doubleValue();
+                        
+                        double tdPct = tMap.containsKey("trigger_drift_pct") 
+                            ? ((Number) tMap.get("trigger_drift_pct")).doubleValue() 
+                            : bPct;
+                        String strat = (String) tMap.getOrDefault("strategy", "");
+
+                        List<PreferredFundConfig> prefFunds = new ArrayList<>();
+                        if (tMap.containsKey("preferred_funds")) {
+                            List<Map<String, Object>> pfList = (List<Map<String, Object>>) tMap.get("preferred_funds");
+                            for (Map<String, Object> pfMap : pfList) {
+                                prefFunds.add(new PreferredFundConfig(
+                                    (String) pfMap.get("fund_id"),
+                                    (String) pfMap.get("fund_name"),
+                                    ((Number) pfMap.get("allocation_weight")).doubleValue()
+                                ));
+                            }
+                        } else {
+                            prefFunds = getDefaultPreferredFundsForBucket(bName);
+                        }
+
+                        targetConfigs.add(new BucketTargetConfig(bName, tPct, bPct, tdPct, strat, prefFunds));
+                    }
+                    parsedVersions.add(new BucketTargetVersion(vId, effFrom, targetConfigs));
+                }
+            } else {
+                cachedRules = createDefaultConfig();
+                return cachedRules;
             }
 
             cachedRules = new BucketRulesConfig(parsedVersions);
@@ -310,6 +362,20 @@ public class BucketConfigLoader {
         if (Math.abs(sumPct - 100.0) > 0.05) {
             throw new IllegalArgumentException(String.format("Bucket target percentages must sum to 100.0%% (provided sum: %.2f%%)", sumPct));
         }
+    }
+
+    private static String getFundNameByIsin(String isin) {
+        if (isin == null) return "Unknown Fund";
+        return switch (isin.toUpperCase()) {
+            case "INF109KC12U0" -> "ICICI Prudential Nifty LargeMidcap 250 Index Fund";
+            case "INF879O01027" -> "Parag Parikh Flexi Cap Fund";
+            case "INF109KC13X2" -> "ICICI Prudential Nifty200 Value 30 Index Fund";
+            case "INF754K01TN5" -> "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund";
+            case "INF204K01K15" -> "Nippon India Small Cap Fund";
+            case "INF247L01BM8" -> "Motilal Oswal Gold and Silver Passive Fund of Funds";
+            case "INF205K01KR8" -> "Invesco India Arbitrage Fund";
+            default -> "Mutual Fund (" + isin + ")";
+        };
     }
 
     public static List<PreferredFundConfig> getDefaultPreferredFundsForBucket(String bucketName) {
