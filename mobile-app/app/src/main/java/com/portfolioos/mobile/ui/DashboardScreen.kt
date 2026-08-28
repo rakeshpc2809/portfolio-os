@@ -16,8 +16,10 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -26,8 +28,15 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.Warning
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.util.Log
+import com.portfolioos.mobile.api.SyncApiClient
+import com.portfolioos.mobile.data.SnapshotCacheManager
+import com.portfolioos.mobile.model.BenchmarkAnalyticsDto
+import com.portfolioos.mobile.model.FireSummaryResponseDto
+import com.portfolioos.mobile.model.OverlapReportDto
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,6 +44,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -107,6 +117,44 @@ fun DashboardScreen(
     var selectedHoldingForSimulator by remember { mutableStateOf<FlatHoldingDto?>(null) }
     var showUrlDialog by remember { mutableStateOf(false) }
     var inputUrl by remember { mutableStateOf("") }
+
+    var benchmarkData by remember { mutableStateOf<BenchmarkAnalyticsDto?>(null) }
+    var fireSummaryData by remember { mutableStateOf<FireSummaryResponseDto?>(null) }
+    var overlapData by remember { mutableStateOf<OverlapReportDto?>(null) }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val token = SnapshotCacheManager.getAuthToken(context)
+            Log.d("SyncAnalytics", "Initiating REST analytics fetch with token: $token")
+            val urls = listOf(
+                SyncApiClient.USB_BASE_URL,
+                SyncApiClient.WIFI_BASE_URL,
+                SyncApiClient.EMULATOR_BASE_URL
+            )
+            for (baseUrl in urls) {
+                try {
+                    Log.d("SyncAnalytics", "Attempting fetch from base URL: $baseUrl")
+                    val service = SyncApiClient.createService(baseUrl)
+                    val bench = service.getBenchmarkAnalytics(token)
+                    val fire = service.getFireSummary(token)
+                    val overlap = service.getOverlapAnalytics(token)
+                    val gson = com.google.gson.Gson()
+                    Log.d("SyncAnalytics", "RAW_JSON_BENCHMARK: ${gson.toJson(bench)}")
+                    Log.d("SyncAnalytics", "RAW_JSON_FIRE_SUMMARY: ${gson.toJson(fire)}")
+                    Log.d("SyncAnalytics", "RAW_JSON_OVERLAP: ${gson.toJson(overlap)}")
+                    Log.d("SyncAnalytics", "SUCCESS fetching analytics from $baseUrl: bench=${bench.alpha}, fire=${fire.monteCarloSuccessRatePct}, overlapStocks=${overlap.stockConcentrations.size}")
+                    benchmarkData = bench
+                    fireSummaryData = fire
+                    overlapData = overlap
+                    break
+                } catch (e: Exception) {
+                    Log.e("SyncAnalytics", "Failed fetching analytics from $baseUrl: ${e.message}", e)
+                }
+            }
+        }
+    }
 
     fun formatRelativeTime(millis: Long): String {
         if (millis <= 0L) return "Never"
@@ -301,7 +349,7 @@ fun DashboardScreen(
                             .fillMaxWidth()
                             .weight(1f)
                     ) {
-                        val isExpandedWidth = false
+                        val isExpandedWidth = maxWidth >= 600.dp
                         if (isExpandedWidth) {
                             Row(modifier = Modifier.fillMaxSize()) {
                                 Box(modifier = Modifier.weight(0.5f).fillMaxHeight()) {
@@ -315,8 +363,8 @@ fun DashboardScreen(
                                 }
                             }
                         } else {
-                            LaunchedEffect(initialPage, snapshot) {
-                                if (snapshot != null) {
+                            LaunchedEffect(initialPage) {
+                                if (initialPage != 0) {
                                     pagerState.scrollToPage(initialPage)
                                 }
                             }
@@ -331,14 +379,15 @@ fun DashboardScreen(
                                         syncInfo = syncInfo,
                                         holdings = holdings,
                                         radarSignals = radarSignals,
+                                        benchmarkAnalytics = benchmarkData,
                                         onSimulateSale = { h ->
                                             selectedHoldingForSimulator = h
                                             showSimulatorBottomSheet = true
                                         }
                                     )
-                                    1 -> OverlapConcentrationPlaceholderView(holdings)
+                                    1 -> OverlapConcentrationPlaceholderView(holdings = holdings, overlapReport = overlapData)
                                     2 -> GroupedTaxLotsView(taxLots, holdings)
-                                    3 -> RebalanceWaterfallView(snapshot.rebalancePlan)
+                                    3 -> RebalanceWaterfallView(rebalancePlan = snapshot.rebalancePlan, fireSummary = fireSummaryData)
                                 }
                             }
                         }
@@ -406,7 +455,7 @@ fun DashboardScreen(
                         ExpressiveNavPill(
                             selected = pagerState.currentPage == 0,
                             label = "Overview",
-                            icon = Icons.Default.Star,
+                            icon = Icons.Default.Home,
                             activeColor = M3ElectricLime,
                             onClick = {
                                 coroutineScope.launch {
@@ -428,7 +477,7 @@ fun DashboardScreen(
                         ExpressiveNavPill(
                             selected = pagerState.currentPage == 2,
                             label = "Tax Audit",
-                            icon = Icons.Default.Notifications,
+                            icon = Icons.Default.CheckCircle,
                             activeColor = M3NeonCyan,
                             onClick = {
                                 coroutineScope.launch {
@@ -439,7 +488,7 @@ fun DashboardScreen(
                         ExpressiveNavPill(
                             selected = pagerState.currentPage == 3,
                             label = "FIRE",
-                            icon = Icons.Default.Settings,
+                            icon = Icons.Default.Star,
                             activeColor = M3AmberWarning,
                             onClick = {
                                 coroutineScope.launch {
@@ -660,8 +709,15 @@ fun HoldingsView(
     syncInfo: com.portfolioos.mobile.model.SyncInfoDto?,
     holdings: List<FlatHoldingDto>,
     radarSignals: List<RadarSignalDto> = emptyList(),
+    benchmarkAnalytics: BenchmarkAnalyticsDto? = null,
     onSimulateSale: (FlatHoldingDto) -> Unit = {}
 ) {
+    val alphaStr = benchmarkAnalytics?.let { "%+.2f%%".format(it.alpha) } ?: "--"
+    val betaStr = benchmarkAnalytics?.let { "%.2f".format(it.beta) } ?: "--"
+    val sharpeStr = benchmarkAnalytics?.let { "%.2f".format(it.sharpeRatio) } ?: "--"
+    val trackErrStr = benchmarkAnalytics?.let { "%.2f%%".format(it.trackingError * 100) } ?: "--"
+    val benchLabel = benchmarkAnalytics?.benchmarkName ?: "vs Nifty 50 TRI"
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -758,6 +814,64 @@ fun HoldingsView(
                                     )
                                 )
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Benchmark Risk Radar Card (Quant Analytics vs Nifty 50 TRI)
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, ColorTokens.CardBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "QUANT BENCHMARK RISK RADAR",
+                            style = TypographyTokens.MetricLabel.copy(
+                                color = ColorTokens.TextMuted,
+                                letterSpacing = 1.2.sp
+                            )
+                        )
+                        Surface(
+                            color = M3NeonCyan.copy(alpha = 0.15f),
+                            shape = ShapeTokens.PillShape
+                        ) {
+                            Text(
+                                text = benchLabel,
+                                style = TypographyTokens.BadgeTag.copy(color = M3NeonCyan),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(text = "Alpha (α)", style = TypographyTokens.MetricLabel)
+                            Text(text = alphaStr, style = TypographyTokens.FinancialValue.copy(color = M3GreenPositive, fontSize = 15.sp))
+                        }
+                        Column {
+                            Text(text = "Beta (β)", style = TypographyTokens.MetricLabel)
+                            Text(text = betaStr, style = TypographyTokens.FinancialValue.copy(fontSize = 15.sp))
+                        }
+                        Column {
+                            Text(text = "Sharpe", style = TypographyTokens.MetricLabel)
+                            Text(text = sharpeStr, style = TypographyTokens.FinancialValue.copy(color = M3ElectricLime, fontSize = 15.sp))
+                        }
+                        Column {
+                            Text(text = "Tracking Err", style = TypographyTokens.MetricLabel)
+                            Text(text = trackErrStr, style = TypographyTokens.FinancialValue.copy(fontSize = 15.sp))
                         }
                     }
                 }
@@ -925,7 +1039,7 @@ fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> U
                         modifier = Modifier.height(28.dp)
                     ) {
                         Text(
-                            "Simulate ➔",
+                            text = "Simulate ➔",
                             style = TypographyTokens.MetricLabel.copy(color = ColorTokens.CyanBright, fontSize = 10.sp)
                         )
                     }
@@ -936,9 +1050,46 @@ fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> U
 }
 
 @Composable
-fun OverlapConcentrationPlaceholderView(holdings: List<FlatHoldingDto>) {
+fun OverlapConcentrationPlaceholderView(
+    holdings: List<FlatHoldingDto>,
+    overlapReport: OverlapReportDto? = null
+) {
+    Log.d("SyncAnalytics", "OverlapConcentrationPlaceholderView Composition: overlapReport isNull=${overlapReport == null}, stockConcentrations.size=${overlapReport?.stockConcentrations?.size ?: 0}")
     val bucketCounts = remember(holdings) {
         holdings.groupBy { it.assetBucket }
+    }
+    
+    // Top Stock Concentration Look-Through derived from overlapReport API or holdings list
+    val topStocks = remember(holdings, overlapReport) {
+        if (overlapReport != null && overlapReport.stockConcentrations.isNotEmpty()) {
+            overlapReport.stockConcentrations.map { sc ->
+                val sym = sc.stockSymbol
+                val name = sc.companyName.ifEmpty {
+                    when (sym) {
+                        "HDFCBANK" -> "HDFC Bank Ltd"
+                        "ICICIBANK" -> "ICICI Bank Ltd"
+                        "RELIANCE" -> "Reliance Industries Ltd"
+                        "COALINDIA" -> "Coal India Ltd"
+                        "BAJFINANCE" -> "Bajaj Finance Ltd"
+                        "SBIN" -> "State Bank of India"
+                        "AMAZON" -> "Amazon.com Inc"
+                        "NTPC" -> "NTPC Ltd"
+                        "ALPHABET" -> "Alphabet Inc"
+                        "POWERGRID" -> "Power Grid Corp"
+                        else -> sym
+                    }
+                }
+                sym to Pair(name, sc.portfolioWeightPct)
+            }
+        } else {
+            val totalVal = holdings.sumOf { it.currentValue }.coerceAtLeast(1.0)
+            holdings.map { h ->
+                val sym = if (h.isin.length >= 8) h.isin.takeLast(8) else h.isin
+                val name = h.fundName.ifEmpty { h.isin }
+                val pct = (h.currentValue / totalVal) * 100.0
+                sym to Pair(name, pct)
+            }.sortedByDescending { it.second.second }.take(5)
+        }
     }
 
     LazyColumn(
@@ -964,17 +1115,27 @@ fun OverlapConcentrationPlaceholderView(holdings: List<FlatHoldingDto>) {
                                 colors = listOf(Color(0xFF1E0B36), Color(0xFF0F172A), Color(0xFF030712))
                             )
                         )
-                        .padding(SpacingTokens.xxl)
+                        .padding(16.dp)
                 ) {
                     Column {
-                        Surface(
-                            color = ColorTokens.PurpleAccent.copy(alpha = 0.2f),
-                            shape = ShapeTokens.PillShape
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Surface(
+                                color = ColorTokens.PurpleAccent.copy(alpha = 0.2f),
+                                shape = ShapeTokens.PillShape
+                            ) {
+                                Text(
+                                    text = "LIVE QUANT AUDIT",
+                                    style = TypographyTokens.BadgeTag.copy(color = ColorTokens.PurpleAccent),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
                             Text(
-                                text = "COMING IN PHASE 2",
-                                style = TypographyTokens.BadgeTag.copy(color = ColorTokens.PurpleAccent),
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                text = "NSE Look-Through",
+                                style = TypographyTokens.BadgeTag.copy(color = ColorTokens.CyanBright)
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -985,15 +1146,10 @@ fun OverlapConcentrationPlaceholderView(holdings: List<FlatHoldingDto>) {
                                 letterSpacing = 1.5.sp
                             )
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Fund Overlap Matrix & Stock Look-Through",
-                            style = TypographyTokens.SectionHeader.copy(fontSize = 18.sp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "The mobile 4-tab navigation shell is active. Interactive fund-to-fund portfolio overlap, stock concentration analysis, and asset class drift details are undergoing mobile-first UI adaptation for Phase 2.",
-                            style = TypographyTokens.BodyText
+                            style = TypographyTokens.SectionHeader.copy(fontSize = 16.sp)
                         )
                     }
                 }
@@ -1001,6 +1157,67 @@ fun OverlapConcentrationPlaceholderView(holdings: List<FlatHoldingDto>) {
         }
 
         item {
+            Text(
+                text = "TOP PORTFOLIO STOCK CONCENTRATIONS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = M3TextMuted,
+                letterSpacing = 1.5.sp
+            )
+        }
+
+        items(topStocks, key = { it.first }) { (symbol, info) ->
+            val (companyName, weightPct) = info
+            Card(
+                colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, M3SurfaceVariant),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = companyName,
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = symbol,
+                                color = M3TextMuted,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Text(
+                            text = "%.1f%%".format(weightPct),
+                            color = M3ElectricLime,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = (weightPct / 10.0).toFloat().coerceIn(0f, 1f),
+                        color = M3ElectricLime,
+                        trackColor = M3SurfaceVariant,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                    )
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "PORTFOLIO BUCKET CONCENTRATION SUMMARY",
                 fontSize = 11.sp,
@@ -1360,7 +1577,11 @@ internal fun shortenFundName(rawName: String?): String {
 }
 
 @Composable
-fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.RebalancePlanDto?) {
+fun RebalanceWaterfallView(
+    rebalancePlan: com.portfolioos.mobile.model.RebalancePlanDto?,
+    fireSummary: FireSummaryResponseDto? = null
+) {
+    Log.d("SyncAnalytics", "RebalanceWaterfallView Composition: fireSummary isNull=${fireSummary == null}, successRate=${fireSummary?.monteCarloSuccessRatePct}, medianCorpus=${fireSummary?.monteCarloMedianCorpus}")
     val sellSide = rebalancePlan?.sellSide
     val buySide = rebalancePlan?.buySide
     val buyBuckets = remember(buySide) { buySide?.buckets.orEmpty() }
@@ -1371,6 +1592,12 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
 
     val totalRequired = sellSide?.totalRequired ?: 0.0
     val totalToInvest = buySide?.totalToInvest ?: totalRequired
+
+    val successRateStr = fireSummary?.let { "%.1f%% Success Rate".format(it.monteCarloSuccessRatePct) } ?: "--% Success Rate"
+    val medianCorpusVal = fireSummary?.monteCarloMedianCorpus?.toDoubleOrNull() ?: 0.0
+    val p10CorpusVal = fireSummary?.monteCarloTenthPercentileCorpus?.toDoubleOrNull() ?: 0.0
+    val medianCorpusStr = formatInr(medianCorpusVal)
+    val p10CorpusStr = formatInr(p10CorpusVal)
 
     val fundSellList = remember(sellSide) {
         val map = mutableMapOf<String, FundSellAggregated>()
@@ -1711,6 +1938,67 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // 6. FIRE MONTE CARLO PROJECTION CONE (UX-06 Mobile Integration)
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, M3AmberWarning.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "FIRE MONTE CARLO CONE (10,000 PATHS)",
+                                color = M3AmberWarning,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
+                            )
+                            Surface(
+                                color = M3AmberWarning.copy(alpha = 0.15f),
+                                shape = ShapeTokens.PillShape
+                            ) {
+                                Text(
+                                    text = successRateStr,
+                                    color = M3AmberWarning,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("Median Corpus (p50)", style = TypographyTokens.MetricLabel)
+                                Text(medianCorpusStr, style = TypographyTokens.FinancialValue.copy(color = M3ElectricLime, fontSize = 15.sp))
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("10th Percentile (p10)", style = TypographyTokens.MetricLabel)
+                                Text(p10CorpusStr, style = TypographyTokens.FinancialValue.copy(color = M3NeonCyan, fontSize = 15.sp))
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Model: Historical Portfolio Daily Volatility & Return Model (Nifty 50 TRI)",
+                            color = M3TextMuted,
+                            fontSize = 10.sp
+                        )
                     }
                 }
             }

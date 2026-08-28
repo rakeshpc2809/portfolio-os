@@ -19,6 +19,10 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        val defaultAuthToken = System.getenv("API_AUTH_TOKEN")
+            ?: (project.findProperty("API_AUTH_TOKEN") as? String)
+            ?: ""
+        buildConfigField("String", "DEFAULT_AUTH_TOKEN", "\"$defaultAuthToken\"")
     }
 
     buildTypes {
@@ -37,6 +41,9 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+    kotlin {
+        jvmToolchain(21)
     }
     buildFeatures {
         compose = true

@@ -22,7 +22,8 @@ class SecurityInterceptorTest {
     void testPreHandleValidConfiguredToken() throws Exception {
         SecurityInterceptor interceptor = new SecurityInterceptor();
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
-        request.addHeader("X-Api-Auth-Token", "test-auth-token");
+        String expectedToken = System.getenv("API_AUTH_TOKEN") != null ? System.getenv("API_AUTH_TOKEN") : "dev_secret_key_123";
+        request.addHeader("X-Api-Auth-Token", expectedToken);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         boolean result = interceptor.preHandle(request, response, new Object());
