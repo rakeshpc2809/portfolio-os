@@ -101,8 +101,14 @@ public class BucketConfigLoader {
     ) {}
 
     public record BucketRulesConfig(
+        String configSource,
+        String configFilePath,
         List<BucketTargetVersion> versions
-    ) {}
+    ) {
+        public BucketRulesConfig(List<BucketTargetVersion> versions) {
+            this("YAML_FILE", "rules/bucket_targets.yaml", versions);
+        }
+    }
 
     private static BucketRulesConfig cachedRules = null;
 
@@ -113,6 +119,7 @@ public class BucketConfigLoader {
 
         File ruleFile = findConfigFile();
         if (ruleFile == null || !ruleFile.exists()) {
+            System.err.println("CONFIG_SOURCE_AUDIT: [FALLBACK_DEFAULT] File rules/bucket_targets.yaml not found! Using fallback defaults.");
             cachedRules = createDefaultConfig();
             saveConfigToDisk(cachedRules);
             return cachedRules;
@@ -121,50 +128,104 @@ public class BucketConfigLoader {
         try {
             ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
             Map<String, Object> data = mapper.readValue(ruleFile, Map.class);
-            if (data == null || !data.containsKey("versions")) {
+            if (data == null) {
+                System.err.println("CONFIG_SOURCE_AUDIT: [FALLBACK_DEFAULT] YAML file empty! Using fallback defaults.");
                 cachedRules = createDefaultConfig();
                 return cachedRules;
             }
 
-            List<Map<String, Object>> verList = (List<Map<String, Object>>) data.get("versions");
+            System.out.println("CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from " + ruleFile.getAbsolutePath());
             List<BucketTargetVersion> parsedVersions = new ArrayList<>();
 
-            for (Map<String, Object> vMap : verList) {
-                String vId = (String) vMap.getOrDefault("version_id", "v1.0");
-                String effFrom = (String) vMap.getOrDefault("effective_from", "2024-01-01");
-                List<Map<String, Object>> tList = (List<Map<String, Object>>) vMap.get("targets");
+            if (data.containsKey("portfolio")) {
+                Map<String, Object> portMap = (Map<String, Object>) data.get("portfolio");
+                String vId = "v" + portMap.getOrDefault("version", "2.3");
+                String effFrom = "2026-08-26";
+                Map<String, Object> bucketsMap = (Map<String, Object>) portMap.get("buckets");
                 List<BucketTargetConfig> targetConfigs = new ArrayList<>();
 
-                for (Map<String, Object> tMap : tList) {
-                    String bName = (String) tMap.get("bucket");
-                    double tPct = ((Number) tMap.get("target_pct")).doubleValue();
-                    double bPct = ((Number) tMap.get("band_pct")).doubleValue();
-                    
-                    double tdPct = tMap.containsKey("trigger_drift_pct") 
-                        ? ((Number) tMap.get("trigger_drift_pct")).doubleValue() 
-                        : bPct;
-                    String strat = (String) tMap.getOrDefault("strategy", "");
+                if (bucketsMap != null) {
+                    for (Map.Entry<String, Object> entry : bucketsMap.entrySet()) {
+                        String bKey = entry.getKey();
+                        Map<String, Object> bData = (Map<String, Object>) entry.getValue();
 
-                    List<PreferredFundConfig> prefFunds = new ArrayList<>();
-                    if (tMap.containsKey("preferred_funds")) {
-                        List<Map<String, Object>> pfList = (List<Map<String, Object>>) tMap.get("preferred_funds");
-                        for (Map<String, Object> pfMap : pfList) {
-                            prefFunds.add(new PreferredFundConfig(
-                                (String) pfMap.get("fund_id"),
-                                (String) pfMap.get("fund_name"),
-                                ((Number) pfMap.get("allocation_weight")).doubleValue()
-                            ));
+                        double tPct = ((Number) bData.getOrDefault("target_weight", 0.10)).doubleValue() * 100.0;
+
+                        Map<String, Object> bands = (Map<String, Object>) bData.get("drift_bands");
+                        double minW = (bands != null && bands.containsKey("min_weight"))
+                            ? ((Number) bands.get("min_weight")).doubleValue() * 100.0 : tPct - 5.0;
+                        double maxW = (bands != null && bands.containsKey("max_weight"))
+                            ? ((Number) bands.get("max_weight")).doubleValue() * 100.0 : tPct + 5.0;
+
+                        double bPct = Math.max(Math.abs(tPct - minW), Math.abs(maxW - tPct));
+                        double tdPct = bPct;
+
+                        List<PreferredFundConfig> prefFunds = new ArrayList<>();
+
+                        if (bData.containsKey("funds")) {
+                            Map<String, Object> fundsMap = (Map<String, Object>) bData.get("funds");
+                            for (Map.Entry<String, Object> fEntry : fundsMap.entrySet()) {
+                                Map<String, Object> fData = (Map<String, Object>) fEntry.getValue();
+                                String isin = (String) fData.get("isin");
+                                double subW = ((Number) fData.getOrDefault("target_sub_weight", 0.5)).doubleValue();
+                                String fName = fEntry.getKey().equals("largemid_250") ? "ICICI Prudential Nifty LargeMidcap 250 Index Fund" : "Parag Parikh Flexi Cap Fund";
+                                prefFunds.add(new PreferredFundConfig(isin, fName, subW));
+                            }
+                        } else if (bData.containsKey("fund_isin")) {
+                            String isin = (String) bData.get("fund_isin");
+                            String fName = getFundNameByIsin(isin);
+                            prefFunds.add(new PreferredFundConfig(isin, fName, 1.0));
+                        } else {
+                            prefFunds = getDefaultPreferredFundsForBucket(bKey);
                         }
-                    } else {
-                        prefFunds = getDefaultPreferredFundsForBucket(bName);
-                    }
 
-                    targetConfigs.add(new BucketTargetConfig(bName, tPct, bPct, tdPct, strat, prefFunds));
+                        targetConfigs.add(new BucketTargetConfig(bKey, tPct, bPct, tdPct, bKey, prefFunds));
+                    }
                 }
                 parsedVersions.add(new BucketTargetVersion(vId, effFrom, targetConfigs));
+            } else if (data.containsKey("versions")) {
+                List<Map<String, Object>> verList = (List<Map<String, Object>>) data.get("versions");
+
+                for (Map<String, Object> vMap : verList) {
+                    String vId = (String) vMap.getOrDefault("version_id", "v1.0");
+                    String effFrom = (String) vMap.getOrDefault("effective_from", "2024-01-01");
+                    List<Map<String, Object>> tList = (List<Map<String, Object>>) vMap.get("targets");
+                    List<BucketTargetConfig> targetConfigs = new ArrayList<>();
+
+                    for (Map<String, Object> tMap : tList) {
+                        String bName = (String) tMap.get("bucket");
+                        double tPct = ((Number) tMap.get("target_pct")).doubleValue();
+                        double bPct = ((Number) tMap.get("band_pct")).doubleValue();
+                        
+                        double tdPct = tMap.containsKey("trigger_drift_pct") 
+                            ? ((Number) tMap.get("trigger_drift_pct")).doubleValue() 
+                            : bPct;
+                        String strat = (String) tMap.getOrDefault("strategy", "");
+
+                        List<PreferredFundConfig> prefFunds = new ArrayList<>();
+                        if (tMap.containsKey("preferred_funds")) {
+                            List<Map<String, Object>> pfList = (List<Map<String, Object>>) tMap.get("preferred_funds");
+                            for (Map<String, Object> pfMap : pfList) {
+                                prefFunds.add(new PreferredFundConfig(
+                                    (String) pfMap.get("fund_id"),
+                                    (String) pfMap.get("fund_name"),
+                                    ((Number) pfMap.get("allocation_weight")).doubleValue()
+                                ));
+                            }
+                        } else {
+                            prefFunds = getDefaultPreferredFundsForBucket(bName);
+                        }
+
+                        targetConfigs.add(new BucketTargetConfig(bName, tPct, bPct, tdPct, strat, prefFunds));
+                    }
+                    parsedVersions.add(new BucketTargetVersion(vId, effFrom, targetConfigs));
+                }
+            } else {
+                cachedRules = createDefaultConfig();
+                return cachedRules;
             }
 
-            cachedRules = new BucketRulesConfig(parsedVersions);
+            cachedRules = new BucketRulesConfig("YAML_FILE", ruleFile.getAbsolutePath(), parsedVersions);
             return cachedRules;
         } catch (Exception e) {
             System.err.println("Failed to load bucket_targets.yaml, falling back to defaults: " + e.getMessage());
@@ -188,17 +249,26 @@ public class BucketConfigLoader {
 
         List<BucketEngine.BucketTarget> result = new ArrayList<>();
         for (BucketTargetConfig tc : activeVer.targets()) {
-            BucketEngine.Bucket b;
+            BucketEngine.Bucket b = null;
             try {
-                b = BucketEngine.Bucket.valueOf(tc.bucket());
+                b = BucketEngine.Bucket.valueOf(tc.bucket().toUpperCase());
             } catch (Exception e) {
-                continue;
+                switch (tc.bucket().toLowerCase()) {
+                    case "core" -> b = BucketEngine.Bucket.EQUITY_CORE;
+                    case "satellite_value" -> b = BucketEngine.Bucket.SATELLITE_VALUE;
+                    case "satellite_momentum" -> b = BucketEngine.Bucket.SATELLITE_MOMENTUM;
+                    case "satellite_smallcap" -> b = BucketEngine.Bucket.SATELLITE_SMALLCAP;
+                    case "hedge_commodity" -> b = BucketEngine.Bucket.HEDGE_COMMODITY;
+                    case "liquidity_arbitrage" -> b = BucketEngine.Bucket.LIQUIDITY_ARBITRAGE;
+                }
             }
-            result.add(new BucketEngine.BucketTarget(
-                b,
-                BigDecimal.valueOf(tc.targetPct()).setScale(2, RoundingMode.HALF_UP),
-                BigDecimal.valueOf(tc.bandPct()).setScale(2, RoundingMode.HALF_UP)
-            ));
+            if (b != null) {
+                result.add(new BucketEngine.BucketTarget(
+                    b,
+                    BigDecimal.valueOf(tc.targetPct()).setScale(2, RoundingMode.HALF_UP),
+                    BigDecimal.valueOf(tc.bandPct()).setScale(2, RoundingMode.HALF_UP)
+                ));
+            }
         }
         return result.isEmpty() ? BucketEngine.DEFAULT_TARGETS : result;
     }
@@ -312,29 +382,57 @@ public class BucketConfigLoader {
         }
     }
 
+    private static String getFundNameByIsin(String isin) {
+        if (isin == null) return "Unknown Fund";
+        return switch (isin.toUpperCase()) {
+            case "INF109KC12U0" -> "ICICI Prudential Nifty LargeMidcap 250 Index Fund";
+            case "INF879O01027" -> "Parag Parikh Flexi Cap Fund";
+            case "INF109KC13X2" -> "ICICI Prudential Nifty200 Value 30 Index Fund";
+            case "INF754K01TN5" -> "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund";
+            case "INF204K01K15" -> "Nippon India Small Cap Fund";
+            case "INF247L01BM8" -> "Motilal Oswal Gold and Silver Passive Fund of Funds";
+            case "INF205K01KR8" -> "Invesco India Arbitrage Fund";
+            default -> "Mutual Fund (" + isin + ")";
+        };
+    }
+
     public static List<PreferredFundConfig> getDefaultPreferredFundsForBucket(String bucketName) {
         if (bucketName == null) return List.of();
-        switch (bucketName) {
-            case "EQUITY_CORE" -> {
+        switch (bucketName.toUpperCase()) {
+            case "EQUITY_CORE", "CORE" -> {
                 return List.of(
-                    new PreferredFundConfig("INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", 0.50),
-                    new PreferredFundConfig("INF879O01027", "Parag Parikh Flexi Cap Fund", 0.50)
+                    new PreferredFundConfig("INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", 0.60),
+                    new PreferredFundConfig("INF879O01027", "Parag Parikh Flexi Cap Fund", 0.40)
                 );
             }
             case "EQUITY_SATELLITE" -> {
                 return List.of(
-                    new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 0.25),
-                    new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 0.25),
-                    new PreferredFundConfig("INF204K01K15", "Nippon India Small Cap Fund", 0.25),
-                    new PreferredFundConfig("INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund", 0.25)
+                    new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 0.33),
+                    new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 0.33),
+                    new PreferredFundConfig("INF204K01K15", "Nippon India Small Cap Fund", 0.34)
                 );
             }
-            case "GOLD_SILVER" -> {
+            case "SATELLITE_VALUE" -> {
+                return List.of(
+                    new PreferredFundConfig("INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", 1.00)
+                );
+            }
+            case "SATELLITE_MOMENTUM" -> {
+                return List.of(
+                    new PreferredFundConfig("INF754K01TN5", "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund", 1.00)
+                );
+            }
+            case "SATELLITE_SMALLCAP" -> {
+                return List.of(
+                    new PreferredFundConfig("INF204K01K15", "Nippon India Small Cap Fund", 1.00)
+                );
+            }
+            case "GOLD_SILVER", "HEDGE_COMMODITY" -> {
                 return List.of(
                     new PreferredFundConfig("INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", 1.00)
                 );
             }
-            case "LIQUID_BUFFER" -> {
+            case "LIQUID_BUFFER", "LIQUIDITY_ARBITRAGE" -> {
                 return List.of(
                     new PreferredFundConfig("INF205K01KR8", "Invesco India Arbitrage Fund", 1.00)
                 );
@@ -372,7 +470,7 @@ public class BucketConfigLoader {
             new BucketTargetConfig("GOLD_SILVER", 15.0, 5.0, 12.0, "ACCUMULATOR", getDefaultPreferredFundsForBucket("GOLD_SILVER")),
             new BucketTargetConfig("LIQUID_BUFFER", 15.0, 5.0, 5.0, "ARBITRAGE", getDefaultPreferredFundsForBucket("LIQUID_BUFFER"))
         );
-        return new BucketRulesConfig(List.of(
+        return new BucketRulesConfig("FALLBACK_DEFAULT", "in-memory-defaults", List.of(
             new BucketTargetVersion("v1.0", "2024-01-01", defaults)
         ));
     }

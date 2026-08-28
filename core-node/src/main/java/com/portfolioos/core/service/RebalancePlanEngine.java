@@ -471,11 +471,16 @@ public class RebalancePlanEngine {
         );
 
         Map<BucketEngine.Bucket, BucketEngine.BucketStatus> statusMap = new HashMap<>();
+        BigDecimal activeCorpus = BigDecimal.ZERO;
         if (bucketResult != null && bucketResult.bucketStatuses() != null) {
             for (BucketEngine.BucketStatus s : bucketResult.bucketStatuses()) {
                 statusMap.put(s.bucket(), s);
+                if (s.bucket() != BucketEngine.Bucket.LEGACY_HOLDINGS) {
+                    activeCorpus = activeCorpus.add(s.currentValue());
+                }
             }
         }
+        BigDecimal postActiveCorpus = activeCorpus.add(totalPool);
 
         Map<BucketEngine.Bucket, BigDecimal> bucketShortfalls = new HashMap<>();
         BigDecimal totalShortfall = BigDecimal.ZERO;
@@ -483,7 +488,7 @@ public class RebalancePlanEngine {
         for (BucketEngine.BucketTarget target : activeTargets) {
             BucketEngine.BucketStatus status = statusMap.get(target.bucket());
             BigDecimal curVal = status != null ? status.currentValue() : BigDecimal.ZERO;
-            BigDecimal targetVal = postCorpus.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            BigDecimal targetVal = postActiveCorpus.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
             BigDecimal shortfall = targetVal.subtract(curVal).max(BigDecimal.ZERO);
             bucketShortfalls.put(target.bucket(), shortfall);
@@ -498,8 +503,7 @@ public class RebalancePlanEngine {
 
             BucketEngine.BucketStatus status = statusMap.get(target.bucket());
             BigDecimal curVal = status != null ? status.currentValue() : BigDecimal.ZERO;
-            double currentPct = (liveCorpus.compareTo(BigDecimal.ZERO) > 0) ?
-                Math.round((curVal.doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct;
+            double currentPct = (status != null && status.currentPct() != null) ? status.currentPct().doubleValue() : targetPct;
 
             BigDecimal amountAllocated = BigDecimal.ZERO;
             BigDecimal shortfall = bucketShortfalls.getOrDefault(target.bucket(), BigDecimal.ZERO);
@@ -513,8 +517,8 @@ public class RebalancePlanEngine {
             }
 
             BigDecimal postVal = curVal.add(amountAllocated);
-            double postPct = (postCorpus.compareTo(BigDecimal.ZERO) > 0) ?
-                Math.round((postVal.doubleValue() / postCorpus.doubleValue()) * 1000.0) / 10.0 : currentPct;
+            double postPct = (postActiveCorpus.compareTo(BigDecimal.ZERO) > 0) ?
+                Math.round((postVal.doubleValue() / postActiveCorpus.doubleValue()) * 1000.0) / 10.0 : currentPct;
 
             List<FundAllocationDto> realFunds = resolveRealFundBreakdown(target.bucket(), amountAllocated, activeVersion);
 
@@ -546,8 +550,8 @@ public class RebalancePlanEngine {
                 BigDecimal curVal = statusMap.containsKey(BucketEngine.Bucket.valueOf(b.bucket())) ?
                     statusMap.get(BucketEngine.Bucket.valueOf(b.bucket())).currentValue() : BigDecimal.ZERO;
                 BigDecimal postVal = curVal.add(normAlloc);
-                double postPct = (postCorpus.compareTo(BigDecimal.ZERO) > 0) ?
-                    Math.round((postVal.doubleValue() / postCorpus.doubleValue()) * 1000.0) / 10.0 : b.targetPct();
+                double postPct = (postActiveCorpus.compareTo(BigDecimal.ZERO) > 0) ?
+                    Math.round((postVal.doubleValue() / postActiveCorpus.doubleValue()) * 1000.0) / 10.0 : b.targetPct();
 
                 normalizedBuckets.add(new RebalanceBucketAllocationDto(
                     b.bucket(), b.targetPct(), b.currentPct(), postPct, normAlloc, realFunds
@@ -639,7 +643,13 @@ public class RebalancePlanEngine {
         List<BucketConfigLoader.PreferredFundConfig> prefFunds = List.of();
         if (activeVersion != null && activeVersion.targets() != null) {
             for (BucketConfigLoader.BucketTargetConfig tc : activeVersion.targets()) {
-                if (bucket.name().equals(tc.bucket())) {
+                String tcB = tc.bucket().toUpperCase();
+                if (bucket.name().equals(tcB) ||
+                    (bucket == BucketEngine.Bucket.EQUITY_CORE && "CORE".equals(tcB)) ||
+                    (bucket == BucketEngine.Bucket.GOLD_SILVER && "HEDGE_COMMODITY".equals(tcB)) ||
+                    (bucket == BucketEngine.Bucket.LIQUID_BUFFER && "LIQUIDITY_ARBITRAGE".equals(tcB)) ||
+                    (bucket == BucketEngine.Bucket.HEDGE_COMMODITY && "GOLD_SILVER".equals(tcB)) ||
+                    (bucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE && "LIQUID_BUFFER".equals(tcB))) {
                     prefFunds = tc.preferredFunds();
                     break;
                 }

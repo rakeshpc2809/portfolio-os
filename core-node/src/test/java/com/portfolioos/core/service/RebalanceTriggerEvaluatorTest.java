@@ -164,9 +164,12 @@ class RebalanceTriggerEvaluatorTest {
     @Test
     @DisplayName("Priority suppression: DRIFT suppresses SCHEDULED")
     void testPrioritySuppressionDriftOverScheduled() {
-        // No drawdown (current == high) + March 15 window + drifted bucket (openLots empty -> buckets at 0% vs 50% target)
+        // No drawdown (current == high) + March 15 window + drifted Small Cap bucket (13% > 11.5%)
+        Lot scLot = new Lot("lot-sc", "INF204K01K15", "Nippon Small Cap", LocalDate.of(2026, 3, 15).minusDays(400), new BigDecimal("1300"), new BigDecimal("1300"), new BigDecimal("100.00"), new BigDecimal("130000.00"), false, null);
+        Lot coreLot = new Lot("lot-core", "INF109KC12U0", "ICICI LargeMidcap", LocalDate.of(2026, 3, 15).minusDays(400), new BigDecimal("8700"), new BigDecimal("8700"), new BigDecimal("100.00"), new BigDecimal("870000.00"), false, null);
+
         RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
-            Collections.emptyList(), Collections.emptyMap(),
+            List.of(scLot, coreLot), Map.of("INF204K01K15", new BigDecimal("100.00"), "INF109KC12U0", new BigDecimal("100.00")),
             new BigDecimal("25000.00"), new BigDecimal("25000.00"), // 0% drawdown
             null, null, LocalDate.of(2026, 3, 15)
         );
