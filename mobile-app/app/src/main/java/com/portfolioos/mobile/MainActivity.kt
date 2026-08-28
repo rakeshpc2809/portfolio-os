@@ -94,9 +94,6 @@ class MainActivity : FragmentActivity() {
                             isFullyOffline = SnapshotCacheManager.isFullyOffline(applicationContext)
                         } catch (e: Exception) {
                             e.printStackTrace()
-                            if (snapshot == null) {
-                                snapshot = SnapshotCacheManager.createDefaultFallbackSnapshot()
-                            }
                         } finally {
                             isLoading = false
                             isRefreshing = false

@@ -290,15 +290,9 @@ fun HistoricalNetWorthTrendChart(
                     )
                 }
             } else {
-                val rawVals = remember(trendPoints) { trendPoints.map { it.valuation } }
-                val minVal = remember(rawVals) { rawVals.minOrNull() ?: 1.0 }
-                val maxVal = remember(rawVals) { rawVals.maxOrNull() ?: (minVal * 1.05) }
-                val valRange = remember(minVal, maxVal) { (maxVal - minVal).coerceAtLeast(1.0) }
-
-                val chartEntries = remember(trendPoints, minVal, valRange) {
+                val chartEntries = remember(trendPoints) {
                     trendPoints.mapIndexed { idx, pt ->
-                        val normY = (((pt.valuation - minVal) / valRange) * 80.0 + 10.0).toFloat()
-                        entryOf(idx.toFloat(), normY)
+                        entryOf(idx.toFloat(), pt.valuation.toFloat())
                     }
                 }
                 val entryModel = remember(chartEntries) { entryModelOf(chartEntries) }
@@ -306,6 +300,10 @@ fun HistoricalNetWorthTrendChart(
                 val dateAxisFormatter = AxisValueFormatter<AxisPosition.Horizontal.Bottom> { value, _ ->
                     val idx = value.toInt()
                     if (idx in trendPoints.indices) trendPoints[idx].date else ""
+                }
+
+                val valueAxisFormatter = AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ ->
+                    "₹${String.format("%.1fL", value / 100000.0)}"
                 }
 
                 val marker = rememberChartMarker(selectedPoint)
@@ -351,6 +349,14 @@ fun HistoricalNetWorthTrendChart(
                     markerVisibilityChangeListener = markerVisibilityChangeListener,
                     isZoomEnabled = false,
                     chartScrollSpec = com.patrykandpatrick.vico.compose.chart.scroll.rememberChartScrollSpec(isScrollEnabled = false),
+                    startAxis = rememberStartAxis(
+                        valueFormatter = valueAxisFormatter,
+                        guideline = null,
+                        label = textComponent(
+                            color = ColorTokens.TextMuted,
+                            textSize = 9.sp
+                        )
+                    ),
                     bottomAxis = rememberBottomAxis(
                         valueFormatter = dateAxisFormatter,
                         guideline = null,

@@ -29,12 +29,34 @@ interface SyncApiService {
         @Header("X-Api-Auth-Token") token: String,
         @Body request: TradeSimulationRequestDto
     ): TradeSimulationResultDto
+
+    @GET("api/v1/analytics/overlap")
+    suspend fun getOverlapAnalytics(
+        @Header("X-Api-Auth-Token") token: String
+    ): com.portfolioos.mobile.model.OverlapReportDto
+
+    @GET("api/v1/fire/summary")
+    suspend fun getFireSummary(
+        @Header("X-Api-Auth-Token") token: String
+    ): com.portfolioos.mobile.model.FireSummaryResponseDto
+
+    @GET("api/v1/analytics/benchmark")
+    suspend fun getBenchmarkAnalytics(
+        @Header("X-Api-Auth-Token") token: String,
+        @Query("benchmark") benchmark: String = "NIFTY_50_TRI"
+    ): com.portfolioos.mobile.model.BenchmarkAnalyticsDto
 }
 
 object SyncApiClient {
     const val USB_BASE_URL = "http://127.0.0.1:8080/"
     const val EMULATOR_BASE_URL = "http://10.0.2.2:8080/"
-    const val WIFI_BASE_URL = "http://192.168.1.13:8080/"
+    const val WIFI_BASE_URL = "http://192.168.1.10:8080/"
+    val WIFI_CANDIDATE_URLS = listOf(
+        "http://192.168.1.10:8080/",
+        "http://192.168.1.13:8080/",
+        "http://192.168.0.10:8080/",
+        "http://192.168.1.2:8080/"
+    )
 
     fun createService(baseUrl: String = USB_BASE_URL): SyncApiService {
         val logging = HttpLoggingInterceptor().apply {
@@ -42,8 +64,8 @@ object SyncApiClient {
         }
 
         val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(3, TimeUnit.SECONDS)
-            .readTimeout(3, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
             .addInterceptor(logging)
             .build()
 
@@ -84,30 +106,20 @@ object SyncApiClient {
                 SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
                 return snapshot
             } catch (e2: Exception) {
-                // 4. Try Wi-Fi LAN IP
-                try {
-                    val snapshot = createService(WIFI_BASE_URL).getSnapshot(token = authToken)
-                    SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
-                    return snapshot
-                } catch (e3: Exception) {
-                    // 5. Offline Fallback: Check direct AMFI NAVs over cellular if connected, or return frozen cache if fully offline!
-                    val cached = SnapshotCacheManager.loadSnapshot(context)
-                    if (cached != null) {
-                        val liveNavs = com.portfolioos.mobile.data.nav.AmfiDirectFetcher.fetchLatestNavMap()
-                        if (liveNavs.isNotEmpty()) {
-                            val updated = SnapshotCacheManager.updateOfflineSnapshotWithLiveAmfi(cached)
-                            SnapshotCacheManager.saveSnapshot(context, updated, isFullLedgerSync = false)
-                            SnapshotCacheManager.setFullyOffline(context, false)
-                            return updated
-                        } else {
-                            // Airplane Mode / Completely Offline: Preserve frozen timestamps & mark fully offline
-                            SnapshotCacheManager.setFullyOffline(context, true)
-                            return cached
-                        }
-                    } else {
-                        throw e3
+                // 4. Try Wi-Fi LAN Candidate IPs
+                for (wifiUrl in WIFI_CANDIDATE_URLS) {
+                    try {
+                        val snapshot = createService(wifiUrl).getSnapshot(token = authToken)
+                        SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
+                        return snapshot
+                    } catch (e3: Exception) {
+                        // continue to next candidate IP
                     }
                 }
+                
+                // 5. Offline Fallback: Return cached snapshot if available
+                val cached = SnapshotCacheManager.loadSnapshot(context)
+                return cached ?: throw java.io.IOException("No network connection available to sync snapshot and no local cache present.")
             }
         }
     }

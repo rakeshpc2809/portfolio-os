@@ -41,12 +41,7 @@ public class AppConfig {
     public ChatClient.Builder chatClientBuilder(
         @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
     ) {
-        String resolvedUrl = ollamaUrl;
-        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
-            // Test if running inside container and target host gateway if needed
-            resolvedUrl = "http://127.0.0.1:11434";
-        }
-        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
+        OllamaApi ollamaApi = new OllamaApi(ollamaUrl);
         OllamaChatModel chatModel = new OllamaChatModel(
             ollamaApi,
             OllamaOptions.create().withModel("qwen2.5-coder:7b")
@@ -58,11 +53,7 @@ public class AppConfig {
     public org.springframework.ai.ollama.OllamaEmbeddingModel embeddingModel(
         @Value("${spring.ai.ollama.base-url:http://127.0.0.1:11434}") String ollamaUrl
     ) {
-        String resolvedUrl = ollamaUrl;
-        if (ollamaUrl.contains("localhost") || ollamaUrl.contains("127.0.0.1")) {
-            resolvedUrl = "http://127.0.0.1:11434";
-        }
-        OllamaApi ollamaApi = new OllamaApi(resolvedUrl);
+        OllamaApi ollamaApi = new OllamaApi(ollamaUrl);
         return new org.springframework.ai.ollama.OllamaEmbeddingModel(
             ollamaApi,
             OllamaOptions.create().withModel("nomic-embed-text")

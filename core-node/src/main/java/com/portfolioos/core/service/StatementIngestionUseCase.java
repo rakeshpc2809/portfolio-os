@@ -37,8 +37,12 @@ public class StatementIngestionUseCase {
 
         List<TaxEvent> taxEvents = new ArrayList<>();
         for (ParsedEventDto dto : dtoList) {
+            String isinOrAsset = dto.isin() != null && !dto.isin().isBlank() ? dto.isin() : (dto.assetId() != null && !dto.assetId().isBlank() ? dto.assetId() : dto.assetName());
+            String eventKey = isinOrAsset + "_" + dto.eventType() + "_" + dto.eventDate() + "_" + (dto.units() != null ? dto.units().stripTrailingZeros().toPlainString() : "0") + "_" + (dto.grossAmount() != null ? dto.grossAmount().stripTrailingZeros().toPlainString() : "0");
+            String deterministicId = dto.id() != null && !dto.id().isBlank() ? dto.id() : UUID.nameUUIDFromBytes(eventKey.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+
             TaxEvent te = new TaxEvent(
-                dto.id() != null ? dto.id() : UUID.randomUUID().toString(),
+                deterministicId,
                 dto.assetId(),
                 dto.assetName(),
                 dto.isin(),

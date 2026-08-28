@@ -19,6 +19,7 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        buildConfigField("String", "DEFAULT_AUTH_TOKEN", "\"dev_secret_key_123\"")
     }
 
     buildTypes {

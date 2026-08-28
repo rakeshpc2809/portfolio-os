@@ -14,9 +14,13 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 public class SimulationService {
 
+    private static final Logger log = LoggerFactory.getLogger(SimulationService.class);
     private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
 
@@ -49,7 +53,8 @@ public class SimulationService {
         BigDecimal postTradeNetWorth,
         BigDecimal postTradeInvestedCost,
         BigDecimal postTradeXirr,
-        String taxSummaryNotice
+        String taxSummaryNotice,
+        boolean valuationDegraded
     ) {
         // Backwards compatibility getter alias for legacy callers querying debtGain()
         public BigDecimal debtGain() {
@@ -164,9 +169,17 @@ public class SimulationService {
         BigDecimal postInvested = BigDecimal.ZERO;
         BigDecimal postCurrentVal = BigDecimal.ZERO;
 
+        boolean valuationDegraded = false;
         for (Lot lot : simResult.openLots()) {
             postInvested = postInvested.add(lot.remainingUnits().multiply(lot.costPerUnit()));
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            BigDecimal nav;
+            if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                nav = lot.costPerUnit();
+                valuationDegraded = true;
+                log.warn("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: {} in SimulationService. Falling back to cost basis.", lot.assetId());
+            } else {
+                nav = navMap.get(lot.assetId());
+            }
             postCurrentVal = postCurrentVal.add(lot.remainingUnits().multiply(nav));
         }
 
@@ -215,7 +228,8 @@ public class SimulationService {
             postCurrentVal.setScale(2, RoundingMode.HALF_UP),
             postInvested.setScale(2, RoundingMode.HALF_UP),
             postXirr,
-            notice
+            notice,
+            valuationDegraded
         );
     }
 }

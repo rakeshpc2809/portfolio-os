@@ -6,6 +6,7 @@ import com.portfolioos.core.matcher.FifoMatcher;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.service.LedgerCacheService;
+import com.portfolioos.core.persistence.DuckDbProjector;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
@@ -63,7 +64,7 @@ class SyncControllerTest {
             }
         };
 
-        syncController = new SyncController(mockCacheService);
+        syncController = new SyncController(mockCacheService, new DuckDbProjector(":memory:"));
     }
 
     @Test

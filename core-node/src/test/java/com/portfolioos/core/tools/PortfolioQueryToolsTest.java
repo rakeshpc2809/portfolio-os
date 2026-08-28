@@ -71,7 +71,7 @@ class PortfolioQueryToolsTest {
             }
         };
 
-        DuckDbProjector duckDbProjector = new DuckDbProjector();
+        DuckDbProjector duckDbProjector = new DuckDbProjector(":memory:");
 
         queryTools = new PortfolioQueryTools(
             mockValuationService,

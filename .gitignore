@@ -18,6 +18,8 @@ dependency-reduced-pom.xml
 # Gradle
 .gradle/
 build/
+local.properties
+**/local.properties
 
 # Python
 __pycache__/
@@ -46,7 +48,7 @@ dist/
 .vite/
 
 # Databases & local data files
-data/
+/data/
 *.db
 *.duckdb
 jdbc:duckdb:

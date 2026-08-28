@@ -249,7 +249,12 @@ public class RebalanceWaterfallEngine {
             boolean isLtcg2 = thresh2 > 0 && days2 >= thresh2;
             int rank2 = gain2.compareTo(BigDecimal.ZERO) < 0 ? 0 : (isLtcg2 ? 1 : 2);
 
-            return Integer.compare(rank1, rank2);
+            int cmp = Integer.compare(rank1, rank2);
+            if (cmp != 0) return cmp;
+
+            BigDecimal pct1 = nav1.compareTo(BigDecimal.ZERO) > 0 ? gain1.divide(nav1, 6, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+            BigDecimal pct2 = nav2.compareTo(BigDecimal.ZERO) > 0 ? gain2.divide(nav2, 6, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+            return pct1.compareTo(pct2);
         });
     }
 
@@ -295,7 +300,9 @@ public class RebalanceWaterfallEngine {
                 return nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0;
             }).sorted(Comparator.comparing(l -> {
                 BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
-                return nav.subtract(l.costPerUnit());
+                return nav.compareTo(BigDecimal.ZERO) > 0 
+                    ? nav.subtract(l.costPerUnit()).divide(nav, 6, RoundingMode.HALF_UP) 
+                    : BigDecimal.ZERO;
             })).toList();
         }
     }
@@ -337,7 +344,9 @@ public class RebalanceWaterfallEngine {
             return requireLtcg ? isLtcg : !isLtcg;
         }).sorted(Comparator.comparing(l -> {
             BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
-            return nav.subtract(l.costPerUnit());
+            return nav.compareTo(BigDecimal.ZERO) > 0 
+                ? nav.subtract(l.costPerUnit()).divide(nav, 6, RoundingMode.HALF_UP) 
+                : BigDecimal.ZERO;
         })).toList();
     }
 }

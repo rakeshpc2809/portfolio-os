@@ -192,8 +192,10 @@ public class RebalancePlanEngine {
 
         if (openLots != null) {
             for (Lot lot : openLots) {
-                BigDecimal nav = (navMap != null && navMap.containsKey(lot.assetId()))
-                    ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                    throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing NAV for asset ID: " + lot.assetId() + " (" + lot.assetName() + "). Cannot compute portfolio corpus.");
+                }
+                BigDecimal nav = navMap.get(lot.assetId());
                 BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
                 liveCorpus = liveCorpus.add(val);
                 fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
@@ -234,8 +236,9 @@ public class RebalancePlanEngine {
         BigDecimal headroomBefore = new BigDecimal(exBefore.exemptionRemaining());
 
         // 3. Sell Side Sourcing Logic
-        BigDecimal totalPool;
+        BigDecimal totalPool = BigDecimal.ZERO;
         SellSidePlanDto sellSide = null;
+        Map<BucketEngine.Bucket, BigDecimal> soldAmountsByBucket = new EnumMap<>(BucketEngine.Bucket.class);
 
         if (isLumpsum) {
             if (manualLumpsumAmount == null || manualLumpsumAmount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -268,7 +271,10 @@ public class RebalancePlanEngine {
                 BigDecimal goldVal = BigDecimal.ZERO;
                 for (Lot lot : openLots) {
                     if ("GOLD_SILVER".equals(BucketConfigLoader.mapAssetToBucket(lot.assetId(), lot.assetName()))) {
-                        BigDecimal nav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                        if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                            throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing NAV for asset ID: " + lot.assetId() + " (" + lot.assetName() + "). Cannot compute Gold/Silver target allocation.");
+                        }
+                        BigDecimal nav = navMap.get(lot.assetId());
                         goldVal = goldVal.add(lot.remainingUnits().multiply(nav));
                     }
                 }
@@ -304,7 +310,10 @@ public class RebalancePlanEngine {
                         for (Lot lot : openLots) {
                             BucketEngine.Bucket b = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
                             if (target.bucket() == b) {
-                                BigDecimal nav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                                if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                                    throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing NAV for asset ID: " + lot.assetId() + " (" + lot.assetName() + "). Cannot compute excess drift for Bucket " + b.name() + ".");
+                                }
+                                BigDecimal nav = navMap.get(lot.assetId());
                                 curVal = curVal.add(lot.remainingUnits().multiply(nav));
                             }
                         }
@@ -427,6 +436,9 @@ public class RebalancePlanEngine {
                         soldCoreLots.add(lotImpact);
                         soldCoreAmount = soldCoreAmount.add(step.proceeds());
                     }
+
+                    BucketEngine.Bucket trimmedBucket = com.portfolioos.core.valuation.BucketEngine.classifyAssetToBucket(step.assetId(), step.assetName());
+                    soldAmountsByBucket.put(trimmedBucket, soldAmountsByBucket.getOrDefault(trimmedBucket, BigDecimal.ZERO).add(step.proceeds()));
                 }
             }
 
@@ -459,6 +471,11 @@ public class RebalancePlanEngine {
                 headroomBefore.subtract(totalLtcgExempt).max(BigDecimal.ZERO)
             );
 
+            // Reconcile totalPool with what was ACTUALLY successfully sold, avoiding phantom allocations
+            totalPool = (isLumpsum && manualLumpsumAmount != null ? manualLumpsumAmount : BigDecimal.ZERO)
+                        .add(soldLegacyAmount)
+                        .add(soldCoreAmount);
+
             sellSide = new SellSidePlanDto(poolNeeded, waterfallTiers, taxSummary);
         }
 
@@ -482,7 +499,9 @@ public class RebalancePlanEngine {
 
         for (BucketEngine.BucketTarget target : activeTargets) {
             BucketEngine.BucketStatus status = statusMap.get(target.bucket());
-            BigDecimal curVal = status != null ? status.currentValue() : BigDecimal.ZERO;
+            BigDecimal baseCurVal = status != null ? status.currentValue() : BigDecimal.ZERO;
+            BigDecimal soldFromBucket = soldAmountsByBucket.getOrDefault(target.bucket(), BigDecimal.ZERO);
+            BigDecimal curVal = baseCurVal.subtract(soldFromBucket).max(BigDecimal.ZERO);
             BigDecimal targetVal = postCorpus.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
             BigDecimal shortfall = targetVal.subtract(curVal).max(BigDecimal.ZERO);
@@ -497,9 +516,11 @@ public class RebalancePlanEngine {
             double targetPct = target.targetPct().doubleValue();
 
             BucketEngine.BucketStatus status = statusMap.get(target.bucket());
-            BigDecimal curVal = status != null ? status.currentValue() : BigDecimal.ZERO;
+            BigDecimal baseCurVal = status != null ? status.currentValue() : BigDecimal.ZERO;
+            BigDecimal soldFromBucket = soldAmountsByBucket.getOrDefault(target.bucket(), BigDecimal.ZERO);
+            BigDecimal curVal = baseCurVal.subtract(soldFromBucket).max(BigDecimal.ZERO);
             double currentPct = (liveCorpus.compareTo(BigDecimal.ZERO) > 0) ?
-                Math.round((curVal.doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct;
+                Math.round((baseCurVal.doubleValue() / liveCorpus.doubleValue()) * 1000.0) / 10.0 : targetPct;
 
             BigDecimal amountAllocated = BigDecimal.ZERO;
             BigDecimal shortfall = bucketShortfalls.getOrDefault(target.bucket(), BigDecimal.ZERO);
@@ -543,8 +564,10 @@ public class RebalancePlanEngine {
                     runningAlloc = runningAlloc.add(normAlloc);
                 }
                 List<FundAllocationDto> realFunds = resolveRealFundBreakdown(BucketEngine.Bucket.valueOf(b.bucket()), normAlloc, activeVersion);
-                BigDecimal curVal = statusMap.containsKey(BucketEngine.Bucket.valueOf(b.bucket())) ?
+                BigDecimal baseCurVal = statusMap.containsKey(BucketEngine.Bucket.valueOf(b.bucket())) ?
                     statusMap.get(BucketEngine.Bucket.valueOf(b.bucket())).currentValue() : BigDecimal.ZERO;
+                BigDecimal soldFromBucket = soldAmountsByBucket.getOrDefault(BucketEngine.Bucket.valueOf(b.bucket()), BigDecimal.ZERO);
+                BigDecimal curVal = baseCurVal.subtract(soldFromBucket).max(BigDecimal.ZERO);
                 BigDecimal postVal = curVal.add(normAlloc);
                 double postPct = (postCorpus.compareTo(BigDecimal.ZERO) > 0) ?
                     Math.round((postVal.doubleValue() / postCorpus.doubleValue()) * 1000.0) / 10.0 : b.targetPct();

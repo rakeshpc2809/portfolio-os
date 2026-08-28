@@ -3,7 +3,7 @@ import uuid
 from decimal import Decimal
 from typing import List, Optional
 from datetime import datetime, date
-from .models import TaxEventSchema, EventType
+from .models import TaxEventSchema, EventType, generate_deterministic_event_id
 
 DATE_REGEX = re.compile(r"^(\d{2}-[A-Za-z]{3}-\d{4})\s+(.+)$")
 # Added support for both CAMS and KFintech PAN formats in CAS
@@ -54,7 +54,7 @@ class CasPdfParser:
                         if units > Decimal("0"):
                             events.append(
                                 TaxEventSchema(
-                                    id=str(uuid.uuid4()),
+                                    id=generate_deterministic_event_id(isin, scheme_name, txn_date, event_type, units, amount),
                                     assetId=asset_id,
                                     assetName=scheme_name,
                                     isin=isin,
@@ -151,7 +151,7 @@ class CasPdfParser:
 
                                 events.append(
                                     TaxEventSchema(
-                                        id=str(uuid.uuid4()),
+                                        id=generate_deterministic_event_id(current_isin, current_scheme, event_date, event_type, units, amount),
                                         assetId=current_isin or current_scheme.replace(" ", "_").upper()[:20],
                                         assetName=current_scheme,
                                         isin=current_isin,

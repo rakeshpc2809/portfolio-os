@@ -78,10 +78,10 @@ public class FireTracker {
     ) {
         BigDecimal totalMFValue = BigDecimal.ZERO;
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.get(lot.assetId());
-            if (nav == null) {
-                nav = lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ZERO;
+            if (navMap == null || !navMap.containsKey(lot.assetId())) {
+                throw new IllegalStateException("CRITICAL VALUATION ERROR: Missing live NAV for asset ID: " + lot.assetId() + " in FireTracker projections.");
             }
+            BigDecimal nav = navMap.get(lot.assetId());
             if (lot.remainingUnits() != null && nav != null) {
                 totalMFValue = totalMFValue.add(lot.remainingUnits().multiply(nav));
             }
