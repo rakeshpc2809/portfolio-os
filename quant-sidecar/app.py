@@ -8,12 +8,18 @@ from pydantic import BaseModel
 import polars as pl
 import uvicorn
 
+import asyncio
 from parsers.cas_parser import CasPdfParser
 from parsers.broker_csv_parser import BrokerCsvParser
 from parsers.sip_detector import detect_and_tag_sips
 from parsers.models import TaxEventSchema
 from flight_server import QuantFlightServer
-from quant.analytics_engine import run_monte_carlo_fire_simulation
+from quant.analytics_engine import (
+    run_monte_carlo_fire_simulation,
+    compute_benchmark_analytics,
+    FireSimulationResponse,
+    BenchmarkAnalyticsResponse
+)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -48,28 +54,27 @@ async def parse_statement(
         tmp.write(content)
         tmp_path = tmp.name
 
-    try:
-        events = []
-        if ext == ".pdf":
-            parser = CasPdfParser(tmp_path, password=password)
-            events = parser.parse_events()
-        elif ext == ".csv":
-            parser = BrokerCsvParser(tmp_path)
-            events = parser.parse()
+    def _do_parse(path: str, file_ext: str, pwd: Optional[str]) -> List[TaxEventSchema]:
+        if file_ext == ".pdf":
+            parser = CasPdfParser(path, password=pwd)
+            raw_events = parser.parse_events()
+        elif file_ext == ".csv":
+            parser = BrokerCsvParser(path)
+            raw_events = parser.parse()
         else:
-            raise HTTPException(status_code=400, detail="Unsupported file format. Please upload PDF or CSV.")
+            raise ValueError("Unsupported file format. Please upload PDF or CSV.")
 
-        # Apply robust 3+ match SIP auto-detection
-        events = detect_and_tag_sips(events)
-
-        # Polars multi-threaded dataframe verification
-        if events:
-            df = pl.DataFrame([e.model_dump(by_alias=True) for e in events])
+        tagged_events = detect_and_tag_sips(raw_events)
+        if tagged_events:
+            df = pl.DataFrame([e.model_dump(by_alias=True) for e in tagged_events])
             required_cols = ["id", "assetId", "assetName", "eventType", "eventDate", "units", "grossAmount"]
             for col in required_cols:
                 if col not in df.columns:
-                    raise HTTPException(status_code=422, detail=f"Missing column in parsed dataframe: {col}")
-        
+                    raise ValueError(f"Missing column in parsed dataframe: {col}")
+        return tagged_events
+
+    try:
+        events = await asyncio.to_thread(_do_parse, tmp_path, ext, password)
         logger.info(f"Successfully parsed {len(events)} events from statement")
         return events
     except Exception as err:
@@ -79,8 +84,6 @@ async def parse_statement(
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-
-from quant.analytics_engine import run_monte_carlo_fire_simulation, compute_benchmark_analytics
 
 class FireSimulationRequest(BaseModel):
     daily_returns: List[float] = []
@@ -95,9 +98,10 @@ class BenchmarkAnalyticsRequest(BaseModel):
     benchmark_returns: List[float]
     benchmark_name: str = "NIFTY_50_TRI"
 
-@app.post("/api/v1/simulate_fire", dependencies=[Depends(verify_auth_token)])
+@app.post("/api/v1/simulate_fire", response_model=FireSimulationResponse, dependencies=[Depends(verify_auth_token)])
 async def simulate_fire(req: FireSimulationRequest):
-    return run_monte_carlo_fire_simulation(
+    return await asyncio.to_thread(
+        run_monte_carlo_fire_simulation,
         daily_returns_list=req.daily_returns,
         current_corpus=req.current_corpus,
         annual_expense=req.annual_expense,
@@ -106,13 +110,17 @@ async def simulate_fire(req: FireSimulationRequest):
         num_simulations=req.num_simulations
     )
 
-@app.post("/api/v1/analytics/benchmark", dependencies=[Depends(verify_auth_token)])
+@app.post("/api/v1/analytics/benchmark", response_model=BenchmarkAnalyticsResponse, dependencies=[Depends(verify_auth_token)])
 async def analyze_benchmark(req: BenchmarkAnalyticsRequest):
-    return compute_benchmark_analytics(
+    result = await asyncio.to_thread(
+        compute_benchmark_analytics,
         portfolio_returns=req.portfolio_returns,
         benchmark_returns=req.benchmark_returns,
         benchmark_name=req.benchmark_name
     )
+    if result.get("status") == "ERROR":
+        raise HTTPException(status_code=422, detail=result.get("message", "Benchmark analytics computation error"))
+    return result
 
 def run_flight_server():
     try:

@@ -1,12 +1,56 @@
 import numpy as np
 import pandas as pd
 import logging
+from typing import List, Optional
+from pydantic import BaseModel
 
 logger = logging.getLogger("quant.analytics_engine")
 try:
     import quantstats as qs
 except ImportError:
     qs = None
+
+class TrajectoryPoint(BaseModel):
+    year: int
+    p10: float
+    p25: float
+    p50: float
+    p75: float
+    p90: float
+
+class FireSimulationResponse(BaseModel):
+    status: str
+    data_source: str
+    data_source_label: str
+    num_simulations: int
+    years_to_retirement: int
+    retirement_duration_years: int
+    success_rate_pct: float
+    median_retirement_start_corpus: float
+    tenth_percentile_retirement_start_corpus: float
+    median_final_ending_corpus: float
+    tenth_percentile_final_ending_corpus: float
+    median_ending_corpus: float
+    tenth_percentile_corpus: float
+    fan_chart_trajectories: List[TrajectoryPoint]
+
+class BenchmarkAnalyticsResponse(BaseModel):
+    status: str
+    benchmark_name: str
+    sample_days: int
+    is_provisional: bool
+    sample_status: str
+    data_source_label: str
+    risk_free_rate_pct: float
+    portfolio_cagr_pct: float
+    benchmark_cagr_pct: float
+    portfolio_vol_pct: float
+    benchmark_vol_pct: float
+    alpha_pct: float
+    beta: float
+    sharpe_ratio: float
+    tracking_error_pct: float
+    outperformance_pct: float
 
 def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
     if len(nav_series) < 30:
@@ -191,10 +235,13 @@ def run_monte_carlo_fire_simulation(
     success_rate = float(np.mean(surviving) * 100.0)
     ret_year_idx = min(years_to_retirement, len(trajectories) - 1)
     ret_trajectory = trajectories[ret_year_idx]
-    median_corpus = ret_trajectory["p50"]
-    p10_corpus = ret_trajectory["p10"]
+    median_ret_start = ret_trajectory["p50"]
+    p10_ret_start = ret_trajectory["p10"]
 
     final_trajectory = trajectories[-1]
+    median_terminal = final_trajectory["p50"]
+    p10_terminal = final_trajectory["p10"]
+
     return {
         "status": "OK",
         "data_source": data_source,
@@ -203,11 +250,12 @@ def run_monte_carlo_fire_simulation(
         "years_to_retirement": years_to_retirement,
         "retirement_duration_years": retirement_duration_years,
         "success_rate_pct": round(success_rate, 2),
-        "median_retirement_start_corpus": round(median_corpus, 2),
-        "median_final_ending_corpus": round(final_trajectory["p50"], 2),
-        "tenth_percentile_final_ending_corpus": round(final_trajectory["p10"], 2),
-        "median_ending_corpus": round(median_corpus, 2),
-        "tenth_percentile_corpus": round(p10_corpus, 2),
+        "median_retirement_start_corpus": round(median_ret_start, 2),
+        "tenth_percentile_retirement_start_corpus": round(p10_ret_start, 2),
+        "median_final_ending_corpus": round(median_terminal, 2),
+        "tenth_percentile_final_ending_corpus": round(p10_terminal, 2),
+        "median_ending_corpus": round(median_ret_start, 2),
+        "tenth_percentile_corpus": round(p10_ret_start, 2),
         "fan_chart_trajectories": trajectories
     }
 
