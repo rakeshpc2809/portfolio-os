@@ -128,13 +128,13 @@ data class SyncInfoDto(
     @SerializedName("generated_at") val generatedAt: String = "",
     @SerializedName("fiscal_year") val fiscalYear: String = "2026-27",
     @SerializedName("portfolio_xirr") val portfolioXirr: Double = 0.0,
-    @SerializedName("xirr_percentage") val xirrPercentage: String = "0.00%",
+    @SerializedName("xirr_percentage") val xirrPercentage: String = "",
     @SerializedName("total_invested") val totalInvested: Double = 0.0,
     @SerializedName("current_value") val currentValue: Double = 0.0,
     @SerializedName("unrealized_gain") val unrealizedGain: Double = 0.0,
-    @SerializedName("formatted_current_value") val formattedCurrentValue: String = "₹0.00",
-    @SerializedName("formatted_total_invested") val formattedTotalInvested: String = "₹0.00",
-    @SerializedName("formatted_unrealized_gain") val formattedUnrealizedGain: String = "₹0.00"
+    @SerializedName("formatted_current_value") val formattedCurrentValue: String = "",
+    @SerializedName("formatted_total_invested") val formattedTotalInvested: String = "",
+    @SerializedName("formatted_unrealized_gain") val formattedUnrealizedGain: String = ""
 )
 
 @Immutable
@@ -149,8 +149,8 @@ data class FlatHoldingDto(
     @SerializedName("invested_value") val investedValue: Double = 0.0,
     @SerializedName("portfolio_percentage") val portfolioPercentage: Double = 0.0,
     @SerializedName("portfolio_weight_pct") val portfolioWeightPct: Double = 0.0,
-    @SerializedName("formatted_current_value") val formattedCurrentValue: String = "₹0.00",
-    @SerializedName("formatted_invested_value") val formattedInvestedValue: String = "₹0.00"
+    @SerializedName("formatted_current_value") val formattedCurrentValue: String = "",
+    @SerializedName("formatted_invested_value") val formattedInvestedValue: String = ""
 ) {
     val effectivePortfolioPct: Double
         get() = if (portfolioPercentage > 0.0) portfolioPercentage else portfolioWeightPct

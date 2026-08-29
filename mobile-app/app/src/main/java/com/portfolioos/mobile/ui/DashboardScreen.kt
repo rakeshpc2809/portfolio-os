@@ -745,6 +745,7 @@ fun HoldingsView(
                         .padding(SpacingTokens.xxl)
                 ) {
                     Column {
+                        val isSyncPopulated = syncInfo != null && syncInfo.generatedAt.isNotBlank() && syncInfo.generatedAt != "OFFLINE_FALLBACK"
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -764,20 +765,25 @@ fun HoldingsView(
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
+                            val xirrText = if (isSyncPopulated && syncInfo != null && syncInfo.xirrPercentage.isNotBlank()) {
+                                syncInfo.xirrPercentage
+                            } else {
+                                "--% XIRR"
+                            }
                             Surface(
-                                color = ColorTokens.GreenPositive.copy(alpha = 0.15f),
+                                color = if (isSyncPopulated) ColorTokens.GreenPositive.copy(alpha = 0.15f) else ColorTokens.CardBorder.copy(alpha = 0.3f),
                                 shape = ShapeTokens.PillShape
                             ) {
                                 Text(
-                                    text = syncInfo?.xirrPercentage ?: "0.00% XIRR",
-                                    style = TypographyTokens.BadgeTag.copy(color = ColorTokens.GreenPositive),
+                                    text = xirrText,
+                                    style = TypographyTokens.BadgeTag.copy(color = if (isSyncPopulated) ColorTokens.GreenPositive else ColorTokens.TextMuted),
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = formatInr(syncInfo?.currentValue ?: 0.0),
+                            text = if (isSyncPopulated && syncInfo != null) formatInr(syncInfo.currentValue) else "₹ --",
                             style = TypographyTokens.MetricNumber.copy(
                                 fontSize = 34.sp,
                                 color = ColorTokens.TextMain
@@ -797,7 +803,7 @@ fun HoldingsView(
                                     style = TypographyTokens.MetricLabel
                                 )
                                 Text(
-                                    text = formatInr(syncInfo?.totalInvested ?: 0.0),
+                                    text = if (isSyncPopulated && syncInfo != null) formatInr(syncInfo.totalInvested) else "₹ --",
                                     style = TypographyTokens.FinancialValue
                                 )
                             }
@@ -806,11 +812,20 @@ fun HoldingsView(
                                     text = "Unrealized Gain",
                                     style = TypographyTokens.MetricLabel
                                 )
-                                val gain = syncInfo?.unrealizedGain ?: 0.0
+                                val gainText = if (isSyncPopulated && syncInfo != null) {
+                                    val gain = syncInfo.unrealizedGain
+                                    "${if (gain >= 0) "+" else ""}${formatInr(gain)}"
+                                } else {
+                                    "₹ --"
+                                }
                                 Text(
-                                    text = "${if (gain >= 0) "+" else ""}${formatInr(gain)}",
+                                    text = gainText,
                                     style = TypographyTokens.FinancialValue.copy(
-                                        color = if (gain >= 0) ColorTokens.GreenPositive else ColorTokens.RedNegative
+                                        color = when {
+                                            !isSyncPopulated || syncInfo == null -> ColorTokens.TextMuted
+                                            syncInfo.unrealizedGain >= 0 -> ColorTokens.GreenPositive
+                                            else -> ColorTokens.RedNegative
+                                        }
                                     )
                                 )
                             }
@@ -1591,13 +1606,11 @@ fun RebalanceWaterfallView(
     }
 
     val totalRequired = sellSide?.totalRequired ?: 0.0
-    val totalToInvest = buySide?.totalToInvest ?: totalRequired
+    val totalToInvest = buySide?.totalToInvest ?: 0.0
 
     val successRateStr = fireSummary?.let { "%.1f%% Success Rate".format(it.monteCarloSuccessRatePct) } ?: "--% Success Rate"
-    val medianCorpusVal = fireSummary?.monteCarloMedianCorpus?.toDoubleOrNull() ?: 0.0
-    val p10CorpusVal = fireSummary?.monteCarloTenthPercentileCorpus?.toDoubleOrNull() ?: 0.0
-    val medianCorpusStr = formatInr(medianCorpusVal)
-    val p10CorpusStr = formatInr(p10CorpusVal)
+    val medianCorpusStr = fireSummary?.monteCarloMedianCorpus?.ifBlank { null }?.toDoubleOrNull()?.let { formatInr(it) } ?: "₹ --"
+    val p10CorpusStr = fireSummary?.monteCarloTenthPercentileCorpus?.ifBlank { null }?.toDoubleOrNull()?.let { formatInr(it) } ?: "₹ --"
 
     val fundSellList = remember(sellSide) {
         val map = mutableMapOf<String, FundSellAggregated>()
@@ -1662,7 +1675,8 @@ fun RebalanceWaterfallView(
                     iconTint = M3AmberWarning,
                     title = "Rebalance Action Deferred",
                     subtitle = "30-Day Cooldown Active",
-                    description = rebalancePlan.reasoningNarrative?.headline ?: "Bucket drift detected, but sell rebalance is on 30-day cooldown."
+                    description = rebalancePlan.reasoningNarrative?.headline?.ifBlank { null }
+                        ?: "Rebalance trade execution is temporarily deferred per strategy rules."
                 )
             }
         } else if (sellSide == null || (fundSellList.isEmpty() && totalToInvest == 0.0)) {
@@ -1722,7 +1736,7 @@ fun RebalanceWaterfallView(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = rebalancePlan.trigger?.reasonLabel ?: "Bucket Allocation Drift Exceeded Threshold",
+                            text = rebalancePlan.trigger?.reasonLabel?.ifBlank { null } ?: "Rebalance Strategy Recommendation Active",
                             color = Color(0xFFCBD5E1),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
@@ -1812,22 +1826,24 @@ fun RebalanceWaterfallView(
             }
 
             // 3. FLOW CONNECTOR BANNER
-            item {
-                Surface(
-                    color = Color(0xFF1E293B),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, M3AmberWarning.copy(alpha = 0.3f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "↓  REDEPLOYING ${formatInr(totalToInvest)} CAPITAL  ↓",
-                        color = M3AmberWarning,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.2.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(vertical = 6.dp)
-                    )
+            if (totalToInvest > 0.0) {
+                item {
+                    Surface(
+                        color = Color(0xFF1E293B),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, M3AmberWarning.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "↓  REDEPLOYING ${formatInr(totalToInvest)} CAPITAL  ↓",
+                            color = M3AmberWarning,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.2.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        )
+                    }
                 }
             }
 

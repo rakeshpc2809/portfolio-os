@@ -40,10 +40,19 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
         val worstFund = holdings.minByOrNull { it.xirr }
 
         // Calculate portfolio gain percentage for privacy-first display
-        val totalInvested = info?.totalInvested ?: 1.0
-        val unrealizedGain = info?.unrealizedGain ?: 0.0
-        val gainPct = if (totalInvested > 0) (unrealizedGain / totalInvested) * 100.0 else 0.0
-        val formattedGainPct = String.format("%s%.2f%%", if (gainPct >= 0) "+" else "", gainPct)
+        val isInfoValid = info != null && info.generatedAt.isNotBlank() && info.generatedAt != "OFFLINE_FALLBACK" && info.totalInvested > 0.0
+        val gainPct = if (isInfoValid && info != null) {
+            (info.unrealizedGain / info.totalInvested) * 100.0
+        } else {
+            0.0
+        }
+        val formattedGainPct = if (isInfoValid) {
+            String.format("%s%.2f%%", if (gainPct >= 0) "+" else "", gainPct)
+        } else {
+            "--%"
+        }
+        val widgetXirr = if (isInfoValid && info != null && info.xirrPercentage.isNotBlank()) info.xirrPercentage else "--% XIRR"
+        val gainColor = if (!isInfoValid) Color(0xFF94A3B8) else if (gainPct >= 0) Color(0xFF10B981) else Color(0xFFEF4444)
 
         provideContent {
             GlanceTheme {
@@ -69,9 +78,9 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
                         )
                         Spacer(modifier = GlanceModifier.defaultWeight())
                         Text(
-                            text = info?.xirrPercentage ?: "0.00% XIRR",
+                            text = widgetXirr,
                             style = TextStyle(
-                                color = ColorProvider(Color(0xFF10B981)),
+                                color = ColorProvider(if (isInfoValid) Color(0xFF10B981) else Color(0xFF94A3B8)),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -94,7 +103,7 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
                         Text(
                             text = formattedGainPct,
                             style = TextStyle(
-                                color = ColorProvider(if (gainPct >= 0) Color(0xFF10B981) else Color(0xFFEF4444)),
+                                color = ColorProvider(gainColor),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
                             )
