@@ -94,14 +94,7 @@ public class RebalanceWaterfallEngine {
 
         Map<String, BigDecimal> legacySchemeValueMap = new HashMap<>();
         for (Lot lot : legacyLots) {
-            boolean hasNav = navMap != null && navMap.containsKey(lot.assetId());
-            if (!hasNav) {
-                log.warn("AMFI_NAV_SYNC_ALERT: Missing ISIN {} in navMap during waterfall engine calculation, using fallback costPerUnit {}", lot.assetId(), lot.costPerUnit());
-            }
-            if (!hasNav && lot.costPerUnit() == null) {
-                throw new IllegalStateException("CRITICAL VALUATION ERROR: Asset ISIN " + lot.assetId() + " is missing both live NAV and lot costPerUnit basis.");
-            }
-            BigDecimal nav = hasNav ? navMap.get(lot.assetId()) : lot.costPerUnit();
+            BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "RebalanceWaterfallEngine");
             BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
             legacySchemeValueMap.put(lot.assetId(), legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
         }
@@ -180,7 +173,7 @@ public class RebalanceWaterfallEngine {
         LocalDate today,
         boolean urgent
     ) {
-        BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+        BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "RebalanceWaterfallEngine.processLot");
         BigDecimal lotValue = lot.remainingUnits().multiply(nav);
         if (lotValue.compareTo(BigDecimal.ZERO) <= 0) return null;
 
@@ -233,7 +226,7 @@ public class RebalanceWaterfallEngine {
 
     private static void sortLotsByTaxCost(List<Lot> lots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
         lots.sort((l1, l2) -> {
-            BigDecimal nav1 = navMap.getOrDefault(l1.assetId(), l1.costPerUnit());
+            BigDecimal nav1 = NavResolver.requireValidNav(navMap, l1, "RebalanceWaterfallEngine.sortLotsByTaxCost");
             BigDecimal gain1 = nav1.subtract(l1.costPerUnit());
             AssetCategory cat1 = TaxClassifier.detectCategory(l1.assetId(), l1.assetName());
             long thresh1 = getThresholdDays(cat1, rules);
@@ -241,7 +234,7 @@ public class RebalanceWaterfallEngine {
             boolean isLtcg1 = thresh1 > 0 && days1 >= thresh1;
             int rank1 = gain1.compareTo(BigDecimal.ZERO) < 0 ? 0 : (isLtcg1 ? 1 : 2);
 
-            BigDecimal nav2 = navMap.getOrDefault(l2.assetId(), l2.costPerUnit());
+            BigDecimal nav2 = NavResolver.requireValidNav(navMap, l2, "RebalanceWaterfallEngine.sortLotsByTaxCost");
             BigDecimal gain2 = nav2.subtract(l2.costPerUnit());
             AssetCategory cat2 = TaxClassifier.detectCategory(l2.assetId(), l2.assetName());
             long thresh2 = getThresholdDays(cat2, rules);
@@ -270,7 +263,7 @@ public class RebalanceWaterfallEngine {
         @Override
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
             List<Lot> lots = legacyLots.stream().filter(l -> {
-                BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+                BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.LegacyTier");
                 BigDecimal gain = nav.subtract(l.costPerUnit());
                 if (gain.compareTo(BigDecimal.ZERO) < 0) return true; // Always allow loss harvest
                 AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
@@ -291,10 +284,10 @@ public class RebalanceWaterfallEngine {
         @Override
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
             return coreLots.stream().filter(l -> {
-                BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+                BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.LossHarvestTier");
                 return nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0;
             }).sorted(Comparator.comparing(l -> {
-                BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+                BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.LossHarvestTier");
                 return nav.subtract(l.costPerUnit());
             })).toList();
         }
@@ -328,7 +321,7 @@ public class RebalanceWaterfallEngine {
         boolean requireLtcg
     ) {
         return coreLots.stream().filter(l -> {
-            BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+            BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.selectCoreLots");
             if (nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0) return false;
             AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
             long threshold = getThresholdDays(cat, rules);
@@ -336,7 +329,7 @@ public class RebalanceWaterfallEngine {
             boolean isLtcg = threshold > 0 && holdingDays >= threshold;
             return requireLtcg ? isLtcg : !isLtcg;
         }).sorted(Comparator.comparing(l -> {
-            BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+            BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.selectCoreLots");
             return nav.subtract(l.costPerUnit());
         })).toList();
     }

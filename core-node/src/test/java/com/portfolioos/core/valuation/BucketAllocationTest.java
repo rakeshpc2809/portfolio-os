@@ -144,4 +144,20 @@ class BucketAllocationTest {
         assertEquals(0.1053, renormalized.get("INF205K01KR8"), 0.001, "Invesco Arbitrage must be ~10.53%");
         assertEquals(0.0526, renormalized.get("INF204K01K15"), 0.001, "Nippon Small Cap must be ~5.26%");
     }
+
+    @Test
+    @DisplayName("Fail-Loud Invariant: BucketEngine throws IllegalStateException if live NAV is missing or zero")
+    void testBucketEngineThrowsOnMissingNav() {
+        LocalDate date = LocalDate.of(2026, 8, 10);
+        Lot coreLot = new Lot("lot-1", "INF109KC12U0", "ICICI LargeMidcap 250", date, new BigDecimal("4500"), new BigDecimal("4500"), new BigDecimal("100"), new BigDecimal("450000.00"), false, null);
+
+        Map<String, BigDecimal> emptyNavMap = Map.of();
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            BucketEngine.evaluateRebalance(
+                List.of(coreLot), List.of(), emptyNavMap, date, BigDecimal.ZERO, BigDecimal.ZERO, BucketEngine.DEFAULT_TARGETS, "2026-27"
+            )
+        );
+        assertTrue(ex.getMessage().contains("CRITICAL VALUATION ERROR"));
+        assertTrue(ex.getMessage().contains("INF109KC12U0"));
+    }
 }

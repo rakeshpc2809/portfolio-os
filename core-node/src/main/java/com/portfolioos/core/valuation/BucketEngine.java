@@ -163,7 +163,7 @@ public class BucketEngine {
 
         for (Lot lot : openLots) {
             Bucket bucket = classifyAssetToBucket(lot.assetId(), lot.assetName(), activeOrPreferredAssetIds);
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "BucketEngine");
             BigDecimal lotValue = lot.remainingUnits().multiply(nav);
             
             totalPortfolioValue = totalPortfolioValue.add(lotValue);

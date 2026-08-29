@@ -194,4 +194,22 @@ class RebalanceTriggerEvaluatorTest {
         assertEquals("SCHEDULED", dto3.legacyTriggerType());
         assertFalse(dto3.isInduced());
     }
+
+    @Test
+    @DisplayName("Fail-Loud Invariant: RebalanceTriggerEvaluator throws IllegalStateException if live NAV is missing")
+    void testGetCurrentStatusThrowsOnMissingNav() {
+        Lot lot = new Lot("l1", "INF109KC12U0", "ICICI LargeMidcap 250", LocalDate.of(2025, 1, 1),
+            new BigDecimal("1000"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100000"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> emptyNavMap = Map.of();
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            evaluator.getCurrentStatus(
+                List.of(lot), emptyNavMap,
+                new BigDecimal("20000.00"), new BigDecimal("25000.00"),
+                null, null, LocalDate.of(2026, 8, 1)
+            )
+        );
+        assertTrue(ex.getMessage().contains("CRITICAL VALUATION ERROR"));
+        assertTrue(ex.getMessage().contains("INF109KC12U0"));
+    }
 }

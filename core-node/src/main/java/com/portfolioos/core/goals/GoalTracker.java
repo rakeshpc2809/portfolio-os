@@ -51,7 +51,7 @@ public class GoalTracker {
         for (Lot lot : openLots) {
             BucketEngine.Bucket bucket = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
             if (bucket == BucketEngine.Bucket.LIQUID_BUFFER) {
-                BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "GoalTracker");
                 totalLiquidMF = totalLiquidMF.add(lot.remainingUnits().multiply(nav));
             }
         }

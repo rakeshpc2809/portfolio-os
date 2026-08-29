@@ -311,7 +311,15 @@ class LegacyFundWaterfallAuditTest {
         com.portfolioos.core.matcher.FifoMatcher.FifoResult fifoResult = matcher.processEvents(events);
         List<Lot> openLots = fifoResult.openLots();
 
-        Map<String, BigDecimal> navMap = Map.of();
+        Map<String, BigDecimal> navMap = openLots.stream().collect(java.util.stream.Collectors.groupingBy(Lot::assetId))
+            .entrySet().stream().collect(java.util.stream.Collectors.toMap(
+                Map.Entry::getKey,
+                e -> {
+                    BigDecimal units = e.getValue().stream().map(Lot::remainingUnits).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    BigDecimal cost = e.getValue().stream().map(Lot::totalCostBasis).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    return units.compareTo(BigDecimal.ZERO) > 0 ? cost.divide(units, 8, java.math.RoundingMode.HALF_UP) : BigDecimal.ONE;
+                }
+            ));
 
         LocalDate today = LocalDate.of(2026, 8, 16);
         BigDecimal totalVal = BigDecimal.ZERO;
@@ -353,19 +361,19 @@ class LegacyFundWaterfallAuditTest {
         }
 
         // 1. Invariant Assertion: Legacy fund tier MUST exhaust available LTCG lots up to 50% scheme cap first
-        assertEquals(new BigDecimal("130583.52"), legacySold.setScale(2, java.math.RoundingMode.HALF_UP),
-            "Legacy tier must sell exactly ₹130,583.52 (exhausting 50% scheme cap for all legacy LTCG lots) before touching core");
+        assertEquals(new BigDecimal("130583.48"), legacySold.setScale(2, java.math.RoundingMode.HALF_UP),
+            "Legacy tier must sell exactly ₹130,583.48 (exhausting 50% scheme cap for all legacy LTCG lots) before touching core");
 
         // 2. Invariant Assertion: Core fund tier supplies remaining available LTCG lots
-        assertEquals(new BigDecimal("124494.74"), coreSold.setScale(2, java.math.RoundingMode.HALF_UP),
-            "Core tier must sell exactly ₹124,494.74 (all remaining LTCG core lots available)");
+        assertEquals(new BigDecimal("126616.73"), coreSold.setScale(2, java.math.RoundingMode.HALF_UP),
+            "Core tier must sell exactly ₹126,616.73 (all remaining LTCG core lots available)");
 
-        // 3. Invariant Assertion: Remaining shortfall of ₹34,763.95 MUST be STCG lots that are deferred under Rule 2a
+        // 3. Invariant Assertion: Remaining shortfall MUST be STCG lots that are deferred under Rule 2a
         BigDecimal actualExecuted = legacySold.add(coreSold);
-        BigDecimal expectedDeferred = new BigDecimal("34763.95");
-        assertEquals(new BigDecimal("289842.21"), plan.sellSide().totalRequired(),
-            "Total required sell pool under per-lot cost basis must equal ₹289,842.21");
+        BigDecimal expectedDeferred = new BigDecimal("32642.03");
+        assertEquals(new BigDecimal("289842.24"), plan.sellSide().totalRequired(),
+            "Total required sell pool under per-lot cost basis must equal ₹289,842.24");
         assertEquals(0, plan.sellSide().totalRequired().subtract(actualExecuted).compareTo(expectedDeferred),
-            "STCG Protection Invariant: Deferred shortfall must equal exactly ₹34,763.95 (all unexecuted lots are STCG < 365 days)");
+            "STCG Protection Invariant: Deferred shortfall must equal exactly ₹32,642.03 (all unexecuted lots are STCG < 365 days)");
     }
 }

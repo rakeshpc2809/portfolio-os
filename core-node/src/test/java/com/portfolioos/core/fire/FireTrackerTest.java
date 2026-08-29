@@ -56,4 +56,31 @@ class FireTrackerTest {
         assertNotNull(profile.scenarios());
         assertFalse(profile.scenarios().isEmpty());
     }
+
+    @Test
+    void testCalculateFireSummaryThrowsOnMissingNav() {
+        Lot lot = new Lot(
+            "LOT_1",
+            "NIFTY_LARGEMIDCAP_1",
+            "ICICI Nifty LargeMidcap",
+            LocalDate.of(2024, 1, 1),
+            new BigDecimal("1000.0"),
+            new BigDecimal("1000.0"),
+            new BigDecimal("100.0"),
+            new BigDecimal("100000.0"),
+            false,
+            BigDecimal.ZERO
+        );
+
+        Map<String, BigDecimal> emptyNavMap = Map.of();
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            FireTracker.calculateFireSummary(
+                List.of(lot),
+                emptyNavMap,
+                LocalDate.of(2026, 8, 19)
+            )
+        );
+        assertTrue(ex.getMessage().contains("CRITICAL VALUATION ERROR"));
+        assertTrue(ex.getMessage().contains("NIFTY_LARGEMIDCAP_1"));
+    }
 }

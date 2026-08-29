@@ -91,11 +91,7 @@ public class ConsolidationRebalanceEngine {
                 }
             }
 
-            BigDecimal nav = navMap.getOrDefault(assetId, BigDecimal.ZERO);
-            if (nav.compareTo(BigDecimal.ZERO) == 0 && totalUnits.compareTo(BigDecimal.ZERO) > 0) {
-                nav = totalCost.divide(totalUnits, 4, RoundingMode.HALF_UP);
-            }
-
+            BigDecimal nav = NavResolver.requireValidNav(navMap, assetId, assetName, "ConsolidationRebalanceEngine");
             BigDecimal curVal = totalUnits.multiply(nav);
             BigDecimal gain = curVal.subtract(totalCost);
 

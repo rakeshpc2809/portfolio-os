@@ -99,7 +99,7 @@ public class TaxOptimizationService {
             if (holdingDays < reqDays) {
                 long daysRemaining = reqDays - holdingDays;
                 LocalDate targetDate = today.plusDays(daysRemaining);
-                BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "TaxOptimizationService.getMaturationLadder");
                 BigDecimal currentVal = lot.remainingUnits().multiply(nav);
                 BigDecimal gain = currentVal.subtract(lot.totalCostBasis());
 

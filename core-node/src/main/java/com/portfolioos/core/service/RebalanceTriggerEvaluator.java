@@ -54,9 +54,7 @@ public class RebalanceTriggerEvaluator {
 
         if (openLots != null) {
             for (Lot lot : openLots) {
-                BigDecimal nav = (navMap != null && navMap.containsKey(lot.assetId()))
-                    ? navMap.get(lot.assetId())
-                    : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalanceTriggerEvaluator");
                 BigDecimal lotVal = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
                 liveCorpus = liveCorpus.add(lotVal);
 

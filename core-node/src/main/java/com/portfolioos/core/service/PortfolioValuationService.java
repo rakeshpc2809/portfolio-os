@@ -62,7 +62,7 @@ public class PortfolioValuationService {
 
         for (Lot lot : openLots) {
             totalInvested = totalInvested.add(lot.totalCostBasis());
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "PortfolioValuationService.getPortfolioSummary");
             totalCurrentValue = totalCurrentValue.add(lot.remainingUnits().multiply(nav));
         }
 
@@ -138,7 +138,7 @@ public class PortfolioValuationService {
             List<Lot> lots = entry.getValue();
 
             String assetName = lots.get(0).assetName();
-            BigDecimal currentNav = navMap.getOrDefault(assetId, lots.get(0).costPerUnit());
+            BigDecimal currentNav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, assetId, assetName, "PortfolioValuationService.getHoldings");
             boolean isStale = !navMap.containsKey(assetId);
             String category = TaxClassifier.detectCategory(assetId, assetName).name();
 
@@ -567,7 +567,7 @@ public class PortfolioValuationService {
         Map<String, Double> fundValuations = new HashMap<>();
 
         for (Lot lot : state.fifoResult().openLots()) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "PortfolioValuationService.getPortfolioOverlapAnalytics");
             double currentVal = lot.remainingUnits().multiply(nav).doubleValue();
             fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), 0.0) + currentVal);
         }
@@ -666,7 +666,7 @@ public class PortfolioValuationService {
             openLots = state.fifoResult().openLots();
             matchedLots = state.fifoResult().matchedLots();
             for (Lot lot : openLots) {
-                BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "PortfolioValuationService.getActionRecommendations");
                 double currentVal = lot.remainingUnits().multiply(nav).doubleValue();
                 fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), 0.0) + currentVal);
             }
@@ -711,7 +711,7 @@ public class PortfolioValuationService {
 
         Map<String, BigDecimal> fundValuations = new HashMap<>();
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ZERO);
+            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "PortfolioValuationService.getFundRegistry");
             BigDecimal val = lot.remainingUnits() != null ? lot.remainingUnits().multiply(nav) : BigDecimal.ZERO;
             fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
         }

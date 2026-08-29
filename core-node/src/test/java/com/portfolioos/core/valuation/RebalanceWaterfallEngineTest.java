@@ -147,4 +147,27 @@ class RebalanceWaterfallEngineTest {
         assertEquals(new BigDecimal("5000.00"), result.deferredAmount());
         assertTrue(result.steps().isEmpty());
     }
+
+    @Test
+    void testBuildTrimWaterfallThrowsOnMissingNav() {
+        LocalDate today = LocalDate.of(2026, 8, 1);
+        Lot lot = new Lot("L1", "NIFTY_LARGEMIDCAP_250", "Nifty LargeMidcap 250 Index Fund",
+            today, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> emptyNavMap = Map.of();
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            RebalanceWaterfallEngine.buildTrimWaterfall(
+                BucketEngine.Bucket.EQUITY_CORE,
+                new BigDecimal("5000"),
+                List.of(lot),
+                emptyNavMap,
+                new BigDecimal("125000"),
+                false,
+                today,
+                "2026-27"
+            )
+        );
+        assertTrue(ex.getMessage().contains("CRITICAL VALUATION ERROR"));
+        assertTrue(ex.getMessage().contains("NIFTY_LARGEMIDCAP_250"));
+    }
 }

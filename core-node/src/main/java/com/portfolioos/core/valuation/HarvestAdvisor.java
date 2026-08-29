@@ -58,7 +58,7 @@ public class HarvestAdvisor {
 
             long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
             if (holdingDays >= rules.equityLtcgThresholdDays()) {
-                BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+                BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "HarvestAdvisor");
                 BigDecimal currentVal = lot.remainingUnits().multiply(nav);
                 BigDecimal gain = currentVal.subtract(lot.totalCostBasis());
 

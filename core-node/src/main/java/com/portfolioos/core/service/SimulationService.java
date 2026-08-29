@@ -166,7 +166,7 @@ public class SimulationService {
 
         for (Lot lot : simResult.openLots()) {
             postInvested = postInvested.add(lot.remainingUnits().multiply(lot.costPerUnit()));
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "SimulationService.simulateTrade");
             postCurrentVal = postCurrentVal.add(lot.remainingUnits().multiply(nav));
         }
 

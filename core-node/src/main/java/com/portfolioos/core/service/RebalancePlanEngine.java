@@ -192,8 +192,7 @@ public class RebalancePlanEngine {
 
         if (openLots != null) {
             for (Lot lot : openLots) {
-                BigDecimal nav = (navMap != null && navMap.containsKey(lot.assetId()))
-                    ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.liveCorpus");
                 BigDecimal val = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
                 liveCorpus = liveCorpus.add(val);
                 fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(val));
@@ -268,7 +267,7 @@ public class RebalancePlanEngine {
                 BigDecimal goldVal = BigDecimal.ZERO;
                 for (Lot lot : openLots) {
                     if ("GOLD_SILVER".equals(BucketConfigLoader.mapAssetToBucket(lot.assetId(), lot.assetName()))) {
-                        BigDecimal nav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                        BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.goldVal");
                         goldVal = goldVal.add(lot.remainingUnits().multiply(nav));
                     }
                 }
@@ -304,7 +303,7 @@ public class RebalancePlanEngine {
                         for (Lot lot : openLots) {
                             BucketEngine.Bucket b = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
                             if (target.bucket() == b) {
-                                BigDecimal nav = navMap != null && navMap.containsKey(lot.assetId()) ? navMap.get(lot.assetId()) : (lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ONE);
+                                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.excessVal");
                                 curVal = curVal.add(lot.remainingUnits().multiply(nav));
                             }
                         }

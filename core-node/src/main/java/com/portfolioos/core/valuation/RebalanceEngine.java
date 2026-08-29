@@ -74,7 +74,7 @@ public class RebalanceEngine {
         if (!allowStcg) {
             // Drop positive-gain short-term lots entirely
             candidateLots = candidateLots.stream().filter(l -> {
-                BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+                BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceEngine");
                 BigDecimal gain = nav.subtract(l.costPerUnit());
                 if (gain.compareTo(BigDecimal.ZERO) < 0) return true; // Keep loss-making lots
                 AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
@@ -86,7 +86,7 @@ public class RebalanceEngine {
 
         List<Lot> sortedLots = new ArrayList<>(candidateLots);
         sortedLots.sort((l1, l2) -> {
-            BigDecimal nav1 = navMap.getOrDefault(l1.assetId(), l1.costPerUnit());
+            BigDecimal nav1 = NavResolver.requireValidNav(navMap, l1, "RebalanceEngine");
             BigDecimal gainPerUnit1 = nav1.subtract(l1.costPerUnit());
             AssetCategory cat1 = TaxClassifier.detectCategory(l1.assetId(), l1.assetName());
             long holdingDays1 = ChronoUnit.DAYS.between(l1.acquisitionDate(), today);
@@ -95,7 +95,7 @@ public class RebalanceEngine {
 
             int rank1 = (gainPerUnit1.compareTo(BigDecimal.ZERO) < 0) ? 0 : (isLtcg1 ? 1 : 2);
 
-            BigDecimal nav2 = navMap.getOrDefault(l2.assetId(), l2.costPerUnit());
+            BigDecimal nav2 = NavResolver.requireValidNav(navMap, l2, "RebalanceEngine");
             BigDecimal gainPerUnit2 = nav2.subtract(l2.costPerUnit());
             AssetCategory cat2 = TaxClassifier.detectCategory(l2.assetId(), l2.assetName());
             long holdingDays2 = ChronoUnit.DAYS.between(l2.acquisitionDate(), today);
@@ -110,7 +110,7 @@ public class RebalanceEngine {
         for (Lot lot : sortedLots) {
             if (remainingTarget.compareTo(BigDecimal.ZERO) <= 0) break;
 
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "RebalanceEngine");
             BigDecimal lotValue = lot.remainingUnits().multiply(nav);
             BigDecimal redemptionFromLot = lotValue.min(remainingTarget);
 

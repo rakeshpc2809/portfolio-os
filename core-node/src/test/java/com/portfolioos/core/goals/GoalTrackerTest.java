@@ -51,4 +51,27 @@ class GoalTrackerTest {
         assertEquals(new BigDecimal("350000.00"), summary.allocatedGoalsAmount());
         assertEquals(new BigDecimal("150000.00"), summary.unallocatedCash());
     }
+
+    @Test
+    void testCalculateGoalSummaryThrowsOnMissingNav() {
+        Lot liquidLot = new Lot(
+            "LOT_1",
+            "ARBITRAGE_1",
+            "Invesco Arbitrage Fund",
+            LocalDate.of(2024, 1, 1),
+            new BigDecimal("1000.0"),
+            new BigDecimal("1000.0"),
+            new BigDecimal("100.0"),
+            new BigDecimal("100000.0"),
+            false,
+            BigDecimal.ZERO
+        );
+
+        Map<String, BigDecimal> emptyNavMap = Map.of();
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            GoalTracker.calculateGoalSummary(List.of(liquidLot), emptyNavMap)
+        );
+        assertTrue(ex.getMessage().contains("CRITICAL VALUATION ERROR"));
+        assertTrue(ex.getMessage().contains("ARBITRAGE_1"));
+    }
 }

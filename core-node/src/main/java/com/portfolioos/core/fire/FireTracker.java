@@ -78,11 +78,8 @@ public class FireTracker {
     ) {
         BigDecimal totalMFValue = BigDecimal.ZERO;
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.get(lot.assetId());
-            if (nav == null) {
-                nav = lot.costPerUnit() != null ? lot.costPerUnit() : BigDecimal.ZERO;
-            }
-            if (lot.remainingUnits() != null && nav != null) {
+            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "FireTracker");
+            if (lot.remainingUnits() != null) {
                 totalMFValue = totalMFValue.add(lot.remainingUnits().multiply(nav));
             }
         }

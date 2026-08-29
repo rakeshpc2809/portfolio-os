@@ -90,7 +90,7 @@ public class SyncController {
         BigDecimal totalPortfolioInvested = BigDecimal.ZERO;
 
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "SyncController.getSnapshot");
             totalPortfolioCurrentVal = totalPortfolioCurrentVal.add(lot.remainingUnits().multiply(nav));
             totalPortfolioInvested = totalPortfolioInvested.add(lot.totalCostBasis());
         }
@@ -132,11 +132,7 @@ public class SyncController {
                     holdingCashflows.add(new CashFlow(event.eventDate(), event.grossAmount()));
                 }
             }
-            boolean isNavMissing = !navMap.containsKey(assetId);
-            BigDecimal nav = navMap.getOrDefault(assetId, avgCost);
-            if (isNavMissing) {
-                log.warn("AMFI NAV missing for asset ISIN {}: falling back to weighted average cost basis {}", assetId, avgCost);
-            }
+            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, assetId, assetName, "SyncController.getSnapshot (holding " + assetId + ")");
             BigDecimal holdingCurVal = totalUnits.multiply(nav);
             holdingCashflows.add(new CashFlow(today, holdingCurVal));
 
@@ -323,7 +319,7 @@ public class SyncController {
         }
 
         BigDecimal totalCurrentVal = openLots.stream()
-            .map(l -> l.remainingUnits().multiply(navMap.getOrDefault(l.assetId(), l.costPerUnit())))
+            .map(l -> l.remainingUnits().multiply(com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, l, "SyncController.totalCurrentVal")))
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // 4. Asset Allocation Drift Signal
@@ -412,7 +408,7 @@ public class SyncController {
 
         BigDecimal totalCurrentVal = BigDecimal.ZERO;
         for (Lot lot : openLots) {
-            BigDecimal nav = navMap.getOrDefault(lot.assetId(), lot.costPerUnit());
+            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "SyncController.getRebalancePlan");
             totalCurrentVal = totalCurrentVal.add(lot.remainingUnits().multiply(nav));
         }
 
@@ -491,7 +487,7 @@ public class SyncController {
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
         BigDecimal totalVal = openLots.stream()
-            .map(l -> l.remainingUnits().multiply(navMap.getOrDefault(l.assetId(), l.costPerUnit())))
+            .map(l -> l.remainingUnits().multiply(com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, l, "SyncController.simulateLumpsum")))
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
