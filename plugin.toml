@@ -1,0 +1,48 @@
+id = "rakesh/portfolio-os"
+plugin_api = 9
+name = "Portfolio OS"
+description = "Portfolio OS FIRE tracker & net worth widget for Noctalia"
+version = "1.0.0"
+author = "Rakesh"
+tags = ["bar", "service", "finance"]
+
+[[setting]]
+key = "base_url"
+type = "string"
+label_key = "settings.base_url.label"
+description_key = "settings.base_url.description"
+default = "http://localhost:8080"
+
+[[setting]]
+key = "auth_header_name"
+type = "string"
+label_key = "settings.auth_header_name.label"
+default = "X-Api-Auth-Token"
+
+[[setting]]
+key = "auth_header_value"
+type = "string"
+label_key = "settings.auth_header_value.label"
+default = "dev_secret_key_123"
+
+[[setting]]
+key = "poll_interval"
+type = "int"
+label_key = "settings.poll_interval.label"
+default = 60
+min = 10
+max = 900
+
+[[setting]]
+key = "dashboard_url"
+type = "string"
+label_key = "settings.dashboard_url.label"
+default = "http://localhost:8080"
+
+[[service]]
+id = "poller"
+entry = "service.luau"
+
+[[widget]]
+id = "bar"
+entry = "bar.luau"

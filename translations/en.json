@@ -1,0 +1,8 @@
+{
+  "settings.base_url.label": "Core Node Base URL",
+  "settings.base_url.description": "HTTP URL of the Portfolio OS backend server",
+  "settings.auth_header_name.label": "Auth Header Name",
+  "settings.auth_header_value.label": "Auth Header Token / Value",
+  "settings.poll_interval.label": "Poll Interval (Seconds)",
+  "settings.dashboard_url.label": "Dashboard URL"
+}
