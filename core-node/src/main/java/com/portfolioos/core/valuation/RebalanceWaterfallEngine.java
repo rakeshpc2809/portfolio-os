@@ -294,7 +294,7 @@ public class RebalanceWaterfallEngine {
         BigDecimal ppfcValue = BigDecimal.ZERO;
 
         for (Lot l : coreLots) {
-            BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+            BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.filterOverweightCoreLots");
             BigDecimal val = l.remainingUnits().multiply(nav);
             if ("INF109KC12U0".equalsIgnoreCase(l.assetId())) {
                 lmValue = lmValue.add(val);
