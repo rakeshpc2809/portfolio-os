@@ -170,4 +170,54 @@ class RebalanceWaterfallEngineTest {
         assertTrue(ex.getMessage().contains("CRITICAL VALUATION ERROR"));
         assertTrue(ex.getMessage().contains("NIFTY_LARGEMIDCAP_250"));
     }
+
+    @Test
+    void testResolveLargeMidcapTargetWeight_ReadsFromYamlConfig() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        BigDecimal targetWeight = RebalanceWaterfallEngine.resolveLargeMidcapTargetWeight(today);
+        assertNotNull(targetWeight);
+        assertEquals(new BigDecimal("0.6000"), targetWeight, "Must dynamically resolve 60.00% sub-weight for LargeMidcap 250 from v2.3 YAML config");
+    }
+
+    @Test
+    void testFilterOverweightCoreLots_LargeMidOverweight_TrimsLargeMidOnly() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        // LargeMid 250: 700 remainingUnits * 100 = 70,000 INR (70% of 100,000 total Core) -> Overweight vs 60%
+        Lot lmLot = new Lot("L1", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusMonths(6), new BigDecimal("700"), new BigDecimal("700"), new BigDecimal("100"), new BigDecimal("70000"), false, BigDecimal.ZERO);
+
+        // PPFC: 300 remainingUnits * 100 = 30,000 INR (30% of 100,000 total Core) -> Underweight vs 40% (Shielded)
+        Lot ppfcLot = new Lot("L2", "INF879O01027", "Parag Parikh Flexi Cap Fund",
+            today.minusMonths(6), new BigDecimal("300"), new BigDecimal("300"), new BigDecimal("100"), new BigDecimal("30000"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", new BigDecimal("100"),
+            "INF879O01027", new BigDecimal("100")
+        );
+
+        List<Lot> eligibleLots = RebalanceWaterfallEngine.filterOverweightCoreLots(List.of(lmLot, ppfcLot), navMap, today);
+        assertEquals(1, eligibleLots.size());
+        assertEquals("INF109KC12U0", eligibleLots.get(0).assetId(), "Only overweight LargeMidcap 250 lot must be returned for trimming, PPFC must be shielded");
+    }
+
+    @Test
+    void testFilterOverweightCoreLots_PpfcOverweight_TrimsPpfcOnly() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        // LargeMid 250: 500 remainingUnits * 100 = 50,000 INR (50% of 100,000 total Core) -> Underweight vs 60% (Shielded)
+        Lot lmLot = new Lot("L1", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusMonths(6), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("100"), new BigDecimal("50000"), false, BigDecimal.ZERO);
+
+        // PPFC: 500 remainingUnits * 100 = 50,000 INR (50% of 100,000 total Core) -> Overweight vs 40%
+        Lot ppfcLot = new Lot("L2", "INF879O01027", "Parag Parikh Flexi Cap Fund",
+            today.minusMonths(6), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("100"), new BigDecimal("50000"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", new BigDecimal("100"),
+            "INF879O01027", new BigDecimal("100")
+        );
+
+        List<Lot> eligibleLots = RebalanceWaterfallEngine.filterOverweightCoreLots(List.of(lmLot, ppfcLot), navMap, today);
+        assertEquals(1, eligibleLots.size());
+        assertEquals("INF879O01027", eligibleLots.get(0).assetId(), "Only overweight PPFC lot must be returned for trimming, LargeMidcap 250 must be shielded");
+    }
 }

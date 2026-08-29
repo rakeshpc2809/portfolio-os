@@ -99,3 +99,51 @@ versions:
     - fund_id: "INF205K01KR8"
       fund_name: "Invesco India Arbitrage Fund"
       allocation_weight: 1.0
+- version_id: "v2.3"
+  effective_from: "2026-08-26"
+  targets:
+  - bucket: "EQUITY_CORE"
+    target_pct: 50.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "CORE"
+    preferred_funds:
+    - fund_id: "INF109KC12U0"
+      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+      allocation_weight: 0.60
+    - fund_id: "INF879O01027"
+      fund_name: "Parag Parikh Flexi Cap Fund"
+      allocation_weight: 0.40
+  - bucket: "EQUITY_SATELLITE"
+    target_pct: 30.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "SATELLITE"
+    preferred_funds:
+    - fund_id: "INF109KC13X2"
+      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
+      allocation_weight: 0.3333
+    - fund_id: "INF754K01TN5"
+      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
+      allocation_weight: 0.3333
+    - fund_id: "INF204K01K15"
+      fund_name: "Nippon India Small Cap Fund"
+      allocation_weight: 0.3334
+  - bucket: "GOLD_SILVER"
+    target_pct: 10.0
+    band_pct: 5.0
+    trigger_drift_pct: 12.0
+    strategy: "ACCUMULATOR"
+    preferred_funds:
+    - fund_id: "INF247L01BM8"
+      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
+      allocation_weight: 1.0
+  - bucket: "LIQUID_BUFFER"
+    target_pct: 10.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "ARBITRAGE"
+    preferred_funds:
+    - fund_id: "INF205K01KR8"
+      fund_name: "Invesco India Arbitrage Fund"
+      allocation_weight: 1.0

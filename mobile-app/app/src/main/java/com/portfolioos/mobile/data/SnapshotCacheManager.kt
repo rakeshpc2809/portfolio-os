@@ -79,12 +79,9 @@ object SnapshotCacheManager {
             editor.putLong(KEY_LAST_FULL_LEDGER_TS, now)
             editor.putBoolean(KEY_IS_AMFI_FALLBACK, false)
             editor.putBoolean(KEY_IS_FULLY_OFFLINE, false)
-        } else {
-            editor.putBoolean(KEY_IS_AMFI_FALLBACK, true)
         }
         editor.apply()
     }
-<<<<<<< HEAD
 
     fun createDefaultFallbackSnapshot(): SyncSnapshot {
         return SyncSnapshot(
@@ -100,8 +97,6 @@ object SnapshotCacheManager {
             rebalancePlan = null
         )
     }
-=======
->>>>>>> generate_portfolio_os_docs
 }
 
 

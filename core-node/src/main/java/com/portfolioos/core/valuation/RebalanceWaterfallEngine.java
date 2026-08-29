@@ -124,9 +124,8 @@ public class RebalanceWaterfallEngine {
                 BigDecimal lotTarget = remainingTarget;
                 if (strategy.tier() == WaterfallTier.LEGACY_FUND) {
                     BigDecimal schemeTotal = legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
-                    BigDecimal maxSchemeTrim = schemeTotal.multiply(new BigDecimal("1.00")).setScale(2, RoundingMode.HALF_UP);
                     BigDecimal alreadyTrimmed = legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
-                    BigDecimal schemeCapRemaining = maxSchemeTrim.subtract(alreadyTrimmed).max(BigDecimal.ZERO);
+                    BigDecimal schemeCapRemaining = schemeTotal.subtract(alreadyTrimmed).max(BigDecimal.ZERO);
                     if (schemeCapRemaining.compareTo(BigDecimal.ZERO) <= 0) continue;
                     lotTarget = lotTarget.min(schemeCapRemaining);
                 }
@@ -287,7 +286,33 @@ public class RebalanceWaterfallEngine {
         }
     }
 
-    private static List<Lot> filterOverweightCoreLots(List<Lot> coreLots, Map<String, BigDecimal> navMap) {
+    static BigDecimal resolveLargeMidcapTargetWeight(LocalDate today) {
+        com.portfolioos.core.rules.BucketConfigLoader.BucketTargetVersion activeVersion =
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveVersion(today != null ? today : LocalDate.now());
+        if (activeVersion == null || activeVersion.targets() == null) {
+            String msg = "CONFIG ERROR: Unable to load active bucket target configuration for date " + today;
+            log.error(msg);
+            throw new IllegalStateException(msg);
+        }
+
+        for (com.portfolioos.core.rules.BucketConfigLoader.BucketTargetConfig tc : activeVersion.targets()) {
+            if (tc.bucket() != null && (tc.bucket().equalsIgnoreCase("EQUITY_CORE") || tc.bucket().equalsIgnoreCase("CORE") || "CORE".equalsIgnoreCase(tc.strategy()))) {
+                if (tc.preferredFunds() != null) {
+                    for (com.portfolioos.core.rules.BucketConfigLoader.PreferredFundConfig pfc : tc.preferredFunds()) {
+                        if ("INF109KC12U0".equalsIgnoreCase(pfc.fundId()) && pfc.allocationWeight() > 0) {
+                            return BigDecimal.valueOf(pfc.allocationWeight()).setScale(4, RoundingMode.HALF_UP);
+                        }
+                    }
+                }
+            }
+        }
+
+        String msg = "CONFIG ERROR: Missing target allocation weight for LargeMidcap 250 (INF109KC12U0) in Core bucket config for date " + today;
+        log.error(msg);
+        throw new IllegalStateException(msg);
+    }
+
+    static List<Lot> filterOverweightCoreLots(List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today) {
         if (coreLots == null || coreLots.isEmpty()) return List.of();
 
         BigDecimal lmValue = BigDecimal.ZERO;
@@ -306,12 +331,13 @@ public class RebalanceWaterfallEngine {
         BigDecimal totalCore = lmValue.add(ppfcValue);
         if (totalCore.compareTo(BigDecimal.ZERO) <= 0) return coreLots;
 
-        // Target ratio: LargeMid250 = 60%, PPFC = 40%
+        BigDecimal targetLmWeight = resolveLargeMidcapTargetWeight(today);
+
         BigDecimal lmRatio = lmValue.divide(totalCore, 4, RoundingMode.HALF_UP);
         String targetTrimIsin = null;
-        if (lmRatio.compareTo(new BigDecimal("0.60")) > 0) {
+        if (lmRatio.compareTo(targetLmWeight) > 0) {
             targetTrimIsin = "INF109KC12U0"; // Trim LargeMid250 only, protect PPFC
-        } else if (lmRatio.compareTo(new BigDecimal("0.60")) < 0) {
+        } else if (lmRatio.compareTo(targetLmWeight) < 0) {
             targetTrimIsin = "INF879O01027"; // Trim PPFC only, protect LargeMid250
         }
 
@@ -330,7 +356,7 @@ public class RebalanceWaterfallEngine {
 
         @Override
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
-            List<Lot> eligibleCore = filterOverweightCoreLots(coreLots, navMap);
+            List<Lot> eligibleCore = filterOverweightCoreLots(coreLots, navMap, today);
             return eligibleCore.stream().filter(l -> {
                 BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.LossHarvestTier");
                 return nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0;
@@ -368,7 +394,7 @@ public class RebalanceWaterfallEngine {
         TaxRulesConfig rules,
         boolean requireLtcg
     ) {
-        List<Lot> eligibleCore = filterOverweightCoreLots(coreLots, navMap);
+        List<Lot> eligibleCore = filterOverweightCoreLots(coreLots, navMap, today);
         return eligibleCore.stream().filter(l -> {
             BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.selectCoreLots");
             if (nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0) return false;

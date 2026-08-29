@@ -20,7 +20,7 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class RebalanceExecutionServiceTest {
+class RebalanceWaterfallRoutingTest {
 
     private TriggerHistoryRepository repository;
     private RebalanceTriggerEvaluator evaluator;
