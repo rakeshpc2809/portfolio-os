@@ -15,7 +15,6 @@ services:
       - DUCKDB_PATH=/app/data/tax_ledger.duckdb
       - SIDECAR_HTTP_URL=http://quant-sidecar:8000
       - SIDECAR_FLIGHT_URL=grpc+tcp://quant-sidecar:8001
-      - SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434
       - SPRING_WEB_RESOURCES_STATIC_LOCATIONS=file:/app/static/,classpath:/static/
     volumes:
       - ./data:/app/data
@@ -24,17 +23,6 @@ services:
     depends_on:
       quant-sidecar:
         condition: service_healthy
-      ollama:
-        condition: service_started
-    restart: unless-stopped
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: portfolio-os-ollama
-    ports:
-      - "127.0.0.1:11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
     restart: unless-stopped
 
   quant-sidecar:
@@ -56,4 +44,3 @@ services:
 
 volumes:
   data:
-  ollama-data:

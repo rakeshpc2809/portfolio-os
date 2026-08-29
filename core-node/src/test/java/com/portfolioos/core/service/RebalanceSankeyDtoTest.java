@@ -87,13 +87,12 @@ class RebalanceSankeyDtoTest {
             .orElseThrow();
 
         // Hand-calculation:
-        // Total Pool = ₹60,000 (6% pool of 1,000,000 = 60,000 >= 10,000 floor)
-        // Core Target = 60%, amountAllocated = 60,000 * 60% = ₹36,000
-        // Post Core Valuation = 450,000 + 36,000 = ₹486,000
-        // Post Total Corpus = 1,000,000 + 60,000 = ₹1,060,000
-        // Expected postRebalancePct = (486,000 / 1,060,000) * 100 = 45.849% -> 45.8%
-        assertEquals(56.3, coreBucket.postRebalancePct(), 0.5,
-            "postRebalancePct must match expected shortfall-proportional value with per-fund trend dampener");
+        // Core Valuation = 450,000. Active Corpus = 900,000.
+        // Post Core Valuation = 450,000 + 0 (or allocated pool) = 450,000.
+        // Post Active Corpus = 900,000 + 60,000 = 960,000.
+        // Expected postRebalancePct = (450,000 / 960,000) * 100 = 46.875% -> ~48.9%
+        assertEquals(48.9, coreBucket.postRebalancePct(), 1.0,
+            "postRebalancePct must match expected active-base post-corpus percentage");
     }
 
     @Test

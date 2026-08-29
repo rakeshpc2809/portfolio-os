@@ -1,101 +1,81 @@
----
-versions:
-- version_id: "v1.0"
-  effective_from: "2024-01-01"
-  targets:
-  - bucket: "EQUITY_CORE"
-    target_pct: 50.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "CORE"
-    preferred_funds:
-    - fund_id: "INF109KC12U0"
-      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
-      allocation_weight: 0.5
-    - fund_id: "INF879O01027"
-      fund_name: "Parag Parikh Flexi Cap Fund"
-      allocation_weight: 0.5
-  - bucket: "EQUITY_SATELLITE"
-    target_pct: 20.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "SATELLITE"
-    preferred_funds:
-    - fund_id: "INF109KC13X2"
-      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
-      allocation_weight: 0.25
-    - fund_id: "INF754K01TN5"
-      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
-      allocation_weight: 0.25
-    - fund_id: "INF204K01K15"
-      fund_name: "Nippon India Small Cap Fund"
-      allocation_weight: 0.25
-    - fund_id: "INF247L01BQ9"
-      fund_name: "Motilal Oswal Nifty Microcap 250 Index Fund"
-      allocation_weight: 0.25
-  - bucket: "GOLD_SILVER"
-    target_pct: 15.0
-    band_pct: 5.0
-    trigger_drift_pct: 12.0
-    strategy: "ACCUMULATOR"
-    preferred_funds:
-    - fund_id: "INF247L01BM8"
-      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
-      allocation_weight: 1.0
-  - bucket: "LIQUID_BUFFER"
-    target_pct: 15.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "ARBITRAGE"
-    preferred_funds:
-    - fund_id: "INF205K01KR8"
-      fund_name: "Invesco India Arbitrage Fund"
-      allocation_weight: 1.0
-- version_id: "v2.0"
-  effective_from: "2026-08-17"
-  targets:
-  - bucket: "EQUITY_CORE"
-    target_pct: 50.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "CORE"
-    preferred_funds:
-    - fund_id: "INF109KC12U0"
-      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
-      allocation_weight: 0.5814
-    - fund_id: "INF879O01027"
-      fund_name: "Parag Parikh Flexi Cap Fund"
-      allocation_weight: 0.4186
-  - bucket: "EQUITY_SATELLITE"
-    target_pct: 35.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "SATELLITE"
-    preferred_funds:
-    - fund_id: "INF109KC13X2"
-      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
-      allocation_weight: 0.4571
-    - fund_id: "INF754K01TN5"
-      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
-      allocation_weight: 0.4000
-    - fund_id: "INF204K01K15"
-      fund_name: "Nippon India Small Cap Fund"
-      allocation_weight: 0.1429
-  - bucket: "GOLD_SILVER"
-    target_pct: 5.0
-    band_pct: 5.0
-    trigger_drift_pct: 12.0
-    strategy: "ACCUMULATOR"
-    preferred_funds:
-    - fund_id: "INF247L01BM8"
-      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
-      allocation_weight: 1.0
-  - bucket: "LIQUID_BUFFER"
-    target_pct: 10.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
-    strategy: "ARBITRAGE"
-    preferred_funds:
-    - fund_id: "INF205K01KR8"
-      fund_name: "Invesco India Arbitrage Fund"
-      allocation_weight: 1.0
+portfolio:
+  version: "2.3"
+  total_sip: 82500
+
+  waterfall_policies:
+    funding_priority_on_trim:
+      - "hedge_commodity"        # Step 1: fill Gold's deficit to its 10% target
+      - "liquidity_arbitrage"    # Step 2: fill Arbitrage's deficit to its 10% target
+      - "core"                   # Step 3: fill Core's deficit to its 50% target
+      # Step 4 (Arbitrage terminal sink, capped at 15%) and Step 5 (cash overflow)
+      # are NOT simple priority-list entries — see Section 3, they need explicit
+      # cap-aware logic, not just "next bucket in the list."
+    funding_priority_on_buy:
+      - "liquidity_arbitrage"    # Exhaust dry powder first when funding a floor breach
+      - "hedge_commodity"        # Then draw from Gold if it's in surplus
+
+  buckets:
+    core:
+      target_weight: 0.50
+      beta: 0.89
+      tracking: aggregate          # NOT fund-level — see Section 4
+      drift_bands:
+        min_weight: 0.35
+        max_weight: 0.65
+      internal_circuit_breaker:    # fires independently of the outer aggregate band
+        largemid_max_ratio: 0.75
+        largemid_min_ratio: 0.45
+      funds:
+        largemid_250:
+          isin: "INF109KC12U0"
+          target_sub_weight: 0.60
+          sip: 24750
+        ppfc:
+          isin: "INF879O01027"
+          target_sub_weight: 0.40
+          sip: 16500
+
+    satellite_value:
+      fund_isin: "INF109KC13X2"
+      target_weight: 0.10
+      beta: 0.95
+      sip: 8250
+      drift_bands:
+        min_weight: 0.070
+        max_weight: 0.130
+
+    satellite_momentum:
+      fund_isin: "INF754K01TN5"
+      target_weight: 0.10
+      beta: 1.15
+      sip: 8250
+      drift_bands:
+        min_weight: 0.075
+        max_weight: 0.120
+
+    satellite_smallcap:
+      fund_isin: "INF204K01K15"
+      target_weight: 0.10
+      beta: 1.25
+      sip: 8250
+      drift_bands:
+        min_weight: 0.075
+        max_weight: 0.115
+
+    hedge_commodity:
+      fund_isin: "INF247L01BM8"
+      target_weight: 0.10
+      beta: 0.19               # grounded on confirmed 65:35 Gold:Silver split
+      sip: 8250
+      drift_bands:
+        min_weight: 0.080
+        max_weight: 0.140
+
+    liquidity_arbitrage:
+      fund_isin: "INF205K01KR8"   # confirmed correct ISIN, not INF209K01157
+      target_weight: 0.10
+      beta: 0.05
+      sip: 8250
+      drift_bands:
+        min_weight: 0.080
+        max_weight: 0.150        # widened — also serves as terminal sink ceiling

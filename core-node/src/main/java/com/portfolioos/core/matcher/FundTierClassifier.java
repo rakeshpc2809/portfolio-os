@@ -61,6 +61,13 @@ public class FundTierClassifier {
 
     public static boolean isLegacyFund(String assetId, Set<String> activeAssetIds) {
         if (assetId == null) return false;
+        if (activeAssetIds != null && !activeAssetIds.contains(assetId)) {
+            if ("INF109KC12U0".equalsIgnoreCase(assetId) || "INF879O01027".equalsIgnoreCase(assetId) ||
+                assetId.toUpperCase().startsWith("NIFTY_LARGEMIDCAP") || assetId.toUpperCase().startsWith("PPFAS")) {
+                return false;
+            }
+            return true;
+        }
         return classify(assetId) == FundTier.LEGACY;
     }
 }

@@ -81,7 +81,7 @@ format:
     ruff check quant-sidecar/ --fix
 
 # -------------------------------------------------------------
-# Full Stack Docker Controls
+# Full Stack Docker / Podman Controls
 # -------------------------------------------------------------
 
 # Start all backend services in detached mode
@@ -103,3 +103,4 @@ logs:
 # Clean all build outputs (Maven, Gradle, Temp files)
 clean: clean-mobile clean-core
     @echo "Cleaned all build directories."
+

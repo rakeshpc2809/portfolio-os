@@ -84,6 +84,7 @@ object SnapshotCacheManager {
         }
         editor.apply()
     }
+<<<<<<< HEAD
 
     fun createDefaultFallbackSnapshot(): SyncSnapshot {
         return SyncSnapshot(
@@ -99,6 +100,8 @@ object SnapshotCacheManager {
             rebalancePlan = null
         )
     }
+=======
+>>>>>>> generate_portfolio_os_docs
 }
 
 

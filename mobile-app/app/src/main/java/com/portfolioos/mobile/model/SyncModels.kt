@@ -208,3 +208,77 @@ data class TradeSimulationResultDto(
     @SerializedName("postTradeXirr") val postTradeXirr: Double = 0.0,
     @SerializedName("taxSummaryNotice") val taxSummaryNotice: String = ""
 )
+
+@Immutable
+data class FanChartTrajectoryDto(
+    @SerializedName("year") val year: Int = 0,
+    @SerializedName("p10") val p10: Double = 0.0,
+    @SerializedName("p25") val p25: Double = 0.0,
+    @SerializedName("p50") val p50: Double = 0.0,
+    @SerializedName("p75") val p75: Double = 0.0,
+    @SerializedName("p90") val p90: Double = 0.0
+)
+
+@Immutable
+data class FireScenarioDto(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("label") val label: String = "",
+    @SerializedName("monthly_expense_today") val monthlyExpenseToday: String = "",
+    @SerializedName("active") val active: Boolean = false
+)
+
+@Immutable
+data class FireSummaryResponseDto(
+    @SerializedName("active_scenario_label") val activeScenarioLabel: String = "",
+    @SerializedName("monthly_expense_today") val monthlyExpenseToday: String = "",
+    @SerializedName("annual_expense") val annualExpense: String = "",
+    @SerializedName("required_corpus") val requiredCorpus: String = "",
+    @SerializedName("total_net_worth") val totalNetWorth: String = "",
+    @SerializedName("epf_balance") val epfBalance: String = "",
+    @SerializedName("non_retirement_goal_allocations") val nonRetirementGoalAllocations: String = "",
+    @SerializedName("fire_investable_net_worth") val fireInvestableNetWorth: String = "",
+    @SerializedName("projected_corpus_at_target_age") val projectedCorpusAtTargetAge: String = "",
+    @SerializedName("years_remaining") val yearsRemaining: Int = 0,
+    @SerializedName("status") val status: String = "",
+    @SerializedName("shortage_or_surplus_amount") val shortageOrSurplusAmount: String = "",
+    @SerializedName("review_date_passed") val reviewDatePassed: Boolean = false,
+    @SerializedName("scenarios") val scenarios: List<FireScenarioDto> = emptyList(),
+    @SerializedName("monte_carlo_success_rate_pct") val monteCarloSuccessRatePct: Double = 0.0,
+    @SerializedName("monte_carlo_median_corpus") val monteCarloMedianCorpus: String = "",
+    @SerializedName("monte_carlo_tenth_percentile_corpus") val monteCarloTenthPercentileCorpus: String = "",
+    @SerializedName("monte_carlo_data_source") val monteCarloDataSource: String = "",
+    @SerializedName("monte_carlo_data_source_label") val monteCarloDataSourceLabel: String = "",
+    @SerializedName("fan_chart_trajectories") val fanChartTrajectories: List<FanChartTrajectoryDto> = emptyList()
+)
+
+@Immutable
+data class BenchmarkAnalyticsDto(
+    @SerializedName("alpha") val alpha: Double = 0.0,
+    @SerializedName("beta") val beta: Double = 0.0,
+    @SerializedName("sharpe_ratio") val sharpeRatio: Double = 0.0,
+    @SerializedName("tracking_error") val trackingError: Double = 0.0,
+    @SerializedName("r_squared") val rSquared: Double = 0.0,
+    @SerializedName("benchmark_name") val benchmarkName: String = "NIFTY_50_TRI"
+)
+
+@Immutable
+data class StockConcentrationDto(
+    @SerializedName("stock_symbol") val stockSymbol: String = "",
+    @SerializedName("company_name") val companyName: String = "",
+    @SerializedName("portfolio_percentage") val portfolioWeightPct: Double = 0.0
+)
+
+@Immutable
+data class PairwiseOverlapDto(
+    @SerializedName("fund_a") val fundA: String = "",
+    @SerializedName("fund_b") val fundB: String = "",
+    @SerializedName("overlap_percentage") val overlapPercentage: Double = 0.0,
+    @SerializedName("common_stock_count") val commonHoldingsCount: Int = 0
+)
+
+@Immutable
+data class OverlapReportDto(
+    @SerializedName("coverage_type") val coverageType: String = "",
+    @SerializedName("pairwise_matrix") val pairwiseMatrix: List<PairwiseOverlapDto> = emptyList(),
+    @SerializedName("portfolio_top_stock_concentrations") val stockConcentrations: List<StockConcentrationDto> = emptyList()
+)

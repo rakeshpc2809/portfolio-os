@@ -76,49 +76,49 @@ class BucketAllocationTest {
             statusMap.put(s.bucket(), s);
         }
 
-        // EQUITY_CORE: 450,000 (45.00%), Target 50.00%, Drift -5.00%, isDrifted = false (exact boundary -5.00% is NOT > 5.00%)
+        // EQUITY_CORE: 450,000 / 900,000 active base = 50.00%, Target 50.00%, Drift 0.00%, isDrifted = false
         BucketEngine.BucketStatus coreStatus = statusMap.get(BucketEngine.Bucket.EQUITY_CORE);
         assertNotNull(coreStatus);
         assertEquals(new BigDecimal("450000.00"), coreStatus.currentValue());
-        assertEquals(new BigDecimal("45.00"), coreStatus.currentPct());
+        assertEquals(new BigDecimal("50.00"), coreStatus.currentPct());
         assertEquals(new BigDecimal("50.00"), coreStatus.targetPct());
-        assertEquals(new BigDecimal("-5.00"), coreStatus.driftPct());
-        assertFalse(coreStatus.isDrifted(), "Boundary match |-5.00%| is NOT > 5.00% threshold");
+        assertEquals(new BigDecimal("0.00"), coreStatus.driftPct());
+        assertFalse(coreStatus.isDrifted());
 
-        // EQUITY_SATELLITE: 150,000 (15.00%), Target 20.00%, Drift -5.00%, isDrifted = false
+        // EQUITY_SATELLITE: 150,000 / 900,000 active base = 16.67%, Target 20.00%, Drift -3.33%, isDrifted = false
         BucketEngine.BucketStatus satStatus = statusMap.get(BucketEngine.Bucket.EQUITY_SATELLITE);
         assertNotNull(satStatus);
         assertEquals(new BigDecimal("150000.00"), satStatus.currentValue());
-        assertEquals(new BigDecimal("15.00"), satStatus.currentPct());
+        assertEquals(new BigDecimal("16.67"), satStatus.currentPct());
         assertEquals(new BigDecimal("20.00"), satStatus.targetPct());
-        assertEquals(new BigDecimal("-5.00"), satStatus.driftPct());
+        assertEquals(new BigDecimal("-3.33"), satStatus.driftPct());
         assertFalse(satStatus.isDrifted());
 
-        // GOLD_SILVER: 150,000 (15.00%), Target 15.00%, Drift 0.00%, isDrifted = false
+        // GOLD_SILVER: 150,000 / 900,000 active base = 16.67%, Target 15.00%, Drift +1.67%, isDrifted = false
         BucketEngine.BucketStatus goldStatus = statusMap.get(BucketEngine.Bucket.GOLD_SILVER);
         assertNotNull(goldStatus);
         assertEquals(new BigDecimal("150000.00"), goldStatus.currentValue());
-        assertEquals(new BigDecimal("15.00"), goldStatus.currentPct());
+        assertEquals(new BigDecimal("16.67"), goldStatus.currentPct());
         assertEquals(new BigDecimal("15.00"), goldStatus.targetPct());
-        assertEquals(new BigDecimal("0.00"), goldStatus.driftPct());
+        assertEquals(new BigDecimal("1.67"), goldStatus.driftPct());
         assertFalse(goldStatus.isDrifted());
 
-        // LIQUID_BUFFER: 150,000 (15.00%), Target 15.00%, Drift 0.00%, isDrifted = false
+        // LIQUID_BUFFER: 150,000 / 900,000 active base = 16.67%, Target 15.00%, Drift +1.67%, isDrifted = false
         BucketEngine.BucketStatus liqStatus = statusMap.get(BucketEngine.Bucket.LIQUID_BUFFER);
         assertNotNull(liqStatus);
         assertEquals(new BigDecimal("150000.00"), liqStatus.currentValue());
-        assertEquals(new BigDecimal("15.00"), liqStatus.currentPct());
+        assertEquals(new BigDecimal("16.67"), liqStatus.currentPct());
         assertEquals(new BigDecimal("15.00"), liqStatus.targetPct());
-        assertEquals(new BigDecimal("0.00"), liqStatus.driftPct());
+        assertEquals(new BigDecimal("1.67"), liqStatus.driftPct());
         assertFalse(liqStatus.isDrifted());
 
-        // LEGACY_HOLDINGS: 100,000 (10.00%), Target 0.00%, Drift +10.00%, isDrifted = false (forced false for legacy)
+        // LEGACY_HOLDINGS: 100,000, Target 0.00%, Current 0.00%, Drift 0.00%, isDrifted = false
         BucketEngine.BucketStatus legStatus = statusMap.get(BucketEngine.Bucket.LEGACY_HOLDINGS);
         assertNotNull(legStatus);
         assertEquals(0, new BigDecimal("100000.00").compareTo(legStatus.currentValue()));
-        assertEquals(0, new BigDecimal("10.00").compareTo(legStatus.currentPct()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(legStatus.currentPct()));
         assertEquals(0, BigDecimal.ZERO.compareTo(legStatus.targetPct()), "Target % for LEGACY_HOLDINGS must be 0");
-        assertEquals(0, new BigDecimal("10.00").compareTo(legStatus.driftPct()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(legStatus.driftPct()));
         assertFalse(statusMap.get(BucketEngine.Bucket.LEGACY_HOLDINGS).isDrifted(), "LEGACY_HOLDINGS must never be marked drifted");
     }
 

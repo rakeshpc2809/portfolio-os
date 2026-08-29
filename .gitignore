@@ -46,7 +46,7 @@ dist/
 .vite/
 
 # Databases & local data files
-data/
+/data/
 *.db
 *.duckdb
 jdbc:duckdb:

@@ -86,7 +86,17 @@ public class RebalanceWaterfallEngine {
                 legacyLots.add(lot);
             } else {
                 BucketEngine.Bucket lotBucket = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
-                if (bucket == null || lotBucket == bucket) {
+                boolean isSatellite = (bucket == BucketEngine.Bucket.EQUITY_SATELLITE ||
+                                       bucket == BucketEngine.Bucket.SATELLITE_VALUE ||
+                                       bucket == BucketEngine.Bucket.SATELLITE_MOMENTUM ||
+                                       bucket == BucketEngine.Bucket.SATELLITE_SMALLCAP) &&
+                                      (lotBucket == BucketEngine.Bucket.EQUITY_SATELLITE ||
+                                       lotBucket == BucketEngine.Bucket.SATELLITE_VALUE ||
+                                       lotBucket == BucketEngine.Bucket.SATELLITE_MOMENTUM ||
+                                       lotBucket == BucketEngine.Bucket.SATELLITE_SMALLCAP);
+                boolean isCore = (bucket == BucketEngine.Bucket.EQUITY_CORE) && (lotBucket == BucketEngine.Bucket.EQUITY_CORE);
+
+                if (bucket == null || lotBucket == bucket || isSatellite || isCore) {
                     coreLots.add(lot);
                 }
             }
@@ -114,7 +124,7 @@ public class RebalanceWaterfallEngine {
                 BigDecimal lotTarget = remainingTarget;
                 if (strategy.tier() == WaterfallTier.LEGACY_FUND) {
                     BigDecimal schemeTotal = legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
-                    BigDecimal maxSchemeTrim = schemeTotal.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal maxSchemeTrim = schemeTotal.multiply(new BigDecimal("1.00")).setScale(2, RoundingMode.HALF_UP);
                     BigDecimal alreadyTrimmed = legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
                     BigDecimal schemeCapRemaining = maxSchemeTrim.subtract(alreadyTrimmed).max(BigDecimal.ZERO);
                     if (schemeCapRemaining.compareTo(BigDecimal.ZERO) <= 0) continue;
@@ -277,13 +287,51 @@ public class RebalanceWaterfallEngine {
         }
     }
 
+    private static List<Lot> filterOverweightCoreLots(List<Lot> coreLots, Map<String, BigDecimal> navMap) {
+        if (coreLots == null || coreLots.isEmpty()) return List.of();
+
+        BigDecimal lmValue = BigDecimal.ZERO;
+        BigDecimal ppfcValue = BigDecimal.ZERO;
+
+        for (Lot l : coreLots) {
+            BigDecimal nav = navMap.getOrDefault(l.assetId(), l.costPerUnit());
+            BigDecimal val = l.remainingUnits().multiply(nav);
+            if ("INF109KC12U0".equalsIgnoreCase(l.assetId())) {
+                lmValue = lmValue.add(val);
+            } else if ("INF879O01027".equalsIgnoreCase(l.assetId())) {
+                ppfcValue = ppfcValue.add(val);
+            }
+        }
+
+        BigDecimal totalCore = lmValue.add(ppfcValue);
+        if (totalCore.compareTo(BigDecimal.ZERO) <= 0) return coreLots;
+
+        // Target ratio: LargeMid250 = 60%, PPFC = 40%
+        BigDecimal lmRatio = lmValue.divide(totalCore, 4, RoundingMode.HALF_UP);
+        String targetTrimIsin = null;
+        if (lmRatio.compareTo(new BigDecimal("0.60")) > 0) {
+            targetTrimIsin = "INF109KC12U0"; // Trim LargeMid250 only, protect PPFC
+        } else if (lmRatio.compareTo(new BigDecimal("0.60")) < 0) {
+            targetTrimIsin = "INF879O01027"; // Trim PPFC only, protect LargeMid250
+        }
+
+        if (targetTrimIsin != null) {
+            String finalTargetIsin = targetTrimIsin;
+            List<Lot> filtered = coreLots.stream().filter(l -> finalTargetIsin.equalsIgnoreCase(l.assetId())).toList();
+            if (!filtered.isEmpty()) return filtered;
+        }
+
+        return coreLots;
+    }
+
     private static class LossHarvestTierStrategy implements WaterfallTierStrategy {
         @Override
         public WaterfallTier tier() { return WaterfallTier.LOSS_HARVEST; }
 
         @Override
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
-            return coreLots.stream().filter(l -> {
+            List<Lot> eligibleCore = filterOverweightCoreLots(coreLots, navMap);
+            return eligibleCore.stream().filter(l -> {
                 BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.LossHarvestTier");
                 return nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0;
             }).sorted(Comparator.comparing(l -> {
@@ -320,7 +368,8 @@ public class RebalanceWaterfallEngine {
         TaxRulesConfig rules,
         boolean requireLtcg
     ) {
-        return coreLots.stream().filter(l -> {
+        List<Lot> eligibleCore = filterOverweightCoreLots(coreLots, navMap);
+        return eligibleCore.stream().filter(l -> {
             BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.selectCoreLots");
             if (nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0) return false;
             AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
@@ -332,5 +381,60 @@ public class RebalanceWaterfallEngine {
             BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.selectCoreLots");
             return nav.subtract(l.costPerUnit());
         })).toList();
+    }
+
+    public record TrimDestinationAllocation(
+        BigDecimal toGold,
+        BigDecimal toArbTarget,
+        BigDecimal toCore,
+        BigDecimal toArbTerminal,
+        BigDecimal toCashOverflow
+    ) {}
+
+    public static TrimDestinationAllocation routeTrimProceeds(
+        BigDecimal trimAmount,
+        BigDecimal goldValue,
+        BigDecimal goldTarget,
+        BigDecimal arbValue,
+        BigDecimal arbTarget,
+        BigDecimal coreValue,
+        BigDecimal coreTarget,
+        BigDecimal totalPortfolioValue
+    ) {
+        BigDecimal rem = trimAmount != null ? trimAmount : BigDecimal.ZERO;
+        BigDecimal gVal = goldValue != null ? goldValue : BigDecimal.ZERO;
+        BigDecimal gTgt = goldTarget != null ? goldTarget : BigDecimal.ZERO;
+        BigDecimal aVal = arbValue != null ? arbValue : BigDecimal.ZERO;
+        BigDecimal aTgt = arbTarget != null ? arbTarget : BigDecimal.ZERO;
+        BigDecimal cVal = coreValue != null ? coreValue : BigDecimal.ZERO;
+        BigDecimal cTgt = coreTarget != null ? coreTarget : BigDecimal.ZERO;
+        BigDecimal totalVal = totalPortfolioValue != null ? totalPortfolioValue : BigDecimal.ZERO;
+
+        // Step 1: Hedge floor (Gold/Silver target = 10%)
+        BigDecimal goldDeficit = gTgt.subtract(gVal).max(BigDecimal.ZERO);
+        BigDecimal toGold = rem.min(goldDeficit).setScale(2, RoundingMode.HALF_UP);
+        rem = rem.subtract(toGold);
+
+        // Step 2: Liquidity target fill (Arbitrage target = 10%)
+        BigDecimal arbDeficit = aTgt.subtract(aVal).max(BigDecimal.ZERO);
+        BigDecimal toArbTarget = rem.min(arbDeficit).setScale(2, RoundingMode.HALF_UP);
+        rem = rem.subtract(toArbTarget);
+
+        // Step 3: Core deficit fill (Core target = 50%)
+        BigDecimal coreDeficit = cTgt.subtract(cVal).max(BigDecimal.ZERO);
+        BigDecimal toCore = rem.min(coreDeficit).setScale(2, RoundingMode.HALF_UP);
+        rem = rem.subtract(toCore);
+
+        // Step 4: Arbitrage terminal sink, capped at 15% hard ceiling
+        BigDecimal arbHardCap = totalVal.multiply(new BigDecimal("0.15")).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal arbPostStep2 = aVal.add(toArbTarget);
+        BigDecimal arbHeadroom = arbHardCap.subtract(arbPostStep2).max(BigDecimal.ZERO);
+        BigDecimal toArbTerminal = rem.min(arbHeadroom).setScale(2, RoundingMode.HALF_UP);
+        rem = rem.subtract(toArbTerminal);
+
+        // Step 5: Cash overflow (UNALLOCATED_CASH ledger entry)
+        BigDecimal toCashOverflow = rem.setScale(2, RoundingMode.HALF_UP);
+
+        return new TrimDestinationAllocation(toGold, toArbTarget, toCore, toArbTerminal, toCashOverflow);
     }
 }

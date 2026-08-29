@@ -65,4 +65,16 @@ class BucketConfigLoaderTest {
             }
         }
     }
+
+    @Test
+    void testSchemaVersionParsingCompatibility() {
+        BucketConfigLoader.BucketRulesConfig config = BucketConfigLoader.loadConfig();
+        assertNotNull(config, "Config loader must successfully return BucketRulesConfig");
+        assertFalse(config.versions().isEmpty(), "Versions list must contain active v2.3 config version");
+
+        BucketConfigLoader.BucketTargetVersion activeVer = config.versions().get(0);
+        assertNotNull(activeVer.versionId(), "Version ID must be present");
+        assertNotNull(activeVer.targets(), "Bucket targets list must not be null");
+        assertTrue(activeVer.targets().size() >= 4, "Config targets list must have at least 4 defined bucket targets");
+    }
 }
