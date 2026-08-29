@@ -34,6 +34,7 @@ data class RebalancePlanDto(
 data class BuySidePlanDto(
     @SerializedName("total_to_invest") val totalToInvest: Double = 0.0,
     @SerializedName("is_manual_lumpsum") val isManualLumpsum: Boolean = false,
+    @SerializedName("unallocated_cash") val unallocatedCash: Double = 0.0,
     @SerializedName("buckets") val buckets: List<RebalanceBucketAllocationDto> = emptyList()
 )
 
@@ -44,6 +45,10 @@ data class RebalanceBucketAllocationDto(
     @SerializedName("current_pct") val currentPct: Double = 0.0,
     @SerializedName("post_rebalance_pct") val postRebalancePct: Double = 0.0,
     @SerializedName("amount_allocated") val amountAllocated: Double = 0.0,
+    @SerializedName("bucket_beta") val bucketBeta: Double = 1.0,
+    @SerializedName("lower_band_pct") val lowerBandPct: Double = 0.0,
+    @SerializedName("upper_band_pct") val upperBandPct: Double = 0.0,
+    @SerializedName("status") val status: String = "NOMINAL",
     @SerializedName("fund_breakdown") val fundBreakdown: List<FundAllocationDto> = emptyList()
 )
 
@@ -142,9 +147,14 @@ data class FlatHoldingDto(
     @SerializedName("asset_bucket") val assetBucket: String = "",
     @SerializedName("current_value") val currentValue: Double = 0.0,
     @SerializedName("invested_value") val investedValue: Double = 0.0,
+    @SerializedName("portfolio_percentage") val portfolioPercentage: Double = 0.0,
+    @SerializedName("portfolio_weight_pct") val portfolioWeightPct: Double = 0.0,
     @SerializedName("formatted_current_value") val formattedCurrentValue: String = "₹0.00",
     @SerializedName("formatted_invested_value") val formattedInvestedValue: String = "₹0.00"
-)
+) {
+    val effectivePortfolioPct: Double
+        get() = if (portfolioPercentage > 0.0) portfolioPercentage else portfolioWeightPct
+}
 
 @Immutable
 data class FlatTaxLotDto(

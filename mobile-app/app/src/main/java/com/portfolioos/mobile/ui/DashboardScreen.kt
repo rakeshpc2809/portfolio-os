@@ -1604,6 +1604,58 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                 }
             }
 
+            // UNALLOCATED CASH BANNER (If Step 5 waterfall parked funds in cash ledger)
+            if ((buySide?.unallocatedCash ?: 0.0) > 0.0) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF172554)),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFF3B82F6).copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = "Unallocated Cash",
+                                    tint = Color(0xFF60A5FA),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = "UNALLOCATED CASH RESERVED",
+                                        color = Color(0xFF93C5FD),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 1.sp
+                                    )
+                                    Text(
+                                        text = "Waterfall Step 5 parked remaining capital in safe cash ledger",
+                                        color = Color.White,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            Text(
+                                text = formatInr(buySide!!.unallocatedCash),
+                                color = Color(0xFF60A5FA),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+
             // 4. BUY SIDE CARD
             item {
                 Card(
@@ -1670,7 +1722,7 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                 }
             }
 
-            // 5. TARGET BUCKET ALLOCATION DELTAS CARD
+            // 5. TARGET BUCKET ALLOCATION & DRIFT-BETA BANDS CARD
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
@@ -1680,7 +1732,7 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
-                            text = "3. TARGET BUCKET ALLOCATION DELTA",
+                            text = "3. TARGET BUCKET ALLOCATION & DRIFT-BETA BANDS",
                             color = Color(0xFF38BDF8),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
@@ -1690,24 +1742,68 @@ fun RebalanceWaterfallView(rebalancePlan: com.portfolioos.mobile.model.Rebalance
                         Spacer(modifier = Modifier.height(8.dp))
 
                         buyBuckets.forEachIndexed { idx, bkt ->
-                            if (idx > 0) Divider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(bkt.bucket.replace('_', ' '), color = Color(0xFFCBD5E1), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("${String.format("%.1f", bkt.currentPct)}%", color = M3TextMuted, fontSize = 11.sp)
-                                    Text("➔", color = M3TextMuted, fontSize = 10.sp)
-                                    val isInc = bkt.postRebalancePct >= bkt.currentPct
+                            if (idx > 0) Divider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(bkt.bucket.replace('_', ' '), color = Color(0xFFCBD5E1), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        if (bkt.bucketBeta > 0.0) {
+                                            Surface(
+                                                color = Color(0xFF8B5CF6).copy(alpha = 0.2f),
+                                                shape = ShapeTokens.PillShape
+                                            ) {
+                                                Text(
+                                                    text = "β %.2f".format(bkt.bucketBeta),
+                                                    color = Color(0xFFA78BFA),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                        val statusColor = when (bkt.status.uppercase()) {
+                                            "BREACHED" -> Color(0xFFFB7185)
+                                            "NEAR_BREACH" -> M3AmberWarning
+                                            else -> Color(0xFF34D399)
+                                        }
+                                        Surface(
+                                            color = statusColor.copy(alpha = 0.15f),
+                                            shape = ShapeTokens.PillShape
+                                        ) {
+                                            Text(
+                                                text = bkt.status.uppercase(),
+                                                color = statusColor,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("${String.format("%.1f", bkt.currentPct)}%", color = M3TextMuted, fontSize = 11.sp)
+                                        Text("➔", color = M3TextMuted, fontSize = 10.sp)
+                                        val isInc = bkt.postRebalancePct >= bkt.currentPct
+                                        Text(
+                                            text = "${String.format("%.1f", bkt.postRebalancePct)}%",
+                                            color = if (isInc) Color(0xFF34D399) else Color(0xFFFB7185),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                if (bkt.targetPct > 0.0 || bkt.lowerBandPct > 0.0 || bkt.upperBandPct > 0.0) {
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "${String.format("%.1f", bkt.postRebalancePct)}%",
-                                        color = if (isInc) Color(0xFF34D399) else Color(0xFFFB7185),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
+                                        text = "Target ${String.format("%.1f", bkt.targetPct)}% · Band [${String.format("%.1f", bkt.lowerBandPct)}% — ${String.format("%.1f", bkt.upperBandPct)}%]",
+                                        color = M3TextMuted,
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace
                                     )
-                                    Text("(Tgt ${String.format("%.1f", bkt.targetPct)}%)", color = M3TextMuted, fontSize = 10.sp)
                                 }
                             }
                         }
