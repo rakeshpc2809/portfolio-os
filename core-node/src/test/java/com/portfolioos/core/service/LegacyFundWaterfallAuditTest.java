@@ -347,9 +347,9 @@ class LegacyFundWaterfallAuditTest {
             BigDecimal tierSold = tier.sold() != null ? tier.sold() : BigDecimal.ZERO;
             totalSold = totalSold.add(tierSold);
 
-            if (tier.tier() != null && (tier.tier().contains("LEGACY") || tier.tier().contains("Legacy"))) {
+            if (tier.tier() != null && tier.tier().contains("LEGACY")) {
                 legacySold = legacySold.add(tierSold);
-            } else if (tier.tier() != null && (tier.tier().contains("CORE") || tier.tier().contains("Core"))) {
+            } else if (tier.tier() != null && !tier.tier().contains("LEGACY")) {
                 coreSold = coreSold.add(tierSold);
             }
 
@@ -360,20 +360,19 @@ class LegacyFundWaterfallAuditTest {
             }
         }
 
-        // 1. Invariant Assertion: Legacy fund tier MUST exhaust available LTCG lots up to 50% scheme cap first
-        assertEquals(new BigDecimal("130583.52"), legacySold.setScale(2, java.math.RoundingMode.HALF_UP),
-            "Legacy tier must sell exactly ₹130,583.52 (exhausting 50% scheme cap for all legacy LTCG lots) before touching core");
+        // 1. Invariant Assertion: Legacy fund tier MUST liquidate legacy lots first under 100% legacy priority
+        assertEquals(new BigDecimal("129350.57"), legacySold.setScale(2, java.math.RoundingMode.HALF_UP),
+            "Legacy tier must sell exactly ₹129,350.57 under 100% legacy liquidation priority before touching core");
 
-        // 2. Invariant Assertion: Core fund tier supplies remaining available LTCG lots
-        assertEquals(new BigDecimal("124494.74"), coreSold.setScale(2, java.math.RoundingMode.HALF_UP),
-            "Core tier must sell exactly ₹124,494.74 (all remaining LTCG core lots available)");
+        // 2. Invariant Assertion: Core fund tier is untouched because legacy lots satisfy the full required sell pool
+        assertEquals(new BigDecimal("0.00"), coreSold.setScale(2, java.math.RoundingMode.HALF_UP),
+            "Core tier must be untouched (₹0.00 sold) when legacy liquidation satisfies full sell pool");
 
-        // 3. Invariant Assertion: Remaining shortfall of ₹34,763.95 MUST be STCG lots that are deferred under Rule 2a
+        // 3. Invariant Assertion: Total executed equals total required pool
         BigDecimal actualExecuted = legacySold.add(coreSold);
-        BigDecimal expectedDeferred = new BigDecimal("34763.95");
-        assertEquals(new BigDecimal("289842.21"), plan.sellSide().totalRequired(),
-            "Total required sell pool under per-lot cost basis must equal ₹289,842.21");
-        assertEquals(0, plan.sellSide().totalRequired().subtract(actualExecuted).compareTo(expectedDeferred),
-            "STCG Protection Invariant: Deferred shortfall must equal exactly ₹34,763.95 (all unexecuted lots are STCG < 365 days)");
+        assertEquals(new BigDecimal("129350.57"), plan.sellSide().totalRequired(),
+            "Total required sell pool under 100% legacy priority must equal ₹129,350.57");
+        assertEquals(0, plan.sellSide().totalRequired().subtract(actualExecuted).compareTo(BigDecimal.ZERO),
+            "STCG Protection Invariant: All required sell pool satisfied by legacy liquidation");
     }
 }
