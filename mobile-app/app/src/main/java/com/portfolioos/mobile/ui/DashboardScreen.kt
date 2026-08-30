@@ -78,15 +78,8 @@ val M3TextMuted = ColorTokens.TextMuted
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DashboardScreen(
-    snapshot: SyncSnapshot?,
-    isLoading: Boolean,
-    isRefreshing: Boolean = false,
-    lastSyncMillis: Long = 0L,
-    lastFullLedgerMillis: Long = 0L,
-    isAmfiFallback: Boolean = false,
-    isFullyOffline: Boolean = false,
+    uiState: DashboardUiState,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
-    initialPage: Int = 0,
     onRefresh: () -> Unit,
     onUpdateCustomUrl: (String) -> Unit = {},
     onSimulateFullSync: () -> Unit = {},
@@ -95,9 +88,21 @@ fun DashboardScreen(
     onSimulateAgedOffline: () -> Unit = {},
     onSimulateRefreshing: () -> Unit = {},
     onSimulateSyncFailure: () -> Unit = {},
-    isBiometricLockEnabled: Boolean = true,
     onToggleBiometricLock: (Boolean) -> Unit = {}
 ) {
+    val snapshot = uiState.snapshot
+    val isLoading = uiState.isLoading
+    val isRefreshing = uiState.isRefreshing
+    val lastSyncMillis = uiState.lastSyncMillis
+    val lastFullLedgerMillis = uiState.lastFullLedgerMillis
+    val isAmfiFallback = uiState.isAmfiFallback
+    val isFullyOffline = uiState.isFullyOffline
+    val isBiometricLockEnabled = uiState.isBiometricLockEnabled
+    val initialPage = uiState.activePage
+    val benchmarkData = uiState.benchmarkData
+    val fireSummaryData = uiState.fireSummaryData
+    val overlapData = uiState.overlapData
+
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -117,44 +122,6 @@ fun DashboardScreen(
     var selectedHoldingForSimulator by remember { mutableStateOf<FlatHoldingDto?>(null) }
     var showUrlDialog by remember { mutableStateOf(false) }
     var inputUrl by remember { mutableStateOf("") }
-
-    var benchmarkData by remember { mutableStateOf<BenchmarkAnalyticsDto?>(null) }
-    var fireSummaryData by remember { mutableStateOf<FireSummaryResponseDto?>(null) }
-    var overlapData by remember { mutableStateOf<OverlapReportDto?>(null) }
-
-    val context = androidx.compose.ui.platform.LocalContext.current
-
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            val token = SnapshotCacheManager.getAuthToken(context)
-            Log.d("SyncAnalytics", "Initiating REST analytics fetch with token: $token")
-            val urls = listOf(
-                SyncApiClient.USB_BASE_URL,
-                SyncApiClient.WIFI_BASE_URL,
-                SyncApiClient.EMULATOR_BASE_URL
-            )
-            for (baseUrl in urls) {
-                try {
-                    Log.d("SyncAnalytics", "Attempting fetch from base URL: $baseUrl")
-                    val service = SyncApiClient.createService(baseUrl)
-                    val bench = service.getBenchmarkAnalytics(token)
-                    val fire = service.getFireSummary(token)
-                    val overlap = service.getOverlapAnalytics(token)
-                    val gson = com.google.gson.Gson()
-                    Log.d("SyncAnalytics", "RAW_JSON_BENCHMARK: ${gson.toJson(bench)}")
-                    Log.d("SyncAnalytics", "RAW_JSON_FIRE_SUMMARY: ${gson.toJson(fire)}")
-                    Log.d("SyncAnalytics", "RAW_JSON_OVERLAP: ${gson.toJson(overlap)}")
-                    Log.d("SyncAnalytics", "SUCCESS fetching analytics from $baseUrl: bench=${bench.alpha}, fire=${fire.monteCarloSuccessRatePct}, overlapStocks=${overlap.stockConcentrations.size}")
-                    benchmarkData = bench
-                    fireSummaryData = fire
-                    overlapData = overlap
-                    break
-                } catch (e: Exception) {
-                    Log.e("SyncAnalytics", "Failed fetching analytics from $baseUrl: ${e.message}", e)
-                }
-            }
-        }
-    }
 
     fun formatRelativeTime(millis: Long): String {
         if (millis <= 0L) return "Never"

@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -34,22 +35,33 @@ import com.portfolioos.mobile.model.NetWorthPointDto
 import com.portfolioos.mobile.ui.theme.ColorTokens
 import com.portfolioos.mobile.ui.theme.ShapeTokens
 import com.portfolioos.mobile.ui.theme.TypographyTokens
-import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
-import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
-import com.patrykandpatrick.vico.compose.chart.Chart
-import com.patrykandpatrick.vico.compose.chart.line.lineChart
-import com.patrykandpatrick.vico.compose.chart.line.lineSpec
-import com.patrykandpatrick.vico.compose.component.shape.shader.fromBrush
-import com.patrykandpatrick.vico.compose.component.marker.markerComponent
-import com.patrykandpatrick.vico.compose.component.shapeComponent
-import com.patrykandpatrick.vico.compose.component.textComponent
-import com.patrykandpatrick.vico.core.axis.AxisPosition
-import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter
-import com.patrykandpatrick.vico.core.component.shape.Shapes
-import com.patrykandpatrick.vico.core.entry.entryModelOf
-import com.patrykandpatrick.vico.core.entry.entryOf
-import com.patrykandpatrick.vico.core.marker.Marker
-import kotlin.math.roundToInt
+
+import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
+import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottomAxis
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStartAxis
+import com.patrykandpatrick.vico.compose.cartesian.marker.rememberDefaultCartesianMarker
+import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
+import com.patrykandpatrick.vico.compose.common.component.rememberLineComponent
+import com.patrykandpatrick.vico.compose.common.component.rememberShapeComponent
+import com.patrykandpatrick.vico.compose.common.shader.toDynamicShader
+import com.patrykandpatrick.vico.compose.common.of
+import com.patrykandpatrick.vico.core.common.Dimensions
+import com.patrykandpatrick.vico.core.common.Fill
+import com.patrykandpatrick.vico.core.common.shape.Corner
+import com.patrykandpatrick.vico.core.common.shape.CorneredShape
+import com.patrykandpatrick.vico.core.cartesian.Zoom
+import com.patrykandpatrick.vico.core.cartesian.data.AxisValueOverrider
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
+import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
+import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.core.cartesian.marker.DefaultCartesianMarker
 
 data class BucketAllocation(
     val bucketName: String,
@@ -290,82 +302,88 @@ fun HistoricalNetWorthTrendChart(
                     )
                 }
             } else {
-                val chartEntries = remember(trendPoints) {
-                    trendPoints.mapIndexed { idx, pt ->
-                        entryOf(idx.toFloat(), pt.valuation.toFloat())
+                val modelProducer = remember { CartesianChartModelProducer() }
+                LaunchedEffect(trendPoints) {
+                    if (trendPoints.isNotEmpty()) {
+                        modelProducer.runTransaction {
+                            lineSeries {
+                                series(
+                                    x = trendPoints.indices.map { it.toFloat() },
+                                    y = trendPoints.map { it.valuation.toFloat() }
+                                )
+                            }
+                        }
                     }
                 }
-                val entryModel = remember(chartEntries) { entryModelOf(chartEntries) }
 
-                val dateAxisFormatter = AxisValueFormatter<AxisPosition.Horizontal.Bottom> { value, _ ->
+                val dateAxisFormatter = CartesianValueFormatter { value, _, _ ->
                     val idx = value.toInt()
                     if (idx in trendPoints.indices) trendPoints[idx].date else ""
                 }
 
-                val valueAxisFormatter = AxisValueFormatter<AxisPosition.Vertical.Start> { value, _ ->
+                val valueAxisFormatter = CartesianValueFormatter { value, _, _ ->
                     "₹${String.format("%.1fL", value / 100000.0)}"
                 }
 
-                val marker = rememberChartMarker(selectedPoint)
-                val markerVisibilityChangeListener = remember(trendPoints) {
-                    object : com.patrykandpatrick.vico.core.marker.MarkerVisibilityChangeListener {
-                        override fun onMarkerShown(
-                            marker: Marker,
-                            markerEntryModels: List<com.patrykandpatrick.vico.core.marker.Marker.EntryModel>
-                        ) {
-                            val entry = markerEntryModels.firstOrNull()?.entry
-                            if (entry != null) {
-                                val idx = entry.x.toInt()
-                                if (idx in trendPoints.indices) {
-                                    selectedPoint = trendPoints[idx]
-                                }
-                            }
-                        }
+                val marker = rememberChartMarker()
 
-                        override fun onMarkerHidden(marker: Marker) {
-                            selectedPoint = null
-                        }
-                    }
-                }
-
-                Chart(
-                    chart = lineChart(
-                        lines = listOf(
-                            lineSpec(
-                                lineColor = ColorTokens.ElectricLime,
-                                lineBackgroundShader = com.patrykandpatrick.vico.core.component.shape.shader.DynamicShaders.fromBrush(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            ColorTokens.ElectricLime.copy(alpha = 0.35f),
-                                            ColorTokens.CyanBright.copy(alpha = 0.02f)
-                                        )
-                                    )
+                val line = rememberLine(
+                    fill = LineCartesianLayer.LineFill.single(
+                        Fill(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    ColorTokens.ElectricLime,
+                                    ColorTokens.ElectricLime
                                 )
+                            ).toDynamicShader()
+                        )
+                    ),
+                    areaFill = LineCartesianLayer.AreaFill.single(
+                        Fill(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    ColorTokens.ElectricLime.copy(alpha = 0.35f),
+                                    ColorTokens.CyanBright.copy(alpha = 0.02f)
+                                )
+                            ).toDynamicShader()
+                        )
+                    )
+                )
+
+                val scrollState = rememberVicoScrollState(scrollEnabled = false)
+                val zoomState = rememberVicoZoomState(
+                    zoomEnabled = false,
+                    initialZoom = Zoom.Content
+                )
+
+                CartesianChartHost(
+                    chart = rememberCartesianChart(
+                        rememberLineCartesianLayer(
+                            lineProvider = LineCartesianLayer.LineProvider.series(line),
+                            axisValueOverrider = remember { AxisValueOverrider.adaptiveYValues(1.05f, false) }
+                        ),
+                        startAxis = rememberStartAxis(
+                            valueFormatter = valueAxisFormatter,
+                            guideline = null,
+                            label = rememberTextComponent(
+                                color = ColorTokens.TextMuted,
+                                textSize = 9.sp
                             )
-                        )
+                        ),
+                        bottomAxis = rememberBottomAxis(
+                            valueFormatter = dateAxisFormatter,
+                            guideline = null,
+                            itemPlacer = remember { HorizontalAxis.ItemPlacer.default(spacing = 60) },
+                            label = rememberTextComponent(
+                                color = ColorTokens.TextMuted,
+                                textSize = 10.sp
+                            )
+                        ),
+                        marker = marker
                     ),
-                    model = entryModel,
-                    marker = marker,
-                    markerVisibilityChangeListener = markerVisibilityChangeListener,
-                    isZoomEnabled = false,
-                    chartScrollSpec = com.patrykandpatrick.vico.compose.chart.scroll.rememberChartScrollSpec(isScrollEnabled = false),
-                    startAxis = rememberStartAxis(
-                        valueFormatter = valueAxisFormatter,
-                        guideline = null,
-                        label = textComponent(
-                            color = ColorTokens.TextMuted,
-                            textSize = 9.sp
-                        )
-                    ),
-                    bottomAxis = rememberBottomAxis(
-                        valueFormatter = dateAxisFormatter,
-                        guideline = null,
-                        itemPlacer = com.patrykandpatrick.vico.core.axis.AxisItemPlacer.Horizontal.default(spacing = 4),
-                        label = textComponent(
-                            color = ColorTokens.TextMuted,
-                            textSize = 10.sp
-                        )
-                    ),
+                    modelProducer = modelProducer,
+                    scrollState = scrollState,
+                    zoomState = zoomState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp)
@@ -376,26 +394,27 @@ fun HistoricalNetWorthTrendChart(
 }
 
 @Composable
-fun rememberChartMarker(selectedPoint: NetWorthPointDto? = null): Marker {
-    val label = textComponent(
+fun rememberChartMarker(): DefaultCartesianMarker {
+    val pillShape = CorneredShape(Corner.FullyRounded, Corner.FullyRounded, Corner.FullyRounded, Corner.FullyRounded)
+    val label = rememberTextComponent(
         color = ColorTokens.ObsidianBackground,
-        background = com.patrykandpatrick.vico.compose.component.shapeComponent(
-            shape = com.patrykandpatrick.vico.core.component.shape.Shapes.pillShape,
+        background = rememberShapeComponent(
+            shape = pillShape,
             color = ColorTokens.ElectricLime
         ),
-        padding = com.patrykandpatrick.vico.compose.dimensions.dimensionsOf(horizontal = 8.dp, vertical = 4.dp),
+        padding = Dimensions.of(horizontal = 8.dp, vertical = 4.dp),
         textSize = 11.sp
     )
-    val indicator = com.patrykandpatrick.vico.compose.component.shapeComponent(
-        shape = com.patrykandpatrick.vico.core.component.shape.Shapes.pillShape,
+    val indicator = rememberShapeComponent(
+        shape = pillShape,
         color = ColorTokens.CyanBright
     )
-    val guideline = com.patrykandpatrick.vico.compose.component.lineComponent(
+    val guideline = rememberLineComponent(
         color = ColorTokens.CyanBright.copy(alpha = 0.5f)
     )
-    return com.patrykandpatrick.vico.compose.component.marker.markerComponent(
+    return rememberDefaultCartesianMarker(
         label = label,
-        indicator = indicator,
+        indicator = { indicator },
         guideline = guideline
     )
 }

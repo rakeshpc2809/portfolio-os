@@ -4,36 +4,34 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.runtime.*
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import com.portfolioos.mobile.api.SyncApiClient
 import com.portfolioos.mobile.auth.BiometricAuthManager
 import com.portfolioos.mobile.data.SnapshotCacheManager
-import com.portfolioos.mobile.model.SyncSnapshot
 import com.portfolioos.mobile.ui.DashboardScreen
+import com.portfolioos.mobile.ui.DashboardViewModel
 import com.portfolioos.mobile.ui.LockScreenGate
 import com.portfolioos.mobile.ui.theme.PortfolioOSTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
     private val TAG = "MainActivity"
-    private val activePage = mutableStateOf(0)
-    
-    private val isAppLockedState = mutableStateOf(false)
-    private val isSecurityEnrolledState = mutableStateOf(true)
+    private val viewModel: DashboardViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        activePage.value = intent.getIntExtra("TARGET_PAGE", 0)
+        val initialPage = intent.getIntExtra("TARGET_PAGE", 0)
+        viewModel.setActivePage(initialPage)
 
         val disableLockExtra = intent.getBooleanExtra("DISABLE_LOCK", false)
         if (disableLockExtra) {
             SnapshotCacheManager.setBiometricLockEnabled(applicationContext, false)
+            viewModel.setAppLocked(false)
         }
-        isAppLockedState.value = if (disableLockExtra) false else SnapshotCacheManager.isBiometricLockEnabled(applicationContext)
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) {
@@ -42,7 +40,7 @@ class MainActivity : FragmentActivity() {
                     Log.d(TAG, "ON_STOP fired while BiometricPrompt is showing. Suppressing re-lock loop.")
                 } else if (SnapshotCacheManager.isBiometricLockEnabled(applicationContext)) {
                     Log.d(TAG, "App backgrounded (ON_STOP). Re-locking app.")
-                    isAppLockedState.value = true
+                    viewModel.setAppLocked(true)
                 }
             }
 
@@ -50,9 +48,10 @@ class MainActivity : FragmentActivity() {
                 super.onStart(owner)
                 Log.d(TAG, "App resumed (ON_START). Checking security status.")
                 val status = BiometricAuthManager.checkSecurityStatus(this@MainActivity)
-                isSecurityEnrolledState.value = (status != BiometricAuthManager.SecurityStatus.NONE_ENROLLED)
-                
-                if (isAppLockedState.value && SnapshotCacheManager.isBiometricLockEnabled(applicationContext)) {
+                val isEnrolled = (status != BiometricAuthManager.SecurityStatus.NONE_ENROLLED)
+                viewModel.setSecurityEnrolled(isEnrolled)
+
+                if (viewModel.uiState.value.isAppLocked && SnapshotCacheManager.isBiometricLockEnabled(applicationContext)) {
                     triggerBiometricUnlock()
                 }
             }
@@ -60,114 +59,33 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             PortfolioOSTheme {
-                val page by activePage
-                var isAppLocked by remember { isAppLockedState }
-                var isSecurityEnrolled by remember { isSecurityEnrolledState }
-                var isBiometricLockEnabled by remember { mutableStateOf(SnapshotCacheManager.isBiometricLockEnabled(applicationContext)) }
-
-                var snapshot by remember { mutableStateOf<SyncSnapshot?>(null) }
-                var isLoading by remember { mutableStateOf(true) }
-                var isRefreshing by remember { mutableStateOf(false) }
+                val uiState by viewModel.uiState.collectAsState()
                 val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
-                
-                var lastSyncMillis by remember { mutableLongStateOf(SnapshotCacheManager.getLastSyncTimestamp(applicationContext)) }
-                var lastFullLedgerMillis by remember { mutableLongStateOf(SnapshotCacheManager.getLastFullLedgerTimestamp(applicationContext)) }
-                var isAmfiFallback by remember { mutableStateOf(SnapshotCacheManager.isAmfiFallback(applicationContext)) }
-                var isFullyOffline by remember { mutableStateOf(SnapshotCacheManager.isFullyOffline(applicationContext)) }
-                
                 val scope = rememberCoroutineScope()
 
-                fun fetchSyncSnapshot(isManualRefresh: Boolean = false) {
-                    scope.launch {
-                        if (isManualRefresh) {
-                            isRefreshing = true
-                        } else if (snapshot == null) {
-                            snapshot = SnapshotCacheManager.loadSnapshot(applicationContext)
-                            isLoading = (snapshot == null)
-                        }
-                        try {
-                            val newSnapshot = SyncApiClient.fetchSnapshotWithFallback(applicationContext)
-                            snapshot = newSnapshot
-                            lastSyncMillis = SnapshotCacheManager.getLastSyncTimestamp(applicationContext)
-                            lastFullLedgerMillis = SnapshotCacheManager.getLastFullLedgerTimestamp(applicationContext)
-                            isAmfiFallback = SnapshotCacheManager.isAmfiFallback(applicationContext)
-                            isFullyOffline = SnapshotCacheManager.isFullyOffline(applicationContext)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        } finally {
-                            isLoading = false
-                            isRefreshing = false
-                        }
+                LaunchedEffect(uiState.isAppLocked, uiState.isBiometricLockEnabled) {
+                    if (!uiState.isAppLocked || !uiState.isBiometricLockEnabled) {
+                        viewModel.fetchSyncSnapshot(isManualRefresh = false)
                     }
                 }
 
-                LaunchedEffect(isAppLocked, isBiometricLockEnabled) {
-                    if (!isAppLocked || !isBiometricLockEnabled) {
-                        fetchSyncSnapshot(isManualRefresh = false)
-                    }
-                }
-
-                if (isAppLocked && isBiometricLockEnabled) {
+                if (uiState.isAppLocked && uiState.isBiometricLockEnabled) {
                     LockScreenGate(
-                        isSecurityEnrolled = isSecurityEnrolled,
+                        isSecurityEnrolled = uiState.isSecurityEnrolled,
                         onAuthenticate = { triggerBiometricUnlock() },
                         onRecheckSecurity = { triggerBiometricUnlock() }
                     )
                 } else {
                     DashboardScreen(
-                        snapshot = snapshot,
-                        isLoading = isLoading,
-                        isRefreshing = isRefreshing,
-                        lastSyncMillis = lastSyncMillis,
-                        lastFullLedgerMillis = lastFullLedgerMillis,
-                        isAmfiFallback = isAmfiFallback,
-                        isFullyOffline = isFullyOffline,
+                        uiState = uiState,
                         snackbarHostState = snackbarHostState,
-                        initialPage = page,
-                        onRefresh = { fetchSyncSnapshot(isManualRefresh = true) },
-                        onUpdateCustomUrl = { newUrl ->
-                            SnapshotCacheManager.setCustomUrl(applicationContext, newUrl)
-                            fetchSyncSnapshot(isManualRefresh = true)
-                        },
-                        onSimulateFullSync = {
-                            if (snapshot != null) {
-                                SnapshotCacheManager.saveSnapshot(applicationContext, snapshot!!, isFullLedgerSync = true)
-                                lastSyncMillis = System.currentTimeMillis()
-                                lastFullLedgerMillis = System.currentTimeMillis()
-                                isAmfiFallback = false
-                                isFullyOffline = false
-                                SnapshotCacheManager.setFullyOffline(applicationContext, false)
-                            }
-                        },
-                        onSimulateAmfiFallback = {
-                            if (snapshot != null) {
-                                SnapshotCacheManager.saveSnapshot(applicationContext, snapshot!!, isFullLedgerSync = false)
-                                lastSyncMillis = System.currentTimeMillis()
-                                lastFullLedgerMillis = System.currentTimeMillis() - 172800000L // 2 days ago
-                                isAmfiFallback = true
-                                isFullyOffline = false
-                                SnapshotCacheManager.setFullyOffline(applicationContext, false)
-                            }
-                        },
-                        onSimulateFullyOffline = {
-                            if (snapshot != null) {
-                                isFullyOffline = !isFullyOffline
-                                SnapshotCacheManager.setFullyOffline(applicationContext, isFullyOffline)
-                            }
-                        },
-                        onSimulateAgedOffline = {
-                            if (snapshot != null) {
-                                val agedTime = System.currentTimeMillis() - 660000L // 11 mins ago
-                                lastSyncMillis = agedTime
-                                lastFullLedgerMillis = agedTime
-                                isAmfiFallback = false
-                                isFullyOffline = true
-                                SnapshotCacheManager.setFullyOffline(applicationContext, true)
-                            }
-                        },
-                        onSimulateRefreshing = {
-                            isRefreshing = !isRefreshing
-                        },
+                        onRefresh = { viewModel.fetchSyncSnapshot(isManualRefresh = true) },
+                        onUpdateCustomUrl = { newUrl -> viewModel.updateCustomUrl(newUrl) },
+                        onSimulateFullSync = { viewModel.simulateFullSync() },
+                        onSimulateAmfiFallback = { viewModel.simulateAmfiFallback() },
+                        onSimulateFullyOffline = { viewModel.simulateFullyOffline() },
+                        onSimulateAgedOffline = { viewModel.simulateAgedOffline() },
+                        onSimulateRefreshing = { viewModel.simulateRefreshing() },
                         onSimulateSyncFailure = {
                             scope.launch {
                                 snackbarHostState.showSnackbar(
@@ -176,15 +94,10 @@ class MainActivity : FragmentActivity() {
                                 )
                             }
                         },
-                        isBiometricLockEnabled = isBiometricLockEnabled,
                         onToggleBiometricLock = { enabled ->
-                            isBiometricLockEnabled = enabled
-                            SnapshotCacheManager.setBiometricLockEnabled(applicationContext, enabled)
+                            viewModel.toggleBiometricLock(enabled)
                             if (enabled) {
-                                isAppLockedState.value = true
                                 triggerBiometricUnlock()
-                            } else {
-                                isAppLockedState.value = false
                             }
                         }
                     )
@@ -195,21 +108,21 @@ class MainActivity : FragmentActivity() {
 
     private fun triggerBiometricUnlock() {
         if (intent.getBooleanExtra("DISABLE_LOCK", false)) {
-            isAppLockedState.value = false
+            viewModel.setAppLocked(false)
             return
         }
         val status = BiometricAuthManager.checkSecurityStatus(this)
         Log.d(TAG, "triggerBiometricUnlock checked security status: $status")
         if (status == BiometricAuthManager.SecurityStatus.NONE_ENROLLED) {
-            isSecurityEnrolledState.value = false
+            viewModel.setSecurityEnrolled(false)
             return
         }
-        isSecurityEnrolledState.value = true
+        viewModel.setSecurityEnrolled(true)
         BiometricAuthManager.showBiometricPrompt(
             activity = this,
             onAuthSuccess = {
                 Log.d(TAG, "Biometric auth success callback received. Unlocking app.")
-                isAppLockedState.value = false
+                viewModel.setAppLocked(false)
             },
             onAuthError = { err ->
                 Log.d(TAG, "Biometric auth error/cancel callback received: $err")
@@ -220,6 +133,7 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        activePage.value = intent.getIntExtra("TARGET_PAGE", 0)
+        val targetPage = intent.getIntExtra("TARGET_PAGE", 0)
+        viewModel.setActivePage(targetPage)
     }
 }
