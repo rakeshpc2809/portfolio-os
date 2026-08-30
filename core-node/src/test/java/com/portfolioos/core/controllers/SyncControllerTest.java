@@ -63,7 +63,7 @@ class SyncControllerTest {
             }
         };
 
-        syncController = new SyncController(mockCacheService);
+        syncController = new SyncController(mockCacheService, new com.portfolioos.core.service.PortfolioValuationService(mockCacheService));
     }
 
     @Test

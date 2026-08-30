@@ -51,11 +51,20 @@ public class PortfolioValuationService {
         return val.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
-    public PortfolioSummaryResponse getPortfolioSummary(String fy) {
-        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
-        List<TaxEvent> allEvents = state.events();
-        List<Lot> openLots = state.fifoResult().openLots();
-        Map<String, BigDecimal> navMap = state.navMap();
+    public record PortfolioValuationMetrics(
+        BigDecimal totalInvested,
+        BigDecimal totalCurrentValue,
+        BigDecimal totalGain,
+        double overallXirr,
+        String formattedXirr,
+        int distinctAssetCount
+    ) {}
+
+    public PortfolioValuationMetrics computeValuationMetrics(String fy) {
+        LedgerCacheService.CachedLedgerState state = cacheService != null ? cacheService.getCachedState() : null;
+        List<TaxEvent> allEvents = state != null && state.events() != null ? state.events() : Collections.emptyList();
+        List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
+        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
         BigDecimal totalInvested = BigDecimal.ZERO;
         BigDecimal totalCurrentValue = BigDecimal.ZERO;
@@ -77,16 +86,90 @@ public class PortfolioValuationService {
             }
         }
         cashflows.add(new CashFlow(LocalDate.now(), totalCurrentValue));
-        double xirr = xirrEngine.calculateXirr(cashflows);
+        double xirr = cashflows.size() >= 2 ? xirrEngine.calculateXirr(cashflows) : 0.0;
 
         long distinctAssetCount = openLots.stream().map(Lot::assetId).distinct().count();
 
-        return new PortfolioSummaryResponse(
-            fmt(totalInvested),
-            fmt(totalCurrentValue),
-            fmt(totalGain),
+        return new PortfolioValuationMetrics(
+            totalInvested,
+            totalCurrentValue,
+            totalGain,
+            xirr,
             String.format("%.2f%%", xirr),
-            (int) distinctAssetCount,
+            (int) distinctAssetCount
+        );
+    }
+
+    public double calculateHoldingXirr(String assetId, List<TaxEvent> allEvents, LocalDate asOfDate, BigDecimal currentValuation) {
+        List<CashFlow> holdingCashflows = new ArrayList<>();
+        for (TaxEvent event : allEvents) {
+            if (event.assetId().equals(assetId)) {
+                if (event.eventType() == EventType.ACQUISITION || event.eventType() == EventType.SIP_INSTALMENT) {
+                    holdingCashflows.add(new CashFlow(event.eventDate(), event.grossAmount().negate()));
+                } else if (event.eventType() == EventType.DISPOSAL || event.eventType() == EventType.SGB_MATURITY) {
+                    holdingCashflows.add(new CashFlow(event.eventDate(), event.grossAmount()));
+                }
+            }
+        }
+        holdingCashflows.add(new CashFlow(asOfDate, currentValuation));
+        return holdingCashflows.size() >= 2 ? xirrEngine.calculateXirr(holdingCashflows) : 0.0;
+    }
+
+    public List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto> getBucketAllocationStatuses() {
+        if (cacheService != null && cacheService.getCachedState() == null) {
+            cacheService.refreshCacheInBackground();
+        }
+        LedgerCacheService.CachedLedgerState state = cacheService != null ? cacheService.getCachedState() : null;
+        List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
+        List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
+        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
+
+        List<BucketEngine.BucketTarget> activeTargets = 
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now());
+        
+        String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
+
+        Set<String> activeOrPreferredAssetIds = new HashSet<>();
+        com.portfolioos.core.rules.BucketConfigLoader.BucketRulesConfig config = 
+            com.portfolioos.core.rules.BucketConfigLoader.loadConfig();
+        if (config != null && !config.versions().isEmpty()) {
+            com.portfolioos.core.rules.BucketConfigLoader.BucketTargetVersion activeVer = 
+                com.portfolioos.core.rules.BucketConfigLoader.getActiveVersion(LocalDate.now());
+            for (var tc : activeVer.targets()) {
+                if (tc.preferredFunds() != null) {
+                    for (var pf : tc.preferredFunds()) {
+                        activeOrPreferredAssetIds.add(pf.fundId());
+                    }
+                }
+            }
+        }
+
+        BucketEngine.RebalanceEngineResult result = 
+            BucketEngine.evaluateRebalance(
+                openLots, matchedLots, navMap, LocalDate.now(), BigDecimal.ZERO, BigDecimal.ZERO,
+                activeTargets, currentFy, activeOrPreferredAssetIds
+            );
+
+        return result.bucketStatuses().stream()
+            .map(s -> new com.portfolioos.core.dtos.ReportDtos.BucketStatusDto(
+                s.bucket().name(),
+                fmt(s.currentValue()),
+                fmt(s.currentPct()),
+                fmt(s.targetPct()),
+                fmt(s.driftPct()),
+                s.isDrifted()
+            ))
+            .toList();
+    }
+
+    public PortfolioSummaryResponse getPortfolioSummary(String fy) {
+        PortfolioValuationMetrics metrics = computeValuationMetrics(fy);
+        return new PortfolioSummaryResponse(
+            fmt(metrics.totalInvested()),
+            fmt(metrics.totalCurrentValue()),
+            fmt(metrics.totalGain()),
+            metrics.formattedXirr(),
+            metrics.distinctAssetCount(),
             0
         );
     }

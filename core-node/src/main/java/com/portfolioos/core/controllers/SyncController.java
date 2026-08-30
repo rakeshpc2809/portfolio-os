@@ -40,12 +40,13 @@ public class SyncController {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SyncController.class);
 
     private final LedgerCacheService cacheService;
-    private final XirrEngine xirrEngine = new XirrEngine();
+    private final com.portfolioos.core.service.PortfolioValuationService valuationService;
     private final DuckDbProjector duckDbProjector = new DuckDbProjector();
     private final FlightRpcClient flightRpcClient = new FlightRpcClient();
 
-    public SyncController(LedgerCacheService cacheService) {
+    public SyncController(LedgerCacheService cacheService, com.portfolioos.core.service.PortfolioValuationService valuationService) {
         this.cacheService = cacheService;
+        this.valuationService = valuationService;
     }
 
     private static String detectFineBucket(String assetName) {
@@ -84,27 +85,12 @@ public class SyncController {
         Set<String> heldIsins = openLots.stream().map(Lot::assetId).collect(Collectors.toSet());
         duckDbProjector.saveNavHistoryBatchForHeldAssets(navMap, heldIsins, today);
 
-        // Calculate overall XIRR & Totals
-        List<CashFlow> portfolioCashflows = new ArrayList<>();
-        BigDecimal totalPortfolioCurrentVal = BigDecimal.ZERO;
-        BigDecimal totalPortfolioInvested = BigDecimal.ZERO;
-
-        for (Lot lot : openLots) {
-            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "SyncController.getSnapshot");
-            totalPortfolioCurrentVal = totalPortfolioCurrentVal.add(lot.remainingUnits().multiply(nav));
-            totalPortfolioInvested = totalPortfolioInvested.add(lot.totalCostBasis());
-        }
-
-        for (TaxEvent event : allEvents) {
-            if (event.eventType() == EventType.ACQUISITION || event.eventType() == EventType.SIP_INSTALMENT) {
-                portfolioCashflows.add(new CashFlow(event.eventDate(), event.grossAmount().negate()));
-            } else if (event.eventType() == EventType.DISPOSAL) {
-                portfolioCashflows.add(new CashFlow(event.eventDate(), event.grossAmount()));
-            }
-        }
-        portfolioCashflows.add(new CashFlow(today, totalPortfolioCurrentVal));
-        double overallXirr = portfolioCashflows.size() >= 2 ? xirrEngine.calculateXirr(portfolioCashflows) : 0.0;
-        BigDecimal unrealizedGain = totalPortfolioCurrentVal.subtract(totalPortfolioInvested);
+        // Calculate overall XIRR & Totals via canonical PortfolioValuationService
+        com.portfolioos.core.service.PortfolioValuationService.PortfolioValuationMetrics valMetrics = valuationService.computeValuationMetrics(fy);
+        BigDecimal totalPortfolioInvested = valMetrics.totalInvested();
+        BigDecimal totalPortfolioCurrentVal = valMetrics.totalCurrentValue();
+        BigDecimal unrealizedGain = valMetrics.totalGain();
+        double overallXirr = valMetrics.overallXirr();
 
         // Group open lots by asset for FlatHoldingDto
         Map<String, List<Lot>> groupedByAsset = openLots.stream().collect(Collectors.groupingBy(Lot::assetId));
@@ -122,21 +108,9 @@ public class SyncController {
 
             String bucket = detectFineBucket(assetName);
 
-            // Holding XIRR calculation
-            List<TaxEvent> assetEvents = allEvents.stream().filter(e -> e.assetId().equals(assetId)).toList();
-            List<CashFlow> holdingCashflows = new ArrayList<>();
-            for (TaxEvent event : assetEvents) {
-                if (event.eventType() == EventType.ACQUISITION || event.eventType() == EventType.SIP_INSTALMENT) {
-                    holdingCashflows.add(new CashFlow(event.eventDate(), event.grossAmount().negate()));
-                } else if (event.eventType() == EventType.DISPOSAL) {
-                    holdingCashflows.add(new CashFlow(event.eventDate(), event.grossAmount()));
-                }
-            }
             BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, assetId, assetName, "SyncController.getSnapshot (holding " + assetId + ")");
             BigDecimal holdingCurVal = totalUnits.multiply(nav);
-            holdingCashflows.add(new CashFlow(today, holdingCurVal));
-
-            double holdingXirr = holdingCashflows.size() >= 2 ? xirrEngine.calculateXirr(holdingCashflows) : 0.0;
+            double holdingXirr = valuationService.calculateHoldingXirr(assetId, allEvents, today, holdingCurVal);
 
             holdings.add(new FlatHoldingDto(
                 assetId,
@@ -318,10 +292,6 @@ public class SyncController {
             ));
         }
 
-        BigDecimal totalCurrentVal = openLots.stream()
-            .map(l -> l.remainingUnits().multiply(com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, l, "SyncController.totalCurrentVal")))
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
-
         // 4. Asset Allocation Drift Signal
         BucketEngine.RebalanceEngineResult bucketStatus = BucketEngine.evaluateRebalance(
             openLots, state.fifoResult().matchedLots(), navMap, today, null, null, BucketEngine.DEFAULT_TARGETS, fy
@@ -363,11 +333,6 @@ public class SyncController {
             .map(p -> new NetWorthPointDto(p.date(), p.valuation(), p.invested()))
             .toList();
 
-        BigDecimal personalNetWorthAth = netWorthHistory.stream()
-            .map(p -> BigDecimal.valueOf(p.valuation()))
-            .max(BigDecimal::compareTo)
-            .orElse(totalPortfolioCurrentVal);
-
         String derivedTriggerType;
         if (requestedTrigger != null && !requestedTrigger.isBlank()) {
             derivedTriggerType = requestedTrigger.toUpperCase();
@@ -406,19 +371,6 @@ public class SyncController {
         List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
-        BigDecimal totalCurrentVal = BigDecimal.ZERO;
-        for (Lot lot : openLots) {
-            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "SyncController.getRebalancePlan");
-            totalCurrentVal = totalCurrentVal.add(lot.remainingUnits().multiply(nav));
-        }
-
-        List<DuckDbProjector.NetWorthPoint> trend = duckDbProjector.getDailyNetWorthTrend();
-        double peak = trend.stream().mapToDouble(DuckDbProjector.NetWorthPoint::valuation).max().orElse(totalCurrentVal.doubleValue());
-        BigDecimal personalNetWorthAth = BigDecimal.valueOf(peak);
-        if (personalNetWorthAth.compareTo(totalCurrentVal) < 0) {
-            personalNetWorthAth = totalCurrentVal;
-        }
-
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
             openLots, matchedLots, navMap, LocalDate.now(), null, null,
@@ -429,50 +381,7 @@ public class SyncController {
 
     @GetMapping("/portfolio/bucket-allocation")
     public ResponseEntity<List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto>> getBucketAllocation() {
-        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
-        List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
-        List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
-        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
-
-        List<com.portfolioos.core.valuation.BucketEngine.BucketTarget> activeTargets = 
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now());
-        
-        String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
-
-        // Construct preferred / active asset IDs set
-        Set<String> activeOrPreferredAssetIds = new HashSet<>();
-        com.portfolioos.core.rules.BucketConfigLoader.BucketRulesConfig config = 
-            com.portfolioos.core.rules.BucketConfigLoader.loadConfig();
-        if (config != null && !config.versions().isEmpty()) {
-            com.portfolioos.core.rules.BucketConfigLoader.BucketTargetVersion activeVer = 
-                com.portfolioos.core.rules.BucketConfigLoader.getActiveVersion(LocalDate.now());
-            for (var tc : activeVer.targets()) {
-                if (tc.preferredFunds() != null) {
-                    for (var pf : tc.preferredFunds()) {
-                        activeOrPreferredAssetIds.add(pf.fundId());
-                    }
-                }
-            }
-        }
-
-        com.portfolioos.core.valuation.BucketEngine.RebalanceEngineResult result = 
-            com.portfolioos.core.valuation.BucketEngine.evaluateRebalance(
-                openLots, matchedLots, navMap, LocalDate.now(), BigDecimal.ZERO, BigDecimal.ZERO,
-                activeTargets, currentFy, activeOrPreferredAssetIds
-            );
-
-        List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto> dtos = result.bucketStatuses().stream()
-            .map(s -> new com.portfolioos.core.dtos.ReportDtos.BucketStatusDto(
-                s.bucket().name(),
-                s.currentValue().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
-                s.currentPct().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
-                s.targetPct().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
-                s.driftPct().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
-                s.isDrifted()
-            ))
-            .toList();
-
-        return ResponseEntity.ok(dtos);
+        return ResponseEntity.ok(valuationService.getBucketAllocationStatuses());
     }
 
     @PostMapping("/rebalance/simulate-lumpsum")
@@ -485,10 +394,6 @@ public class SyncController {
         List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
         List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
-
-        BigDecimal totalVal = openLots.stream()
-            .map(l -> l.remainingUnits().multiply(com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, l, "SyncController.simulateLumpsum")))
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
 

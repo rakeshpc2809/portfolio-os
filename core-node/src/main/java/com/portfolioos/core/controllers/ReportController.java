@@ -62,52 +62,7 @@ public class ReportController {
 
     @GetMapping({"/reports/allocations/bucket", "/portfolio/bucket-allocation"})
     public ResponseEntity<List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto>> getBucketAllocation() {
-        if (cacheService != null && cacheService.getCachedState() == null) {
-            cacheService.refreshCacheInBackground();
-        }
-        com.portfolioos.core.service.LedgerCacheService.CachedLedgerState state = cacheService != null ? cacheService.getCachedState() : null;
-        List<com.portfolioos.core.model.Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : java.util.Collections.emptyList();
-        List<com.portfolioos.core.model.MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : java.util.Collections.emptyList();
-        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : java.util.Collections.emptyMap();
-
-        List<com.portfolioos.core.valuation.BucketEngine.BucketTarget> activeTargets = 
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(java.time.LocalDate.now());
-        
-        String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(java.time.LocalDate.now());
-
-        Set<String> activeOrPreferredAssetIds = new java.util.HashSet<>();
-        com.portfolioos.core.rules.BucketConfigLoader.BucketRulesConfig config = 
-            com.portfolioos.core.rules.BucketConfigLoader.loadConfig();
-        if (config != null && !config.versions().isEmpty()) {
-            com.portfolioos.core.rules.BucketConfigLoader.BucketTargetVersion activeVer = 
-                com.portfolioos.core.rules.BucketConfigLoader.getActiveVersion(java.time.LocalDate.now());
-            for (var tc : activeVer.targets()) {
-                if (tc.preferredFunds() != null) {
-                    for (var pf : tc.preferredFunds()) {
-                        activeOrPreferredAssetIds.add(pf.fundId());
-                    }
-                }
-            }
-        }
-
-        com.portfolioos.core.valuation.BucketEngine.RebalanceEngineResult result = 
-            com.portfolioos.core.valuation.BucketEngine.evaluateRebalance(
-                openLots, matchedLots, navMap, java.time.LocalDate.now(), BigDecimal.ZERO, BigDecimal.ZERO,
-                activeTargets, currentFy, activeOrPreferredAssetIds
-            );
-
-        List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto> dtos = result.bucketStatuses().stream()
-            .map(s -> new com.portfolioos.core.dtos.ReportDtos.BucketStatusDto(
-                s.bucket().name(),
-                s.currentValue().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
-                s.currentPct().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
-                s.targetPct().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
-                s.driftPct().setScale(2, java.math.RoundingMode.HALF_UP).toString(),
-                s.isDrifted()
-            ))
-            .toList();
-
-        return ResponseEntity.ok(dtos);
+        return ResponseEntity.ok(valuationService.getBucketAllocationStatuses());
     }
 
     @GetMapping({"/reports/tax/exemption", "/tax/exemption-status"})
