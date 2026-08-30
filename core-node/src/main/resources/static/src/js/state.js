@@ -1,10 +1,10 @@
 export const state = {
-  currentFy: '2026-27',
+  currentFy: "2026-27",
   charts: {
     perfChart: null,
     allocChart: null,
-    categoryChart: null
-  }
+    categoryChart: null,
+  },
 };
 
 export function setCurrentFy(fy) {

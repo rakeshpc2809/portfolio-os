@@ -1,28 +1,32 @@
-import { API_BASE, fetchJson } from '../api.js';
-import { state } from '../state.js';
-import { formatINR } from '../utils.js';
+import { API_BASE, fetchJson } from "../api.js";
+import { state } from "../state.js";
+import { formatINR } from "../utils.js";
 
 export async function fetchTaxMetrics() {
   try {
-    const data = await fetchJson(`${API_BASE}/tax/exemption-status?fy=${state.currentFy}`).catch(() => null);
+    const data = await fetchJson(`${API_BASE}/tax/exemption-status?fy=${state.currentFy}`).catch(
+      () => null,
+    );
     if (data) {
       updateExemptionMeter(data);
     }
 
-    const report = await fetchJson(`${API_BASE}/tax/reports/itr2?fy=${state.currentFy}`).catch(() => null);
+    const report = await fetchJson(`${API_BASE}/tax/reports/itr2?fy=${state.currentFy}`).catch(
+      () => null,
+    );
     if (report) {
       updateReportMetrics(report);
     }
   } catch (e) {
-    console.error('Error fetching tax metrics:', e);
+    console.error("Error fetching tax metrics:", e);
   }
 }
 
 export function updateExemptionMeter(data) {
-  const meterVal = document.querySelector('.ltcg-meter-val');
-  const fill = document.querySelector('.progress-fill-gradient');
-  const pctText = document.querySelector('.meter-meta .pct-used');
-  const remainingText = document.querySelector('.meter-meta .remaining');
+  const meterVal = document.querySelector(".ltcg-meter-val");
+  const fill = document.querySelector(".progress-fill-gradient");
+  const pctText = document.querySelector(".meter-meta .pct-used");
+  const remainingText = document.querySelector(".meter-meta .remaining");
 
   const usedVal = data.exemption_used || data.exemptionUsed;
   const limitVal = data.exemption_limit || data.exemptionLimit;
@@ -33,7 +37,7 @@ export function updateExemptionMeter(data) {
     const pct = Math.min(100, Math.round((used / limit) * 100));
 
     meterVal.innerHTML = `${formatINR(used)} <span class="sub-limit">/ 1.25L</span>`;
-    meterVal.classList.remove('skeleton');
+    meterVal.classList.remove("skeleton");
     fill.style.width = `${pct}%`;
     if (pctText) pctText.textContent = `${pct}% Used`;
     remainingText.textContent = `${formatINR(limit - used)} Available`;
@@ -41,12 +45,12 @@ export function updateExemptionMeter(data) {
 }
 
 export function updateReportMetrics(report) {
-  const stcgVal = document.querySelector('.stcg-val');
+  const stcgVal = document.querySelector(".stcg-val");
   const realizedStcg = report.total_realized_stcg || report.totalRealizedStcg;
 
   if (stcgVal && realizedStcg) {
     stcgVal.textContent = formatINR(realizedStcg);
-    stcgVal.classList.remove('skeleton');
+    stcgVal.classList.remove("skeleton");
   }
 }
 
@@ -57,15 +61,15 @@ export async function fetchDecisionRadar() {
 
     renderDecisionRadar(opportunities, ladder);
   } catch (e) {
-    console.error('Error fetching decision radar:', e);
+    console.error("Error fetching decision radar:", e);
   }
 }
 
 export function renderDecisionRadar(opportunities, ladder) {
-  const listContainer = document.querySelector('.radar-list');
+  const listContainer = document.querySelector(".radar-list");
   if (!listContainer) return;
 
-  let html = '';
+  let html = "";
 
   if (opportunities && opportunities.length > 0) {
     for (const opp of opportunities.slice(0, 2)) {
@@ -91,7 +95,10 @@ export function renderDecisionRadar(opportunities, ladder) {
       const assetName = mat.asset_name || mat.assetName;
       const units = mat.remaining_units || mat.remainingUnits;
       const targetDate = mat.target_ltcg_date || mat.targetLtcgDate;
-      const daysRem = mat.days_remaining_to_ltcg !== undefined ? mat.days_remaining_to_ltcg : mat.daysRemainingToLtcg;
+      const daysRem =
+        mat.days_remaining_to_ltcg !== undefined
+          ? mat.days_remaining_to_ltcg
+          : mat.daysRemainingToLtcg;
 
       html += `
         <div class="radar-card maturation-border">
@@ -124,15 +131,17 @@ export function renderDecisionRadar(opportunities, ladder) {
 
 export async function fetchRealizedLog() {
   try {
-    const logs = await fetchJson(`${API_BASE}/tax/realized-log?fy=${state.currentFy}`).catch(() => []);
+    const logs = await fetchJson(`${API_BASE}/tax/realized-log?fy=${state.currentFy}`).catch(
+      () => [],
+    );
     renderRealizedLogTable(logs);
   } catch (e) {
-    console.error('Error fetching realized log:', e);
+    console.error("Error fetching realized log:", e);
   }
 }
 
 export function renderRealizedLogTable(logs) {
-  const tableBody = document.querySelector('#realizedLogTable tbody');
+  const tableBody = document.querySelector("#realizedLogTable tbody");
   if (!tableBody) return;
 
   if (!logs || logs.length === 0) {
@@ -141,10 +150,10 @@ export function renderRealizedLogTable(logs) {
   }
 
   const fragment = document.createDocumentFragment();
-  const template = document.createElement('template');
+  const template = document.createElement("template");
 
-  let html = '';
-  logs.forEach(l => {
+  let html = "";
+  logs.forEach((l) => {
     const dispDate = l.disposal_date || l.disposalDate;
     const acqDate = l.acquisition_date || l.acquisitionDate;
     const assetName = l.asset_name || l.assetName;
@@ -155,8 +164,8 @@ export function renderRealizedLogTable(logs) {
     const taxTerm = l.tax_term || l.taxTerm;
 
     const gain = Math.round(parseFloat(gainVal) || 0);
-    const gainSign = gain >= 0 ? '+' : '';
-    const gainColor = gain >= 0 ? 'color: #10b981;' : 'color: #ef4444;';
+    const gainSign = gain >= 0 ? "+" : "";
+    const gainColor = gain >= 0 ? "color: #10b981;" : "color: #ef4444;";
 
     html += `
       <tr>
@@ -167,7 +176,7 @@ export function renderRealizedLogTable(logs) {
         <td class="font-mono">${formatINR(proceeds)}</td>
         <td class="font-mono">${formatINR(cost)}</td>
         <td class="font-mono" style="${gainColor}">${gainSign}${formatINR(gain)}</td>
-        <td><span class="cat-badge ${taxTerm === 'LONG_TERM' ? 'cat-EQUITY' : 'cat-DEBT_SPECIFIED_50AA'}">${taxTerm}</span></td>
+        <td><span class="cat-badge ${taxTerm === "LONG_TERM" ? "cat-EQUITY" : "cat-DEBT_SPECIFIED_50AA"}">${taxTerm}</span></td>
       </tr>
     `;
   });

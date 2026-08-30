@@ -66,7 +66,7 @@ export function renderHoldingsTable(holdings) {
     const isSip =
       h.has_sip ||
       h.hasSip ||
-      (lots && lots.some((l) => (l.event_type || l.eventType) === "SIP_INSTALMENT"));
+      lots?.some((l) => (l.event_type || l.eventType) === "SIP_INSTALMENT");
     const sipBadge = isSip
       ? ' <span style="background:rgba(208,255,0,0.15); color:#d0ff00; border:1px solid rgba(208,255,0,0.3); font-size:10px; padding:2px 6px; border-radius:4px; margin-left:6px; font-weight:700;">🔄 Active SIP</span>'
       : "";
@@ -327,7 +327,7 @@ export async function loadNetWorthTrend(isMonthly = false) {
     const data =
       (await fetchJson(`${API_BASE}/reports/trend`).catch(() => null)) ||
       (await fetchJson(`${API_BASE}/portfolio/net-worth-trend`).catch(() => null));
-    if (!data || !data.dates || data.dates.length === 0) return;
+    if (!data?.dates || data.dates.length === 0) return;
 
     state.netWorthRawData = data;
 
@@ -525,11 +525,7 @@ export function renderFundAllocationCompareChart(containerId, holdings, bucketTa
 
   // 1. Extract active target version (e.g. v2.0)
   let activeVersion = null;
-  if (
-    bucketTargetsConfig &&
-    bucketTargetsConfig.versions &&
-    bucketTargetsConfig.versions.length > 0
-  ) {
+  if (bucketTargetsConfig?.versions && bucketTargetsConfig.versions.length > 0) {
     activeVersion = bucketTargetsConfig.versions[bucketTargetsConfig.versions.length - 1];
   }
 
@@ -537,7 +533,7 @@ export function renderFundAllocationCompareChart(containerId, holdings, bucketTa
   const plannedMap = {};
   const fundNameMap = {};
 
-  if (activeVersion && activeVersion.targets) {
+  if (activeVersion?.targets) {
     activeVersion.targets.forEach((t) => {
       const bucketTargetPct = parseFloat(t.target_pct || t.targetPct) || 0;
       const prefFunds = t.preferred_funds || t.preferredFunds || [];
@@ -968,7 +964,7 @@ export function initFireSensitivitySliders() {
           }),
         });
 
-        if (res && res.fan_chart_trajectories) {
+        if (res?.fan_chart_trajectories) {
           const successBadge = document.getElementById("fireSuccessRateBadge");
           const simulatedMedianEl = document.getElementById("fireSimulatedMedian");
 
@@ -1204,7 +1200,7 @@ export function renderCashflowSankey(containerId, holdingsData, bucketData) {
     });
   }
 
-  if (bucketData && bucketData.recommendations) {
+  if (bucketData?.recommendations) {
     bucketData.recommendations.forEach((r) => {
       totalTaxDrag += parseFloat(r.estimated_tax_drag || r.estimatedTaxDrag) || 0;
     });
@@ -2224,10 +2220,10 @@ function renderTargetFundProgression(plan, holdings, bucketTargetsConfig) {
   // 4. Calculate target fund allocation % from targetsConfig
   const plannedMap = {};
   let activeVersion = null;
-  if (targetsConfig && targetsConfig.versions && targetsConfig.versions.length > 0) {
+  if (targetsConfig?.versions && targetsConfig.versions.length > 0) {
     activeVersion = targetsConfig.versions[targetsConfig.versions.length - 1];
   }
-  if (activeVersion && activeVersion.targets) {
+  if (activeVersion?.targets) {
     activeVersion.targets.forEach((t) => {
       const bucketTargetPct = parseFloat(t.target_pct || t.targetPct) || 0;
       const prefFunds = t.preferred_funds || t.preferredFunds || [];
@@ -2489,7 +2485,7 @@ function renderRebalanceMicroSankey(sellSide, buySide) {
 
 function renderTacticalActionMatrix(plan) {
   const tbody = document.getElementById("matrixLotTableBody");
-  if (!tbody || !plan || !plan.sell_side) return;
+  if (!tbody || !plan?.sell_side) return;
 
   const sellSide = plan.sell_side;
   const buySide = plan.buy_side || {};
@@ -2650,7 +2646,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   if (btnLumpsum) {
     btnLumpsum.addEventListener("click", () => {
-      window.openLumpsumModal && window.openLumpsumModal();
+      window.openLumpsumModal?.();
     });
   }
 
