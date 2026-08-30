@@ -106,6 +106,13 @@ public class LedgerCacheService {
         return current;
     }
 
+    public void setCachedState(CachedLedgerState state) {
+        synchronized (updateLock) {
+            this.stateHolder.set(state);
+            this.lastNavSyncTime = System.currentTimeMillis();
+        }
+    }
+
     public void invalidateCache() {
         stateHolder.set(null);
         refreshCacheInBackground();
