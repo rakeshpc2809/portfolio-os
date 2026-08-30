@@ -85,9 +85,9 @@ public class BucketEngine {
 
     public static final List<BucketTarget> DEFAULT_TARGETS = List.of(
         new BucketTarget(Bucket.EQUITY_CORE, new BigDecimal("50.0"), new BigDecimal("5.0")),
-        new BucketTarget(Bucket.EQUITY_SATELLITE, new BigDecimal("20.0"), new BigDecimal("5.0")),
-        new BucketTarget(Bucket.GOLD_SILVER, new BigDecimal("15.0"), new BigDecimal("5.0")),
-        new BucketTarget(Bucket.LIQUID_BUFFER, new BigDecimal("15.0"), new BigDecimal("5.0"))
+        new BucketTarget(Bucket.EQUITY_SATELLITE, new BigDecimal("30.0"), new BigDecimal("5.0")),
+        new BucketTarget(Bucket.GOLD_SILVER, new BigDecimal("10.0"), new BigDecimal("5.0")),
+        new BucketTarget(Bucket.LIQUID_BUFFER, new BigDecimal("10.0"), new BigDecimal("5.0"))
     );
 
     public static Bucket classifyAssetToBucket(String assetId, String assetName) {

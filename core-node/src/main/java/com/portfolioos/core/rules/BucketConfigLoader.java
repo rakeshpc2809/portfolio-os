@@ -247,28 +247,49 @@ public class BucketConfigLoader {
             .max(Comparator.comparing(BucketTargetVersion::effectiveFrom))
             .orElse(config.versions().get(0));
 
-        List<BucketEngine.BucketTarget> result = new ArrayList<>();
+        Map<BucketEngine.Bucket, BigDecimal> targetMap = new LinkedHashMap<>();
+        Map<BucketEngine.Bucket, BigDecimal> bandMap = new LinkedHashMap<>();
+
         for (BucketTargetConfig tc : activeVer.targets()) {
             BucketEngine.Bucket b = null;
             try {
                 b = BucketEngine.Bucket.valueOf(tc.bucket().toUpperCase());
             } catch (Exception e) {
+                // fall through
+            }
+            if (b == null) {
                 switch (tc.bucket().toLowerCase()) {
-                    case "core" -> b = BucketEngine.Bucket.EQUITY_CORE;
-                    case "satellite_value" -> b = BucketEngine.Bucket.SATELLITE_VALUE;
-                    case "satellite_momentum" -> b = BucketEngine.Bucket.SATELLITE_MOMENTUM;
-                    case "satellite_smallcap" -> b = BucketEngine.Bucket.SATELLITE_SMALLCAP;
-                    case "hedge_commodity" -> b = BucketEngine.Bucket.HEDGE_COMMODITY;
-                    case "liquidity_arbitrage" -> b = BucketEngine.Bucket.LIQUIDITY_ARBITRAGE;
+                    case "core", "equity_core" -> b = BucketEngine.Bucket.EQUITY_CORE;
+                    case "satellite_value", "satellite_momentum", "satellite_smallcap", "equity_satellite", "satellite" -> b = BucketEngine.Bucket.EQUITY_SATELLITE;
+                    case "hedge_commodity", "gold_silver", "gold" -> b = BucketEngine.Bucket.GOLD_SILVER;
+                    case "liquidity_arbitrage", "liquid_buffer", "arbitrage" -> b = BucketEngine.Bucket.LIQUID_BUFFER;
                 }
+            } else if (b == BucketEngine.Bucket.SATELLITE_VALUE || b == BucketEngine.Bucket.SATELLITE_MOMENTUM || b == BucketEngine.Bucket.SATELLITE_SMALLCAP) {
+                b = BucketEngine.Bucket.EQUITY_SATELLITE;
+            } else if (b == BucketEngine.Bucket.HEDGE_COMMODITY) {
+                b = BucketEngine.Bucket.GOLD_SILVER;
+            } else if (b == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE) {
+                b = BucketEngine.Bucket.LIQUID_BUFFER;
             }
+
             if (b != null) {
-                result.add(new BucketEngine.BucketTarget(
-                    b,
-                    BigDecimal.valueOf(tc.targetPct()).setScale(2, RoundingMode.HALF_UP),
-                    BigDecimal.valueOf(tc.bandPct()).setScale(2, RoundingMode.HALF_UP)
-                ));
+                BigDecimal tVal = BigDecimal.valueOf(tc.targetPct()).setScale(2, RoundingMode.HALF_UP);
+                targetMap.merge(b, tVal, BigDecimal::add);
+                // Canonical aggregate drift tolerance is 5.00% across all top-level evaluation buckets
+                BigDecimal bVal = (tc.bandPct() > 0 && b != BucketEngine.Bucket.EQUITY_SATELLITE)
+                    ? BigDecimal.valueOf(tc.bandPct()).setScale(2, RoundingMode.HALF_UP)
+                    : new BigDecimal("5.00");
+                bandMap.put(b, bVal);
             }
+        }
+
+        List<BucketEngine.BucketTarget> result = new ArrayList<>();
+        for (Map.Entry<BucketEngine.Bucket, BigDecimal> entry : targetMap.entrySet()) {
+            result.add(new BucketEngine.BucketTarget(
+                entry.getKey(),
+                entry.getValue(),
+                bandMap.getOrDefault(entry.getKey(), new BigDecimal("5.00"))
+            ));
         }
         return result.isEmpty() ? BucketEngine.DEFAULT_TARGETS : result;
     }
@@ -466,12 +487,12 @@ public class BucketConfigLoader {
     private static BucketRulesConfig createDefaultConfig() {
         List<BucketTargetConfig> defaults = List.of(
             new BucketTargetConfig("EQUITY_CORE", 50.0, 5.0, 5.0, "CORE", getDefaultPreferredFundsForBucket("EQUITY_CORE")),
-            new BucketTargetConfig("EQUITY_SATELLITE", 20.0, 5.0, 5.0, "SATELLITE", getDefaultPreferredFundsForBucket("EQUITY_SATELLITE")),
-            new BucketTargetConfig("GOLD_SILVER", 15.0, 5.0, 12.0, "ACCUMULATOR", getDefaultPreferredFundsForBucket("GOLD_SILVER")),
-            new BucketTargetConfig("LIQUID_BUFFER", 15.0, 5.0, 5.0, "ARBITRAGE", getDefaultPreferredFundsForBucket("LIQUID_BUFFER"))
+            new BucketTargetConfig("EQUITY_SATELLITE", 30.0, 5.0, 5.0, "SATELLITE", getDefaultPreferredFundsForBucket("EQUITY_SATELLITE")),
+            new BucketTargetConfig("GOLD_SILVER", 10.0, 5.0, 12.0, "ACCUMULATOR", getDefaultPreferredFundsForBucket("GOLD_SILVER")),
+            new BucketTargetConfig("LIQUID_BUFFER", 10.0, 5.0, 5.0, "ARBITRAGE", getDefaultPreferredFundsForBucket("LIQUID_BUFFER"))
         );
         return new BucketRulesConfig("FALLBACK_DEFAULT", "in-memory-defaults", List.of(
-            new BucketTargetVersion("v1.0", "2024-01-01", defaults)
+            new BucketTargetVersion("v2.3", "2026-08-26", defaults)
         ));
     }
 
