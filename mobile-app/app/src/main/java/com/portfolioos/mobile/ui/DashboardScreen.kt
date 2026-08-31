@@ -101,9 +101,8 @@ fun DashboardScreen(
     val initialPage = uiState.activePage
     val benchmarkData = uiState.benchmarkData
     val fireSummaryData = uiState.fireSummaryData
-    val overlapData = uiState.overlapData
 
-    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 4 })
+    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { 3 })
     val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
 
@@ -337,7 +336,7 @@ fun DashboardScreen(
                             }
                             HorizontalPager(
                                 state = pagerState,
-                                beyondBoundsPageCount = 3,
+                                beyondBoundsPageCount = 2,
                                 modifier = Modifier.fillMaxSize()
                             ) { page ->
                                 when (page) {
@@ -352,9 +351,8 @@ fun DashboardScreen(
                                             showSimulatorBottomSheet = true
                                         }
                                     )
-                                    1 -> OverlapConcentrationPlaceholderView(holdings = holdings, overlapReport = overlapData)
-                                    2 -> GroupedTaxLotsView(taxLots, holdings)
-                                    3 -> RebalanceWaterfallView(rebalancePlan = snapshot.rebalancePlan, fireSummary = fireSummaryData)
+                                    1 -> GroupedTaxLotsView(taxLots, holdings)
+                                    2 -> RebalanceWaterfallView(rebalancePlan = snapshot.rebalancePlan, fireSummary = fireSummaryData)
                                 }
                             }
                         }
@@ -432,9 +430,9 @@ fun DashboardScreen(
                         )
                         ExpressiveNavPill(
                             selected = pagerState.currentPage == 1,
-                            label = "Overlap",
-                            icon = Icons.AutoMirrored.Filled.List,
-                            activeColor = M3VibrantViolet,
+                            label = "Tax Lots",
+                            icon = Icons.Default.CheckCircle,
+                            activeColor = M3NeonCyan,
                             onClick = {
                                 coroutineScope.launch {
                                     pagerState.animateScrollToPage(1)
@@ -443,23 +441,12 @@ fun DashboardScreen(
                         )
                         ExpressiveNavPill(
                             selected = pagerState.currentPage == 2,
-                            label = "Tax Audit",
-                            icon = Icons.Default.CheckCircle,
-                            activeColor = M3NeonCyan,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(2)
-                                }
-                            }
-                        )
-                        ExpressiveNavPill(
-                            selected = pagerState.currentPage == 3,
-                            label = "FIRE",
+                            label = "Rebalance & FIRE",
                             icon = Icons.Default.Star,
                             activeColor = M3AmberWarning,
                             onClick = {
                                 coroutineScope.launch {
-                                    pagerState.animateScrollToPage(3)
+                                    pagerState.animateScrollToPage(2)
                                 }
                             }
                         )
@@ -1041,235 +1028,6 @@ fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> U
     }
 }
 
-@Composable
-fun OverlapConcentrationPlaceholderView(
-    holdings: List<FlatHoldingDto>,
-    overlapReport: OverlapReportDto? = null
-) {
-    Log.d("SyncAnalytics", "OverlapConcentrationPlaceholderView Composition: overlapReport isNull=${overlapReport == null}, stockConcentrations.size=${overlapReport?.stockConcentrations?.size ?: 0}")
-    val bucketCounts = remember(holdings) {
-        holdings.groupBy { it.assetBucket }
-    }
-    
-    // Top Stock Concentration Look-Through derived from overlapReport API or holdings list
-    val topStocks = remember(holdings, overlapReport) {
-        if (overlapReport != null && overlapReport.stockConcentrations.isNotEmpty()) {
-            overlapReport.stockConcentrations.map { sc ->
-                val sym = sc.stockSymbol
-                val name = sc.companyName.ifEmpty {
-                    when (sym) {
-                        "HDFCBANK" -> "HDFC Bank Ltd"
-                        "ICICIBANK" -> "ICICI Bank Ltd"
-                        "RELIANCE" -> "Reliance Industries Ltd"
-                        "COALINDIA" -> "Coal India Ltd"
-                        "BAJFINANCE" -> "Bajaj Finance Ltd"
-                        "SBIN" -> "State Bank of India"
-                        "AMAZON" -> "Amazon.com Inc"
-                        "NTPC" -> "NTPC Ltd"
-                        "ALPHABET" -> "Alphabet Inc"
-                        "POWERGRID" -> "Power Grid Corp"
-                        else -> sym
-                    }
-                }
-                sym to Pair(name, sc.portfolioWeightPct)
-            }
-        } else {
-            val totalVal = holdings.sumOf { it.currentValue }.coerceAtLeast(1.0)
-            holdings.map { h ->
-                val sym = if (h.isin.length >= 8) h.isin.takeLast(8) else h.isin
-                val name = h.fundName.ifEmpty { h.isin }
-                val pct = (h.currentValue / totalVal) * 100.0
-                sym to Pair(name, pct)
-            }.sortedByDescending { it.second.second }.take(5)
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(bottom = 110.dp)
-    ) {
-        item {
-            Spacer(modifier = Modifier.height(4.dp))
-            Card(
-                shape = ShapeTokens.GlassCardShape,
-                colors = CardDefaults.cardColors(containerColor = ColorTokens.SurfaceCard),
-                border = BorderStroke(1.dp, ColorTokens.CardBorder),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(Color(0xFF1E0B36), Color(0xFF0F172A), Color(0xFF030712))
-                            )
-                        )
-                        .padding(16.dp)
-                ) {
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                color = ColorTokens.PurpleAccent.copy(alpha = 0.2f),
-                                shape = ShapeTokens.PillShape
-                            ) {
-                                Text(
-                                    text = "LIVE QUANT AUDIT",
-                                    style = TypographyTokens.BadgeTag.copy(color = ColorTokens.PurpleAccent),
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                            Text(
-                                text = "NSE Look-Through",
-                                style = TypographyTokens.BadgeTag.copy(color = ColorTokens.CyanBright)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "OVERLAP & CONCENTRATION AUDIT",
-                            style = TypographyTokens.MetricLabel.copy(
-                                color = ColorTokens.TextMain,
-                                letterSpacing = 1.5.sp
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Fund Overlap Matrix & Stock Look-Through",
-                            style = TypographyTokens.SectionHeader.copy(fontSize = 16.sp)
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            Text(
-                text = "TOP PORTFOLIO STOCK CONCENTRATIONS",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                color = M3TextMuted,
-                letterSpacing = 1.5.sp
-            )
-        }
-
-        items(topStocks, key = { it.first }) { (symbol, info) ->
-            val (companyName, weightPct) = info
-            Card(
-                colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, M3SurfaceVariant),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = companyName,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = symbol,
-                                color = M3TextMuted,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        Text(
-                            text = "%.1f%%".format(weightPct),
-                            color = M3ElectricLime,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = { (weightPct / 10.0).toFloat().coerceIn(0f, 1f) },
-                        color = M3ElectricLime,
-                        trackColor = M3SurfaceVariant,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                    )
-                }
-            }
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "PORTFOLIO BUCKET CONCENTRATION SUMMARY",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                color = M3TextMuted,
-                letterSpacing = 1.5.sp
-            )
-        }
-
-        if (bucketCounts.isEmpty()) {
-            item {
-                PortfolioStateCard(
-                    icon = Icons.Default.Star,
-                    iconTint = M3VibrantViolet,
-                    title = "No Bucket Concentration Data",
-                    subtitle = "Asset Allocation Pending",
-                    description = "Asset class and category concentration summaries will appear here once active holdings are recorded in your portfolio."
-                )
-            }
-        } else {
-            items(bucketCounts.entries.toList(), key = { entry -> entry.key }) { (bucket, list) ->
-                val bucketVal = list.sumOf { it.currentValue }
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = bucket.ifEmpty { "UNCLASSIFIED" },
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "${list.size} Schemes",
-                                color = M3TextMuted,
-                                fontSize = 11.sp
-                            )
-                        }
-                        Text(
-                            text = formatInr(bucketVal),
-                            color = M3NeonCyan,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 fun RadarSignalsView(radarSignals: List<RadarSignalDto>) {

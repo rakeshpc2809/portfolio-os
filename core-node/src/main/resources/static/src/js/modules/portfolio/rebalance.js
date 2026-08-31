@@ -387,11 +387,7 @@ export function renderUnifiedRebalancePlanUI(plan) {
   }
 
   // 2. Render Header & Drawdown Gauge
-  const titleEl = document.getElementById("planHeadlineTitle");
   const metaEl = document.getElementById("planMetaTimestamp");
-  if (titleEl && narrative) {
-    titleEl.textContent = narrative.headline || "Unified Rebalance Plan";
-  }
   const genAt = plan.generated_at || plan.generatedAt;
   if (metaEl && genAt) {
     metaEl.textContent = `Generated: ${new Date(genAt).toLocaleString()}`;
@@ -460,18 +456,6 @@ export function renderUnifiedRebalancePlanUI(plan) {
 
   // 7. Render Interactive Tactical Action Matrix (Granular Lot Override)
   renderTacticalActionMatrix(plan);
-
-  // 6. Render Narrative Paragraphs
-  const pContainer = document.getElementById("planReasoningParagraphs");
-  if (pContainer && narrative.paragraphs) {
-    pContainer.innerHTML = narrative.paragraphs
-      .map(
-        (p) => `
-      <p style="margin: 0 0 6px 0; font-size: 0.8rem; line-height: 1.4;">• ${p}</p>
-    `,
-      )
-      .join("");
-  }
 
   // 7. Render Buy-Side Allocation Grid
   renderBuySideAllocationGrid(buySide);

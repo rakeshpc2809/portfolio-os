@@ -37,29 +37,12 @@ async function initDashboard() {
     state.holdings = holdings;
     renderHoldingsTable(holdings);
     renderSchemeGroupedTaxLotsUI(holdings, "groupedTaxLotsContainer");
-    renderSchemeGroupedTaxLotsUI(holdings, "groupedTaxLotsContainerTaxTab");
 
     const bucketTargetsConfig = await fetchJson(`/config/bucket-targets`).catch(() => null);
     state.bucketTargetsConfig = bucketTargetsConfig;
     if (bucketTargetsConfig && holdings) {
       renderFundAllocationCompareChart("fundAllocationCompareChart", holdings, bucketTargetsConfig);
     }
-
-    const navTrendData = await fetchJson(`/portfolio/net-worth-trend`).catch(() => null);
-    if (navTrendData?.dates && navTrendData?.values) {
-      if (state.charts.trendChart) state.charts.trendChart.dispose();
-      state.charts.trendChart = renderNetWorthTrendChart(
-        "netWorthTrendChart",
-        navTrendData.dates,
-        navTrendData.values,
-      );
-    }
-
-    const allocData = await fetchJson(`/portfolio/allocation`).catch(() => null);
-    if (allocData) renderAllocationChart(allocData);
-
-    const catData = await fetchJson(`/portfolio/category-allocation`).catch(() => null);
-    if (catData) renderCategoryChart(catData);
 
     const bucketAllocData = await fetchJson(`/portfolio/bucket-allocation`).catch(() => null);
     if (bucketAllocData) renderBucketAllocationChart("bucketAllocationChart", bucketAllocData);
@@ -75,15 +58,6 @@ async function initDashboard() {
     const bucketData = await fetchJson(`/rebalance/bucket?fy=${state.currentFy}`).catch(() => null);
     if (bucketData) renderBucketRebalance(bucketData);
 
-    // Render Cashflow Sankey Flow Diagram
-    if (state.charts.sankeyChart) state.charts.sankeyChart.dispose();
-    state.charts.sankeyChart = renderCashflowSankey("sankeyChart", holdings, bucketData);
-
-    const eventsData = await fetchJson(`/tax/realized-log?fy=${state.currentFy}`).catch(() => null);
-    if (eventsData) renderRealizedLogTable(eventsData);
-
-    fetchDecisionRadar();
-    fetchTaxMetrics();
     fetchFireSummary();
   } catch (err) {
     console.error("Dashboard initialization failed:", err);
@@ -354,11 +328,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (tabName === "fire") {
         fetchFireSummary();
-      }
-      if (tabName === "overlap") {
-        window.loadBenchmarkAnalytics?.();
-        window.loadUpSetAnalytics?.();
-        window.render2FundVennDiagram?.();
       }
     });
   });

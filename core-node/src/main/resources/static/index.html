@@ -83,7 +83,6 @@
         <div class="metric-label">NET WORTH</div>
         <div class="metric-value font-mono skeleton net-worth-val">₹ --,--,---</div>
         <div class="metric-delta neutral net-worth-gain">Unrealized gain: --</div>
-        <div class="metric-subtext net-worth-sub">Active Holdings: -- Schemes</div>
       </div>
 
       <div class="glass-card metric-box">
@@ -115,32 +114,12 @@
     <nav class="tab-nav">
       <button class="tab-btn active" data-tab="overview">📊 Executive Overview</button>
       <button class="tab-btn" data-tab="tax-lots">📋 Scheme-Grouped Tax Lots</button>
-      <button class="tab-btn" data-tab="overlap">🔍 Overlap & Concentration</button>
-      <button class="tab-btn" data-tab="tax">⚡ Tax & Compliance Audit</button>
-      <button class="tab-btn" data-tab="fire">🎯 FIRE & Waterfall Rebalancing</button>
+      <button class="tab-btn" data-tab="fire">🎯 Unified Rebalance & FIRE</button>
     </nav>
 
     <!-- TAB 1: Executive Overview -->
     <main class="tab-content active" id="tab-overview">
       <div class="dashboard-grid">
-        <!-- Fund Allocation Chart -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Fund Asset Allocation</h2>
-            <span class="live-tag">BY SCHEME</span>
-          </div>
-          <div class="canvas-wrapper-small" id="allocationChart" style="height: 280px; width: 100%;"></div>
-        </div>
-
-        <!-- Risk Category Allocation Chart -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Risk Exposure</h2>
-            <span class="live-tag">BY CATEGORY</span>
-          </div>
-          <div class="canvas-wrapper-small" id="categoryChart" style="height: 280px; width: 100%;"></div>
-        </div>
-
         <!-- Bucket Allocation: Planned vs. Actual Chart -->
         <div class="glass-card col-12">
           <div class="card-header">
@@ -176,53 +155,6 @@
           </div>
           <div class="canvas-wrapper-large" id="netWorthChartContainer" style="height: 320px; width: 100%;"></div>
         </div>
-
-        <!-- Benchmark Risk Radar -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <div>
-              <h2>Benchmark Risk Radar & QuantStats Outperformance</h2>
-              <span class="sub font-mono" id="benchmarkProvenanceSub" style="color: #cbd5e1; font-size: 0.8rem;">Provisional Benchmark Metrics (Short Sample: 363 Days &lt; 3 Years)</span>
-            </div>
-            <span class="live-tag warning-tag" id="benchmarkSampleBadge">PROVISIONAL (363 DAYS)</span>
-          </div>
-          <div class="fire-metrics-grid" id="benchmarkMetricsGrid" style="grid-template-columns: repeat(5, 1fr);">
-            <div class="fire-stat-box">
-              <span class="lbl">Annualized Alpha</span>
-              <strong class="val font-mono highlight-cyan" id="benchmarkAlphaVal">+2.37%</strong>
-              <span class="sub font-mono">Excess Return</span>
-            </div>
-            <div class="fire-stat-box">
-              <span class="lbl">Portfolio Beta</span>
-              <strong class="val font-mono" id="benchmarkBetaVal">0.797</strong>
-              <span class="sub font-mono">Vs Nifty 50 TRI</span>
-            </div>
-            <div class="fire-stat-box">
-              <span class="lbl">Sharpe Ratio</span>
-              <strong class="val font-mono" id="benchmarkSharpeVal">-0.07</strong>
-              <span class="sub font-mono" id="benchmarkSharpeSub">r_f = 6.5% T-Bill</span>
-            </div>
-            <div class="fire-stat-box">
-              <span class="lbl">Tracking Error</span>
-              <strong class="val font-mono" id="benchmarkTrackingVal">4.48%</strong>
-              <span class="sub font-mono">Annualized Vol</span>
-            </div>
-            <div class="fire-stat-box">
-              <span class="lbl">Outperformance</span>
-              <strong class="val font-mono positive" id="benchmarkOutperformVal">+3.03%</strong>
-              <span class="sub font-mono">Net CAGR Delta</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Cashflow Sankey Flow Chart -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Holistic Cashflow & Tax Drag Flow</h2>
-            <span class="live-tag">SANKEY VISUALIZATION</span>
-          </div>
-          <div class="canvas-wrapper-large" id="sankeyChart" style="height: 340px; width: 100%;"></div>
-        </div>
       </div>
     </main>
 
@@ -244,184 +176,7 @@
       </div>
     </main>
 
-    <!-- TAB 2: Overlap & Concentration -->
-    <main class="tab-content" id="tab-overlap">
-      <div class="dashboard-grid">
-        <!-- Single-Stock Concentration Table -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <div>
-              <h2>Top Portfolio Single-Stock Exposure</h2>
-              <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">Aggregated across all active schemes</span>
-            </div>
-            <span class="live-tag">CONCENTRATION METRIC</span>
-          </div>
-          <div class="table-container" style="max-height: 200px; overflow-y: auto;">
-            <table class="data-table" id="topStockConcentrationTable" style="font-size: 0.82rem;">
-              <thead>
-                <tr>
-                  <th>Stock / Asset</th>
-                  <th>Overlapping Funds</th>
-                  <th>Portfolio Weight %</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="3" class="loading-td">Loading stock exposures...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Multi-Set Overlap UpSet Plot Matrix -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <div>
-              <h2>Multi-Set Overlap UpSet Plot Matrix (N-Way Intersections)</h2>
-              <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">All Active Portfolio Schemes Intersections (DuckDB SQL Engine)</span>
-            </div>
-            <span class="live-tag positive-tag">EXACT DUCKDB JOIN</span>
-          </div>
-          <div class="table-container" style="max-height: 240px; overflow-y: auto;">
-            <table class="data-table" id="upsetMatrixTable" style="font-size: 0.82rem;">
-              <thead>
-                <tr>
-                  <th>Shared Stocks Count</th>
-                  <th>Overlapping Schemes Set</th>
-                  <th>Top Shared Holdings</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="3" class="loading-td">Loading UpSet intersection matrix...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Interactive 2-3 Fund Venn Visualizer -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <div>
-              <h2>Interactive 2-3 Fund Venn Visualizer & Selector</h2>
-              <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">Dynamic Overlap Computation via DuckDB Holdings Engine</span>
-            </div>
-            <span class="live-tag">LIVE SQL QUERY</span>
-          </div>
-          <div style="display: grid; grid-template-columns: 280px 1fr; gap: 16px; margin-top: 10px;">
-            <div style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 14px; border: 1px solid rgba(255,255,255,0.06);">
-              <label style="font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px;">Fund A (Primary):</label>
-              <select id="vennFundA" style="width: 100%; background: #1e293b; color: #f8fafc; border: 1px solid #334155; padding: 6px; border-radius: 4px; font-size: 0.8rem; margin-bottom: 12px;">
-                <option value="INF879O01027" selected>PPFAS Flexi Cap</option>
-              </select>
-              <label style="font-size: 0.75rem; color: #94a3b8; display: block; margin-bottom: 4px;">Fund B (Compare):</label>
-              <select id="vennFundB" style="width: 100%; background: #1e293b; color: #f8fafc; border: 1px solid #334155; padding: 6px; border-radius: 4px; font-size: 0.8rem; margin-bottom: 12px;">
-                <option value="INF109KC13X2" selected>Value 30</option>
-              </select>
-              <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px; margin-top: 6px;">
-                <div style="font-size: 0.75rem; color: #64748b;">Computed Overlap %:</div>
-                <div id="vennLivePct" style="font-size: 1.3rem; font-weight: 800; color: #06b6d4;" class="font-mono">--%</div>
-              </div>
-            </div>
-            <div id="vennContainer" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 14px; border: 1px solid rgba(255,255,255,0.06); text-align: center;">
-              <div class="loading-td" style="text-align: center; color: #64748b;">Loading Venn Diagram visualizer...</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- TAB 3: Tax & Compliance Audit -->
-    <main class="tab-content" id="tab-tax">
-      <div class="dashboard-grid">
-        <!-- Actionable Advisory Recommendations Cards (Side-by-Side Left) -->
-        <div class="glass-card col-6" id="actionCardsContainer">
-          <div class="card-header">
-            <h2>Actionable Advisory Recommendations</h2>
-            <span class="live-tag positive-tag">RULE ENGINE ADVISORY</span>
-          </div>
-          <div id="actionCardsList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px;">
-            <div class="loading-td" style="color: #64748b; padding: 16px;">Evaluating rule engine triggers...</div>
-          </div>
-        </div>
-
-        <!-- AI Decision Radar (Side-by-Side Right) -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Tax & Strategy Decision Radar</h2>
-            <span class="live-tag">AI ADVISOR</span>
-          </div>
-          <div class="radar-list">
-            <div class="radar-empty-state">Scanning open lots for tax-loss harvesting and LTCG maturation opportunities...</div>
-          </div>
-        </div>
-
-        <!-- Scheme-Grouped Tax Lots Breakdown Card -->
-        <div class="glass-card col-12">
-          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <h2 style="margin: 0;">Open Tax Lots Grouped by Mutual Fund Scheme</h2>
-              <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">FIFO Tax Lot Classification · LTCG Tax-Free vs STCG Locked</span>
-            </div>
-            <span class="live-tag">FIFO LEDGER</span>
-          </div>
-          <div id="groupedTaxLotsContainerTaxTab" style="margin-top: 16px; display: flex; flex-direction: column; gap: 14px;">
-            <div class="loading-td" style="color: #64748b; padding: 16px;">Loading scheme-grouped open tax lots...</div>
-          </div>
-        </div>
-
-        <!-- Schedule FA Pre-Flight Checklist -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Schedule FA Compliance Checklist</h2>
-            <span class="live-tag">FOREIGN ASSETS</span>
-          </div>
-          <div class="compliance-list">
-            <div class="compliance-item valid">
-              <span class="check-icon">✓</span>
-              <div class="comp-text">
-                <div class="comp-title">Foreign Entity Identification & Address</div>
-                <div class="comp-desc">International ETF ISINs mapped to US jurisdiction.</div>
-              </div>
-            </div>
-            <div class="compliance-item valid">
-              <span class="check-icon">✓</span>
-              <div class="comp-text">
-                <div class="comp-title">Peak Intra-Year Valuation INR</div>
-                <div class="comp-desc">SBI Telegraphic Transfer conversion applied to peak balances.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Realized Disposals Audit Log Table -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Realized Disposals Audit Log</h2>
-            <span class="live-tag">SELECTED FY</span>
-          </div>
-          <div class="table-container">
-            <table class="data-table" id="realizedLogTable">
-              <thead>
-                <tr>
-                  <th>Disposal Date</th>
-                  <th>Acquisition Date</th>
-                  <th>Scheme Name</th>
-                  <th>Units</th>
-                  <th>Proceeds</th>
-                  <th>Cost Basis</th>
-                  <th>Realized Gain</th>
-                  <th>Tax Term</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="8" class="loading-td">Loading realized log...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- TAB 4: FIRE & Waterfall Rebalancing -->
+    <!-- TAB 3: Unified Rebalance & FIRE -->
     <main class="tab-content" id="tab-fire">
       <div class="dashboard-grid">
         <!-- Persistent Unified Rebalance Trigger Status Strip -->
@@ -450,10 +205,7 @@
         <!-- Unified Rebalance Plan & Waterfall -->
         <div class="glass-card col-12" id="rebalancePlanCard">
           <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <h2 id="planHeadlineTitle">Unified Rebalance Plan</h2>
-              <span id="planSubtitleTag" class="live-tag positive-tag">TEMPLATED WATERFALL REASONING</span>
-            </div>
+            <h2>Unified Rebalance & Capital Router</h2>
             <div style="font-size: 0.75rem; color: #94a3b8;" id="planMetaTimestamp">Generated At: 2026-08-08</div>
           </div>
 
@@ -477,10 +229,6 @@
           <div style="margin-top: 16px; background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(56, 189, 248, 0.2);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
               <h3 style="color: #38bdf8; font-size: 0.9rem; margin: 0;">1. Capital Routing & Rebalance Trade Flow</h3>
-              <div style="display: flex; gap: 8px;">
-                <button type="button" id="btnViewBoxConnector" class="secondary-btn" style="padding: 4px 10px; font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8;">📦 Box & Connector</button>
-                <button type="button" id="btnViewSankey" class="secondary-btn" style="padding: 4px 10px; font-size: 0.75rem; background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1);">📊 Sankey Diagram</button>
-              </div>
             </div>
 
             <!-- YTD-Aware Tax Summary Line -->
@@ -516,11 +264,6 @@
               <svg id="rebalanceSvgConnectors" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;">
                 <!-- Drawn dynamically -->
               </svg>
-            </div>
-
-            <!-- Secondary Sankey Container (Hidden by default) -->
-            <div id="rebalanceSankeyChartContainer" style="display: none; height: 240px; width: 100%; margin-bottom: 16px;">
-              <div id="rebalanceSankeyChart" style="height: 240px; width: 100%;"></div>
             </div>
 
             <!-- Pre/Post Bucket Progression Delta Badges -->
@@ -576,73 +319,8 @@
               </table>
             </div>
           </div>
-        <!-- AI Decision Radar -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Tax & Strategy Decision Radar</h2>
-            <span class="live-tag">AI ADVISOR</span>
-          </div>
-          <div class="radar-list">
-            <div class="radar-empty-state">Scanning open lots for tax-loss harvesting and LTCG maturation opportunities...</div>
-          </div>
         </div>
 
-        <!-- Schedule FA Pre-Flight Checklist -->
-        <div class="glass-card col-6">
-          <div class="card-header">
-            <h2>Schedule FA Compliance</h2>
-            <span class="live-tag">FOREIGN ASSETS</span>
-          </div>
-          <div class="compliance-list">
-            <div class="compliance-item valid">
-              <span class="check-icon">✓</span>
-              <div class="comp-text">
-                <div class="comp-title">Foreign Entity Identification & Address</div>
-                <div class="comp-desc">International ETF ISINs mapped to US jurisdiction.</div>
-              </div>
-            </div>
-            <div class="compliance-item valid">
-              <span class="check-icon">✓</span>
-              <div class="comp-text">
-                <div class="comp-title">Peak Intra-Year Valuation INR</div>
-                <div class="comp-desc">SBI Telegraphic Transfer conversion applied to peak balances.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Realized Disposals Audit Log -->
-        <div class="glass-card col-12">
-          <div class="card-header">
-            <h2>Realized Disposals Audit Log</h2>
-            <span class="live-tag">SELECTED FY</span>
-          </div>
-          <div class="table-container">
-            <table class="data-table" id="realizedLogTable">
-              <thead>
-                <tr>
-                  <th>Disposal Date</th>
-                  <th>Acquisition Date</th>
-                  <th>Scheme Name</th>
-                  <th>Units</th>
-                  <th>Proceeds</th>
-                  <th>Cost Basis</th>
-                  <th>Realized Gain</th>
-                  <th>Tax Term</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="8" class="loading-td">Loading realized log...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- TAB 3: FIRE & Rebalancing -->
-    <main class="tab-content" id="tab-fire">
-      <div class="dashboard-grid">
         <!-- FIRE Tracker Module -->
         <div class="glass-card col-12 fire-card">
           <div class="card-header">

@@ -355,15 +355,19 @@ if (typeof window !== "undefined") {
 
 if (typeof document !== "undefined") {
   document.addEventListener("DOMContentLoaded", async () => {
-    await populateFundDropdowns();
     const selA = document.getElementById("vennFundA");
     const selB = document.getElementById("vennFundB");
     if (selA && selB) {
+      await populateFundDropdowns();
       selA.addEventListener("change", render2FundVennDiagram);
       selB.addEventListener("change", render2FundVennDiagram);
+      render2FundVennDiagram();
     }
-    loadBenchmarkAnalytics();
-    loadUpSetAnalytics();
-    render2FundVennDiagram();
+    if (document.getElementById("benchmarkMetricsGrid") || document.getElementById("benchmarkAlphaVal")) {
+      loadBenchmarkAnalytics();
+    }
+    if (document.getElementById("upsetMatrixTable")) {
+      loadUpSetAnalytics();
+    }
   });
 }
