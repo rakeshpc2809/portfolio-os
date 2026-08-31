@@ -14,7 +14,6 @@ object AmfiDirectFetcher {
         .build()
 
     suspend fun fetchLatestNavMap(): Map<String, Double> = withContext(Dispatchers.IO) {
-        val navMap = mutableMapOf<String, Double>()
         try {
             val request = Request.Builder()
                 .url("https://www.amfiindia.com/spages/NAVAll.txt")
@@ -24,27 +23,33 @@ object AmfiDirectFetcher {
                 if (!response.isSuccessful) return@withContext emptyMap()
 
                 val body = response.body?.string() ?: return@withContext emptyMap()
-                val lines = body.split("\n")
-
-                for (line in lines) {
-                    val parts = line.split(";")
-                    if (parts.size >= 6) {
-                        val isin = parts[1].trim()
-                        val navStr = parts[4].trim()
-                        if (isin.isNotEmpty()) {
-                            try {
-                                val nav = navStr.toDouble()
-                                navMap[isin] = nav
-                            } catch (e: Exception) {
-                                // skip header/corrupted
-                            }
-                        }
-                    }
-                }
+                return@withContext parseAmfiNavBody(body)
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return@withContext navMap
+        return@withContext emptyMap()
+    }
+
+    fun parseAmfiNavBody(body: String): Map<String, Double> {
+        val navMap = mutableMapOf<String, Double>()
+        val lines = body.split("\n")
+
+        for (line in lines) {
+            val parts = line.split(";")
+            if (parts.size >= 6) {
+                val isin = parts[1].trim()
+                val navStr = parts[4].trim()
+                if (isin.isNotEmpty()) {
+                    try {
+                        val nav = navStr.toDouble()
+                        navMap[isin] = nav
+                    } catch (e: Exception) {
+                        // skip header/corrupted
+                    }
+                }
+            }
+        }
+        return navMap
     }
 }

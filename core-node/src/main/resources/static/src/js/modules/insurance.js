@@ -1,5 +1,5 @@
-import { API_BASE, fetchJson, getAuthHeaders } from "../api.js";
-import { showToast } from "../utils.js";
+import { API_BASE, fetchJson, getAuthHeaders } from "../api.js?t=1788114000";
+import { showToast } from "../utils.js?t=1788114000";
 
 export async function fetchInsuranceChecklist() {
   try {

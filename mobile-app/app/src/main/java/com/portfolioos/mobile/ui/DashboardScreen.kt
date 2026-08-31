@@ -18,12 +18,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -433,7 +433,7 @@ fun DashboardScreen(
                         ExpressiveNavPill(
                             selected = pagerState.currentPage == 1,
                             label = "Overlap",
-                            icon = Icons.Default.List,
+                            icon = Icons.AutoMirrored.Filled.List,
                             activeColor = M3VibrantViolet,
                             onClick = {
                                 coroutineScope.launch {
@@ -569,10 +569,20 @@ fun DashboardScreen(
                                     ) {
                                         OutlinedButton(
                                             onClick = {
+                                                onSimulateFullyOffline()
+                                                showUrlDialog = false
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(100.dp)
+                                        ) {
+                                            Text("Fully Offline", color = Color(0xFFFB7185), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
                                                 onSimulateAgedOffline()
                                                 showUrlDialog = false
                                             },
-                                            modifier = Modifier.fillMaxWidth(),
+                                            modifier = Modifier.weight(1f),
                                             shape = RoundedCornerShape(100.dp)
                                         ) {
                                             Text("Aged Offline (11m)", color = Color(0xFFF59E0B), fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -757,7 +767,7 @@ fun HoldingsView(
                             )
                         )
                         Spacer(modifier = Modifier.height(14.dp))
-                        Divider(color = ColorTokens.CardBorder)
+                        HorizontalDivider(color = ColorTokens.CardBorder)
                         Spacer(modifier = Modifier.height(14.dp))
 
                         Row(
@@ -924,7 +934,7 @@ fun HoldingsView(
         if (holdings.isEmpty()) {
             item {
                 PortfolioStateCard(
-                    icon = Icons.Default.List,
+                    icon = Icons.AutoMirrored.Filled.List,
                     iconTint = M3ElectricLime,
                     title = "No Open Holdings",
                     subtitle = "Ledger Empty",
@@ -935,7 +945,7 @@ fun HoldingsView(
             }
         } else {
             itemsIndexed(holdings, key = { index, h -> "${h.isin}_${h.fundName}_${h.currentValue}_$index" }) { _, holding ->
-                M3HoldingCard(holding)
+                M3HoldingCard(holding, onSimulateSale)
             }
         }
     }
@@ -1186,7 +1196,7 @@ fun OverlapConcentrationPlaceholderView(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     LinearProgressIndicator(
-                        progress = (weightPct / 10.0).toFloat().coerceIn(0f, 1f),
+                        progress = { (weightPct / 10.0).toFloat().coerceIn(0f, 1f) },
                         color = M3ElectricLime,
                         trackColor = M3SurfaceVariant,
                         modifier = Modifier
@@ -1432,7 +1442,7 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "${lots.size} Open Lots · Total %.2f Units".format(totalUnits),
+                        text = (if (isin.isNotBlank()) "$isin · " else "") + "${lots.size} Open Lots · Total %.2f Units".format(totalUnits),
                         color = M3TextMuted,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace
@@ -1481,7 +1491,7 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
             AnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(modifier = Modifier.height(12.dp))
-                    Divider(color = M3SurfaceVariant)
+                    HorizontalDivider(color = M3SurfaceVariant)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     lots.forEach { lot ->
@@ -1769,7 +1779,7 @@ fun RebalanceWaterfallView(
                             Text("No fund liquidations required", color = M3TextMuted, fontSize = 11.sp)
                         } else {
                             fundSellList.forEachIndexed { index, f ->
-                                if (index > 0) Divider(color = Color(0xFFF43F5E).copy(alpha = 0.15f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
+                                if (index > 0) HorizontalDivider(color = Color(0xFFF43F5E).copy(alpha = 0.15f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1897,7 +1907,7 @@ fun RebalanceWaterfallView(
                             val funds = bkt.fundBreakdown
                             if (bktAlloc > 0 || funds.isNotEmpty()) {
                                 if (funds.isEmpty()) {
-                                    if (!isFirst) Divider(color = Color(0xFF10B981).copy(alpha = 0.15f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
+                                    if (!isFirst) HorizontalDivider(color = Color(0xFF10B981).copy(alpha = 0.15f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
                                     isFirst = false
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -1909,7 +1919,7 @@ fun RebalanceWaterfallView(
                                     }
                                 } else {
                                     funds.forEach { fund ->
-                                        if (!isFirst) Divider(color = Color(0xFF10B981).copy(alpha = 0.15f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
+                                        if (!isFirst) HorizontalDivider(color = Color(0xFF10B981).copy(alpha = 0.15f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
                                         isFirst = false
                                         val fName = shortenFundName(fund.fundName.ifEmpty { fund.fundId })
                                         val fAmt = if (fund.amount > 0) fund.amount else (bktAlloc / funds.size)
@@ -1952,7 +1962,7 @@ fun RebalanceWaterfallView(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         buyBuckets.forEachIndexed { idx, bkt ->
-                            if (idx > 0) Divider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
+                            if (idx > 0) HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 6.dp))
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),

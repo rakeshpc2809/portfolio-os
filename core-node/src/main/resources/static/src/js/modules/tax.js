@@ -1,6 +1,6 @@
-import { API_BASE, fetchJson } from "../api.js";
-import { state } from "../state.js";
-import { formatINR } from "../utils.js";
+import { API_BASE, fetchJson } from "../api.js?t=1788114000";
+import { state } from "../state.js?t=1788114000";
+import { formatINR } from "../utils.js?t=1788114000";
 
 export async function fetchTaxMetrics() {
   try {

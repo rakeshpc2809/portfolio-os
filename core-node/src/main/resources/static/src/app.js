@@ -1,6 +1,6 @@
-import { API_BASE, fetchJson } from "./js/api.js";
-import { state } from "./js/state.js";
-import { formatINR, showToast } from "./js/utils.js";
+import { API_BASE, fetchJson } from "./js/api.js?t=1788114000";
+import { state } from "./js/state.js?t=1788114000";
+import { formatINR, showToast } from "./js/utils.js?t=1788114000";
 import {
   updatePortfolioSummary,
   renderHoldingsTable,
@@ -14,7 +14,7 @@ import {
   renderBucketRebalance,
   renderUnifiedRebalancePlanUI,
   fetchFireSummary,
-} from "./js/modules/portfolio.js?v=4.1.0";
+} from "./js/modules/portfolio.js?t=1788114000";
 import {
   updateExemptionMeter,
   updateReportMetrics,
@@ -22,7 +22,7 @@ import {
   fetchDecisionRadar,
   fetchTaxMetrics,
   renderRealizedLogTable,
-} from "./js/modules/tax.js";
+} from "./js/modules/tax.js?t=1788114000";
 
 const DEFAULT_AUTH_TOKEN = "dev_secret_key_123";
 
@@ -354,6 +354,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (tabName === "fire") {
         fetchFireSummary();
+      }
+      if (tabName === "overlap") {
+        window.loadBenchmarkAnalytics?.();
+        window.loadUpSetAnalytics?.();
+        window.render2FundVennDiagram?.();
       }
     });
   });

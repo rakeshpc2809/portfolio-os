@@ -61,6 +61,10 @@ object SnapshotCacheManager {
         return getPrefs(context).getString(KEY_AUTH_TOKEN, com.portfolioos.mobile.BuildConfig.DEFAULT_AUTH_TOKEN) ?: com.portfolioos.mobile.BuildConfig.DEFAULT_AUTH_TOKEN
     }
 
+    fun setAuthToken(context: Context, token: String) {
+        getPrefs(context).edit().putString(KEY_AUTH_TOKEN, token).apply()
+    }
+
     fun loadSnapshot(context: Context): SyncSnapshot? {
         val json = getPrefs(context).getString(KEY_SNAPSHOT_JSON, null) ?: return null
         return try {

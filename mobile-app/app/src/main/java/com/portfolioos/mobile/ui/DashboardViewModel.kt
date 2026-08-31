@@ -133,6 +133,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         fetchSyncSnapshot(isManualRefresh = true)
     }
 
+    fun updateAuthToken(newToken: String) {
+        SnapshotCacheManager.setAuthToken(context, newToken)
+        fetchSyncSnapshot(isManualRefresh = true)
+    }
+
     // Debug Simulations
     fun simulateFullSync() {
         val snap = _uiState.value.snapshot ?: return

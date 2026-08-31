@@ -62,7 +62,7 @@ fun SimulatorView(holdings: List<FlatHoldingDto>) {
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Target Scheme", color = Color(0xFF94A3B8)) },
-                colors = TextFieldDefaults.outlinedTextFieldColors(focusedBorderColor = Color(0xFF00F0FF)),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00F0FF)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .menuAnchor()
