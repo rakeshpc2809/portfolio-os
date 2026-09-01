@@ -37,6 +37,7 @@ import com.portfolioos.mobile.data.SnapshotCacheManager
 import com.portfolioos.mobile.model.BenchmarkAnalyticsDto
 import com.portfolioos.mobile.model.FireSummaryResponseDto
 import com.portfolioos.mobile.model.OverlapReportDto
+import com.portfolioos.mobile.model.RebalancePlanDto
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -799,6 +800,11 @@ fun HoldingsView(
             }
         }
 
+        // BEER Valuation Spread Card
+        item {
+            BeerValuationSpreadCard(snapshot?.rebalancePlan?.beerSpreadContext)
+        }
+
         // Benchmark Risk Radar Card (Quant Analytics vs Nifty 50 TRI)
         item {
             Card(
@@ -970,6 +976,20 @@ fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> U
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Surface(
+                    color = if (holding.terStatus == "ELEVATED_DRAG") ColorTokens.RedNegative.copy(alpha = 0.15f) else ColorTokens.CyanBright.copy(alpha = 0.12f),
+                    shape = ShapeTokens.PillShape
+                ) {
+                    Text(
+                        text = "TER %.2f%% (%s)".format(holding.expenseRatio, holding.terAsOfDate),
+                        style = TypographyTokens.BadgeTag.copy(
+                            color = if (holding.terStatus == "ELEVATED_DRAG") ColorTokens.RedNegative else ColorTokens.CyanBright,
+                            fontSize = 9.sp
+                        ),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Surface(
                     color = if (holding.xirr >= 0) ColorTokens.GreenPositive.copy(alpha = 0.15f) else ColorTokens.RedNegative.copy(alpha = 0.15f),
                     shape = ShapeTokens.PillShape
                 ) {
@@ -1127,8 +1147,25 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
         holdings.associate { it.isin to it.fundName }
     }
 
-    val groupedLots = remember(taxLots) {
-        taxLots.groupBy { it.isin }
+    var activeFilter by remember { mutableStateOf("ALL") }
+
+    val ltcgTotalCount = remember(taxLots) { taxLots.count { it.isLongTerm } }
+    val stcgTotalCount = remember(taxLots) { taxLots.count { !it.isLongTerm } }
+    val lossTotalCount = remember(taxLots) { taxLots.count { it.isHarvestCandidate } }
+
+    val filteredLots = remember(taxLots, activeFilter) {
+        taxLots.filter { lot ->
+            when (activeFilter) {
+                "LTCG" -> lot.isLongTerm
+                "STCG" -> !lot.isLongTerm
+                "LOSSES" -> lot.isHarvestCandidate
+                else -> true
+            }
+        }
+    }
+
+    val groupedLots = remember(filteredLots) {
+        filteredLots.groupBy { it.isin }
     }
 
     LazyColumn(
@@ -1141,15 +1178,60 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
         item {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "SCHEME-GROUPED TAX LOTS (${groupedLots.size} SCHEMES · ${taxLots.size} LOTS)",
+                text = "SCHEME-GROUPED TAX LOTS (${taxLots.size} TOTAL LOTS)",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = M3TextMuted,
                 letterSpacing = 1.5.sp
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Filter Chips Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = activeFilter == "ALL",
+                    onClick = { activeFilter = "ALL" },
+                    label = { Text("All (${taxLots.size})", fontSize = 11.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = ColorTokens.CyanBright.copy(alpha = 0.2f),
+                        selectedLabelColor = ColorTokens.CyanBright
+                    )
+                )
+                FilterChip(
+                    selected = activeFilter == "LTCG",
+                    onClick = { activeFilter = "LTCG" },
+                    label = { Text("LTCG ($ltcgTotalCount)", fontSize = 11.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = M3GreenPositive.copy(alpha = 0.2f),
+                        selectedLabelColor = M3GreenPositive
+                    )
+                )
+                FilterChip(
+                    selected = activeFilter == "STCG",
+                    onClick = { activeFilter = "STCG" },
+                    label = { Text("STCG ($stcgTotalCount)", fontSize = 11.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = M3AmberWarning.copy(alpha = 0.2f),
+                        selectedLabelColor = M3AmberWarning
+                    )
+                )
+                FilterChip(
+                    selected = activeFilter == "LOSSES",
+                    onClick = { activeFilter = "LOSSES" },
+                    label = { Text("Losses ($lossTotalCount)", fontSize = 11.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color(0xFFF43F5E).copy(alpha = 0.2f),
+                        selectedLabelColor = Color(0xFFFB7185)
+                    )
+                )
+            }
         }
 
-        if (groupedLots.isEmpty()) {
+        if (taxLots.isEmpty()) {
             item {
                 PortfolioStateCard(
                     icon = Icons.Default.Info,
@@ -1159,6 +1241,16 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
                     description = "No open tax lots detected in ledger. Your portfolio may be fully liquidated, or tax lot breakdown data has not been synced yet.",
                     actionLabel = "Refresh Tax Ledger",
                     onAction = {}
+                )
+            }
+        } else if (filteredLots.isEmpty()) {
+            item {
+                PortfolioStateCard(
+                    icon = Icons.Default.CheckCircle,
+                    iconTint = M3NeonCyan,
+                    title = "No Matching Lots",
+                    subtitle = "Filter: $activeFilter",
+                    description = "Zero open tax lots match the active filter '$activeFilter' across all portfolio schemes."
                 )
             }
         } else {
@@ -1177,6 +1269,9 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
     val ltcgCount = remember(lots) { lots.count { it.isLongTerm } }
     val stcgCount = remember(lots) { lots.size - ltcgCount }
     val totalUnits = remember(lots) { lots.sumOf { it.units } }
+    val totalCost = remember(lots) { lots.sumOf { it.units * it.costPerUnit } }
+    val avgCostNav = remember(lots) { if (totalUnits > 0) totalCost / totalUnits else 0.0 }
+    val totalTaxDrag = remember(lots) { lots.sumOf { it.estimatedTaxDrag } }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
@@ -1200,7 +1295,7 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = (if (isin.isNotBlank()) "$isin · " else "") + "${lots.size} Open Lots · Total %.2f Units".format(totalUnits),
+                        text = (if (isin.isNotBlank()) "$isin · " else "") + "${lots.size} Lots · %.2f Units · Avg ₹%.2f".format(totalUnits, avgCostNav),
                         color = M3TextMuted,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace
@@ -1236,8 +1331,23 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
+                        Spacer(modifier = Modifier.width(4.dp))
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
+                    if (totalTaxDrag > 0) {
+                        Surface(
+                            color = Color(0xFFF43F5E).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(100.dp)
+                        ) {
+                            Text(
+                                text = "Drag ${formatInr(totalTaxDrag)}",
+                                color = Color(0xFFFB7185),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = "Expand",
@@ -1268,18 +1378,28 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "${lot.buyDate} · ${lot.units} u @ ${formatInr(lot.costPerUnit)}",
+                                    text = "${lot.buyDate} (${lot.holdingDays}d) · ${lot.units} u @ ${formatInr(lot.costPerUnit)}",
                                     color = M3TextMuted,
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
-                            Text(
-                                text = if (lot.isLongTerm) "LTCG" else "STCG (${lot.daysToLtcg}d)",
-                                color = if (lot.isLongTerm) M3GreenPositive else M3AmberWarning,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = if (lot.isLongTerm) "LTCG Free" else "STCG (${lot.daysToLtcg}d to LTCG)",
+                                    color = if (lot.isLongTerm) M3GreenPositive else M3AmberWarning,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (lot.estimatedTaxDrag > 0) {
+                                    Text(
+                                        text = "Est Drag: ${formatInr(lot.estimatedTaxDrag)}",
+                                        color = Color(0xFFFB7185),
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1501,6 +1621,21 @@ fun RebalanceWaterfallView(
                         }
                     }
                 }
+            }
+
+            // 1B. MULTI-TIER DRAWDOWN TRIPWIRE GAUGE CARD
+            item {
+                MultiTierDrawdownGaugeCard(rebalancePlan)
+            }
+
+            // 1C. GOLD-SILVER SPOT RATIO CARD
+            item {
+                GoldSilverRatioCard(rebalancePlan.goldSilverContext)
+            }
+
+            // 1D. NSE INDEX RECONSTITUTION BANNER
+            item {
+                ReconstitutionStatusBanner(rebalancePlan.reconstitutionContext)
             }
 
             // 2. SELL SIDE CARD
@@ -1848,6 +1983,315 @@ fun RebalanceWaterfallView(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto) {
+    val ddCtx = plan.drawdownContext
+    val currentDd = ddCtx?.currentDrawdownPct ?: 0.0
+    val thresholds = ddCtx?.tierThresholds?.let { list -> if (list.size >= 3) list else null } ?: listOf(5.0, 10.0, 15.0)
+    val t1 = thresholds.getOrElse(0) { 5.0 }
+    val t2 = thresholds.getOrElse(1) { 10.0 }
+    val t3 = thresholds.getOrElse(2) { 15.0 }
+    val maxScale = t3 + 5.0
+
+    val distPct = ddCtx?.nextTierDistancePct ?: 0.0
+    val nextTier = ddCtx?.nextTier ?: "Next Tier"
+    val rollingHigh = ddCtx?.rollingHighValue ?: 0.0
+    val distRupees = if (rollingHigh > 0) (distPct / 100.0) * rollingHigh else 0.0
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.25f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "MULTI-TIER DRAWDOWN TRIPWIRE GAUGE",
+                    color = Color(0xFF38BDF8),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp
+                )
+                Surface(
+                    color = Color(0xFF38BDF8).copy(alpha = 0.15f),
+                    shape = ShapeTokens.PillShape
+                ) {
+                    Text(
+                        text = "%.1f%% DRAWDOWN".format(currentDd),
+                        color = Color(0xFF38BDF8),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Multi-Tier Visual Progress Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(Color(0xFF1E293B))
+            ) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(t1.toFloat().coerceAtLeast(0.1f)).fillMaxHeight().background(M3GreenPositive.copy(alpha = 0.4f)))
+                    Box(modifier = Modifier.weight((t2 - t1).toFloat().coerceAtLeast(0.1f)).fillMaxHeight().background(M3AmberWarning.copy(alpha = 0.4f)))
+                    Box(modifier = Modifier.weight((t3 - t2).toFloat().coerceAtLeast(0.1f)).fillMaxHeight().background(Color(0xFFF43F5E).copy(alpha = 0.4f)))
+                    Box(modifier = Modifier.weight((maxScale - t3).toFloat().coerceAtLeast(0.1f)).fillMaxHeight().background(Color(0xFF991B1B).copy(alpha = 0.6f)))
+                }
+
+                val markerFraction = (currentDd / maxScale).toFloat().coerceIn(0f, 1f)
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val markerOffset = maxWidth * markerFraction
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(4.dp)
+                            .offset(x = markerOffset.coerceAtMost(maxWidth - 4.dp))
+                            .background(Color.White)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("0%", color = M3TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                Text("%.0f%% (T1)".format(t1), color = M3TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                Text("%.0f%% (T2)".format(t2), color = M3TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                Text("%.0f%%+ (T3)".format(t3), color = M3TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Distance to Next Tripwire:", color = M3TextMuted, fontSize = 10.sp)
+                Text(
+                    text = "%.1f%%%s to %s".format(
+                        distPct,
+                        if (distRupees > 0) " (~${formatInr(distRupees)})" else "",
+                        nextTier
+                    ),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BeerValuationSpreadCard(beerSpreadContext: com.portfolioos.mobile.model.BeerSpreadContextDto?) {
+    val ctx = beerSpreadContext ?: com.portfolioos.mobile.model.BeerSpreadContextDto()
+    Card(
+        colors = CardDefaults.cardColors(containerColor = ColorTokens.SurfaceCard),
+        shape = ShapeTokens.GlassCardShape,
+        border = BorderStroke(1.dp, ColorTokens.CyanBright.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "BEER VALUATION SPREAD",
+                        style = TypographyTokens.CardTitle.copy(fontSize = 12.sp, color = ColorTokens.CyanBright)
+                    )
+                    Surface(
+                        color = when (ctx.valuationZone) {
+                            "EQUITY_EXPENSIVE" -> ColorTokens.AmberWarning.copy(alpha = 0.15f)
+                            "EQUITY_ATTRACTIVE" -> ColorTokens.GreenPositive.copy(alpha = 0.15f)
+                            else -> ColorTokens.CyanBright.copy(alpha = 0.15f)
+                        },
+                        shape = ShapeTokens.PillShape
+                    ) {
+                        Text(
+                            text = ctx.valuationZone.replace("_", " "),
+                            style = TypographyTokens.BadgeTag.copy(
+                                color = when (ctx.valuationZone) {
+                                    "EQUITY_EXPENSIVE" -> ColorTokens.AmberWarning
+                                    "EQUITY_ATTRACTIVE" -> ColorTokens.GreenPositive
+                                    else -> ColorTokens.CyanBright
+                                },
+                                fontSize = 9.sp
+                            ),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = "As of: ${ctx.asOfDate}",
+                    style = TypographyTokens.BadgeTag.copy(color = ColorTokens.TextMuted, fontSize = 10.sp)
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(text = "10Y G-Sec", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp))
+                    Text(text = "${"%.2f".format(ctx.gsec10yYieldPct)}%", style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = ColorTokens.CyanBright))
+                }
+                Column {
+                    Text(text = "Nifty 50 PE", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp))
+                    Text(text = "%.2f".format(ctx.nifty50Pe), style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = Color.White))
+                }
+                Column {
+                    Text(text = "Earnings Yield", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp))
+                    Text(text = "${"%.2f".format(ctx.nifty50EarningsYieldPct)}%", style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = ColorTokens.PurpleAccent))
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(text = "Spread (G-Sec - EY)", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp))
+                    Text(text = "${if (ctx.beerSpreadPct >= 0) "+" else ""}${"%.2f".format(ctx.beerSpreadPct)}%", style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = ColorTokens.AmberWarning))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GoldSilverRatioCard(goldSilverContext: com.portfolioos.mobile.model.GoldSilverContextDto?) {
+    val ctx = goldSilverContext ?: com.portfolioos.mobile.model.GoldSilverContextDto()
+    Card(
+        colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "GOLD-SILVER RATIO OVERLAY",
+                        color = Color(0xFFFBBF24),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Surface(
+                        color = if (ctx.isEstimated) ColorTokens.AmberWarning.copy(alpha = 0.15f) else ColorTokens.GreenPositive.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = if (ctx.isEstimated) "ESTIMATED" else "LIVE AMFI",
+                            color = if (ctx.isEstimated) ColorTokens.AmberWarning else ColorTokens.GreenPositive,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                Surface(
+                    color = Color(0xFFFBBF24).copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(100.dp)
+                ) {
+                    Text(
+                        text = ctx.signal.replace("_", " "),
+                        color = Color(0xFFFBBF24),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${"%.1f".format(ctx.goldSilverRatio)}x Spot Ratio",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "Target Split: ${ctx.goldTargetSplitPct.toInt()}% Gold / ${ctx.silverTargetSplitPct.toInt()}% Silver (As of: ${ctx.asOfDate})",
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ReconstitutionStatusBanner(reconstitutionContext: com.portfolioos.mobile.model.ReconstitutionContextDto?) {
+    val ctx = reconstitutionContext ?: com.portfolioos.mobile.model.ReconstitutionContextDto()
+    Card(
+        colors = CardDefaults.cardColors(containerColor = M3SurfaceCard),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, if (ctx.isWindowActive) Color(0xFFEF4444) else M3NeonCyan.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "NSE Index Reconstitution Calendar",
+                    color = if (ctx.isWindowActive) Color(0xFFF87171) else M3NeonCyan,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Next: ${ctx.nextReconstitutionDate} (${ctx.daysToReconstitution} days remaining)",
+                    color = M3TextMuted,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            Surface(
+                color = if (ctx.isWindowActive) Color(0xFFEF4444).copy(alpha = 0.15f) else M3GreenPositive.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(100.dp)
+            ) {
+                Text(
+                    text = if (ctx.isWindowActive) "48H BLACKOUT" else "NORMAL EXEC",
+                    color = if (ctx.isWindowActive) Color(0xFFF87171) else M3GreenPositive,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
             }
         }
     }

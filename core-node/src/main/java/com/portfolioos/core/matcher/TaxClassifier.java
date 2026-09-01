@@ -111,4 +111,31 @@ public class TaxClassifier {
             }
         };
     }
+
+    public static java.math.BigDecimal resolveTaxRate(AssetCategory category, TaxTerm taxTerm, TaxRulesConfig rules) {
+        if (rules == null) return java.math.BigDecimal.ZERO;
+        boolean isLtcg = taxTerm == TaxTerm.LONG_TERM;
+        return switch (category) {
+            case EQUITY -> isLtcg ? rules.equityLtcgRate() : rules.equityStcgRate();
+            case DEBT_SPECIFIED_50AA -> isLtcg ? rules.debtLegacyLtcgRate() : rules.slabRate();
+            case GOLD_SILVER, INTERNATIONAL -> isLtcg ? rules.goldInternationalLtcgRate() : rules.slabRate();
+            case SGB -> isLtcg ? java.math.BigDecimal.ZERO : rules.slabRate();
+        };
+    }
+
+    public static java.math.BigDecimal computeEstimatedTaxDrag(AssetCategory category, TaxTerm taxTerm, java.math.BigDecimal unrealizedGain, TaxRulesConfig rules) {
+        if (unrealizedGain == null || unrealizedGain.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            return java.math.BigDecimal.ZERO;
+        }
+        java.math.BigDecimal rate = resolveTaxRate(category, taxTerm, rules);
+        return unrealizedGain.multiply(rate).setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    public static String detectTaxClassification(AssetCategory category) {
+        return switch (category) {
+            case DEBT_SPECIFIED_50AA -> "SEC_50AA_DEBT";
+            case EQUITY -> "SEC_112A_EQUITY";
+            default -> category.name();
+        };
+    }
 }

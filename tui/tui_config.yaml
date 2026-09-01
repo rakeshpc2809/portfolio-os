@@ -1,0 +1,12 @@
+server:
+  core_node_url: "http://127.0.0.1:8080"
+  quant_sidecar_url: "http://127.0.0.1:8000"
+  api_auth_token: "dev_secret_key_123"
+  poll_interval_seconds: 5
+  timeout_seconds: 2.5
+  fy: "2026-27"
+
+policy:
+  ltcg_exemption_inr: 125000
+  rebalance_drift_threshold_pct: 5.0
+  default_swr_pct: 3.5

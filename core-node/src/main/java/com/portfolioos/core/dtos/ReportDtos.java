@@ -52,7 +52,10 @@ public class ReportDtos {
         String unrealizedGain,
         long holdingDays,
         long daysToLtcg,
-        boolean isLtcg
+        boolean isLtcg,
+        String taxClassification,
+        String estimatedTaxDrag,
+        boolean isHarvestCandidate
     ) {}
 
     public record HoldingDetailDto(
@@ -65,8 +68,40 @@ public class ReportDtos {
         String unrealizedGainPct,
         String allocationPct,
         boolean navStale,
-        List<OpenLotDto> lots
-    ) {}
+        List<OpenLotDto> lots,
+        Double expenseRatio,
+        String terStatus,
+        String terAsOfDate
+    ) {
+        public HoldingDetailDto(
+            String assetId,
+            String assetName,
+            String category,
+            String investedValue,
+            String currentValue,
+            String unrealizedGain,
+            String unrealizedGainPct,
+            String allocationPct,
+            boolean navStale,
+            List<OpenLotDto> lots
+        ) {
+            this(
+                assetId,
+                assetName,
+                category,
+                investedValue,
+                currentValue,
+                unrealizedGain,
+                unrealizedGainPct,
+                allocationPct,
+                navStale,
+                lots,
+                0.20,
+                "OPTIMAL",
+                "Aug 2026"
+            );
+        }
+    }
 
     public record HarvestOpportunityDto(
         String assetId,

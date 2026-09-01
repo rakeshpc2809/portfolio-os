@@ -49,12 +49,16 @@ dist/
 /data/
 *.db
 *.duckdb
-jdbc:duckdb:
+jdbc:duckdb*
 *.zip
+*.pdf
 portfolio-os-codebase.xml
 *.wal
-*.duckdb
 *.duckdb.wal
+
+# Review packages & evidence scripts
+claude_review_package/
+capture_*_evidence.*
 
 # IDEs
 .idea/

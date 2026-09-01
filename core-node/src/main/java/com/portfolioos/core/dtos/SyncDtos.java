@@ -33,8 +33,40 @@ public class SyncDtos {
         double currentValue,
         double investedValue,
         String formattedCurrentValue,
-        String formattedInvestedValue
-    ) {}
+        String formattedInvestedValue,
+        Double expenseRatio,
+        String terStatus,
+        String terAsOfDate
+    ) {
+        public FlatHoldingDto(
+            String isin,
+            String fundName,
+            double totalUnits,
+            double avgCost,
+            double xirr,
+            String assetBucket,
+            double currentValue,
+            double investedValue,
+            String formattedCurrentValue,
+            String formattedInvestedValue
+        ) {
+            this(
+                isin,
+                fundName,
+                totalUnits,
+                avgCost,
+                xirr,
+                assetBucket,
+                currentValue,
+                investedValue,
+                formattedCurrentValue,
+                formattedInvestedValue,
+                0.20,
+                "OPTIMAL",
+                "Aug 2026"
+            );
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record FlatTaxLotDto(
@@ -46,7 +78,9 @@ public class SyncDtos {
         Double grandfatheredNav,
         double costPerUnit,
         long holdingDays,
-        long daysToLtcg
+        long daysToLtcg,
+        Double estimatedTaxDrag,
+        boolean isHarvestCandidate
     ) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

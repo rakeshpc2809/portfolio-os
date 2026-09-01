@@ -5,6 +5,71 @@ import java.util.List;
 
 public class RebalancePlanDtos {
 
+    public record GoldSilverContextDto(
+        double goldSilverRatio,
+        String signal,
+        double goldTargetSplitPct,
+        double silverTargetSplitPct,
+        boolean isEstimated,
+        String source,
+        String asOfDate
+    ) {
+        public GoldSilverContextDto(
+            double goldSilverRatio,
+            String signal,
+            double goldTargetSplitPct,
+            double silverTargetSplitPct
+        ) {
+            this(
+                goldSilverRatio,
+                signal,
+                goldTargetSplitPct,
+                silverTargetSplitPct,
+                true,
+                "STATUTORY_BENCHMARK_ESTIMATE",
+                "2026-08-31"
+            );
+        }
+    }
+
+    public record ReconstitutionContextDto(
+        String nextReconstitutionDate,
+        long daysToReconstitution,
+        boolean isWindowActive,
+        String executionRecommendation
+    ) {}
+
+    public record BeerSpreadContextDto(
+        double gsec10yYieldPct,
+        double nifty50Pe,
+        double nifty50EarningsYieldPct,
+        double beerSpreadPct,
+        String valuationZone,
+        String asOfDate,
+        boolean isFallback,
+        String sourceStatus
+    ) {
+        public BeerSpreadContextDto(
+            double gsec10yYieldPct,
+            double nifty50Pe,
+            double nifty50EarningsYieldPct,
+            double beerSpreadPct,
+            String valuationZone,
+            String asOfDate
+        ) {
+            this(
+                gsec10yYieldPct,
+                nifty50Pe,
+                nifty50EarningsYieldPct,
+                beerSpreadPct,
+                valuationZone,
+                asOfDate,
+                false,
+                "LIVE_FETCH"
+            );
+        }
+    }
+
     public record RebalancePlanDto(
         String planId,
         String generatedAt,
@@ -12,8 +77,34 @@ public class RebalancePlanDtos {
         SellSidePlanDto sellSide,
         BuySidePlanDto buySide,
         ReasoningNarrativeDto reasoningNarrative,
-        ManualLumpsumMetaDto manualLumpsumMeta
-    ) {}
+        ManualLumpsumMetaDto manualLumpsumMeta,
+        GoldSilverContextDto goldSilverContext,
+        ReconstitutionContextDto reconstitutionContext,
+        BeerSpreadContextDto beerSpreadContext
+    ) {
+        public RebalancePlanDto(
+            String planId,
+            String generatedAt,
+            RebalanceTriggerDto trigger,
+            SellSidePlanDto sellSide,
+            BuySidePlanDto buySide,
+            ReasoningNarrativeDto reasoningNarrative,
+            ManualLumpsumMetaDto manualLumpsumMeta
+        ) {
+            this(
+                planId,
+                generatedAt,
+                trigger,
+                sellSide,
+                buySide,
+                reasoningNarrative,
+                manualLumpsumMeta,
+                null,
+                null,
+                null
+            );
+        }
+    }
 
     public record RebalanceTriggerDto(
         String type, // DRAWDOWN, DRIFT, SCHEDULED, GOLD_FLOOR_BACKSTOP, MANUAL_LUMPSUM

@@ -138,6 +138,35 @@
           <div class="canvas-wrapper-large" id="fundAllocationCompareChart" style="height: 380px; width: 100%;"></div>
         </div>
 
+        <!-- BEER (Bond-Equity Earnings Yield Ratio) Valuation Spread Card -->
+        <div class="glass-card col-12" id="beerValuationCard" style="margin-bottom: 24px; padding: 20px 24px; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 14px; background: rgba(15, 23, 42, 0.8);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.8rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.1em; text-transform: uppercase;">BEER Valuation Spread Gauge</span>
+              <span id="beerValuationZoneBadge" class="live-tag" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b; font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">EQUITY EXPENSIVE</span>
+            </div>
+            <span id="beerAsOfDateText" style="font-size: 0.75rem; color: #94a3b8; font-family: monospace;">As of: 2026-08-31</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-top: 12px; background: rgba(255,255,255,0.02); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">10Y G-Sec Yield</div>
+              <div id="beerGsecYieldVal" style="font-size: 1.1rem; font-weight: 800; color: #38bdf8; font-family: monospace; margin-top: 4px;">7.10%</div>
+            </div>
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Nifty 50 PE</div>
+              <div id="beerNiftyPeVal" style="font-size: 1.1rem; font-weight: 800; color: #f8fafc; font-family: monospace; margin-top: 4px;">22.40</div>
+            </div>
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Nifty 50 Earnings Yield (1/PE)</div>
+              <div id="beerEarningsYieldVal" style="font-size: 1.1rem; font-weight: 800; color: #a78bfa; font-family: monospace; margin-top: 4px;">4.46%</div>
+            </div>
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">BEER Spread (G-Sec - EY)</div>
+              <div id="beerSpreadVal" style="font-size: 1.1rem; font-weight: 800; color: #f59e0b; font-family: monospace; margin-top: 4px;">+2.64%</div>
+            </div>
+          </div>
+        </div>
+
         <!-- Net Worth & Capital Invested Timeline Chart -->
         <div class="glass-card col-12">
           <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px;">
@@ -169,6 +198,27 @@
             </div>
             <span class="live-tag">FIFO LEDGER</span>
           </div>
+
+          <!-- Filter Chips & Sort Controls -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 14px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <div id="taxLotsFilterChips" style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button type="button" class="filter-chip active" data-filter="all" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 20px; border: 1px solid #38bdf8; background: rgba(56, 189, 248, 0.2); color: #38bdf8; cursor: pointer; font-weight: 600;">All Lots</button>
+              <button type="button" class="filter-chip" data-filter="ltcg" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 20px; border: 1px solid rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.08); color: #10b981; cursor: pointer; font-weight: 600;">LTCG Mature</button>
+              <button type="button" class="filter-chip" data-filter="stcg" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 20px; border: 1px solid rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.08); color: #f59e0b; cursor: pointer; font-weight: 600;">STCG Locked</button>
+              <button type="button" class="filter-chip" data-filter="losses" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 20px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.08); color: #f87171; cursor: pointer; font-weight: 600;">Loss-Harvest Candidates</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label for="taxLotsSortSelect" style="font-size: 0.75rem; color: #94a3b8;">Sort Lots:</label>
+              <select id="taxLotsSortSelect" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; font-size: 0.75rem; border-radius: 6px; padding: 4px 8px; cursor: pointer;">
+                <option value="fifo_asc">Acquisition Date (FIFO / Oldest First)</option>
+                <option value="fifo_desc">Acquisition Date (LIFO / Newest First)</option>
+                <option value="tax_drag_asc">Tax Drag (Lowest First — Tax-Optimal)</option>
+                <option value="tax_drag_desc">Tax Drag (Highest First)</option>
+                <option value="gain_desc">Unrealized Gain (Highest First)</option>
+              </select>
+            </div>
+          </div>
+
           <div id="groupedTaxLotsContainer" style="margin-top: 16px; display: flex; flex-direction: column; gap: 14px;">
             <div class="loading-td" style="color: #64748b; padding: 16px;">Loading scheme-grouped open tax lots...</div>
           </div>
@@ -213,14 +263,55 @@
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px;">
             <div style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <h4 style="color: #38bdf8; font-size: 0.85rem; margin: 0;">Drawdown Tripwire Depth Gauge</h4>
-                <span id="drawdownTripwireLabel" class="live-tag" style="font-size: 0.7rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8;">INDUCED GAUGE</span>
+                <h4 style="color: #38bdf8; font-size: 0.85rem; margin: 0;">Multi-Tier Drawdown Tripwire Depth Gauge</h4>
+                <span id="drawdownTripwireLabel" class="live-tag" style="font-size: 0.7rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8;">DYNAMIC TRIPWIRE GAUGE</span>
               </div>
-              <div id="drawdownGaugeContainer" style="margin-top: 8px;">
-                <div style="height: 12px; background: #1e293b; border-radius: 6px; position: relative; overflow: hidden;">
-                  <div id="gaugeProgressBar" style="height: 100%; width: 20%; background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444); transition: width 0.4s ease;"></div>
-                  <div id="gaugeIndicatorMarker" style="position: absolute; top: 0; bottom: 0; width: 4px; background: #ffffff; box-shadow: 0 0 8px #ffffff; transition: left 0.4s ease;"></div>
+              <div id="drawdownGaugeContainer" style="margin-top: 12px;">
+                <!-- Dynamically generated tiered visual progress bar & threshold markers -->
+                <div id="multiTierGaugeBar" style="height: 18px; background: #1e293b; border-radius: 9px; position: relative; overflow: hidden; display: flex;">
+                  <div id="gaugeZone0" style="flex: 5; background: rgba(16, 185, 129, 0.4); border-right: 1px solid rgba(255,255,255,0.2);"></div>
+                  <div id="gaugeZone1" style="flex: 5; background: rgba(245, 158, 11, 0.4); border-right: 1px solid rgba(255,255,255,0.2);"></div>
+                  <div id="gaugeZone2" style="flex: 5; background: rgba(239, 68, 68, 0.4); border-right: 1px solid rgba(255,255,255,0.2);"></div>
+                  <div id="gaugeZone3" style="flex: 10; background: rgba(185, 28, 28, 0.6);"></div>
+                  <div id="gaugeIndicatorMarker" style="position: absolute; top: 0; bottom: 0; width: 4px; background: #ffffff; box-shadow: 0 0 10px #ffffff; transition: left 0.4s ease; left: 0%;"></div>
                 </div>
+                <div id="gaugeZoneLabels" style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #94a3b8; margin-top: 6px; font-family: monospace;">
+                  <span>0% (Nominal)</span>
+                  <span id="gaugeTier1Label">5% (T1)</span>
+                  <span id="gaugeTier2Label">10% (T2)</span>
+                  <span id="gaugeTier3Label">15%+ (T3)</span>
+                </div>
+                <div id="gaugeNextTierCallout" style="margin-top: 8px; font-size: 0.78rem; color: #cbd5e1; background: rgba(255,255,255,0.03); padding: 6px 10px; border-radius: 4px; display: flex; justify-content: space-between;">
+                  <span>Current DD: <strong id="gaugeCurrentDDPct" style="color: #38bdf8;">0.0%</strong></span>
+                  <span id="gaugeDistanceText" style="color: #94a3b8;">Distance to next tripwire: <strong style="color: #f8fafc;">--</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section A2: Market Overlays (Gold-Silver Ratio & NSE Reconstitution) -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px;">
+            <!-- Gold-Silver Ratio Intra-Bucket Sizing Card -->
+            <div id="goldSilverRatioCard" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h4 style="color: #fbbf24; font-size: 0.85rem; margin: 0;">Gold-Silver Ratio (Intra-Bucket Split)</h4>
+                <span id="goldSilverSignalBadge" class="live-tag" style="font-size: 0.7rem; background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid #fbbf24;">SILVER UNDERVALUED</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <div style="font-size: 1.2rem; font-weight: 800; color: #f8fafc; font-family: monospace;" id="goldSilverRatioVal">84.5x</div>
+                <div style="font-size: 0.8rem; color: #cbd5e1; font-family: monospace;" id="goldSilverTargetSplitText">Target Split: <strong style="color: #fbbf24;">40% Gold / 60% Silver</strong></div>
+              </div>
+            </div>
+
+            <!-- NSE Semi-Annual Reconstitution Card -->
+            <div id="reconstitutionCard" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h4 style="color: #38bdf8; font-size: 0.85rem; margin: 0;">NSE Index Reconstitution Calendar</h4>
+                <span id="reconstitutionWindowBadge" class="live-tag" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981;">NORMAL EXECUTION</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <div style="font-size: 0.82rem; color: #cbd5e1;">Next Reconstitution: <strong id="reconstitutionDateVal" style="color: #f8fafc; font-family: monospace;">2026-09-30</strong></div>
+                <div style="font-size: 0.82rem; color: #38bdf8; font-weight: 700; font-family: monospace;" id="reconstitutionDaysVal">30 days remaining</div>
               </div>
             </div>
           </div>

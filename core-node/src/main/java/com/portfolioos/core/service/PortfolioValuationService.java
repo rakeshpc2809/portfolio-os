@@ -223,7 +223,11 @@ public class PortfolioValuationService {
             String assetName = lots.get(0).assetName();
             BigDecimal currentNav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, assetId, assetName, "PortfolioValuationService.getHoldings");
             boolean isStale = !navMap.containsKey(assetId);
-            String category = TaxClassifier.detectCategory(assetId, assetName).name();
+            String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(today);
+            com.portfolioos.core.rules.TaxRulesConfig taxRules = com.portfolioos.core.rules.TaxRulesLoader.loadRules(currentFy);
+            AssetCategory catEnum = TaxClassifier.detectCategory(assetId, assetName);
+            boolean isListed = TaxClassifier.isListed(assetId, assetName);
+            String category = catEnum.name();
 
             BigDecimal assetInvested = BigDecimal.ZERO;
             BigDecimal assetCurrentVal = BigDecimal.ZERO;
@@ -236,9 +240,14 @@ public class PortfolioValuationService {
                 assetCurrentVal = assetCurrentVal.add(lotCurrentVal);
 
                 long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
-                long thresholdDays = category.equals("EQUITY") ? 365L : 730L;
-                boolean isLtcg = holdingDays >= thresholdDays;
-                long daysToLtcg = isLtcg ? 0L : (thresholdDays - holdingDays);
+                com.portfolioos.core.model.TaxTerm taxTerm = TaxClassifier.classifyTaxTerm(catEnum, holdingDays, currentFy, isListed, lot.acquisitionDate(), null);
+                boolean isLtcg = taxTerm == com.portfolioos.core.model.TaxTerm.LONG_TERM;
+                long thresholdDays = catEnum == AssetCategory.EQUITY ? taxRules.equityLtcgThresholdDays() : (isListed ? taxRules.equityLtcgThresholdDays() : taxRules.goldInternationalThresholdDays());
+                long daysToLtcg = isLtcg ? 0L : Math.max(0L, thresholdDays - holdingDays);
+
+                String classification = TaxClassifier.detectTaxClassification(catEnum);
+                BigDecimal estimatedTaxDrag = TaxClassifier.computeEstimatedTaxDrag(catEnum, taxTerm, lotGain, taxRules);
+                boolean isHarvestCandidate = lotGain.compareTo(BigDecimal.ZERO) < 0;
 
                 lotDtos.add(new OpenLotDto(
                     lot.lotId(),
@@ -251,7 +260,10 @@ public class PortfolioValuationService {
                     lotGain.setScale(2, RoundingMode.HALF_UP).toPlainString(),
                     holdingDays,
                     daysToLtcg,
-                    isLtcg
+                    isLtcg,
+                    classification,
+                    estimatedTaxDrag.toPlainString(),
+                    isHarvestCandidate
                 ));
             }
 
@@ -263,6 +275,8 @@ public class PortfolioValuationService {
 
             totalCurrentValAll = totalCurrentValAll.add(assetCurrentVal);
 
+            com.portfolioos.core.nav.AmfiTerFetcher.TerMetadata terMeta = com.portfolioos.core.nav.AmfiTerFetcher.resolveTer(assetId, assetName, catEnum);
+
             holdingDetails.add(new HoldingDetailDto(
                 assetId,
                 assetName,
@@ -273,7 +287,10 @@ public class PortfolioValuationService {
                 fmt(gainPct),
                 "0.00",
                 isStale,
-                lotDtos
+                lotDtos,
+                terMeta.expenseRatio(),
+                terMeta.terStatus(),
+                terMeta.terAsOfDate()
             ));
         }
 
@@ -294,7 +311,10 @@ public class PortfolioValuationService {
                 h.unrealizedGainPct(),
                 fmt(allocPct),
                 h.navStale(),
-                h.lots()
+                h.lots(),
+                h.expenseRatio(),
+                h.terStatus(),
+                h.terAsOfDate()
             );
         }).toList();
     }

@@ -21,13 +21,57 @@ data class SyncSnapshot(
 )
 
 @Immutable
+data class DrawdownContextDto(
+    @SerializedName("current_drawdown_pct") val currentDrawdownPct: Double = 0.0,
+    @SerializedName("rolling_high_value") val rollingHighValue: Double = 0.0,
+    @SerializedName("next_tier") val nextTier: String = "TIER_10",
+    @SerializedName("next_tier_distance_pct") val nextTierDistancePct: Double = 0.0,
+    @SerializedName("tier_thresholds") val tierThresholds: List<Double> = listOf(5.0, 10.0, 15.0)
+)
+
+@Immutable
+data class GoldSilverContextDto(
+    @SerializedName("gold_silver_ratio") val goldSilverRatio: Double = 84.5,
+    @SerializedName("signal") val signal: String = "SILVER_UNDERVALUED",
+    @SerializedName("gold_target_split_pct") val goldTargetSplitPct: Double = 40.0,
+    @SerializedName("silver_target_split_pct") val silverTargetSplitPct: Double = 60.0,
+    @SerializedName("is_estimated") val isEstimated: Boolean = true,
+    @SerializedName("source") val source: String = "STATUTORY_BENCHMARK_ESTIMATE",
+    @SerializedName("as_of_date") val asOfDate: String = "2026-08-31"
+)
+
+@Immutable
+data class ReconstitutionContextDto(
+    @SerializedName("next_reconstitution_date") val nextReconstitutionDate: String = "2026-09-30",
+    @SerializedName("days_to_reconstitution") val daysToReconstitution: Long = 30L,
+    @SerializedName("is_window_active") val isWindowActive: Boolean = false,
+    @SerializedName("execution_recommendation") val executionRecommendation: String = "PROCEED"
+)
+
+@Immutable
+data class BeerSpreadContextDto(
+    @SerializedName("gsec_10y_yield_pct") val gsec10yYieldPct: Double = 7.10,
+    @SerializedName("nifty50_pe") val nifty50Pe: Double = 22.40,
+    @SerializedName("nifty50_earnings_yield_pct") val nifty50EarningsYieldPct: Double = 4.46,
+    @SerializedName("beer_spread_pct") val beerSpreadPct: Double = 2.64,
+    @SerializedName("valuation_zone") val valuationZone: String = "EQUITY_EXPENSIVE",
+    @SerializedName("as_of_date") val asOfDate: String = "2026-08-31",
+    @SerializedName("is_fallback") val isFallback: Boolean = false,
+    @SerializedName("source_status") val sourceStatus: String = "LIVE_FETCH"
+)
+
+@Immutable
 data class RebalancePlanDto(
     @SerializedName("plan_id") val planId: String = "",
     @SerializedName("generated_at") val generatedAt: String = "",
     @SerializedName("trigger") val trigger: RebalanceTriggerDto? = null,
+    @SerializedName("drawdown_context") val drawdownContext: DrawdownContextDto? = null,
     @SerializedName("sell_side") val sellSide: SellSidePlanDto? = null,
     @SerializedName("buy_side") val buySide: BuySidePlanDto? = null,
-    @SerializedName("reasoning_narrative") val reasoningNarrative: ReasoningNarrativeDto? = null
+    @SerializedName("reasoning_narrative") val reasoningNarrative: ReasoningNarrativeDto? = null,
+    @SerializedName("gold_silver_context") val goldSilverContext: GoldSilverContextDto? = null,
+    @SerializedName("reconstitution_context") val reconstitutionContext: ReconstitutionContextDto? = null,
+    @SerializedName("beer_spread_context") val beerSpreadContext: BeerSpreadContextDto? = null
 )
 
 @Immutable
@@ -150,7 +194,10 @@ data class FlatHoldingDto(
     @SerializedName("portfolio_percentage") val portfolioPercentage: Double = 0.0,
     @SerializedName("portfolio_weight_pct") val portfolioWeightPct: Double = 0.0,
     @SerializedName("formatted_current_value") val formattedCurrentValue: String = "",
-    @SerializedName("formatted_invested_value") val formattedInvestedValue: String = ""
+    @SerializedName("formatted_invested_value") val formattedInvestedValue: String = "",
+    @SerializedName("expense_ratio") val expenseRatio: Double = 0.20,
+    @SerializedName("ter_status") val terStatus: String = "OPTIMAL",
+    @SerializedName("ter_as_of_date") val terAsOfDate: String = "Aug 2026"
 ) {
     val effectivePortfolioPct: Double
         get() = if (portfolioPercentage > 0.0) portfolioPercentage else portfolioWeightPct
@@ -166,7 +213,9 @@ data class FlatTaxLotDto(
     @SerializedName("grandfathered_nav") val grandfatheredNav: Double? = null,
     @SerializedName("cost_per_unit") val costPerUnit: Double = 0.0,
     @SerializedName("holding_days") val holdingDays: Long = 0L,
-    @SerializedName("days_to_ltcg") val daysToLtcg: Long = 0L
+    @SerializedName("days_to_ltcg") val daysToLtcg: Long = 0L,
+    @SerializedName("estimated_tax_drag") val estimatedTaxDrag: Double = 0.0,
+    @SerializedName("is_harvest_candidate") val isHarvestCandidate: Boolean = false
 )
 
 @Immutable

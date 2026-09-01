@@ -107,8 +107,16 @@ public class AmfiNavSync {
         List<NavEntry> entries = fetchLatestNavsFromAmfi();
         Map<String, BigDecimal> navMap = new HashMap<>();
         for (NavEntry entry : entries) {
-            if (entry.isin() != null && entry.nav() != null) {
-                navMap.put(entry.isin(), entry.nav());
+            if (entry.nav() != null) {
+                if (entry.isin() != null && !entry.isin().isEmpty()) {
+                    navMap.put(entry.isin(), entry.nav());
+                }
+                if (entry.schemeCode() != null && !entry.schemeCode().isEmpty()) {
+                    navMap.put(entry.schemeCode(), entry.nav());
+                }
+                if (entry.schemeName() != null && !entry.schemeName().isEmpty()) {
+                    navMap.put(entry.schemeName(), entry.nav());
+                }
             }
         }
         return navMap;

@@ -112,6 +112,9 @@ public class SyncController {
             BigDecimal holdingCurVal = totalUnits.multiply(nav);
             double holdingXirr = valuationService.calculateHoldingXirr(assetId, allEvents, today, holdingCurVal);
 
+            AssetCategory catEnum = TaxClassifier.detectCategory(assetId, assetName);
+            var terMeta = com.portfolioos.core.nav.AmfiTerFetcher.resolveTer(assetId, assetName, catEnum);
+
             holdings.add(new FlatHoldingDto(
                 assetId,
                 assetName,
@@ -122,7 +125,10 @@ public class SyncController {
                 holdingCurVal.doubleValue(),
                 totalCost.doubleValue(),
                 currencyFormat.format(holdingCurVal),
-                currencyFormat.format(totalCost)
+                currencyFormat.format(totalCost),
+                terMeta.expenseRatio(),
+                terMeta.terStatus(),
+                terMeta.terAsOfDate()
             ));
         }
 
@@ -135,13 +141,17 @@ public class SyncController {
             com.portfolioos.core.model.TaxTerm taxTerm = TaxClassifier.classifyTaxTerm(category, holdingDays, fy, isListed);
             boolean isLongTerm = taxTerm == com.portfolioos.core.model.TaxTerm.LONG_TERM;
 
-            String classification = switch (category) {
-                case DEBT_SPECIFIED_50AA -> "SEC_50AA_DEBT";
-                case EQUITY -> "SEC_112A_EQUITY";
-                default -> category.name();
-            };
+            com.portfolioos.core.rules.TaxRulesConfig taxRules = com.portfolioos.core.rules.TaxRulesLoader.loadRules(fy);
+            long thresholdDays = category == AssetCategory.EQUITY ? taxRules.equityLtcgThresholdDays() : (isListed ? taxRules.equityLtcgThresholdDays() : taxRules.goldInternationalThresholdDays());
+            long daysToLtcg = isLongTerm ? 0L : Math.max(0L, thresholdDays - holdingDays);
 
-            long daysToLtcg = isLongTerm ? 0L : Math.max(0L, 365L - holdingDays);
+            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot.assetId(), lot.assetName(), "SyncController.getSnapshot (lot " + lot.lotId() + ")");
+            BigDecimal lotCurrentVal = lot.remainingUnits().multiply(nav);
+            BigDecimal lotGain = lotCurrentVal.subtract(lot.totalCostBasis());
+
+            String classification = TaxClassifier.detectTaxClassification(category);
+            BigDecimal estimatedTaxDrag = TaxClassifier.computeEstimatedTaxDrag(category, taxTerm, lotGain, taxRules);
+            boolean isHarvestCandidate = lotGain.compareTo(BigDecimal.ZERO) < 0;
 
             taxLots.add(new FlatTaxLotDto(
                 lot.assetId(),
@@ -152,7 +162,9 @@ public class SyncController {
                 lot.isGrandfathered() ? lot.fmv20180131().doubleValue() : null,
                 lot.costPerUnit().doubleValue(),
                 holdingDays,
-                daysToLtcg
+                daysToLtcg,
+                estimatedTaxDrag.doubleValue(),
+                isHarvestCandidate
             ));
         }
 

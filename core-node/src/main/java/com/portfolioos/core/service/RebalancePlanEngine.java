@@ -623,6 +623,10 @@ public class RebalancePlanEngine {
             String.format("Portfolio currently %.1f%% below rolling high", ddPct)
         ) : null;
 
+        var goldSilverCtx = com.portfolioos.core.valuation.GoldSilverRatioCalculator.calculateRatio(navMap);
+        var reconCtx = com.portfolioos.core.valuation.ReconstitutionCalendar.calculateReconstitutionStatus(today);
+        var beerSpreadCtx = com.portfolioos.core.valuation.BeerSpreadCalculator.calculateCurrentSpread();
+
         return new RebalancePlanDto(
             planId,
             generatedAt,
@@ -630,7 +634,10 @@ public class RebalancePlanEngine {
             sellSide,
             buySide,
             narrative,
-            lumpsumMeta
+            lumpsumMeta,
+            goldSilverCtx,
+            reconCtx,
+            beerSpreadCtx
         );
     }
 

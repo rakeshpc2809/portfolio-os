@@ -394,24 +394,156 @@ export function renderUnifiedRebalancePlanUI(plan) {
   }
 
   // Drawdown Tripwire Depth Gauge
-  const ddPct = drawdownCtx.current_drawdown_pct ?? drawdownCtx.currentDrawdownPct ?? 0;
-  const barEl = document.getElementById("gaugeProgressBar");
-  const markEl = document.getElementById("gaugeIndicatorMarker");
-  const statusEl = document.getElementById("gaugeStatusText");
-  const distEl = document.getElementById("gaugeNextDistance");
+  const ddPct = parseFloat(drawdownCtx.current_drawdown_pct ?? drawdownCtx.currentDrawdownPct ?? 0);
+  const thresholds = drawdownCtx.tier_thresholds || drawdownCtx.tierThresholds || [5.0, 10.0, 15.0];
+  const t1 = thresholds[0] || 5.0;
+  const t2 = thresholds[1] || 10.0;
+  const t3 = thresholds[2] || 15.0;
+  const maxScale = t3 + 5.0; // Dynamic scale ceiling (e.g. 20%)
 
-  if (barEl && markEl) {
-    const gaugeWidth = Math.min(100, Math.max(0, (ddPct / 20.0) * 100));
-    barEl.style.width = `${gaugeWidth}%`;
-    markEl.style.left = `${gaugeWidth}%`;
+  const t1Label = document.getElementById("gaugeTier1Label");
+  const t2Label = document.getElementById("gaugeTier2Label");
+  const t3Label = document.getElementById("gaugeTier3Label");
+  if (t1Label) t1Label.textContent = `${t1}% (T1)`;
+  if (t2Label) t2Label.textContent = `${t2}% (T2)`;
+  if (t3Label) t3Label.textContent = `${t3}%+ (T3)`;
+
+  const z0 = document.getElementById("gaugeZone0");
+  const z1 = document.getElementById("gaugeZone1");
+  const z2 = document.getElementById("gaugeZone2");
+  const z3 = document.getElementById("gaugeZone3");
+  if (z0 && z1 && z2 && z3) {
+    z0.style.flex = `${t1}`;
+    z1.style.flex = `${t2 - t1}`;
+    z2.style.flex = `${t3 - t2}`;
+    z3.style.flex = `${maxScale - t3}`;
   }
-  if (statusEl) {
-    statusEl.textContent = `Current Drawdown: ${ddPct}%`;
+
+  const markEl = document.getElementById("gaugeIndicatorMarker");
+  if (markEl) {
+    const markPos = Math.min(100, Math.max(0, (ddPct / maxScale) * 100));
+    markEl.style.left = `${markPos}%`;
   }
-  if (distEl && drawdownCtx) {
-    const dist = drawdownCtx.next_tier_distance_pct ?? drawdownCtx.nextTierDistancePct ?? 0;
-    const nextT = drawdownCtx.next_tier ?? drawdownCtx.nextTier ?? "TIER_10";
-    distEl.textContent = `${dist}% to ${nextT}`;
+
+  const currentDDText = document.getElementById("gaugeCurrentDDPct");
+  if (currentDDText) {
+    currentDDText.textContent = `${ddPct.toFixed(1)}%`;
+  }
+
+  const distanceText = document.getElementById("gaugeDistanceText");
+  if (distanceText && drawdownCtx) {
+    const dist = parseFloat(drawdownCtx.next_tier_distance_pct ?? drawdownCtx.nextTierDistancePct ?? 0);
+    const nextT = drawdownCtx.next_tier ?? drawdownCtx.nextTier ?? "Next Tier";
+    const rollingHigh = parseFloat(drawdownCtx.rolling_high_value ?? drawdownCtx.rollingHighValue ?? 0);
+    const distRupees = rollingHigh > 0 ? (dist / 100.0) * rollingHigh : 0;
+    const distRupeesFmt = distRupees > 0 ? ` (~₹${Math.round(distRupees).toLocaleString("en-IN")})` : "";
+    distanceText.innerHTML = `Distance to next tripwire: <strong style="color: #f8fafc;">${dist.toFixed(1)}%${distRupeesFmt} to ${nextT}</strong>`;
+  }
+
+  // Market Overlays: Gold-Silver Ratio & Reconstitution Calendar
+  const goldSilverCtx = plan.gold_silver_context || plan.goldSilverContext;
+  if (goldSilverCtx) {
+    const ratioEl = document.getElementById("goldSilverRatioVal");
+    const badgeEl = document.getElementById("goldSilverSignalBadge");
+    const splitEl = document.getElementById("goldSilverTargetSplitText");
+
+    const ratio = goldSilverCtx.gold_silver_ratio ?? goldSilverCtx.goldSilverRatio ?? 84.5;
+    const signal = goldSilverCtx.signal ?? "SILVER_UNDERVALUED";
+    const goldPct = goldSilverCtx.gold_target_split_pct ?? goldSilverCtx.goldTargetSplitPct ?? 40;
+    const silverPct = goldSilverCtx.silver_target_split_pct ?? goldSilverCtx.silverTargetSplitPct ?? 60;
+    const isEstimated = goldSilverCtx.is_estimated ?? goldSilverCtx.isEstimated ?? true;
+    const source = goldSilverCtx.source || (isEstimated ? "STATUTORY_BENCHMARK_ESTIMATE" : "LIVE_AMFI_ETF_SPOT");
+    const asOf = goldSilverCtx.as_of_date || goldSilverCtx.asOfDate || "2026-08-31";
+
+    if (ratioEl) {
+      ratioEl.innerHTML = `${ratio.toFixed(1)}x <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; vertical-align: middle; ${isEstimated ? "background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b;" : "background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981;"}">${isEstimated ? "ESTIMATED" : "LIVE AMFI"}</span>`;
+    }
+    if (badgeEl) {
+      badgeEl.textContent = signal.replace(/_/g, " ");
+      if (signal === "SILVER_UNDERVALUED") {
+        badgeEl.style.background = "rgba(251, 191, 36, 0.15)";
+        badgeEl.style.color = "#fbbf24";
+        badgeEl.style.borderColor = "#fbbf24";
+      } else if (signal === "GOLD_UNDERVALUED") {
+        badgeEl.style.background = "rgba(234, 179, 8, 0.15)";
+        badgeEl.style.color = "#eab308";
+        badgeEl.style.borderColor = "#eab308";
+      } else {
+        badgeEl.style.background = "rgba(148, 163, 184, 0.15)";
+        badgeEl.style.color = "#94a3b8";
+        badgeEl.style.borderColor = "#94a3b8";
+      }
+    }
+    if (splitEl) {
+      splitEl.innerHTML = `Target Split: <strong style="color: #fbbf24;">${Math.round(goldPct)}% Gold / ${Math.round(silverPct)}% Silver</strong> <span style="color: #64748b; font-size: 0.72rem; margin-left: 6px;">(As of: ${asOf})</span>`;
+    }
+  }
+
+  const reconCtx = plan.reconstitution_context || plan.reconstitutionContext;
+  if (reconCtx) {
+    const dateEl = document.getElementById("reconstitutionDateVal");
+    const daysEl = document.getElementById("reconstitutionDaysVal");
+    const badgeEl = document.getElementById("reconstitutionWindowBadge");
+
+    const reconDate = reconCtx.next_reconstitution_date || reconCtx.nextReconstitutionDate || "2026-09-30";
+    const days = reconCtx.days_to_reconstitution ?? reconCtx.daysToReconstitution ?? 30;
+    const isWin = reconCtx.is_window_active ?? reconCtx.isWindowActive ?? false;
+
+    if (dateEl) dateEl.textContent = reconDate;
+    if (daysEl) daysEl.textContent = `${days} days remaining`;
+    if (badgeEl) {
+      if (isWin) {
+        badgeEl.textContent = "48H BLACKOUT: PAUSE REBALANCE";
+        badgeEl.style.background = "rgba(239, 68, 68, 0.2)";
+        badgeEl.style.color = "#f87171";
+        badgeEl.style.borderColor = "#ef4444";
+      } else {
+        badgeEl.textContent = "NORMAL EXECUTION";
+        badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
+        badgeEl.style.color = "#10b981";
+        badgeEl.style.borderColor = "#10b981";
+      }
+    }
+  }
+
+  const beerCtx = plan.beer_spread_context || plan.beerSpreadContext;
+  if (beerCtx) {
+    const zoneBadge = document.getElementById("beerValuationZoneBadge");
+    const asOfText = document.getElementById("beerAsOfDateText");
+    const gsecVal = document.getElementById("beerGsecYieldVal");
+    const niftyPeVal = document.getElementById("beerNiftyPeVal");
+    const eyVal = document.getElementById("beerEarningsYieldVal");
+    const spreadVal = document.getElementById("beerSpreadVal");
+
+    const gsec = beerCtx.gsec_10y_yield_pct ?? beerCtx.gsec10yYieldPct ?? 7.10;
+    const pe = beerCtx.nifty50_pe ?? beerCtx.nifty50Pe ?? 22.40;
+    const ey = beerCtx.nifty50_earnings_yield_pct ?? beerCtx.nifty50EarningsYieldPct ?? 4.46;
+    const spread = beerCtx.beer_spread_pct ?? beerCtx.beerSpreadPct ?? 2.64;
+    const zone = beerCtx.valuation_zone ?? beerCtx.valuationZone ?? "EQUITY_EXPENSIVE";
+    const asOf = beerCtx.as_of_date || beerCtx.asOfDate || "2026-08-31";
+
+    if (asOfText) asOfText.textContent = `As of: ${asOf}`;
+    if (gsecVal) gsecVal.textContent = `${gsec.toFixed(2)}%`;
+    if (niftyPeVal) niftyPeVal.textContent = `${pe.toFixed(2)}`;
+    if (eyVal) eyVal.textContent = `${ey.toFixed(2)}%`;
+    if (spreadVal) spreadVal.textContent = `${spread >= 0 ? "+" : ""}${spread.toFixed(2)}%`;
+
+    if (zoneBadge) {
+      zoneBadge.textContent = zone.replace(/_/g, " ");
+      if (zone === "EQUITY_EXPENSIVE") {
+        zoneBadge.style.background = "rgba(245, 158, 11, 0.15)";
+        zoneBadge.style.color = "#f59e0b";
+        zoneBadge.style.borderColor = "#f59e0b";
+      } else if (zone === "EQUITY_ATTRACTIVE") {
+        zoneBadge.style.background = "rgba(16, 185, 129, 0.15)";
+        zoneBadge.style.color = "#10b981";
+        zoneBadge.style.borderColor = "#10b981";
+      } else {
+        zoneBadge.style.background = "rgba(56, 189, 248, 0.15)";
+        zoneBadge.style.color = "#38bdf8";
+        zoneBadge.style.borderColor = "#38bdf8";
+      }
+    }
   }
 
   // 3. Exemption Headroom Burndown Bar
