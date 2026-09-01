@@ -90,7 +90,7 @@ public class NipponHoldingsParser {
 
             if (!holdings.isEmpty()) {
                 projector.clearFundHoldings(NIPPON_SMALLCAP_ISIN);
-                projector.saveFundHoldings(NIPPON_SMALLCAP_ISIN, defaultAsOfDate, holdings);
+                projector.saveFundHoldings(NIPPON_SMALLCAP_ISIN, defaultAsOfDate, "FACTSHEET_POI_PARSED", holdings);
                 return true;
             }
         } catch (Exception e) {

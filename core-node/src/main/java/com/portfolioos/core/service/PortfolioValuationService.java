@@ -689,7 +689,10 @@ public class PortfolioValuationService {
             }
         }
 
-        String coverageType = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists() ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";
+        boolean hasFactsheet = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists() 
+            || new java.io.File("data/factsheets/ppfas_flexicap_full.xlsx").exists()
+            || new java.io.File("../data/factsheets/ppfas_flexicap_full.xlsx").exists();
+        String coverageType = hasFactsheet ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
@@ -707,7 +710,10 @@ public class PortfolioValuationService {
         List<String> evalFundIds = regFunds.stream().map(f -> (String) f.get("isin")).filter(Objects::nonNull).collect(Collectors.toList());
         List<Map<String, Object>> upset = duckDbProjector.getMultiFundIntersectionAnalytics(evalFundIds);
 
-        String coverageType = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists() ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";
+        boolean hasFactsheet = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists() 
+            || new java.io.File("data/factsheets/ppfas_flexicap_full.xlsx").exists()
+            || new java.io.File("../data/factsheets/ppfas_flexicap_full.xlsx").exists();
+        String coverageType = hasFactsheet ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");

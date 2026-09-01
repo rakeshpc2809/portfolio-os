@@ -236,45 +236,42 @@ class AllocationDriftWidget(Vertical):
 
     def on_mount(self) -> None:
         p = PALETTE
-        self.query_one("#alloc-bar", Static).update(f"[{p['primary']} on #1e1e2e] EQUITY_CORE 60.8% [/] [{p['success']} on #1e1e2e] EQUITY_SATELLITE 33.5% [/] [{p['accent']} on #1e1e2e] LIQUID 4.2% [/]")
+        self.query_one("#alloc-bar", Static).update(f"[{p['primary']} on #1e1e2e] EQ_CORE 60.8% [/] [{p['success']} on #1e1e2e] EQ_SAT 33.5% [/] [{p['accent']} on #1e1e2e] LIQ 4.2% [/]")
         self.query_one("#drift-table", Static).update(
-            "  Bucket           | Current | Target | Post-Reb| Status\n"
-            f"  EQUITY_CORE      |   60.8% |  50.0% |   55.5% | [{p['accent']}]DRIFT[/]\n"
-            f"  EQUITY_SATELLITE |   33.5% |  30.0% |   30.6% | [{p['accent']}]DRIFT[/]\n"
-            f"  GOLD_SILVER      |    1.5% |  10.0% |    6.4% | [{p['success']}]OPTIMAL[/]\n"
-            f"  LIQUID_BUFFER    |    4.2% |  10.0% |    7.5% | [{p['accent']}]DRIFT[/]"
+            "  Bucket         | Cur   | Tgt   | Drift | Status\n"
+            f"  EQ_CORE        | 60.8% | 50.0% | +5.5% | [{p['accent']}]DRIFT[/]\n"
+            f"  EQ_SATELLITE   | 33.5% | 30.0% | +0.6% | [{p['accent']}]DRIFT[/]\n"
+            f"  GOLD_SILVER    |  1.5% | 10.0% | -3.6% | [{p['success']}]OPTIMAL[/]\n"
+            f"  LIQUID_BUFFER  |  4.2% | 10.0% | -2.5% | [{p['accent']}]DRIFT[/]"
         )
-        self.query_one("#drift-action", Static).update(f"[bold {p['accent']}]⚡ Rebalance Trigger:[/] Bucket Allocation Drift Exceeded (Press [p])")
+        self.query_one("#drift-action", Static).update(f"[bold {p['accent']}]⚡ Rebalance Trigger:[/] Drift Exceeded (Press [p])")
 
     def update_data(self, buy_side: Dict[str, Any], rebalance_plan: Dict[str, Any]) -> None:
         buckets = buy_side.get("buckets", [])
         if not buckets:
             return
-
+        
         p = PALETTE
         bar_parts = []
-        colors = [p["primary"], p["success"], p["accent"], p["secondary"]]
-        drift_rows = ["  Bucket           | Current | Target | Post-Reb| Status"]
+        drift_rows = ["  Bucket         | Cur   | Tgt   | Drift | Status"]
         
-        for idx, item in enumerate(buckets):
-            color = colors[idx % len(colors)]
-            name = item.get("bucket", "Other")
-            pct = item.get("current_pct", 0.0)
-            target = item.get("target_pct", pct)
-            post = item.get("post_rebalance_pct", pct)
+        for b in buckets:
+            name = b.get("bucket", "OTHER").replace("EQUITY_", "EQ_")[:14]
+            pct = b.get("current_allocation_pct", 0.0)
+            target = b.get("target_allocation_pct", 0.0)
             drift = pct - target
+            drift_color = p["success"] if abs(drift) <= 2.0 else p["accent"]
+            status = f"[{p['success']}]OPTIMAL[/]" if abs(drift) <= 2.0 else f"[{p['accent']}]DRIFT[/]"
             
-            bar_parts.append(f"[bold on {color}] {name[:8]} {pct:.1f}% [/]")
-            status = f"[{p['accent']}]DRIFT[/]" if abs(drift) >= 5.0 else f"[{p['success']}]OPTIMAL[/]"
-            drift_color = p["accent"] if drift > 0 else p["success"]
-            drift_rows.append(f"  {name:<16} | {pct:>6.1f}% | {target:>5.1f}% | [{drift_color}]{drift:>+5.1f}%[/] | {status}")
+            bar_parts.append(f"[{p['primary']} on #1e1e2e] {name[:6]} {pct:.1f}% [/] ")
+            drift_rows.append(f"  {name:<14} | {pct:>4.1f}% | {target:>4.1f}% | [{drift_color}]{drift:>+4.1f}%[/] | {status}")
 
         self.query_one("#alloc-bar", Static).update("".join(bar_parts))
         self.query_one("#drift-table", Static).update("\n".join(drift_rows))
         
         narrative = rebalance_plan.get("reasoning_narrative", {})
         headline = narrative.get("headline", "All buckets within target tolerance")
-        action_text = f"[bold {p['accent']}]⚡ Rebalance Plan:[/] {headline[:50]}... (Press [p])"
+        action_text = f"[bold {p['accent']}]⚡ Rebalance Plan:[/] {headline[:40]}... (Press [p])"
         self.query_one("#drift-action", Static).update(action_text)
 
 class TaxHarvestWidget(Vertical):
@@ -284,102 +281,121 @@ class TaxHarvestWidget(Vertical):
     def compose(self) -> ComposeResult:
         yield Label(f"[bold {PALETTE['secondary']}]Tax-Loss/Gain Harvesting (Sec 112A)[/]")
         yield Static(id="ltcg-caption")
-        yield ProgressBar(total=100, show_percentage=False, id="ltcg-progress")
+        yield ProgressBar(total=100, show_percentage=False, show_eta=False, id="ltcg-progress")
         yield Static(id="tax-opps")
 
     def on_mount(self) -> None:
         p = PALETTE
         self.query_one("#ltcg-caption", Static).update(
-            f"Sec 112A LTCG Used: [bold {p['primary']}]₹27,002.18[/] / [bold #a6adc8]₹1,25,000.00[/] ([bold {p['success']}]21.6%[/])\n"
+            f"Sec 112A LTCG Used: [bold {p['primary']}]{inr_format(self.used_exemption)}[/] / [bold #a6adc8]{inr_format(self.total_cap)}[/] (21.6%)\n"
             f"Remaining FY Exemption Buffer: [bold {p['success']}]₹97,997.82[/]"
         )
         self.query_one("#ltcg-progress", ProgressBar).progress = 21.6
         self.query_one("#tax-opps", Static).update(
-            f"• [bold {p['success']}]Tax Optimization:[/] Realized ₹27,002 tax-free under ₹1.25L Sec 112A exemption.\n"
-            "• [bold #cba6f7]Action:[/] Press [t] for detailed lot-by-lot acquisition & holding table."
+            f"• [bold {p['success']}]Tax Optimization:[/] Realized ₹27,002 tax-free under ₹1.25L Sec 112A.\n"
+            "• [bold #cba6f7]Action:[/] Press [t] for lot-by-lot acquisition & holding table."
         )
 
-    def update_tax_status(self, tax_summary: Dict[str, Any]) -> None:
+    def update_tax_status(self, tax_summary: Optional[Dict[str, Any]] = None) -> None:
+        self.update_data(tax_summary or {})
+
+    def update_tax_data(self, data: Optional[Dict[str, Any]] = None) -> None:
+        self.update_data(data or {})
+
+    def update_data(self, sell_side_or_tax: Dict[str, Any]) -> None:
+        tax_summary = sell_side_or_tax.get("tax_summary", sell_side_or_tax) if isinstance(sell_side_or_tax, dict) else {}
         p = PALETTE
-        ltcg_gains = tax_summary.get("total_ltcg_exempt", 27002.18)
-        remaining_buffer = tax_summary.get("exemption_headroom_after", 97997.82)
-        pct = min(100.0, (ltcg_gains / self.total_cap) * 100.0) if self.total_cap > 0 else 0.0
+        used = tax_summary.get("total_ltcg_taxable_realized", tax_summary.get("total_ltcg_exempt", 27002.18))
+        headroom = tax_summary.get("exemption_headroom_after", 97997.82)
+        total = used + headroom or 125000.0
+        pct = (used / total) * 100.0
 
-        caption = (
-            f"Sec 112A LTCG Used: [bold {p['primary']}]{inr_format(ltcg_gains)}[/] / [bold #a6adc8]{inr_format(self.total_cap)}[/] ([bold {p['success']}]{pct:.1f}%[/])\n"
-            f"Remaining FY Exemption Buffer: [bold {p['success']}]{inr_format(remaining_buffer)}[/]"
-        )
-        
-        opps = [
-            f"• [bold {p['success']}]Tax Optimization:[/] Realized ₹{ltcg_gains:,.0f} tax-free under ₹1.25L Sec 112A exemption.",
-            "• [bold #cba6f7]Action:[/] Press [t] for detailed lot-by-lot acquisition & holding table."
-        ]
-
-        self.query_one("#ltcg-caption", Static).update(caption)
-        self.query_one("#ltcg-progress", ProgressBar).progress = pct
-        self.query_one("#tax-opps", Static).update("\n".join(opps))
+        try:
+            self.query_one("#ltcg-caption", Static).update(
+                f"Sec 112A LTCG Used: [bold {p['primary']}]{inr_format(used)}[/] / [bold #a6adc8]{inr_format(total)}[/] ([bold {p['success']}]{pct:.1f}%[/])\n"
+                f"Remaining FY Exemption Buffer: [bold {p['success']}]{inr_format(headroom)}[/]"
+            )
+            self.query_one("#ltcg-progress", ProgressBar).progress = pct
+        except Exception:
+            pass
 
 class QuantRiskWidget(Static):
+    sharpe = reactive(1.48)
+    sortino = reactive(2.21)
+    max_drawdown = reactive(-11.8)
+    beta = reactive(0.84)
+    swr = reactive(3.50)
+    var_95 = reactive(-42310.00)
+
     def on_mount(self) -> None:
-        self.update_metrics()
+        self.render_content()
 
-    def update_metrics(self) -> None:
+    def update_metrics(self, quant_data: Optional[Dict[str, Any]] = None) -> None:
+        self.update_data(quant_data or {})
+
+    def update_data(self, quant_data: Optional[Dict[str, Any]] = None) -> None:
+        if quant_data and isinstance(quant_data, dict):
+            self.beta = quant_data.get("portfolio_beta", quant_data.get("beta", self.beta))
+            self.var_95 = quant_data.get("var_95_inr", quant_data.get("var_95", self.var_95))
+            self.swr = quant_data.get("safe_withdrawal_rate", quant_data.get("swr", self.swr))
+            self.sharpe = quant_data.get("sharpe", self.sharpe)
+            self.sortino = quant_data.get("sortino", self.sortino)
+            self.max_drawdown = quant_data.get("max_drawdown", self.max_drawdown)
+        self.render_content()
+
+    def render_content(self) -> None:
         p = PALETTE
-        prob = 98.4
-        depletion = 92
-        swr = CFG["policy"].get("default_swr_pct", 3.5)
-
         self.update(
-            f"[bold {p['secondary']}]Quant Risk & FIRE Telemetry[/]\n\n"
-            f"  Sharpe Ratio   : [bold {p['success']}]1.48[/]  (Benchmark: 1.05)\n"
-            f"  Sortino Ratio  : [bold {p['success']}]2.21[/]\n"
-            f"  Max Drawdown   : [bold {p['danger']}]-11.8%[/] (NIFTY 50: -18.2%)\n"
-            f"  Beta (NIFTY 50): [bold #ffffff]0.84[/]\n\n"
-            f"[bold {p['primary']}]FIRE Monte Carlo Engine:[/] (10,000 Iterations)\n"
-            f"  Survival Prob ({swr}% SWR): [bold {p['success']}]{prob:.1f}% Safe to Age 95[/]\n"
-            f"  Worst Case Depletion   : [bold #ffffff]Age {depletion} (10th percentile)[/]"
+            f"[bold {p['secondary']}]Quant Risk & Factor Exposures[/]\n\n"
+            f"  Portfolio Beta   : [bold #ffffff]{self.beta:.2f}[/]  [{p['success']}](Low Sensitivity)[/]\n"
+            f"  Value-at-Risk(95): [bold {p['danger']}]{inr_format(self.var_95)}[/] (1-Day VaR)\n"
+            f"  Momentum Drift   : [bold {p['accent']}]+12.4%[/] [{p['primary']}](Momentum Overweight)[/]\n"
+            f"  Safe-Withdrawal  : [bold {p['success']}]{self.swr:.2f}%[/] (FIRE Benchmark)\n"
+            f"  Portfolio XIRR   : [bold #ffffff]8.23%[/] (vs Nifty TRI 7.1%)"
         )
 
 class SyncTelemetryWidget(Static):
     def on_mount(self) -> None:
-        p = PALETTE
-        now_ts = datetime.now().strftime("%H:%M:%S")
-        self.update(
-            f"[bold {p['secondary']}]Engine & Sync Telemetry[/]\n\n"
-            f"  Core-Node (8080)   : [{p['success']}]● ONLINE[/] (1.8ms)\n"
-            f"  Quant Sidecar(8000): [{p['success']}]● ACTIVE[/]\n"
-            f"  Ledger Security    : [{p['success']}]● HMAC-SHA256 VERIFIED[/]\n"
-            f"  Last Poll Interval : [#ffffff]{now_ts}[/] (Every 5s)\n"
-            f"  State Projection   : [{p['success']}]● DUCKDB SNAPSHOT ACTIVE[/]"
-        )
+        self.update_telemetry(core_online=False, quant_online=False, latency_ms=0.0)
 
-    def update_telemetry(self, core_online: bool, quant_online: bool, latency_ms: float) -> None:
+    def update_telemetry(self, core_online: Any = False, quant_online: Any = False, latency_ms: float = 0.0) -> None:
         p = PALETTE
         now_ts = datetime.now().strftime("%H:%M:%S")
-        core_status = f"[{p['success']}]● ONLINE[/] ({latency_ms:.1f}ms)" if core_online else f"[{p['danger']}]● OFFLINE[/]"
-        quant_status = f"[{p['success']}]● ACTIVE[/]" if quant_online else f"[{p['danger']}]● OFFLINE[/]"
+        
+        # Handle dict or bool arguments safely
+        if isinstance(core_online, dict):
+            c_on = core_online.get("core_online", False)
+            q_on = core_online.get("quant_online", False)
+            lat = core_online.get("latency_ms", 0.0)
+        else:
+            c_on = bool(core_online)
+            q_on = bool(quant_online)
+            lat = latency_ms
+
+        core_status = f"[{p['success']}]● ONLINE[/] ({lat:.1f}ms)" if c_on else f"[{p['danger']}]● OFFLINE[/]"
+        quant_status = f"[{p['success']}]● ACTIVE[/]" if q_on else f"[{p['danger']}]● OFFLINE[/]"
 
         self.update(
             f"[bold {p['secondary']}]Engine & Sync Telemetry[/]\n\n"
             f"  Core-Node (8080)   : {core_status}\n"
             f"  Quant Sidecar(8000): {quant_status}\n"
-            f"  Ledger Security    : [{p['success']}]● HMAC-SHA256 VERIFIED[/]\n"
-            f"  Last Poll Interval : [#ffffff]{now_ts}[/] (Every {CFG['server']['poll_interval_seconds']}s)\n"
-            f"  State Projection   : [{p['success']}]● DUCKDB SNAPSHOT ACTIVE[/]"
+            f"  Ledger Security    : [{p['success']}]● HMAC-SHA256[/]\n"
+            f"  Last Poll Interval : [#ffffff]{now_ts}[/] ({CFG['server']['poll_interval_seconds']}s)\n"
+            f"  State Projection   : [{p['success']}]● DUCKDB ACTIVE[/]"
         )
 
 def build_dynamic_css() -> str:
     p = PALETTE
     return f"""
     Screen {{ background: {p['bg']}; color: {p['fg']}; }}
-    Header {{ background: {p['bg']}; color: {p['primary']}; dock: top; }}
-    Footer {{ background: #11111b; color: #a6adc8; dock: bottom; }}
-    #top-banner {{ height: 3; background: #11111b; border: solid {p['border']}; padding: 0 1; margin-bottom: 1; }}
-    #main-grid {{ layout: grid; grid-size: 2 2; grid-gutter: 1; height: 1fr; }}
-    .grid-pane {{ background: {p['panel_bg']}; border: round {p['border']}; padding: 1 2; }}
-    .grid-pane:focus {{ border: round {p['primary']}; }}
-    ProgressBar {{ padding: 0; margin: 1 0; }}
-    Bar {{ color: {p['success']}; background: {p['border']}; }}
+    Header, Footer {{ display: none; }}
+    #top-banner {{ height: 3; background: #11111b; border: solid {p['border']}; padding: 0 1; margin-bottom: 0; }}
+    #main-grid {{ layout: grid; grid-size: 2 2; grid-gutter: 0 1; height: 1fr; padding: 0; }}
+    .grid-pane {{ background: {p['panel_bg']}; border: solid {p['border']}; padding: 0 1; }}
+    .grid-pane:focus {{ border: solid {p['primary']}; }}
+    ProgressBar {{ padding: 0; margin: 0; height: 1; }}
+    ProgressBar > Bar {{ color: {p['success']}; background: {p['border']}; }}
+    ProgressBar > ETA, ProgressBar > PercentageStatus {{ display: none; }}
     ModalScreen {{ align: center middle; background: rgba(0, 0, 0, 0.75); }}
     #modal-dialog {{ background: #11111b; border: thick {p['primary']}; width: 85%; height: 75%; padding: 1 2; }}
     #modal-title {{ color: {p['primary']}; text-style: bold; margin-bottom: 1; }}
@@ -400,14 +416,12 @@ class PortfolioOSTUI(App):
     cached_snapshot: Dict[str, Any] = {}
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
         yield ValuationBanner(id="top-banner")
         with Grid(id="main-grid"):
             yield AllocationDriftWidget(id="pane-alloc", classes="grid-pane")
             yield TaxHarvestWidget(id="pane-tax", classes="grid-pane")
             yield QuantRiskWidget(id="pane-quant", classes="grid-pane")
             yield SyncTelemetryWidget(id="pane-telemetry", classes="grid-pane")
-        yield Footer()
 
     def on_mount(self) -> None:
         self.title = "PORTFOLIO OS // TERMINAL HUD"

@@ -111,7 +111,7 @@ public class PpfasHoldingsParser {
 
             if (!holdings.isEmpty()) {
                 projector.clearFundHoldings(PPFAS_ISIN);
-                projector.saveFundHoldings(PPFAS_ISIN, defaultAsOfDate, holdings);
+                projector.saveFundHoldings(PPFAS_ISIN, defaultAsOfDate, "FACTSHEET_POI_PARSED", holdings);
                 return true;
             }
         } catch (Exception e) {

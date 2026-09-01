@@ -60,7 +60,7 @@ public class DuckDbProjector {
         initReadSchema();
     }
 
-    private Connection getConnection() throws SQLException {
+    public Connection getConnection() throws SQLException {
         return dataSource.getConnection();
     }
 
@@ -109,11 +109,13 @@ public class DuckDbProjector {
                 "  weight_pct DOUBLE NOT NULL," +
                 "  disclosure_date VARCHAR NOT NULL," +
                 "  market VARCHAR DEFAULT 'IN'," +
+                "  source_type VARCHAR DEFAULT 'NSE_INDEX_CONSTITUENTS'," +
                 "  PRIMARY KEY (fund_id, stock_symbol, disclosure_date)" +
                 ")"
             );
             try {
                 stmt.execute("ALTER TABLE fund_holdings ADD COLUMN IF NOT EXISTS market VARCHAR DEFAULT 'IN'");
+                stmt.execute("ALTER TABLE fund_holdings ADD COLUMN IF NOT EXISTS source_type VARCHAR DEFAULT 'NSE_INDEX_CONSTITUENTS'");
             } catch (SQLException ignored) {}
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize DuckDB schema", e);
@@ -578,9 +580,13 @@ public class DuckDbProjector {
     }
 
     public void saveFundHoldings(String fundId, String disclosureDate, List<Map<String, Object>> holdings) {
+        saveFundHoldings(fundId, disclosureDate, "NSE_INDEX_CONSTITUENTS", holdings);
+    }
+
+    public void saveFundHoldings(String fundId, String disclosureDate, String sourceType, List<Map<String, Object>> holdings) {
         if (holdings == null || holdings.isEmpty()) return;
         clearFundHoldings(fundId);
-        String sql = "INSERT OR REPLACE INTO fund_holdings (fund_id, stock_symbol, stock_isin, weight_pct, disclosure_date, market) VALUES (?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT OR REPLACE INTO fund_holdings (fund_id, stock_symbol, stock_isin, weight_pct, disclosure_date, market, source_type) VALUES (?, ?, ?, ?, ?, ?, ?)";
         try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             for (Map<String, Object> h : holdings) {
@@ -595,6 +601,7 @@ public class DuckDbProjector {
                     pstmt.setDouble(4, weight);
                     pstmt.setString(5, disclosureDate);
                     pstmt.setString(6, market != null ? market : "IN");
+                    pstmt.setString(7, sourceType != null ? sourceType : "NSE_INDEX_CONSTITUENTS");
                     pstmt.addBatch();
                 }
             }
@@ -606,21 +613,29 @@ public class DuckDbProjector {
 
     public Map<String, Object> getPairwiseFundOverlap(String fundA, String fundB) {
         Map<String, Object> result = new HashMap<>();
-        String dateSql = "SELECT " +
+        String metaSql = "SELECT " +
             "(SELECT MAX(disclosure_date) FROM fund_holdings WHERE fund_id = ?) AS date_a, " +
-            "(SELECT MAX(disclosure_date) FROM fund_holdings WHERE fund_id = ?) AS date_b";
+            "(SELECT MAX(disclosure_date) FROM fund_holdings WHERE fund_id = ?) AS date_b, " +
+            "(SELECT MAX(source_type) FROM fund_holdings WHERE fund_id = ?) AS src_a, " +
+            "(SELECT MAX(source_type) FROM fund_holdings WHERE fund_id = ?) AS src_b";
 
         String dateA = "";
         String dateB = "";
+        String srcA = "NSE_INDEX_CONSTITUENTS";
+        String srcB = "NSE_INDEX_CONSTITUENTS";
 
         try (Connection conn = getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(dateSql)) {
+             PreparedStatement pstmt = conn.prepareStatement(metaSql)) {
             pstmt.setString(1, fundA);
             pstmt.setString(2, fundB);
+            pstmt.setString(3, fundA);
+            pstmt.setString(4, fundB);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
                     dateA = rs.getString("date_a") != null ? rs.getString("date_a") : "";
                     dateB = rs.getString("date_b") != null ? rs.getString("date_b") : "";
+                    srcA = rs.getString("src_a") != null ? rs.getString("src_a") : "NSE_INDEX_CONSTITUENTS";
+                    srcB = rs.getString("src_b") != null ? rs.getString("src_b") : "NSE_INDEX_CONSTITUENTS";
                 }
             }
         } catch (Exception ignored) {}
@@ -665,10 +680,15 @@ public class DuckDbProjector {
 
         commonStocks.sort((x, y) -> Double.compare(((Number) y.get("overlap_pct")).doubleValue(), ((Number) x.get("overlap_pct")).doubleValue()));
 
+        boolean isUnverified = "MANUAL_ESTIMATE_UNVERIFIED".equals(srcA) || "MANUAL_ESTIMATE_UNVERIFIED".equals(srcB);
+
         result.put("fund_a", fundA);
         result.put("fund_b", fundB);
         result.put("date_a", dateA);
         result.put("date_b", dateB);
+        result.put("source_type_a", srcA);
+        result.put("source_type_b", srcB);
+        result.put("is_unverified_estimate", isUnverified);
         result.put("date_mismatch", !dateA.isEmpty() && !dateB.isEmpty() && !dateA.equals(dateB));
         result.put("overlap_percentage", Math.round(totalOverlap * 100.0) / 100.0);
         result.put("common_stock_count", commonStocks.size());
