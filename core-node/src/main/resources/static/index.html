@@ -196,7 +196,12 @@
               <h2 style="margin: 0;">Open Tax Lots Grouped by Mutual Fund Scheme</h2>
               <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">FIFO Tax Lot Classification · LTCG Tax-Free vs STCG Locked</span>
             </div>
-            <span class="live-tag">FIFO LEDGER</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <button id="btnOpenOverlapModal" class="btn btn-secondary" style="font-size: 0.75rem; padding: 6px 14px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; color: #38bdf8; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px;" onclick="window.openOverlapModal && window.openOverlapModal()">
+                <span>🔍</span> Inspect Overlap & Concentration
+              </button>
+              <span class="live-tag">FIFO LEDGER</span>
+            </div>
           </div>
 
           <!-- Filter Chips & Sort Controls -->
@@ -638,6 +643,99 @@
       <!-- Dynamically populated -->
     </div>
   </aside>
+
+  <!-- Portfolio Overlap & Stock Concentration Inspector Modal -->
+  <div id="overlapModalBackdrop" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(5px); z-index: 999;" onclick="window.closeOverlapModal && window.closeOverlapModal()"></div>
+  <div id="overlapInspectorModal" class="modal-content" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 92%; max-width: 820px; max-height: 88vh; overflow-y: auto; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 24px; z-index: 1000; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+      <div>
+        <h3 style="margin: 0; font-size: 1.15rem; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+          <span>🔍</span> Portfolio Overlap & Stock Concentration Inspector
+        </h3>
+        <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 4px;">
+          Pairwise Capital Overlap & Portfolio-Wide Stock Aggregation with Provenance Tracking
+        </div>
+      </div>
+      <button type="button" onclick="window.closeOverlapModal && window.closeOverlapModal()" style="background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; padding: 4px 8px;">✕</button>
+    </div>
+
+    <!-- Section 1: Pairwise Fund Overlap Selector & Venn -->
+    <div style="background: rgba(30, 41, 59, 0.5); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h4 style="margin: 0; font-size: 0.9rem; color: #f8fafc;">1. Pairwise Fund Overlap</h4>
+        <span id="overlapProvenanceBadge" class="live-tag" style="font-size: 0.7rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8;">AUDITED PAIR</span>
+      </div>
+
+      <!-- Unverified Pair Warning Banner -->
+      <div id="unverifiedPairWarning" style="display: none; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.78rem; color: #fbbf24;">
+        ⚠️ <strong>Provisional Estimate</strong>: One or both selected funds rely on unverified top-10 statutory samples (~30–60% coverage). Overlap represents a provisional sample estimate.
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+        <div>
+          <label style="display: block; font-size: 0.72rem; color: #94a3b8; font-weight: 700; margin-bottom: 4px;">FUND A</label>
+          <select id="vennFundA" style="width: 100%; padding: 8px 10px; background: #1e293b; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #f8fafc; font-size: 0.8rem; cursor: pointer;"></select>
+          <div id="fundASourceTag" style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px; font-family: monospace;"></div>
+        </div>
+        <div>
+          <label style="display: block; font-size: 0.72rem; color: #94a3b8; font-weight: 700; margin-bottom: 4px;">FUND B</label>
+          <select id="vennFundB" style="width: 100%; padding: 8px 10px; background: #1e293b; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #f8fafc; font-size: 0.8rem; cursor: pointer;"></select>
+          <div id="fundBSourceTag" style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px; font-family: monospace;"></div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; align-items: center; margin-top: 10px;">
+        <div id="vennContainer" style="width: 100%; display: flex; justify-content: center; min-height: 140px;"></div>
+        <div style="margin-top: 8px; text-align: center;">
+          <div id="pairwiseOverlapVal" style="font-size: 1.4rem; font-weight: 800; color: #d0ff00; font-family: monospace;">--%</div>
+          <div id="commonStockCountSub" style="font-size: 0.78rem; color: #cbd5e1; margin-top: 2px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 2: Top Stock Concentrations (Portfolio-Wide Aggregation) -->
+    <div style="background: rgba(30, 41, 59, 0.5); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+        <h4 style="margin: 0; font-size: 0.9rem; color: #f8fafc;">2. Portfolio Top Stock Concentrations</h4>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <label style="font-size: 0.75rem; color: #cbd5e1; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="chkIncludeUnverified" style="accent-color: #38bdf8; cursor: pointer;">
+            Include Provisional Estimates (6 Active Funds)
+          </label>
+        </div>
+      </div>
+
+      <!-- Coverage Telemetry Callout -->
+      <div id="concentrationCoverageBar" style="background: rgba(15, 23, 42, 0.7); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.78rem; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(255,255,255,0.06);">
+        <span id="coverageSummaryText" style="color: #cbd5e1;">Audited Equity Coverage: <strong id="coveragePctVal" style="color: #38bdf8;">--%</strong> (<span id="coverageRupeeVal">--</span>)</span>
+        <span id="coverageModeTag" class="live-tag" style="font-size: 0.68rem; background: rgba(16, 185, 129, 0.15); color: #10b981;">AUDITED ONLY</span>
+      </div>
+
+      <div id="unverifiedConcentrationWarning" style="display: none; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.76rem; color: #fbbf24;">
+        ⚠️ <strong>Provisional Mode Active</strong>: Aggregates top-10 sample holdings from 6 active funds; tail positions (>#10) are unrepresented in active funds.
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="data-table" id="topStockConcentrationTable" style="width: 100%; font-size: 0.8rem;">
+          <thead>
+            <tr>
+              <th style="text-align: left;">Stock Symbol</th>
+              <th style="text-align: right;">Rupee Exposure</th>
+              <th style="text-align: right;">Portfolio %</th>
+              <th style="text-align: center;">Provenance</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="4" style="text-align: center; color: #64748b; padding: 12px;">Loading concentrations...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; margin-top: 18px;">
+      <button type="button" onclick="window.closeOverlapModal && window.closeOverlapModal()" style="padding: 8px 20px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.82rem;">Close</button>
+    </div>
+  </div>
 
   <script type="module" src="./src/app.js?t=1788114000"></script>
 </body>

@@ -696,19 +696,49 @@ public class DuckDbProjector {
         return result;
     }
 
-    public List<Map<String, Object>> getPortfolioStockConcentrations(Map<String, Double> fundValuations) {
+    public Map<String, Object> getPortfolioStockConcentrations(Map<String, Double> fundValuations, boolean includeUnverified) {
+        Map<String, Object> result = new HashMap<>();
         List<Map<String, Object>> concentrations = new ArrayList<>();
-        if (fundValuations == null || fundValuations.isEmpty()) return concentrations;
+        if (fundValuations == null || fundValuations.isEmpty()) {
+            result.put("concentrations", concentrations);
+            result.put("coverage_telemetry", Collections.emptyMap());
+            return result;
+        }
 
         Map<String, Double> stockRupeeMap = new HashMap<>();
-        double totalIngestedValuation = 0.0;
+        Map<String, String> stockSourceMap = new HashMap<>();
+        double totalAuditedValuation = 0.0;
+        double totalUnverifiedValuation = 0.0;
+        double totalTrackedValuation = 0.0;
 
         for (Map.Entry<String, Double> entry : fundValuations.entrySet()) {
             String fundId = entry.getKey();
             double valuation = entry.getValue();
 
+            String metaSql = "SELECT MAX(source_type) AS src FROM fund_holdings WHERE fund_id = ?";
+            String srcType = "NSE_INDEX_CONSTITUENTS";
+            try (Connection conn = getConnection();
+                 PreparedStatement pstmt = conn.prepareStatement(metaSql)) {
+                pstmt.setString(1, fundId);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next() && rs.getString("src") != null) {
+                        srcType = rs.getString("src");
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            boolean isUnverified = "MANUAL_ESTIMATE_UNVERIFIED".equals(srcType);
+            if (isUnverified) {
+                totalUnverifiedValuation += valuation;
+                if (!includeUnverified) {
+                    continue; // Skip unverified funds in Audited-Only default mode
+                }
+            } else {
+                totalAuditedValuation += valuation;
+            }
+
             String sql = "WITH latest AS (SELECT MAX(disclosure_date) AS max_d FROM fund_holdings WHERE fund_id = ?) " +
-                         "SELECT h.stock_symbol, h.weight_pct FROM fund_holdings h JOIN latest l ON h.disclosure_date = l.max_d WHERE h.fund_id = ?";
+                         "SELECT h.stock_symbol, h.weight_pct, h.source_type FROM fund_holdings h JOIN latest l ON h.disclosure_date = l.max_d WHERE h.fund_id = ?";
 
             boolean fundHasHoldings = false;
             try (Connection conn = getConnection();
@@ -722,6 +752,9 @@ public class DuckDbProjector {
                         double weight = rs.getDouble("weight_pct");
                         double rupeeContrib = (weight / 100.0) * valuation;
                         stockRupeeMap.put(symbol, stockRupeeMap.getOrDefault(symbol, 0.0) + rupeeContrib);
+                        if (isUnverified) {
+                            stockSourceMap.put(symbol, "MANUAL_ESTIMATE_UNVERIFIED");
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -729,27 +762,47 @@ public class DuckDbProjector {
             }
 
             if (fundHasHoldings) {
-                totalIngestedValuation += valuation;
+                totalTrackedValuation += valuation;
             }
         }
 
-        if (totalIngestedValuation <= 0) return concentrations;
+        double totalEquityAum = totalAuditedValuation + totalUnverifiedValuation;
+        double auditedCoveragePct = totalEquityAum > 0 ? (totalAuditedValuation / totalEquityAum) * 100.0 : 100.0;
 
-        for (Map.Entry<String, Double> entry : stockRupeeMap.entrySet()) {
-            String symbol = entry.getKey();
-            double rupees = entry.getValue();
-            double portfolioPct = (rupees / totalIngestedValuation) * 100.0;
+        Map<String, Object> telemetry = new HashMap<>();
+        telemetry.put("total_equity_aum", Math.round(totalEquityAum * 100.0) / 100.0);
+        telemetry.put("audited_aum", Math.round(totalAuditedValuation * 100.0) / 100.0);
+        telemetry.put("unverified_aum", Math.round(totalUnverifiedValuation * 100.0) / 100.0);
+        telemetry.put("audited_coverage_pct", Math.round(auditedCoveragePct * 10.0) / 10.0);
+        telemetry.put("include_unverified", includeUnverified);
 
-            Map<String, Object> item = new HashMap<>();
-            item.put("stock_symbol", symbol);
-            item.put("rupee_exposure", Math.round(rupees));
-            item.put("portfolio_percentage", Math.round(portfolioPct * 100.0) / 100.0);
-            concentrations.add(item);
+        if (totalTrackedValuation > 0) {
+            for (Map.Entry<String, Double> entry : stockRupeeMap.entrySet()) {
+                String symbol = entry.getKey();
+                double rupees = entry.getValue();
+                double portfolioPct = (rupees / totalTrackedValuation) * 100.0;
+
+                Map<String, Object> item = new HashMap<>();
+                item.put("stock_symbol", symbol);
+                item.put("rupee_exposure", Math.round(rupees));
+                item.put("portfolio_percentage", Math.round(portfolioPct * 100.0) / 100.0);
+                item.put("is_audited", !"MANUAL_ESTIMATE_UNVERIFIED".equals(stockSourceMap.get(symbol)));
+                concentrations.add(item);
+            }
         }
 
         concentrations.sort((x, y) -> Double.compare(((Number) y.get("rupee_exposure")).doubleValue(), ((Number) x.get("rupee_exposure")).doubleValue()));
 
-        return concentrations.stream().limit(10).toList();
+        result.put("coverage_telemetry", telemetry);
+        result.put("concentrations", concentrations.stream().limit(10).toList());
+        return result;
+    }
+
+    public List<Map<String, Object>> getPortfolioStockConcentrations(Map<String, Double> fundValuations) {
+        Map<String, Object> res = getPortfolioStockConcentrations(fundValuations, false);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> list = (List<Map<String, Object>>) res.getOrDefault("concentrations", Collections.emptyList());
+        return list;
     }
 
     public List<Map<String, Object>> getMultiFundIntersectionAnalytics(List<String> fundIds) {

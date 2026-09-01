@@ -148,9 +148,10 @@ public class ReportController {
     @GetMapping("/analytics/overlap")
     public ResponseEntity<Map<String, Object>> getPortfolioOverlapAnalytics(
         @RequestParam(value = "fundA", defaultValue = "INF109KC13X2") String fundA,
-        @RequestParam(value = "fundB", defaultValue = "INF109KC12U0") String fundB
+        @RequestParam(value = "fundB", defaultValue = "INF109KC12U0") String fundB,
+        @RequestParam(value = "includeUnverified", defaultValue = "false") boolean includeUnverified
     ) {
-        return ResponseEntity.ok(valuationService.getPortfolioOverlapAnalytics(fundA, fundB));
+        return ResponseEntity.ok(valuationService.getPortfolioOverlapAnalytics(fundA, fundB, includeUnverified));
     }
 
     @GetMapping("/analytics/overlap/upset")

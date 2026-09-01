@@ -658,6 +658,10 @@ public class PortfolioValuationService {
     }
 
     public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB) {
+        return getPortfolioOverlapAnalytics(fundA, fundB, false);
+    }
+
+    public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB, boolean includeUnverified) {
         new com.portfolioos.core.nav.NseIndexConstituentDownloader().seedStandardIndexConstituents(duckDbProjector);
 
         String idA = (fundA != null && !fundA.isBlank()) ? fundA : "INF109KC13X2";
@@ -666,16 +670,18 @@ public class PortfolioValuationService {
         Map<String, Object> pairwise = duckDbProjector.getPairwiseFundOverlap(idA, idB);
 
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
-        Map<String, BigDecimal> navMap = state.navMap();
+        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
         Map<String, Double> fundValuations = new HashMap<>();
 
-        for (Lot lot : state.fifoResult().openLots()) {
-            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "PortfolioValuationService.getPortfolioOverlapAnalytics");
-            double currentVal = lot.remainingUnits().multiply(nav).doubleValue();
-            fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), 0.0) + currentVal);
+        if (state != null && state.fifoResult() != null && state.fifoResult().openLots() != null) {
+            for (Lot lot : state.fifoResult().openLots()) {
+                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "PortfolioValuationService.getPortfolioOverlapAnalytics");
+                double currentVal = lot.remainingUnits().multiply(nav).doubleValue();
+                fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), 0.0) + currentVal);
+            }
         }
 
-        List<Map<String, Object>> concentrations = duckDbProjector.getPortfolioStockConcentrations(fundValuations);
+        Map<String, Object> concResult = duckDbProjector.getPortfolioStockConcentrations(fundValuations, includeUnverified);
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> regFunds = (List<Map<String, Object>>) getFundRegistry().getOrDefault("funds", Collections.emptyList());
@@ -699,7 +705,8 @@ public class PortfolioValuationService {
         response.put("holding_coverage_type", coverageType);
         response.put("pairwise_overlap", pairwise);
         response.put("pairwise_matrix", matrix);
-        response.put("portfolio_top_stock_concentrations", concentrations);
+        response.put("portfolio_top_stock_concentrations", concResult.get("concentrations"));
+        response.put("coverage_telemetry", concResult.get("coverage_telemetry"));
         return response;
     }
 

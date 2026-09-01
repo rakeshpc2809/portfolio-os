@@ -311,23 +311,52 @@ data class BenchmarkAnalyticsDto(
 )
 
 @Immutable
+data class CoverageTelemetryDto(
+    @SerializedName("total_equity_aum") val totalEquityAum: Double = 0.0,
+    @SerializedName("audited_aum") val auditedAum: Double = 0.0,
+    @SerializedName("unverified_aum") val unverifiedAum: Double = 0.0,
+    @SerializedName("audited_coverage_pct") val auditedCoveragePct: Double = 100.0,
+    @SerializedName("include_unverified") val includeUnverified: Boolean = false
+)
+
+@Immutable
+data class CommonStockItemDto(
+    @SerializedName("stock_symbol") val stockSymbol: String = "",
+    @SerializedName("weight_a") val weightA: Double = 0.0,
+    @SerializedName("weight_b") val weightB: Double = 0.0,
+    @SerializedName("overlap_pct") val overlapPct: Double = 0.0
+)
+
+@Immutable
 data class StockConcentrationDto(
     @SerializedName("stock_symbol") val stockSymbol: String = "",
     @SerializedName("company_name") val companyName: String = "",
-    @SerializedName("portfolio_percentage") val portfolioWeightPct: Double = 0.0
+    @SerializedName("rupee_exposure") val rupeeExposure: Double = 0.0,
+    @SerializedName("portfolio_percentage") val portfolioWeightPct: Double = 0.0,
+    @SerializedName("is_audited") val isAudited: Boolean = true
 )
 
 @Immutable
 data class PairwiseOverlapDto(
     @SerializedName("fund_a") val fundA: String = "",
     @SerializedName("fund_b") val fundB: String = "",
+    @SerializedName("source_type_a") val sourceTypeA: String = "NSE_INDEX_CONSTITUENTS",
+    @SerializedName("source_type_b") val sourceTypeB: String = "NSE_INDEX_CONSTITUENTS",
+    @SerializedName("is_unverified_estimate") val isUnverifiedEstimate: Boolean = false,
+    @SerializedName("date_a") val dateA: String = "",
+    @SerializedName("date_b") val dateB: String = "",
+    @SerializedName("date_mismatch") val dateMismatch: Boolean = false,
     @SerializedName("overlap_percentage") val overlapPercentage: Double = 0.0,
-    @SerializedName("common_stock_count") val commonHoldingsCount: Int = 0
+    @SerializedName("common_stock_count") val commonHoldingsCount: Int = 0,
+    @SerializedName("common_stocks") val commonStocks: List<CommonStockItemDto> = emptyList()
 )
 
 @Immutable
 data class OverlapReportDto(
-    @SerializedName("coverage_type") val coverageType: String = "",
+    @SerializedName("status") val status: String = "OK",
+    @SerializedName("holding_coverage_type") val coverageType: String = "",
+    @SerializedName("pairwise_overlap") val pairwiseOverlap: PairwiseOverlapDto? = null,
     @SerializedName("pairwise_matrix") val pairwiseMatrix: List<PairwiseOverlapDto> = emptyList(),
-    @SerializedName("portfolio_top_stock_concentrations") val stockConcentrations: List<StockConcentrationDto> = emptyList()
+    @SerializedName("portfolio_top_stock_concentrations") val stockConcentrations: List<StockConcentrationDto> = emptyList(),
+    @SerializedName("coverage_telemetry") val coverageTelemetry: CoverageTelemetryDto? = null
 )

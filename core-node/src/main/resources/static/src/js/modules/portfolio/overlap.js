@@ -89,6 +89,23 @@ export async function populateFundDropdowns() {
   selB.value = currentB;
 }
 
+export function openOverlapModal() {
+  const modal = document.getElementById("overlapInspectorModal");
+  const backdrop = document.getElementById("overlapModalBackdrop");
+  if (modal) modal.style.display = "block";
+  if (backdrop) backdrop.style.display = "block";
+  populateFundDropdowns().then(() => {
+    loadOverlapAnalytics();
+  });
+}
+
+export function closeOverlapModal() {
+  const modal = document.getElementById("overlapInspectorModal");
+  const backdrop = document.getElementById("overlapModalBackdrop");
+  if (modal) modal.style.display = "none";
+  if (backdrop) backdrop.style.display = "none";
+}
+
 let activeOverlapRequestId = 0;
 
 export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride = null) {
@@ -96,6 +113,8 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
 
   const selA = document.getElementById("vennFundA");
   const selB = document.getElementById("vennFundB");
+  const chkIncludeUnverified = document.getElementById("chkIncludeUnverified");
+  const includeUnverified = chkIncludeUnverified ? chkIncludeUnverified.checked : false;
 
   const fundAKey = fundAOverride || (selA ? selA.value : "INF879O01027");
   const fundBKey = fundBOverride || (selB ? selB.value : "INF109KC13X2");
@@ -112,9 +131,10 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
   if (fundAKey === fundBKey) {
     setText("#pairwiseOverlapVal", "100.00%");
     setText("#commonStockCountSub", "Identical Fund Selected (100% Stock Overlap)");
-    setBadgeStyle("#overlapDateBadge", "SAME FUND (100%)", "live-tag positive-tag");
+    setBadgeStyle("#overlapProvenanceBadge", "SAME FUND (100%)", "live-tag positive-tag");
+    const warn = document.getElementById("unverifiedPairWarning");
+    if (warn) warn.style.display = "none";
     renderVennSvg(container, nameA, nameB, 100.0);
-    return;
   } else {
     setText("#pairwiseOverlapVal", "...");
     setText("#commonStockCountSub", "Calculating live stock overlap...");
@@ -122,23 +142,42 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
 
   try {
     const res = await fetchJson(
-      `${API_BASE}/analytics/overlap?fundA=${encodeURIComponent(fundAKey)}&fundB=${encodeURIComponent(fundBKey)}`,
+      `${API_BASE}/analytics/overlap?fundA=${encodeURIComponent(fundAKey)}&fundB=${encodeURIComponent(fundBKey)}&includeUnverified=${includeUnverified}`,
     );
     if (currentRequestId !== activeOverlapRequestId) return; // Stale fetch race guard
 
     if (res && res.status === "OK") {
       const pairwise = res.pairwise_overlap;
       const concentrations = res.portfolio_top_stock_concentrations;
+      const telemetry = res.coverage_telemetry;
 
+      // 1. Render Pairwise Overlap & Provenance
       if (fundAKey !== fundBKey && pairwise) {
+        const isUnverified = pairwise.is_unverified_estimate;
+        const warn = document.getElementById("unverifiedPairWarning");
+        if (warn) {
+          warn.style.display = isUnverified ? "block" : "none";
+        }
+
+        if (isUnverified) {
+          setBadgeStyle("#overlapProvenanceBadge", "PROVISIONAL SAMPLE", "live-tag warning-tag");
+        } else if (pairwise.source_type_a === "FACTSHEET_POI_PARSED" || pairwise.source_type_b === "FACTSHEET_POI_PARSED") {
+          setBadgeStyle("#overlapProvenanceBadge", "FACTSHEET AUDITED", "live-tag positive-tag");
+        } else {
+          setBadgeStyle("#overlapProvenanceBadge", "NSE BENCHMARK", "live-tag positive-tag");
+        }
+
+        // Source tags under selectors
+        const tagA = document.getElementById("fundASourceTag");
+        const tagB = document.getElementById("fundBSourceTag");
+        if (tagA) tagA.innerHTML = formatSourceTag(pairwise.source_type_a);
+        if (tagB) tagB.innerHTML = formatSourceTag(pairwise.source_type_b);
+
         if (pairwise.common_stock_count === 0) {
-          // Genuine 0% Overlap between 2 distinct funds
           setText("#pairwiseOverlapVal", "0.00%");
           setText("#commonStockCountSub", "Common Holdings: 0 Stocks (No Shared Holdings)");
-          setBadgeStyle("#overlapDateBadge", "NO SHARED HOLDINGS", "live-tag neutral-tag");
           renderVennSvg(container, nameA, nameB, 0.0);
         } else {
-          // Genuine > 0% Overlap
           setText("#pairwiseOverlapVal", `${pairwise.overlap_percentage}%`);
           const topSymbols = (pairwise.common_stocks || [])
             .slice(0, 4)
@@ -149,29 +188,43 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
             "#commonStockCountSub",
             `Common Holdings: ${pairwise.common_stock_count} Stocks${extraStr}`,
           );
-
-          if (pairwise.date_mismatch) {
-            setBadgeStyle("#overlapDateBadge", "DATE MISMATCH", "live-tag warning-tag");
-          } else {
-            setBadgeStyle("#overlapDateBadge", "SNAPSHOT ALIGNED", "live-tag positive-tag");
-          }
           renderVennSvg(container, nameA, nameB, pairwise.overlap_percentage);
         }
       }
 
+      // 2. Render Coverage Telemetry
+      if (telemetry) {
+        setText("#coveragePctVal", `${telemetry.audited_coverage_pct}%`);
+        setText("#coverageRupeeVal", `₹${formatINR(telemetry.audited_aum)} / ₹${formatINR(telemetry.total_equity_aum)}`);
+        setBadgeStyle(
+          "#coverageModeTag",
+          includeUnverified ? "ALL FUNDS (PROVISIONAL)" : "AUDITED ONLY",
+          includeUnverified ? "live-tag warning-tag" : "live-tag positive-tag"
+        );
+        const concWarn = document.getElementById("unverifiedConcentrationWarning");
+        if (concWarn) {
+          concWarn.style.display = includeUnverified ? "block" : "none";
+        }
+      }
+
+      // 3. Render Concentrations Table
       if (tableBody && concentrations) {
         if (concentrations.length === 0) {
           setHtml(
             tableBody,
-            `<tr><td colspan="3" style="text-align:center; color:#64748b;">No stock concentrations calculated.</td></tr>`,
+            `<tr><td colspan="4" style="text-align:center; color:#64748b; padding:12px;">No stock concentrations calculated.</td></tr>`,
           );
         } else {
           let html = "";
           concentrations.forEach((item) => {
+            const provBadge = item.is_audited 
+              ? `<span class="live-tag positive-tag" style="font-size:0.68rem; padding:2px 6px;">AUDITED</span>` 
+              : `<span class="live-tag warning-tag" style="font-size:0.68rem; padding:2px 6px;">PROVISIONAL</span>`;
             html += `<tr>
               <td><strong>${item.stock_symbol}</strong></td>
-              <td>${formatINR(item.rupee_exposure)}</td>
-              <td><span class="metric-delta positive">${item.portfolio_percentage}%</span></td>
+              <td style="text-align: right;">${formatINR(item.rupee_exposure)}</td>
+              <td style="text-align: right;"><span class="metric-delta positive">${item.portfolio_percentage}%</span></td>
+              <td style="text-align: center;">${provBadge}</td>
             </tr>`;
           });
           setHtml(tableBody, html);
@@ -188,7 +241,7 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
     console.error("Failed to load overlap analytics:", err);
     setErrorState("#pairwiseOverlapVal", "—");
     setText("#commonStockCountSub", "⚠️ Overlap Fetch Failed (Check Backend Service)");
-    setBadgeStyle("#overlapDateBadge", "OFFLINE", "live-tag warning-tag");
+    setBadgeStyle("#overlapProvenanceBadge", "OFFLINE", "live-tag warning-tag");
     if (container) {
       setHtml(
         container,
@@ -196,6 +249,16 @@ export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride =
       );
     }
   }
+}
+
+function formatSourceTag(src) {
+  if (src === "FACTSHEET_POI_PARSED") {
+    return `<span style="color: #10b981; font-weight: 600;">● Full Factsheet Audited</span>`;
+  }
+  if (src === "MANUAL_ESTIMATE_UNVERIFIED") {
+    return `<span style="color: #fbbf24; font-weight: 600;">▲ Provisional Sample (~30-60%)</span>`;
+  }
+  return `<span style="color: #38bdf8; font-weight: 600;">● Official Index Benchmark</span>`;
 }
 
 function renderVennSvg(container, nameA, nameB, overlapPct) {
@@ -350,18 +413,22 @@ if (typeof window !== "undefined") {
   window.loadOverlapAnalytics = loadOverlapAnalytics;
   window.loadUpSetAnalytics = loadUpSetAnalytics;
   window.render2FundVennDiagram = render2FundVennDiagram;
+  window.openOverlapModal = openOverlapModal;
+  window.closeOverlapModal = closeOverlapModal;
 }
-
 
 if (typeof document !== "undefined") {
   document.addEventListener("DOMContentLoaded", async () => {
     const selA = document.getElementById("vennFundA");
     const selB = document.getElementById("vennFundB");
+    const chk = document.getElementById("chkIncludeUnverified");
     if (selA && selB) {
       await populateFundDropdowns();
       selA.addEventListener("change", render2FundVennDiagram);
       selB.addEventListener("change", render2FundVennDiagram);
-      render2FundVennDiagram();
+    }
+    if (chk) {
+      chk.addEventListener("change", render2FundVennDiagram);
     }
     if (document.getElementById("benchmarkMetricsGrid") || document.getElementById("benchmarkAlphaVal")) {
       loadBenchmarkAnalytics();

@@ -114,4 +114,61 @@ class PortfolioOverlapAuditTest {
         double giltVal30Overlap = ((Number) giltVal30.get("overlap_percentage")).doubleValue();
         assertEquals(0.0, giltVal30Overlap, "Gilt Fund must have 0.0% overlap with equity funds");
     }
+
+    @Test
+    @DisplayName("Stock Concentration Provenance: Audited-only default filters unverified funds & computes accurate telemetry")
+    void testStockConcentrationsAuditedOnlyVsIncludeUnverified() {
+        Map<String, Double> fundValuations = new HashMap<>();
+        fundValuations.put("INF109KC13X2", 100000.0);  // Value 30 (Audited Index)
+        fundValuations.put("INF879O01027", 150000.0);  // PPFAS (Audited Factsheet)
+        fundValuations.put("INF277K011O1", 1000000.0); // Tata Small Cap (Unverified Sample, 10L AUM)
+
+        // 1. Audited-only mode (Default: includeUnverified = false)
+        Map<String, Object> auditedResult = projector.getPortfolioStockConcentrations(fundValuations, false);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> auditedTelemetry = (Map<String, Object>) auditedResult.get("coverage_telemetry");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> auditedStocks = (List<Map<String, Object>>) auditedResult.get("concentrations");
+
+        assertNotNull(auditedTelemetry);
+        assertEquals(1250000.0, ((Number) auditedTelemetry.get("total_equity_aum")).doubleValue(), 0.01);
+        assertEquals(250000.0, ((Number) auditedTelemetry.get("audited_aum")).doubleValue(), 0.01);
+        assertEquals(1000000.0, ((Number) auditedTelemetry.get("unverified_aum")).doubleValue(), 0.01);
+        assertEquals(20.0, ((Number) auditedTelemetry.get("audited_coverage_pct")).doubleValue(), 0.1);
+        assertEquals(false, auditedTelemetry.get("include_unverified"));
+        assertFalse(auditedStocks.isEmpty());
+        assertTrue(auditedStocks.stream().allMatch(s -> Boolean.TRUE.equals(s.get("is_audited"))));
+
+        // 2. Opt-in mode (includeUnverified = true)
+        Map<String, Object> fullResult = projector.getPortfolioStockConcentrations(fundValuations, true);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> fullTelemetry = (Map<String, Object>) fullResult.get("coverage_telemetry");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> fullStocks = (List<Map<String, Object>>) fullResult.get("concentrations");
+
+        assertNotNull(fullTelemetry);
+        assertEquals(true, fullTelemetry.get("include_unverified"));
+        assertFalse(fullStocks.isEmpty());
+        // Tata Small Cap top holding (BASF with 31,000 INR exposure) should be #1 in full result but absent in audited-only
+        boolean hasBasfInFull = fullStocks.stream().anyMatch(s -> "BASF".equals(s.get("stock_symbol")));
+        boolean hasBasfInAudited = auditedStocks.stream().anyMatch(s -> "BASF".equals(s.get("stock_symbol")));
+        assertTrue(hasBasfInFull, "BASF from unverified Tata Small Cap should be present when includeUnverified=true");
+        assertFalse(hasBasfInAudited, "BASF from unverified Tata Small Cap must NOT be present when includeUnverified=false");
+    }
+
+    @Test
+    @DisplayName("Pairwise Overlap: Correctly tags source_type and is_unverified_estimate flag")
+    void testPairwiseOverlapProvenanceTags() {
+        // Audited pair: Value 30 (NSE Index) vs PPFAS (Factsheet)
+        Map<String, Object> auditedPair = projector.getPairwiseFundOverlap("INF879O01027", "INF109KC13X2");
+        assertEquals("FACTSHEET_POI_PARSED", auditedPair.get("source_type_a"));
+        assertEquals("NSE_INDEX_CONSTITUENTS", auditedPair.get("source_type_b"));
+        assertEquals(false, auditedPair.get("is_unverified_estimate"));
+
+        // Unverified pair: Tata Small Cap (Unverified) vs Value 30 (NSE Index)
+        Map<String, Object> unverifiedPair = projector.getPairwiseFundOverlap("INF277K011O1", "INF109KC13X2");
+        assertEquals("MANUAL_ESTIMATE_UNVERIFIED", unverifiedPair.get("source_type_a"));
+        assertEquals("NSE_INDEX_CONSTITUENTS", unverifiedPair.get("source_type_b"));
+        assertEquals(true, unverifiedPair.get("is_unverified_estimate"));
+    }
 }
