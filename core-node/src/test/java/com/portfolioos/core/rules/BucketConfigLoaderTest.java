@@ -31,6 +31,7 @@ class BucketConfigLoaderTest {
     @Test
     void testMapAssetToBucket() {
         assertNotNull(BucketConfigLoader.mapAssetToBucket("INF109KC13X2", "ICICI Nifty 200"));
+        assertEquals("LEGACY_HOLDINGS", BucketConfigLoader.mapAssetToBucket("INF109K01234", "Nifty 100 Equal Weight Index Fund"));
     }
 
     @Test

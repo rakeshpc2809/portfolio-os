@@ -81,4 +81,179 @@ public class ProductionConfigBootSmokeTest extends BaseIntegrationTest {
         assertNotNull(config2526, "FY 2025-26 tax rules must load without null");
         assertEquals(0, new BigDecimal("125000").compareTo(config2526.equityExemptionLimit()));
     }
+
+    @Test
+    @DisplayName("Integration Test: Satellite standalone drift threshold (13.0% breach) fires DRIFT rebalance trigger under live Spring Boot context")
+    void testSatelliteStandaloneDriftBreachIntegration() {
+        com.portfolioos.core.persistence.TriggerHistoryRepository repository = new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
+        com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(repository);
+
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        BigDecimal nav = new BigDecimal("100.00");
+
+        // Total corpus: 1,000,000
+        // Satellite Value target in v2.3 is 10.0%, max drift band is 13.0% (min 7.0%, max 13.0%)
+        // We set Satellite Value to 140,000 (14.0% > 13.0% standalone threshold)
+        // Remainder 860,000 in Core
+        com.portfolioos.core.model.Lot satValueLot = new com.portfolioos.core.model.Lot(
+            "lot-sat-val", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund",
+            today.minusMonths(6), new BigDecimal("1400"), new BigDecimal("1400"), nav, new BigDecimal("140000.00"), false, null);
+        com.portfolioos.core.model.Lot coreLot = new com.portfolioos.core.model.Lot(
+            "lot-core", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusMonths(6), new BigDecimal("8600"), new BigDecimal("8600"), nav, new BigDecimal("860000.00"), false, null);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC13X2", nav,
+            "INF109KC12U0", nav
+        );
+
+        com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
+            List.of(satValueLot, coreLot), navMap,
+            new BigDecimal("25000.00"), new BigDecimal("25000.00"), // 0% drawdown
+            null, null, today
+        );
+
+        assertNotNull(res);
+        assertEquals("DRIFT", res.triggerType(), "Satellite standalone drift exceeding 13.0% must fire DRIFT trigger");
+        assertEquals("DRIFT_THRESHOLD_EXCEEDED", res.reasonCode());
+        assertTrue(res.reasonLabel().contains("EQUITY_SATELLITE") || res.reasonLabel().contains("satellite_value"),
+            "Reason label must identify satellite drift breach: " + res.reasonLabel());
+        assertTrue(res.hasSellSide(), "Drift trigger must require sell-side rebalance");
+        repository.close();
+    }
+
+    @Test
+    @DisplayName("Integration Test: Core aggregate drift breach (70.0% > 65.0% upper band) fires DRIFT rebalance trigger under live Spring Boot context")
+    void testCoreAggregateDriftBreachIntegration() {
+        com.portfolioos.core.persistence.TriggerHistoryRepository repository = new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
+        com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(repository);
+
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        BigDecimal nav = new BigDecimal("100.00");
+
+        // Total corpus: 1,000,000
+        // Core target is 50.0%, drift bands [35%, 65%]
+        // We set Core to 700,000 (70.0% > 65.0% upper drift band)
+        // With balanced 60:40 internal ratio (420k LargeMid / 280k PPFC = 0.60) so circuit breaker does NOT fire
+        // Remainder 300,000 in Gold
+        com.portfolioos.core.model.Lot largeMidLot = new com.portfolioos.core.model.Lot(
+            "lot-lm", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusMonths(6), new BigDecimal("4200"), new BigDecimal("4200"), nav, new BigDecimal("420000.00"), false, null);
+        com.portfolioos.core.model.Lot ppfcLot = new com.portfolioos.core.model.Lot(
+            "lot-ppfc", "INF879O01027", "Parag Parikh Flexi Cap Fund",
+            today.minusMonths(6), new BigDecimal("2800"), new BigDecimal("2800"), nav, new BigDecimal("280000.00"), false, null);
+        com.portfolioos.core.model.Lot goldLot = new com.portfolioos.core.model.Lot(
+            "lot-gold", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds",
+            today.minusMonths(6), new BigDecimal("3000"), new BigDecimal("3000"), nav, new BigDecimal("300000.00"), false, null);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", nav,
+            "INF879O01027", nav,
+            "INF247L01BM8", nav
+        );
+
+        com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
+            List.of(largeMidLot, ppfcLot, goldLot), navMap,
+            new BigDecimal("25000.00"), new BigDecimal("25000.00"), // 0% drawdown
+            null, null, today
+        );
+
+        assertNotNull(res);
+        assertEquals("DRIFT", res.triggerType(), "Core aggregate drift (70.0% > 65.0%) must fire DRIFT trigger");
+        assertEquals("DRIFT_THRESHOLD_EXCEEDED", res.reasonCode());
+        assertTrue(res.reasonLabel().contains("CORE_AGGREGATE_BREACH"), "Reason label must identify CORE_AGGREGATE_BREACH");
+        assertFalse(res.reasonLabel().contains("CORE_INTERNAL_CIRCUIT_BREAKER"), "Circuit breaker must NOT fire when internal ratio is 60:40");
+        assertTrue(res.hasSellSide());
+        repository.close();
+    }
+
+    @Test
+    @DisplayName("Integration Test: Core internal circuit breaker ratio breach (0.80 > 0.75) fires DRIFT independently when aggregate is exactly 50%")
+    void testCoreInternalCircuitBreakerIntegration() {
+        com.portfolioos.core.persistence.TriggerHistoryRepository repository = new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
+        com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(repository);
+
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        BigDecimal nav = new BigDecimal("100.00");
+
+        // Total corpus: 1,000,000
+        // Core target is 50.0%, drift bands [35%, 65%], internal circuit breaker largemid_max_ratio = 0.75
+        // Within Core: 500,000 total Core (50% aggregate, exactly on target)
+        // LargeMidcap = 400,000 (80% of Core > 75% circuit breaker)
+        // PPFC = 100,000 (20% of Core < 45% circuit breaker)
+        // Other buckets: 500,000 in Gold
+        com.portfolioos.core.model.Lot largeMidLot = new com.portfolioos.core.model.Lot(
+            "lot-lm", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusMonths(6), new BigDecimal("4000"), new BigDecimal("4000"), nav, new BigDecimal("400000.00"), false, null);
+        com.portfolioos.core.model.Lot ppfcLot = new com.portfolioos.core.model.Lot(
+            "lot-ppfc", "INF879O01027", "Parag Parikh Flexi Cap Fund",
+            today.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+        com.portfolioos.core.model.Lot goldLot = new com.portfolioos.core.model.Lot(
+            "lot-gold", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds",
+            today.minusMonths(6), new BigDecimal("5000"), new BigDecimal("5000"), nav, new BigDecimal("500000.00"), false, null);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", nav,
+            "INF879O01027", nav,
+            "INF247L01BM8", nav
+        );
+
+        com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
+            List.of(largeMidLot, ppfcLot, goldLot), navMap,
+            new BigDecimal("25000.00"), new BigDecimal("25000.00"), // 0% drawdown
+            null, null, today
+        );
+
+        assertNotNull(res);
+        assertEquals("DRIFT", res.triggerType(), "Core internal circuit breaker breach (0.80 > 0.75) must fire DRIFT trigger");
+        assertEquals("DRIFT_THRESHOLD_EXCEEDED", res.reasonCode());
+        assertTrue(res.reasonLabel().contains("CORE_INTERNAL_CIRCUIT_BREAKER"), "Reason label must identify CORE_INTERNAL_CIRCUIT_BREAKER breach");
+        assertFalse(res.reasonLabel().contains("CORE_AGGREGATE_BREACH"), "CORE_AGGREGATE_BREACH must NOT fire when Core aggregate is 50%");
+        assertTrue(res.hasSellSide());
+        repository.close();
+    }
+
+    @Test
+    @DisplayName("Integration Test: Balanced portfolio within all standalone thresholds yields NO_REBALANCE_REQUIRED under live Spring Boot context")
+    void testBalancedPortfolioNoDriftIntegration() {
+        com.portfolioos.core.persistence.TriggerHistoryRepository repository = new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
+        com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(repository);
+
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        BigDecimal nav = new BigDecimal("100.00");
+
+        // Total corpus: 1,000,000 exactly matching v2.3 targets:
+        // Core: 50% (30% LargeMid, 20% PPFC -> ratio 0.60, within [0.45, 0.75])
+        // Satellites: Value 10%, Momentum 10%, SmallCap 10%
+        // Gold: 10%, Liquid: 10%
+        com.portfolioos.core.model.Lot lm = new com.portfolioos.core.model.Lot("l1", "INF109KC12U0", "ICICI LargeMidcap 250", today.minusMonths(6), new BigDecimal("3000"), new BigDecimal("3000"), nav, new BigDecimal("300000.00"), false, null);
+        com.portfolioos.core.model.Lot pp = new com.portfolioos.core.model.Lot("l2", "INF879O01027", "Parag Parikh Flexi Cap", today.minusMonths(6), new BigDecimal("2000"), new BigDecimal("2000"), nav, new BigDecimal("200000.00"), false, null);
+        com.portfolioos.core.model.Lot sv = new com.portfolioos.core.model.Lot("l3", "INF109KC13X2", "ICICI Nifty200 Value 30", today.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+        com.portfolioos.core.model.Lot sm = new com.portfolioos.core.model.Lot("l4", "INF754K01TN5", "Edelweiss Momentum 50", today.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+        com.portfolioos.core.model.Lot sc = new com.portfolioos.core.model.Lot("l5", "INF204K01K15", "Nippon Small Cap", today.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+        com.portfolioos.core.model.Lot gd = new com.portfolioos.core.model.Lot("l6", "INF247L01BM8", "Motilal Gold Silver", today.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+        com.portfolioos.core.model.Lot li = new com.portfolioos.core.model.Lot("l7", "INF205K01KR8", "Invesco Arbitrage", today.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", nav,
+            "INF879O01027", nav,
+            "INF109KC13X2", nav,
+            "INF754K01TN5", nav,
+            "INF204K01K15", nav,
+            "INF247L01BM8", nav,
+            "INF205K01KR8", nav
+        );
+
+        com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
+            List.of(lm, pp, sv, sm, sc, gd, li), navMap,
+            new BigDecimal("25000.00"), new BigDecimal("25000.00"), // 0% drawdown
+            null, null, today
+        );
+
+        assertNotNull(res);
+        assertEquals("NONE", res.triggerType());
+        assertEquals("NO_REBALANCE_REQUIRED", res.reasonCode());
+        assertFalse(res.hasSellSide());
+        repository.close();
+    }
 }

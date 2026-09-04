@@ -127,12 +127,20 @@ public class BucketEngine {
             return Bucket.LIQUID_BUFFER;
         }
 
-        // Step 3: Legacy check
-        if (activeOrPreferredAssetIds != null && !activeOrPreferredAssetIds.isEmpty() && !activeOrPreferredAssetIds.contains(assetId)) {
-            return Bucket.LEGACY_HOLDINGS;
+        // Step 3: Equity holdings classification (Core vs Legacy)
+        if (activeOrPreferredAssetIds != null && !activeOrPreferredAssetIds.isEmpty()) {
+            if (!activeOrPreferredAssetIds.contains(assetId)) {
+                return Bucket.LEGACY_HOLDINGS;
+            }
+            return Bucket.EQUITY_CORE;
         }
 
-        return Bucket.EQUITY_CORE;
+        // 2-arg caller or empty active set: check against known preferred funds in active config
+        if (com.portfolioos.core.rules.BucketConfigLoader.isPreferredFund(assetId)) {
+            return Bucket.EQUITY_CORE;
+        }
+
+        return Bucket.LEGACY_HOLDINGS;
     }
 
     public static RebalanceEngineResult evaluateRebalance(

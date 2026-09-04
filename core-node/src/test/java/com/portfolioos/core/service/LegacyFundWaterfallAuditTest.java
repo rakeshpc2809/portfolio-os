@@ -128,9 +128,9 @@ class LegacyFundWaterfallAuditTest {
         System.out.println("Sold Core Amount: ₹" + coreTierDto.sold());
 
         // FIXED BEHAVIOR VERIFICATION:
-        // Excess Core = ₹46,000. Legacy Lot 1 (Motilal Midcap 150) = ₹50,000. Legacy Lot 2 (Kotak Equal) = ₹60,000.
-        // Entire ₹110,000 legacy pool is prioritized from Legacy Tier, Core receives ₹0!
-        assertEquals(new BigDecimal("110000.00"), legacyTierDto.sold(),
+        // Excess Core = ₹46,000 (Core lot ₹150,000 - target ₹104,000). Dampened trim = ₹34,500.
+        // Legacy pool is prioritized from Legacy Tier to satisfy full required sell pool (₹34,500), Core receives ₹0!
+        assertEquals(new BigDecimal("34500.00"), legacyTierDto.sold(),
             "FIX VERIFIED: RebalancePlanEngine prioritized Legacy lots first despite Core being at index 0 of openLots.");
         assertEquals(0, BigDecimal.ZERO.compareTo(coreTierDto.sold()),
             "FIX VERIFIED: Core lots were untouched (₹0 sold) because Legacy Tier satisfied the full sell pool.");
@@ -279,9 +279,11 @@ class LegacyFundWaterfallAuditTest {
 
         // FIX VERIFIED:
         // Legacy Lot trimmed FIRST 100% (₹50,000). Remaining shortfall falls through to 2023 Core Lot!
+        // Excess Core = ₹286,000 (Core ₹510,000 - target ₹224,000). Dampened trim = ₹214,500.
+        // Legacy supplies ₹50,000, Old Core supplies ₹214,500 - ₹50,000 = ₹164,500!
         assertEquals(new BigDecimal("50000.00"), legacyTier.sold(),
             "FIX VERIFIED: Legacy lot was prioritized first despite 2023 Core lot having an earlier acquisition date.");
-        assertEquals(new BigDecimal("202000.00"), coreTier.sold(),
+        assertEquals(new BigDecimal("164500.00"), coreTier.sold(),
             "FIX VERIFIED: Old Core lot supplied the remaining excess drift shortfall with per-fund trend dampener applied.");
     }
 
@@ -366,8 +368,8 @@ class LegacyFundWaterfallAuditTest {
         }
 
         // 1. Invariant Assertion: Legacy fund tier MUST liquidate legacy lots first under 100% legacy priority
-        assertEquals(new BigDecimal("123839.77"), legacySold.setScale(2, java.math.RoundingMode.HALF_UP),
-            "Legacy tier must sell exactly ₹123,839.77 under 100% legacy liquidation priority before touching core");
+        assertEquals(new BigDecimal("60000.00"), legacySold.setScale(2, java.math.RoundingMode.HALF_UP),
+            "Legacy tier must sell exactly ₹60,000.00 under 100% legacy liquidation priority before touching core");
 
         // 2. Invariant Assertion: Core fund tier is untouched because legacy lots satisfy the full required sell pool
         assertEquals(new BigDecimal("0.00"), coreSold.setScale(2, java.math.RoundingMode.HALF_UP),
@@ -375,9 +377,9 @@ class LegacyFundWaterfallAuditTest {
 
         // 3. Invariant Assertion: Total executed equals total required pool
         BigDecimal actualExecuted = legacySold.add(coreSold);
-        assertEquals(new BigDecimal("123839.78"), plan.sellSide().totalRequired(),
-            "Total required sell pool under 100% legacy priority must equal ₹123,839.78");
-        assertEquals(0, plan.sellSide().totalRequired().subtract(actualExecuted).setScale(2, java.math.RoundingMode.HALF_UP).compareTo(new BigDecimal("0.01")),
+        assertEquals(new BigDecimal("60000.00"), plan.sellSide().totalRequired(),
+            "Total required sell pool under 100% legacy priority must equal ₹60,000.00");
+        assertEquals(0, plan.sellSide().totalRequired().subtract(actualExecuted).setScale(2, java.math.RoundingMode.HALF_UP).compareTo(BigDecimal.ZERO),
             "STCG Protection Invariant: All required sell pool satisfied by legacy liquidation");
     }
 }

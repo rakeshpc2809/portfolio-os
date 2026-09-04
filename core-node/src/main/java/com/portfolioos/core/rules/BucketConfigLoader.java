@@ -112,6 +112,10 @@ public class BucketConfigLoader {
 
     private static BucketRulesConfig cachedRules = null;
 
+    public static synchronized void resetCache() {
+        cachedRules = null;
+    }
+
     public static synchronized BucketRulesConfig loadConfig() {
         if (cachedRules != null) {
             return cachedRules;
@@ -119,19 +123,14 @@ public class BucketConfigLoader {
 
         File ruleFile = findConfigFile();
         if (ruleFile == null || !ruleFile.exists()) {
-            System.err.println("CONFIG_SOURCE_AUDIT: [FALLBACK_DEFAULT] File rules/bucket_targets.yaml not found! Using fallback defaults.");
-            cachedRules = createDefaultConfig();
-            saveConfigToDisk(cachedRules);
-            return cachedRules;
+            throw new IllegalStateException("CRITICAL CONFIG ERROR: File rules/bucket_targets.yaml not found at any search location!");
         }
 
         try {
             ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
             Map<String, Object> data = mapper.readValue(ruleFile, Map.class);
             if (data == null) {
-                System.err.println("CONFIG_SOURCE_AUDIT: [FALLBACK_DEFAULT] YAML file empty! Using fallback defaults.");
-                cachedRules = createDefaultConfig();
-                return cachedRules;
+                throw new IllegalStateException("CRITICAL CONFIG ERROR: YAML file " + ruleFile.getAbsolutePath() + " is empty!");
             }
 
             System.out.println("CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from " + ruleFile.getAbsolutePath());
@@ -221,16 +220,16 @@ public class BucketConfigLoader {
                     parsedVersions.add(new BucketTargetVersion(vId, effFrom, targetConfigs));
                 }
             } else {
-                cachedRules = createDefaultConfig();
-                return cachedRules;
+                throw new IllegalStateException("CRITICAL CONFIG ERROR: YAML file at " + ruleFile.getAbsolutePath() + " does not contain 'portfolio' or 'versions' block");
             }
 
             cachedRules = new BucketRulesConfig("YAML_FILE", ruleFile.getAbsolutePath(), parsedVersions);
             return cachedRules;
         } catch (Exception e) {
-            System.err.println("Failed to load bucket_targets.yaml, falling back to defaults: " + e.getMessage());
-            cachedRules = createDefaultConfig();
-            return cachedRules;
+            if (e instanceof IllegalStateException ise) {
+                throw ise;
+            }
+            throw new IllegalStateException("CRITICAL CONFIG ERROR: Failed to load rules/bucket_targets.yaml: " + e.getMessage(), e);
         }
     }
 
@@ -484,17 +483,6 @@ public class BucketConfigLoader {
         return locations.get(0);
     }
 
-    private static BucketRulesConfig createDefaultConfig() {
-        List<BucketTargetConfig> defaults = List.of(
-            new BucketTargetConfig("EQUITY_CORE", 50.0, 5.0, 5.0, "CORE", getDefaultPreferredFundsForBucket("EQUITY_CORE")),
-            new BucketTargetConfig("EQUITY_SATELLITE", 30.0, 5.0, 5.0, "SATELLITE", getDefaultPreferredFundsForBucket("EQUITY_SATELLITE")),
-            new BucketTargetConfig("GOLD_SILVER", 10.0, 5.0, 12.0, "ACCUMULATOR", getDefaultPreferredFundsForBucket("GOLD_SILVER")),
-            new BucketTargetConfig("LIQUID_BUFFER", 10.0, 5.0, 5.0, "ARBITRAGE", getDefaultPreferredFundsForBucket("LIQUID_BUFFER"))
-        );
-        return new BucketRulesConfig("FALLBACK_DEFAULT", "in-memory-defaults", List.of(
-            new BucketTargetVersion("v2.3", "2026-08-26", defaults)
-        ));
-    }
 
     private static void saveConfigToDisk(BucketRulesConfig config) {
         try {

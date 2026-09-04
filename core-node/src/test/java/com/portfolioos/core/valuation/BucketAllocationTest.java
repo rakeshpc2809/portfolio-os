@@ -32,6 +32,10 @@ class BucketAllocationTest {
         // Inactive Non-Preferred Equity Fund: maps to LEGACY_HOLDINGS
         BucketEngine.Bucket legacyBucket = BucketEngine.classifyAssetToBucket("INF109K01234", "Nifty 100 Equal Weight Index Fund", activeOrPreferred);
         assertEquals(BucketEngine.Bucket.LEGACY_HOLDINGS, legacyBucket, "Inactive non-preferred equity fund must map to LEGACY_HOLDINGS");
+
+        // 2-arg overload: Inactive Non-Preferred Equity Fund must also map to LEGACY_HOLDINGS, eliminating silent fallback to EQUITY_CORE
+        BucketEngine.Bucket legacy2Arg = BucketEngine.classifyAssetToBucket("INF109K01234", "Nifty 100 Equal Weight Index Fund");
+        assertEquals(BucketEngine.Bucket.LEGACY_HOLDINGS, legacy2Arg, "2-arg classifyAssetToBucket must map non-preferred equity to LEGACY_HOLDINGS, not silent EQUITY_CORE");
     }
 
     @Test
