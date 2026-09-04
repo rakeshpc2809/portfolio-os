@@ -286,7 +286,7 @@ public class RebalanceWaterfallEngine {
         }
     }
 
-    static BigDecimal resolveLargeMidcapTargetWeight(LocalDate today) {
+    public static BigDecimal resolveLargeMidcapTargetWeight(LocalDate today) {
         com.portfolioos.core.rules.BucketConfigLoader.BucketTargetVersion activeVersion =
             com.portfolioos.core.rules.BucketConfigLoader.getActiveVersion(today != null ? today : LocalDate.now());
         if (activeVersion == null || activeVersion.targets() == null) {
@@ -312,7 +312,7 @@ public class RebalanceWaterfallEngine {
         throw new IllegalStateException(msg);
     }
 
-    static List<Lot> filterOverweightCoreLots(List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today) {
+    public static List<Lot> filterOverweightCoreLots(List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today) {
         if (coreLots == null || coreLots.isEmpty()) return List.of();
 
         BigDecimal lmValue = BigDecimal.ZERO;

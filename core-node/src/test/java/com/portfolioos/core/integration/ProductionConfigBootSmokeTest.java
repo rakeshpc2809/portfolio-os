@@ -214,6 +214,71 @@ public class ProductionConfigBootSmokeTest extends BaseIntegrationTest {
     }
 
     @Test
+    @DisplayName("Integration Test: Core scheme-level imbalance triggers intra-bucket trim routing (LargeMid trimmed, PPFC shielded) and routes proceeds via v2.3 waterfall")
+    void testCoreSchemeLevelTrimRoutingIntegration() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        BigDecimal nav = new BigDecimal("100.00");
+
+        // Core lots: LargeMid 400,000 (80%), PPFC 100,000 (20%) -> imbalanced vs 60:40 target
+        com.portfolioos.core.model.Lot largeMidLot = new com.portfolioos.core.model.Lot(
+            "lot-lm", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusMonths(14), new BigDecimal("4000"), new BigDecimal("4000"), nav, new BigDecimal("400000.00"), false, null);
+        com.portfolioos.core.model.Lot ppfcLot = new com.portfolioos.core.model.Lot(
+            "lot-ppfc", "INF879O01027", "Parag Parikh Flexi Cap Fund",
+            today.minusMonths(14), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", nav,
+            "INF879O01027", nav
+        );
+
+        // 1. Verify dynamic resolution of 60% target weight from active YAML under Spring context
+        BigDecimal lmTargetWeight = com.portfolioos.core.valuation.RebalanceWaterfallEngine.resolveLargeMidcapTargetWeight(today);
+        assertEquals(new BigDecimal("0.6000"), lmTargetWeight, "Dynamic LargeMid target weight must be 60.00% under v2.3");
+
+        // 2. Verify filterOverweightCoreLots trims ONLY overweight LargeMid (400k/500k = 80% > 60%) and shields PPFC
+        List<com.portfolioos.core.model.Lot> eligibleLots = com.portfolioos.core.valuation.RebalanceWaterfallEngine.filterOverweightCoreLots(
+            List.of(largeMidLot, ppfcLot), navMap, today
+        );
+        assertEquals(1, eligibleLots.size(), "Only the overweight scheme must be eligible for trim");
+        assertEquals("INF109KC12U0", eligibleLots.get(0).assetId(), "LargeMidcap 250 must be selected; PPFC must be shielded");
+
+        // 3. Verify waterfall execution selects only the overweight scheme
+        com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallResult waterfall =
+            com.portfolioos.core.valuation.RebalanceWaterfallEngine.buildTrimWaterfall(
+                com.portfolioos.core.valuation.BucketEngine.Bucket.EQUITY_CORE,
+                new BigDecimal("50000.00"),
+                List.of(largeMidLot, ppfcLot),
+                navMap,
+                new BigDecimal("125000.00"),
+                false,
+                today,
+                "2026-27"
+            );
+        assertNotNull(waterfall);
+        assertEquals(new BigDecimal("50000.00"), waterfall.satisfiedAmount());
+        assertFalse(waterfall.steps().isEmpty());
+        for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep step : waterfall.steps()) {
+            assertEquals("INF109KC12U0", step.assetId(), "Every trim step within Core must trim LargeMidcap 250 only");
+        }
+
+        // 4. Verify 5-step routing of the trimmed proceeds (Path A: Gold deficit fill per funding_priority_on_trim)
+        com.portfolioos.core.valuation.RebalanceWaterfallEngine.TrimDestinationAllocation alloc =
+            com.portfolioos.core.valuation.RebalanceWaterfallEngine.routeTrimProceeds(
+                new BigDecimal("50000.00"),
+                new BigDecimal("70000.00"), new BigDecimal("100000.00"),  // Gold deficit 30,000 (100k target, 70k actual)
+                new BigDecimal("90000.00"), new BigDecimal("100000.00"),  // Arb deficit 10,000
+                new BigDecimal("500000.00"), new BigDecimal("500000.00"), // Core at target
+                new BigDecimal("1000000.00")
+            );
+        assertNotNull(alloc);
+        assertEquals(new BigDecimal("30000.00"), alloc.toGold(), "Step 1 priority: fills 30,000 Gold deficit");
+        assertEquals(new BigDecimal("10000.00"), alloc.toArbTarget(), "Step 2 priority: fills 10,000 Arbitrage deficit");
+        assertEquals(new BigDecimal("10000.00"), alloc.toArbTerminal(), "Step 4: remaining 10,000 to Arbitrage terminal sink (lands at 11% <= 15% cap)");
+        assertEquals(new BigDecimal("0.00"), alloc.toCashOverflow());
+    }
+
+    @Test
     @DisplayName("Integration Test: Balanced portfolio within all standalone thresholds yields NO_REBALANCE_REQUIRED under live Spring Boot context")
     void testBalancedPortfolioNoDriftIntegration() {
         com.portfolioos.core.persistence.TriggerHistoryRepository repository = new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
