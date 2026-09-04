@@ -89,13 +89,15 @@ export async function populateFundDropdowns() {
   selB.value = currentB;
 }
 
+let isProvisionalMode = false;
+
 export function openOverlapModal() {
   const modal = document.getElementById("overlapInspectorModal");
   const backdrop = document.getElementById("overlapModalBackdrop");
   if (modal) modal.style.display = "block";
   if (backdrop) backdrop.style.display = "block";
-  populateFundDropdowns().then(() => {
-    loadOverlapAnalytics();
+  loadFundRegistryForOverlap().then(() => {
+    loadOverlapInspectorData();
   });
 }
 
@@ -106,149 +108,218 @@ export function closeOverlapModal() {
   if (backdrop) backdrop.style.display = "none";
 }
 
+async function loadFundRegistryForOverlap() {
+  try {
+    const res = await fetchJson(`${API_BASE}/funds/registry`);
+    if (res && res.status === "OK" && res.funds) {
+      Object.keys(FUND_REGISTRY).forEach((key) => {
+        delete FUND_REGISTRY[key];
+      });
+      res.funds.forEach((f) => {
+        if (f.isin && f.name) {
+          FUND_REGISTRY[f.isin] = f.name;
+        }
+      });
+    }
+  } catch (err) {
+    console.warn("Failed to load fund registry for overlap:", err);
+  }
+}
+
 let activeOverlapRequestId = 0;
 
-export async function loadOverlapAnalytics(fundAOverride = null, fundBOverride = null) {
+export async function loadOverlapInspectorData() {
   const currentRequestId = ++activeOverlapRequestId;
-
-  const selA = document.getElementById("vennFundA");
-  const selB = document.getElementById("vennFundB");
-  const chkIncludeUnverified = document.getElementById("chkIncludeUnverified");
-  const includeUnverified = chkIncludeUnverified ? chkIncludeUnverified.checked : false;
-
-  const fundAKey = fundAOverride || (selA ? selA.value : "INF879O01027");
-  const fundBKey = fundBOverride || (selB ? selB.value : "INF109KC13X2");
-
-  const nameA = FUND_REGISTRY[fundAKey] || fundAKey;
-  const nameB = FUND_REGISTRY[fundBKey] || fundBKey;
-
+  const barsContainer = document.getElementById("pairwiseBarsContainer");
+  const zeroContainer = document.getElementById("zeroOverlapContainer");
   const tableBody = document.querySelector("#topStockConcentrationTable tbody");
-  const container = document.getElementById("vennContainer");
+  const captionLine = document.getElementById("coverageCaptionLine");
+  const countLabel = document.getElementById("overlapPairwiseCount");
 
-  setText("#overlapPairName", `${nameA} vs ${nameB}`);
-
-  // Same Fund Selected Case (Strict raw ISIN string comparison)
-  if (fundAKey === fundBKey) {
-    setText("#pairwiseOverlapVal", "100.00%");
-    setText("#commonStockCountSub", "Identical Fund Selected (100% Stock Overlap)");
-    setBadgeStyle("#overlapProvenanceBadge", "SAME FUND (100%)", "live-tag positive-tag");
-    const warn = document.getElementById("unverifiedPairWarning");
-    if (warn) warn.style.display = "none";
-    renderVennSvg(container, nameA, nameB, 100.0);
-  } else {
-    setText("#pairwiseOverlapVal", "...");
-    setText("#commonStockCountSub", "Calculating live stock overlap...");
+  if (barsContainer) {
+    setHtml(barsContainer, `<div style="text-align: center; color: #64748b; font-size: 0.8rem; padding: 16px;">Loading pairwise overlap...</div>`);
+  }
+  if (zeroContainer) {
+    zeroContainer.style.display = "none";
+    setHtml(zeroContainer, "");
+  }
+  if (tableBody) {
+    setHtml(tableBody, `<tr><td colspan="5" style="text-align: center; color: #64748b; padding: 12px;">Loading concentrations...</td></tr>`);
   }
 
   try {
     const res = await fetchJson(
-      `${API_BASE}/analytics/overlap?fundA=${encodeURIComponent(fundAKey)}&fundB=${encodeURIComponent(fundBKey)}&includeUnverified=${includeUnverified}`,
+      `${API_BASE}/analytics/overlap?includeUnverified=${isProvisionalMode}`
     );
-    if (currentRequestId !== activeOverlapRequestId) return; // Stale fetch race guard
+    if (currentRequestId !== activeOverlapRequestId) return;
 
     if (res && res.status === "OK") {
-      const pairwise = res.pairwise_overlap;
-      const concentrations = res.portfolio_top_stock_concentrations;
+      const matrix = res.pairwise_matrix || [];
+      const concentrations = res.portfolio_top_stock_concentrations || [];
       const telemetry = res.coverage_telemetry;
 
-      // 1. Render Pairwise Overlap & Provenance
-      if (fundAKey !== fundBKey && pairwise) {
-        const isUnverified = pairwise.is_unverified_estimate;
-        const warn = document.getElementById("unverifiedPairWarning");
-        if (warn) {
-          warn.style.display = isUnverified ? "block" : "none";
-        }
+      // 1. Process & Render Pairwise Matrix
+      renderPairwiseBars(matrix, barsContainer, zeroContainer, countLabel);
 
-        if (isUnverified) {
-          setBadgeStyle("#overlapProvenanceBadge", "PROVISIONAL SAMPLE", "live-tag warning-tag");
-        } else if (pairwise.source_type_a === "FACTSHEET_POI_PARSED" || pairwise.source_type_b === "FACTSHEET_POI_PARSED") {
-          setBadgeStyle("#overlapProvenanceBadge", "FACTSHEET AUDITED", "live-tag positive-tag");
+      // 2. Render Top 5 Stock Concentrations
+      renderTopStockConcentrations(concentrations, tableBody);
+
+      // 3. Render Coverage Caption Line
+      if (captionLine) {
+        if (telemetry) {
+          const auditedAum = formatINR(telemetry.audited_aum);
+          const covPct = `${telemetry.audited_coverage_pct}%`;
+          if (isProvisionalMode) {
+            captionLine.innerHTML = `Showing all held funds including provisional estimates (Coverage: <strong style="color: #38bdf8;">${covPct}</strong> of equity).`;
+          } else {
+            captionLine.innerHTML = `Based on <strong style="color: #f8fafc;">${auditedAum}</strong> of audited holdings — <strong style="color: #38bdf8;">${covPct}</strong> of equity.`;
+          }
         } else {
-          setBadgeStyle("#overlapProvenanceBadge", "NSE BENCHMARK", "live-tag positive-tag");
-        }
-
-        // Source tags under selectors
-        const tagA = document.getElementById("fundASourceTag");
-        const tagB = document.getElementById("fundBSourceTag");
-        if (tagA) tagA.innerHTML = formatSourceTag(pairwise.source_type_a);
-        if (tagB) tagB.innerHTML = formatSourceTag(pairwise.source_type_b);
-
-        if (pairwise.common_stock_count === 0) {
-          setText("#pairwiseOverlapVal", "0.00%");
-          setText("#commonStockCountSub", "Common Holdings: 0 Stocks (No Shared Holdings)");
-          renderVennSvg(container, nameA, nameB, 0.0);
-        } else {
-          setText("#pairwiseOverlapVal", `${pairwise.overlap_percentage}%`);
-          const topSymbols = (pairwise.common_stocks || [])
-            .slice(0, 4)
-            .map((s) => s.stock_symbol)
-            .join(", ");
-          const extraStr = topSymbols ? ` (${topSymbols})` : "";
-          setText(
-            "#commonStockCountSub",
-            `Common Holdings: ${pairwise.common_stock_count} Stocks${extraStr}`,
-          );
-          renderVennSvg(container, nameA, nameB, pairwise.overlap_percentage);
+          captionLine.innerHTML = `Based on audited holdings.`;
         }
       }
 
-      // 2. Render Coverage Telemetry
-      if (telemetry) {
-        setText("#coveragePctVal", `${telemetry.audited_coverage_pct}%`);
-        setText("#coverageRupeeVal", `₹${formatINR(telemetry.audited_aum)} / ₹${formatINR(telemetry.total_equity_aum)}`);
-        setBadgeStyle(
-          "#coverageModeTag",
-          includeUnverified ? "ALL FUNDS (PROVISIONAL)" : "AUDITED ONLY",
-          includeUnverified ? "live-tag warning-tag" : "live-tag positive-tag"
-        );
-        const concWarn = document.getElementById("unverifiedConcentrationWarning");
-        if (concWarn) {
-          concWarn.style.display = includeUnverified ? "block" : "none";
-        }
-      }
-
-      // 3. Render Concentrations Table
-      if (tableBody && concentrations) {
-        if (concentrations.length === 0) {
-          setHtml(
-            tableBody,
-            `<tr><td colspan="4" style="text-align:center; color:#64748b; padding:12px;">No stock concentrations calculated.</td></tr>`,
-          );
-        } else {
-          let html = "";
-          concentrations.forEach((item) => {
-            const provBadge = item.is_audited 
-              ? `<span class="live-tag positive-tag" style="font-size:0.68rem; padding:2px 6px;">AUDITED</span>` 
-              : `<span class="live-tag warning-tag" style="font-size:0.68rem; padding:2px 6px;">PROVISIONAL</span>`;
-            html += `<tr>
-              <td><strong>${item.stock_symbol}</strong></td>
-              <td style="text-align: right;">${formatINR(item.rupee_exposure)}</td>
-              <td style="text-align: right;"><span class="metric-delta positive">${item.portfolio_percentage}%</span></td>
-              <td style="text-align: center;">${provBadge}</td>
-            </tr>`;
-          });
-          setHtml(tableBody, html);
-        }
+      // Update link text
+      const toggleLink = document.getElementById("linkToggleProvisional");
+      if (toggleLink) {
+        toggleLink.textContent = isProvisionalMode 
+          ? "Hide provisional estimates (Audited only)" 
+          : "Show provisional estimates too";
+        toggleLink.style.color = isProvisionalMode ? "#38bdf8" : "#64748b";
       }
 
       await loadUpSetAnalytics();
-      await loadActionRecommendations();
     } else {
       throw new Error(res ? res.message : "Invalid API response");
     }
   } catch (err) {
     if (currentRequestId !== activeOverlapRequestId) return;
-    console.error("Failed to load overlap analytics:", err);
-    setErrorState("#pairwiseOverlapVal", "—");
-    setText("#commonStockCountSub", "⚠️ Overlap Fetch Failed (Check Backend Service)");
-    setBadgeStyle("#overlapProvenanceBadge", "OFFLINE", "live-tag warning-tag");
-    if (container) {
-      setHtml(
-        container,
-        `<div style="text-align: center; color: #f87171; padding: 12px;">⚠️ Failed to load overlap graph from backend.</div>`,
-      );
+    console.error("Failed to load overlap inspector data:", err);
+    if (barsContainer) {
+      setHtml(barsContainer, `<div style="text-align: center; color: #f87171; font-size: 0.8rem; padding: 12px;">⚠️ Failed to load pairwise overlap data.</div>`);
+    }
+    if (captionLine) {
+      captionLine.innerHTML = `<span style="color: #f87171;">⚠️ Failed to calculate equity coverage.</span>`;
     }
   }
+}
+
+function getProvenanceDot(sourceType) {
+  const isUnverified = sourceType === "MANUAL_ESTIMATE_UNVERIFIED";
+  if (isUnverified) {
+    return `<span title="Provisional Sample (~30–60% coverage)" style="width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; display: inline-block; flex-shrink: 0; vertical-align: middle;"></span>`;
+  }
+  const label = sourceType === "FACTSHEET_POI_PARSED" ? "Factsheet Audited" : "NSE Benchmark";
+  return `<span title="${label}" style="width: 7px; height: 7px; border-radius: 50%; background: #38bdf8; display: inline-block; flex-shrink: 0; vertical-align: middle;"></span>`;
+}
+
+function renderPairwiseBars(matrix, container, zeroContainer, countLabel) {
+  if (!matrix || matrix.length === 0) {
+    if (container) setHtml(container, `<div style="text-align: center; color: #64748b; font-size: 0.8rem; padding: 12px;">No held fund pairs to compare.</div>`);
+    if (countLabel) countLabel.textContent = "0 pairs";
+    return;
+  }
+
+  // Deduplicate and filter out same-fund pairs
+  const filtered = matrix.filter((p) => p.fund_a !== p.fund_b);
+  
+  // Sort descending by overlap percentage
+  filtered.sort((a, b) => (b.overlap_percentage || 0) - (a.overlap_percentage || 0));
+
+  const positivePairs = filtered.filter((p) => (p.overlap_percentage || 0) > 0);
+  const zeroPairs = filtered.filter((p) => (p.overlap_percentage || 0) <= 0);
+
+  if (countLabel) {
+    countLabel.textContent = `${filtered.length} pairs (${positivePairs.length} overlapping)`;
+  }
+
+  let barsHtml = "";
+  if (positivePairs.length === 0) {
+    barsHtml = `<div style="text-align: center; color: #64748b; font-size: 0.8rem; padding: 8px;">No overlapping holdings found between funds.</div>`;
+  } else {
+    positivePairs.forEach((pair) => {
+      const nameA = FUND_REGISTRY[pair.fund_a] || pair.fund_a;
+      const nameB = FUND_REGISTRY[pair.fund_b] || pair.fund_b;
+      const pct = (pair.overlap_percentage || 0).toFixed(2);
+      const dotA = getProvenanceDot(pair.source_type_a);
+      const dotB = getProvenanceDot(pair.source_type_b);
+      const commonCount = pair.common_stock_count || (pair.common_stocks ? pair.common_stocks.length : 0);
+
+      barsHtml += `
+        <div style="display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; background: rgba(15, 23, 42, 0.5); border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
+            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 78%;">
+              ${dotA}
+              <span style="color: #f8fafc; font-weight: 500;">${nameA}</span>
+              <span style="color: #64748b; font-size: 0.72rem;">×</span>
+              ${dotB}
+              <span style="color: #f8fafc; font-weight: 500;">${nameB}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+              <span style="font-size: 0.7rem; color: #64748b;">${commonCount} stocks</span>
+              <span style="font-size: 0.84rem; font-weight: 700; color: #d0ff00; font-family: monospace;">${pct}%</span>
+            </div>
+          </div>
+          <!-- Horizontal Bar -->
+          <div style="width: 100%; height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;">
+            <div style="width: ${Math.min(pct, 100)}%; height: 100%; background: linear-gradient(90deg, #0284c7, #38bdf8); border-radius: 3px;"></div>
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  if (container) setHtml(container, barsHtml);
+
+  // Zero Overlap Collapsed Text Lines
+  if (zeroPairs.length > 0 && zeroContainer) {
+    let zeroHtml = "";
+    zeroPairs.forEach((pair) => {
+      const nameA = FUND_REGISTRY[pair.fund_a] || pair.fund_a;
+      const nameB = FUND_REGISTRY[pair.fund_b] || pair.fund_b;
+      zeroHtml += `
+        <div style="font-size: 0.72rem; color: #64748b; padding: 2px 6px;">
+          No overlap found between <span style="color: #94a3b8;">${nameA}</span> and <span style="color: #94a3b8;">${nameB}</span>
+        </div>
+      `;
+    });
+    setHtml(zeroContainer, zeroHtml);
+    zeroContainer.style.display = "flex";
+  } else if (zeroContainer) {
+    zeroContainer.style.display = "none";
+  }
+}
+
+function renderTopStockConcentrations(concentrations, tableBody) {
+  if (!tableBody) return;
+
+  if (!concentrations || concentrations.length === 0) {
+    setHtml(
+      tableBody,
+      `<tr><td colspan="5" style="text-align:center; color:#64748b; padding:12px;">No stock concentrations calculated.</td></tr>`
+    );
+    return;
+  }
+
+  // Display top 5 exposures matching spec density
+  const top5 = concentrations.slice(0, 5);
+  let html = "";
+  top5.forEach((item) => {
+    const provDot = item.is_audited 
+      ? `<span title="Audited Holding" style="width: 7px; height: 7px; border-radius: 50%; background: #38bdf8; display: inline-block;"></span>` 
+      : `<span title="Provisional Sample" style="width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; display: inline-block;"></span>`;
+    const company = item.company_name || "—";
+    
+    html += `<tr>
+      <td><strong>${item.stock_symbol}</strong></td>
+      <td style="color: #cbd5e1; font-size: 0.75rem;">${company}</td>
+      <td style="text-align: right; font-family: monospace;">${formatINR(item.rupee_exposure)}</td>
+      <td style="text-align: right; font-family: monospace;"><span class="metric-delta positive">${item.portfolio_percentage}%</span></td>
+      <td style="text-align: center;">${provDot}</td>
+    </tr>`;
+  });
+
+  setHtml(tableBody, html);
 }
 
 function formatSourceTag(src) {
@@ -410,26 +481,28 @@ function render2FundVennDiagram() {
 
 
 if (typeof window !== "undefined") {
-  window.loadOverlapAnalytics = loadOverlapAnalytics;
+  window.loadOverlapAnalytics = loadOverlapInspectorData;
+  window.loadOverlapInspectorData = loadOverlapInspectorData;
   window.loadUpSetAnalytics = loadUpSetAnalytics;
-  window.render2FundVennDiagram = render2FundVennDiagram;
   window.openOverlapModal = openOverlapModal;
   window.closeOverlapModal = closeOverlapModal;
 }
 
 if (typeof document !== "undefined") {
   document.addEventListener("DOMContentLoaded", async () => {
-    const selA = document.getElementById("vennFundA");
-    const selB = document.getElementById("vennFundB");
-    const chk = document.getElementById("chkIncludeUnverified");
-    if (selA && selB) {
-      await populateFundDropdowns();
-      selA.addEventListener("change", render2FundVennDiagram);
-      selB.addEventListener("change", render2FundVennDiagram);
+    const toggleLink = document.getElementById("linkToggleProvisional");
+    if (toggleLink) {
+      toggleLink.addEventListener("click", () => {
+        isProvisionalMode = !isProvisionalMode;
+        loadOverlapInspectorData();
+      });
     }
-    if (chk) {
-      chk.addEventListener("change", render2FundVennDiagram);
+
+    const btnOpen = document.getElementById("btnOpenOverlapModal");
+    if (btnOpen) {
+      btnOpen.addEventListener("click", openOverlapModal);
     }
+
     if (document.getElementById("benchmarkMetricsGrid") || document.getElementById("benchmarkAlphaVal")) {
       loadBenchmarkAnalytics();
     }

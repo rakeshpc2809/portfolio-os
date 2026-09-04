@@ -12,4 +12,11 @@ public interface EventStorePort {
     boolean verifyLedgerIntegrity();
     void clearAllEvents();
     String getLatestEventHash();
+    default String getBackupSyncCheckpoint(String syncTarget) {
+        return null;
+    }
+    default void updateBackupSyncCheckpoint(String syncTarget, String lastSyncedEventId, int newRowsAdded) {}
+    default List<TaxEvent> getEventsAfter(String lastEventId) {
+        return getAllEvents();
+    }
 }

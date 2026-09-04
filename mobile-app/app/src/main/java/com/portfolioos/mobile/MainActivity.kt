@@ -81,6 +81,7 @@ class MainActivity : FragmentActivity() {
                         snackbarHostState = snackbarHostState,
                         onRefresh = { viewModel.fetchSyncSnapshot(isManualRefresh = true) },
                         onUpdateCustomUrl = { newUrl -> viewModel.updateCustomUrl(newUrl) },
+                        onFetchOverlap = { incUnverified -> viewModel.fetchOverlapAnalytics(incUnverified) },
                         onSimulateFullSync = { viewModel.simulateFullSync() },
                         onSimulateAmfiFallback = { viewModel.simulateAmfiFallback() },
                         onSimulateFullyOffline = { viewModel.simulateFullyOffline() },

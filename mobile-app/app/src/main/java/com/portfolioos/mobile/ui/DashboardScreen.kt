@@ -83,6 +83,7 @@ fun DashboardScreen(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onRefresh: () -> Unit,
     onUpdateCustomUrl: (String) -> Unit = {},
+    onFetchOverlap: (Boolean) -> Unit = {},
     onSimulateFullSync: () -> Unit = {},
     onSimulateAmfiFallback: () -> Unit = {},
     onSimulateFullyOffline: () -> Unit = {},
@@ -120,6 +121,8 @@ fun DashboardScreen(
     }
     var showSimulatorBottomSheet by remember { mutableStateOf(false) }
     var selectedHoldingForSimulator by remember { mutableStateOf<FlatHoldingDto?>(null) }
+    var showOverlapBottomSheet by remember { mutableStateOf(false) }
+    val overlapSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showUrlDialog by remember { mutableStateOf(false) }
     var inputUrl by remember { mutableStateOf("") }
 
@@ -350,6 +353,9 @@ fun DashboardScreen(
                                         onSimulateSale = { h ->
                                             selectedHoldingForSimulator = h
                                             showSimulatorBottomSheet = true
+                                        },
+                                        onInspectOverlap = {
+                                            showOverlapBottomSheet = true
                                         }
                                     )
                                     1 -> GroupedTaxLotsView(taxLots, holdings)
@@ -619,6 +625,17 @@ fun DashboardScreen(
                     shape = RoundedCornerShape(24.dp)
                 )
             }
+
+            if (showOverlapBottomSheet) {
+                com.portfolioos.mobile.ui.components.OverlapConcentrationBottomSheet(
+                    sheetState = overlapSheetState,
+                    overlapReport = uiState.overlapData,
+                    onDismiss = { showOverlapBottomSheet = false },
+                    onToggleProvisional = { includeUnverified ->
+                        onFetchOverlap(includeUnverified)
+                    }
+                )
+            }
         }
     }
 }
@@ -675,7 +692,8 @@ fun HoldingsView(
     holdings: List<FlatHoldingDto>,
     radarSignals: List<RadarSignalDto> = emptyList(),
     benchmarkAnalytics: BenchmarkAnalyticsDto? = null,
-    onSimulateSale: (FlatHoldingDto) -> Unit = {}
+    onSimulateSale: (FlatHoldingDto) -> Unit = {},
+    onInspectOverlap: () -> Unit = {}
 ) {
     val alphaStr = benchmarkAnalytics?.let { "%+.2f%%".format(it.alpha) } ?: "--"
     val betaStr = benchmarkAnalytics?.let { "%.2f".format(it.beta) } ?: "--"
@@ -741,42 +759,66 @@ fun HoldingsView(
                             ) {
                                 Text(
                                     text = xirrText,
-                                    style = TypographyTokens.BadgeTag.copy(color = if (isSyncPopulated) ColorTokens.GreenPositive else ColorTokens.TextMuted),
+                                    color = if (isSyncPopulated) ColorTokens.GreenPositive else ColorTokens.TextMuted,
+                                    style = TypographyTokens.MetricLabel.copy(letterSpacing = 1.sp),
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = if (isSyncPopulated && syncInfo != null) formatInr(syncInfo.currentValue) else "₹ --",
-                            style = TypographyTokens.MetricNumber.copy(
-                                fontSize = 34.sp,
-                                color = ColorTokens.TextMain
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        HorizontalDivider(color = ColorTokens.CardBorder)
+
                         Spacer(modifier = Modifier.height(14.dp))
 
+                        // Current Valuation
+                        val valText = if (isSyncPopulated && syncInfo != null) {
+                            formatInr(syncInfo.currentValue)
+                        } else {
+                            "₹ --"
+                        }
+                        Text(
+                            text = valText,
+                            style = TypographyTokens.MetricNumber.copy(
+                                fontSize = 34.sp,
+                                color = Color.White,
+                                letterSpacing = (-0.5).sp
+                            )
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Dual Metric Pill Row: Invested vs Unrealized Gain
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column {
                                 Text(
-                                    text = "Total Invested",
-                                    style = TypographyTokens.MetricLabel
+                                    text = "TOTAL INVESTED",
+                                    style = TypographyTokens.MetricLabel.copy(
+                                        color = ColorTokens.TextMuted,
+                                        letterSpacing = 1.sp
+                                    )
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                val invText = if (isSyncPopulated && syncInfo != null) {
+                                    formatInr(syncInfo.totalInvested)
+                                } else {
+                                    "₹ --"
+                                }
                                 Text(
-                                    text = if (isSyncPopulated && syncInfo != null) formatInr(syncInfo.totalInvested) else "₹ --",
-                                    style = TypographyTokens.FinancialValue
+                                    text = invText,
+                                    style = TypographyTokens.FinancialValue.copy(color = ColorTokens.CyanBright)
                                 )
                             }
+
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
-                                    text = "Unrealized Gain",
-                                    style = TypographyTokens.MetricLabel
+                                    text = "UNREALIZED GAIN",
+                                    style = TypographyTokens.MetricLabel.copy(
+                                        color = ColorTokens.TextMuted,
+                                        letterSpacing = 1.sp
+                                    )
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
                                 val gainText = if (isSyncPopulated && syncInfo != null) {
                                     val gain = syncInfo.unrealizedGain
                                     "${if (gain >= 0) "+" else ""}${formatInr(gain)}"
@@ -828,35 +870,39 @@ fun HoldingsView(
                         )
                         Surface(
                             color = M3NeonCyan.copy(alpha = 0.15f),
-                            shape = ShapeTokens.PillShape
+                            shape = RoundedCornerShape(100.dp)
                         ) {
                             Text(
                                 text = benchLabel,
-                                style = TypographyTokens.BadgeTag.copy(color = M3NeonCyan),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                color = M3NeonCyan,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(text = "Alpha (α)", style = TypographyTokens.MetricLabel)
-                            Text(text = alphaStr, style = TypographyTokens.FinancialValue.copy(color = M3GreenPositive, fontSize = 15.sp))
+                            Text("ALPHA", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp, letterSpacing = 0.8.sp))
+                            Text(alphaStr, color = if (alphaStr.startsWith("+")) ColorTokens.GreenPositive else Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
                         }
                         Column {
-                            Text(text = "Beta (β)", style = TypographyTokens.MetricLabel)
-                            Text(text = betaStr, style = TypographyTokens.FinancialValue.copy(fontSize = 15.sp))
+                            Text("BETA", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp, letterSpacing = 0.8.sp))
+                            Text(betaStr, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
                         }
                         Column {
-                            Text(text = "Sharpe", style = TypographyTokens.MetricLabel)
-                            Text(text = sharpeStr, style = TypographyTokens.FinancialValue.copy(color = M3ElectricLime, fontSize = 15.sp))
+                            Text("SHARPE", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp, letterSpacing = 0.8.sp))
+                            Text(sharpeStr, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
                         }
                         Column {
-                            Text(text = "Tracking Err", style = TypographyTokens.MetricLabel)
-                            Text(text = trackErrStr, style = TypographyTokens.FinancialValue.copy(fontSize = 15.sp))
+                            Text("TRACKING ERR", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp, letterSpacing = 0.8.sp))
+                            Text(trackErrStr, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
                         }
                     }
                 }
@@ -909,17 +955,42 @@ fun HoldingsView(
                     color = M3TextMuted,
                     letterSpacing = 1.5.sp
                 )
-                Surface(
-                    color = M3SurfaceVariant,
-                    shape = RoundedCornerShape(100.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "${holdings.size} Schemes",
-                        color = M3NeonCyan,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
+                    Surface(
+                        onClick = onInspectOverlap,
+                        color = Color(0xFF38BDF8).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.35f)),
+                        shape = RoundedCornerShape(100.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text("🔍", fontSize = 10.sp)
+                            Text(
+                                text = "Overlap & Exposure",
+                                color = Color(0xFF38BDF8),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Surface(
+                        color = M3SurfaceVariant,
+                        shape = RoundedCornerShape(100.dp)
+                    ) {
+                        Text(
+                            text = "${holdings.size} Schemes",
+                            color = M3NeonCyan,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
                 }
             }
         }

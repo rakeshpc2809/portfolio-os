@@ -32,7 +32,8 @@ interface SyncApiService {
 
     @GET("api/v1/analytics/overlap")
     suspend fun getOverlapAnalytics(
-        @Header("X-Api-Auth-Token") token: String
+        @Header("X-Api-Auth-Token") token: String,
+        @Query("includeUnverified") includeUnverified: Boolean = false
     ): com.portfolioos.mobile.model.OverlapReportDto
 
     @GET("api/v1/fire/summary")

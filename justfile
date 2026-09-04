@@ -66,19 +66,43 @@ run-quant:
     cd quant-sidecar && uv run uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 
 # -------------------------------------------------------------
+# Portfolio OS TUI Terminal Cockpit (Textual)
+# -------------------------------------------------------------
+
+# Launch Portfolio OS Terminal HUD
+tui:
+    cd tui && python3 portfolio_os_tui.py
+
+# Launch TUI with hot-reloading DevTools
+tui-dev:
+    cd tui && textual run --dev portfolio_os_tui.py
+
+# Open Textual live inspection console in standalone pane
+tui-console:
+    textual console
+
+# Launch full Zellij Cockpit (Backend + Quant + TUI HUD in split panes)
+cockpit:
+    zellij --layout tui/portfolio_os.kdl
+
+# Launch Zellij TUI Dev Studio (Textual console + hot reload TUI)
+cockpit-dev:
+    zellij --layout tui/portfolio_os_dev.kdl
+
+# -------------------------------------------------------------
 # Code Quality: Lint & Format (Biome + Ruff)
 # -------------------------------------------------------------
 
 # Check and lint all frontend JS and Python code
 lint:
     biome check core-node/src/main/resources/static/
-    ruff check quant-sidecar/
+    ruff check quant-sidecar/ tui/
 
 # Auto-format and fix all frontend JS and Python code
 format:
     biome format --write core-node/src/main/resources/static/
-    ruff format quant-sidecar/
-    ruff check quant-sidecar/ --fix
+    ruff format quant-sidecar/ tui/
+    ruff check quant-sidecar/ tui/ --fix
 
 # -------------------------------------------------------------
 # Full Stack Docker / Podman Controls

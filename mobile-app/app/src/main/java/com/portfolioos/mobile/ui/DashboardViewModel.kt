@@ -111,6 +111,27 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun fetchOverlapAnalytics(includeUnverified: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val token = SnapshotCacheManager.getAuthToken(context)
+            val urls = listOf(
+                SyncApiClient.USB_BASE_URL,
+                SyncApiClient.WIFI_BASE_URL,
+                SyncApiClient.EMULATOR_BASE_URL
+            )
+            for (baseUrl in urls) {
+                try {
+                    val service = SyncApiClient.createService(baseUrl)
+                    val overlap = service.getOverlapAnalytics(token, includeUnverified)
+                    _uiState.update { it.copy(overlapData = overlap) }
+                    break
+                } catch (e: Exception) {
+                    Log.d(TAG, "Overlap analytics fetch failed on $baseUrl: ${e.message}")
+                }
+            }
+        }
+    }
+
     fun setActivePage(page: Int) {
         _uiState.update { it.copy(activePage = page) }
     }

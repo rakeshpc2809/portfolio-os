@@ -7,6 +7,8 @@ import com.portfolioos.mobile.model.FireSummaryResponseDto
 import com.portfolioos.mobile.model.OverlapReportDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class SyncModelParsingUnitTest {
@@ -92,6 +94,7 @@ class SyncModelParsingUnitTest {
     fun testOverlapReportDtoParsing() {
         val json = """
             {
+                "holding_coverage_type": "EXACT_ISIN_LOOKUP",
                 "coverage_type": "EXACT_ISIN_LOOKUP",
                 "pairwise_matrix": [
                     {
@@ -110,5 +113,90 @@ class SyncModelParsingUnitTest {
         assertEquals(1, overlap.pairwiseMatrix.size)
         assertEquals(18.5, overlap.pairwiseMatrix[0].overlapPercentage, 0.01)
         assertEquals(12, overlap.pairwiseMatrix[0].commonHoldingsCount)
+    }
+
+    @Test
+    fun testOverlapReportDtoWithConcentrationsAndZeroOverlap() {
+        val json = """
+            {
+                "status": "OK",
+                "holding_coverage_type": "FACTSHEET_POI_PARSED",
+                "pairwise_matrix": [
+                    {
+                        "fund_a": "Parag Parikh Flexi Cap Fund",
+                        "fund_b": "UTI Nifty 50 Index Fund",
+                        "source_type_a": "FACTSHEET_POI_PARSED",
+                        "source_type_b": "NSE_INDEX_CONSTITUENTS",
+                        "is_unverified_estimate": false,
+                        "overlap_percentage": 27.42,
+                        "common_stock_count": 18
+                    },
+                    {
+                        "fund_a": "Parag Parikh Flexi Cap Fund",
+                        "fund_b": "Motilal Oswal Midcap Fund",
+                        "source_type_a": "FACTSHEET_POI_PARSED",
+                        "source_type_b": "MANUAL_ESTIMATE_UNVERIFIED",
+                        "is_unverified_estimate": true,
+                        "overlap_percentage": 0.0,
+                        "common_stock_count": 0
+                    }
+                ],
+                "portfolio_top_stock_concentrations": [
+                    {
+                        "stock_symbol": "HDFCBANK",
+                        "company_name": "HDFC Bank Ltd.",
+                        "rupee_exposure": 142500.0,
+                        "portfolio_percentage": 8.15,
+                        "is_audited": true
+                    },
+                    {
+                        "stock_symbol": "RELIANCE",
+                        "company_name": "Reliance Industries Ltd.",
+                        "rupee_exposure": 112000.0,
+                        "portfolio_percentage": 6.41,
+                        "is_audited": false
+                    }
+                ],
+                "coverage_telemetry": {
+                    "total_equity_aum": 1748250.0,
+                    "audited_aum": 1739500.0,
+                    "unverified_aum": 8750.0,
+                    "audited_coverage_pct": 99.5,
+                    "include_unverified": false
+                }
+            }
+        """.trimIndent()
+
+        val report = gson.fromJson(json, OverlapReportDto::class.java)
+        assertNotNull(report)
+        assertEquals("OK", report.status)
+        assertEquals("FACTSHEET_POI_PARSED", report.coverageType)
+        assertEquals(2, report.pairwiseMatrix.size)
+
+        // Pairwise matrix assertions
+        val p1 = report.pairwiseMatrix[0]
+        assertEquals("Parag Parikh Flexi Cap Fund", p1.fundA)
+        assertEquals(27.42, p1.overlapPercentage, 0.001)
+        assertFalse(p1.isUnverifiedEstimate)
+
+        val p2 = report.pairwiseMatrix[1]
+        assertEquals(0.0, p2.overlapPercentage, 0.001)
+        assertTrue(p2.isUnverifiedEstimate)
+
+        // Stock concentrations assertions
+        assertEquals(2, report.stockConcentrations.size)
+        val s1 = report.stockConcentrations[0]
+        assertEquals("HDFCBANK", s1.stockSymbol)
+        assertEquals(142500.0, s1.rupeeExposure, 0.01)
+        assertTrue(s1.isAudited)
+
+        val s2 = report.stockConcentrations[1]
+        assertEquals("RELIANCE", s2.stockSymbol)
+        assertFalse(s2.isAudited)
+
+        // Telemetry assertions
+        assertNotNull(report.coverageTelemetry)
+        assertEquals(99.5, report.coverageTelemetry?.auditedCoveragePct ?: 0.0, 0.01)
+        assertEquals(1739500.0, report.coverageTelemetry?.auditedAum ?: 0.0, 0.01)
     }
 }

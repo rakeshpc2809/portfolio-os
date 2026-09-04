@@ -16,18 +16,21 @@ import java.util.UUID;
 @Service
 public class StatementIngestionUseCase {
 
-    private final SqliteEventStore eventStore;
+    private final com.portfolioos.core.ports.EventStorePort eventStore;
     private final DuckDbProjector duckDbProjector;
     private final LedgerCacheService cacheService;
+    private final com.portfolioos.core.backup.GoogleSheetsBackupService sheetsBackupService;
 
     public StatementIngestionUseCase(
-        SqliteEventStore eventStore,
+        com.portfolioos.core.ports.EventStorePort eventStore,
         DuckDbProjector duckDbProjector,
-        LedgerCacheService cacheService
+        LedgerCacheService cacheService,
+        com.portfolioos.core.backup.GoogleSheetsBackupService sheetsBackupService
     ) {
         this.eventStore = eventStore;
         this.duckDbProjector = duckDbProjector;
         this.cacheService = cacheService;
+        this.sheetsBackupService = sheetsBackupService;
     }
 
     public List<TaxEvent> ingestParsedEvents(ParsedEventDto[] dtoList) {
@@ -67,6 +70,11 @@ public class StatementIngestionUseCase {
 
         // Evict/Invalidate central ledger cache
         cacheService.invalidateCache();
+
+        // Non-blocking asynchronous backup sync to Google Sheets (failures never block or fail ledger commit)
+        if (sheetsBackupService != null) {
+            sheetsBackupService.triggerAsyncIncrementalBackup();
+        }
 
         return taxEvents;
     }
