@@ -686,12 +686,24 @@ public class PortfolioValuationService {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> regFunds = (List<Map<String, Object>>) getFundRegistry().getOrDefault("funds", Collections.emptyList());
         List<String> evalFundIds = regFunds.stream().map(f -> (String) f.get("isin")).filter(Objects::nonNull).collect(Collectors.toList());
+        Map<String, String> nameMap = regFunds.stream()
+            .filter(f -> f.get("isin") != null && f.get("name") != null)
+            .collect(Collectors.toMap(f -> (String) f.get("isin"), f -> (String) f.get("name"), (a, b) -> a));
+
+        if (pairwise != null) {
+            pairwise.put("fund_a_name", nameMap.getOrDefault(idA, idA));
+            pairwise.put("fund_b_name", nameMap.getOrDefault(idB, idB));
+        }
+
         List<Map<String, Object>> matrix = new ArrayList<>();
         for (int i = 0; i < evalFundIds.size(); i++) {
             for (int j = i + 1; j < evalFundIds.size(); j++) {
                 String fa = evalFundIds.get(i);
                 String fb = evalFundIds.get(j);
-                matrix.add(duckDbProjector.getPairwiseFundOverlap(fa, fb));
+                Map<String, Object> pMap = new HashMap<>(duckDbProjector.getPairwiseFundOverlap(fa, fb));
+                pMap.put("fund_a_name", nameMap.getOrDefault(fa, fa));
+                pMap.put("fund_b_name", nameMap.getOrDefault(fb, fb));
+                matrix.add(pMap);
             }
         }
 

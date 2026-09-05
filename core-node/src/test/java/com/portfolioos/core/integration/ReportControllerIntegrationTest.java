@@ -64,4 +64,18 @@ public class ReportControllerIntegrationTest extends BaseIntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.exemption_limit").value("125000.00"));
     }
+
+    @Test
+    @DisplayName("GET /api/v1/analytics/overlap includes fund_a_name and fund_b_name in pairwise overlap and matrix")
+    void testGetPortfolioOverlapAnalyticsFundNamesIntegration() throws Exception {
+        mockMvc.perform(get("/api/v1/analytics/overlap")
+                .header("X-Api-Auth-Token", AUTH_TOKEN)
+                .contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("OK"))
+            .andExpect(jsonPath("$.pairwise_overlap.fund_a_name", notNullValue()))
+            .andExpect(jsonPath("$.pairwise_overlap.fund_b_name", notNullValue()))
+            .andExpect(jsonPath("$.pairwise_matrix[0].fund_a_name", notNullValue()))
+            .andExpect(jsonPath("$.pairwise_matrix[0].fund_b_name", notNullValue()));
+    }
 }
