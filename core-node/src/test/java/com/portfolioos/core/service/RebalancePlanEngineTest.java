@@ -12,6 +12,7 @@ import com.portfolioos.core.rules.BucketConfigLoader.BucketTargetConfig;
 import com.portfolioos.core.rules.BucketConfigLoader.BucketTargetVersion;
 import com.portfolioos.core.rules.BucketConfigLoader.PreferredFundConfig;
 import com.portfolioos.core.valuation.BucketEngine;
+import com.portfolioos.core.valuation.FundTrendDampenerCalculator;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -619,5 +620,163 @@ class RebalancePlanEngineTest {
             "Satellite postRebalancePct must be 42.9% reflecting 142,500 trim");
         assertEquals(14.3, goldBucket.postRebalancePct(), 0.1,
             "Gold postRebalancePct must be 14.3% reflecting 285,000 buy allocation");
+    }
+
+    @Test
+    @DisplayName("Gold Drift Threshold & Dampened Trim Sizing: 12% trigger threshold vs 5% core, dampened trim sizing")
+    void testGoldWiderDriftThresholdSensitivityAndTrimSizing() {
+        // -----------------------------------------------------------------------------------------
+        // Component 1: FundTrendDampenerCalculator direct dampener curve verification
+        // -----------------------------------------------------------------------------------------
+        // At 13.5% drift (in the 10-30% range):
+        // sellMultiplier = 0.60 + ((13.5 - 10.0) / 20.0) * (0.75 - 0.60)
+        //                = 0.60 + (3.5 / 20.0) * 0.15 = 0.60 + 0.175 * 0.15 = 0.60 + 0.02625 = 0.62625
+        // Rounded to 4 decimal places = 0.6263
+        FundTrendDampenerCalculator.DampenerMultipliers mults = FundTrendDampenerCalculator.calculateFundMultipliers(13.5);
+        assertEquals(0.6263, mults.sellMultiplier(), 0.0001,
+            "13.5% drift must produce exactly 0.6263 sell multiplier via 0.60 + (3.5/20.0)*0.15 dampener formula");
+        assertEquals(0.0, mults.buyMultiplier(),
+            "Positive drift must have 0.0 buy multiplier");
+
+        // Excess of 13,500 on 100,000 target (13.5% drift) yields dampened trim of 8,455.05 vs linear 13,500.00
+        BigDecimal dampenedTrim135 = FundTrendDampenerCalculator.calculateDampenedTrim(new BigDecimal("13500.00"), 100000.0);
+        assertEquals(new BigDecimal("8455.05"), dampenedTrim135,
+            "Dampened trim for 13,500.00 excess on 100k target must be 8,455.05 (0.6263x), not linear 13,500.00");
+
+        // -----------------------------------------------------------------------------------------
+        // Component 2: RebalanceTriggerEvaluator sensitivity to Gold 12% threshold vs 5% Core/Satellite
+        // -----------------------------------------------------------------------------------------
+        // Active rules version v2.3 effective from 2026-08-26:
+        // Core: 50.0% target, 5.0% trigger drift (aggregate 35%-65%, ratio 45%-75%)
+        // Satellite: 30.0% target, 5.0% trigger drift ([25%, 35%])
+        // Liquid: 10.0% target, 5.0% trigger drift ([5%, 15%])
+        // Gold: 10.0% target, 12.0% trigger drift (triggers only if drift >= 12.0%, i.e. >= 22.0% or <= -2.0%)
+        // We test on 2026-08-28 (v2.3 active, outside March/September scheduled reconstitution window)
+        LocalDate today = LocalDate.of(2026, 8, 28);
+        LocalDate acqDate = LocalDate.of(2024, 1, 1);
+        LocalDate sipDate = LocalDate.of(2026, 7, 15);
+        BigDecimal nav = new BigDecimal("100.00");
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", nav, // LargeMidcap (Core)
+            "INF879O01027", nav, // PPFC (Core)
+            "INF109KC13X2", nav, // Value 30 (Satellite)
+            "INF205K01KR8", nav, // Arbitrage (Liquid)
+            "INF247L01BM8", nav  // Gold and Silver (Gold)
+        );
+
+        // Case A: 10.0% Gold drift (Gold weight = 20.0% vs 10.0% target on 1,000,000 corpus)
+        // Core: 450,000 (45.0% - LargeMidcap 270k / PPFC 180k = ratio 0.60 within 45-75%, Core total within 35-65%)
+        // Satellite: 270,000 (27.0% - target 30%, drift 3.0% < 5.0% threshold)
+        // Liquid: 80,000 (8.0% - target 10%, drift 2.0% < 5.0% threshold)
+        // Gold: 200,000 (20.0% - target 10%, drift 10.0% < 12.0% threshold)
+        // Total = 450k + 270k + 80k + 200k = 1,000,000.00 (100.0%)
+        // Each fund has an active SIP within 3 months to confirm non-legacy status
+        List<Lot> lotsCaseA = List.of(
+            new Lot("c1-ltcg", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", acqDate, new BigDecimal("2690"), new BigDecimal("2690"), nav, new BigDecimal("269000.00"), false, null),
+            new Lot("c1-sip", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
+            new Lot("c2-ltcg", "INF879O01027", "Parag Parikh Flexi Cap Fund", acqDate, new BigDecimal("1790"), new BigDecimal("1790"), nav, new BigDecimal("179000.00"), false, null),
+            new Lot("c2-sip", "INF879O01027", "Parag Parikh Flexi Cap Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
+            new Lot("s1-ltcg", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", acqDate, new BigDecimal("2690"), new BigDecimal("2690"), nav, new BigDecimal("269000.00"), false, null),
+            new Lot("s1-sip", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
+            new Lot("l1-ltcg", "INF205K01KR8", "Invesco India Arbitrage Fund", acqDate, new BigDecimal("790"), new BigDecimal("790"), nav, new BigDecimal("79000.00"), false, null),
+            new Lot("l1-sip", "INF205K01KR8", "Invesco India Arbitrage Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
+            new Lot("g1-ltcg", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", acqDate, new BigDecimal("1990"), new BigDecimal("1990"), nav, new BigDecimal("199000.00"), false, null),
+            new Lot("g1-sip", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null)
+        );
+
+        BigDecimal corpus = new BigDecimal("1000000.00");
+        BigDecimal benchmark = new BigDecimal("25000.00");
+
+        RebalanceTriggerEvaluator.TriggerResolution resA = evaluator.getCurrentStatus(
+            lotsCaseA, navMap, benchmark, benchmark, null, null, today
+        );
+
+        // Assertion 1: At 10% drift, Gold does NOT trigger rebalance because 10.0% < 12.0% threshold
+        assertEquals("NONE", resA.triggerType(),
+            "Gold at 20% weight (10% drift) must NOT trigger rebalance against 12% trigger_drift_pct threshold");
+        assertEquals("NO_REBALANCE_REQUIRED", resA.reasonCode());
+        assertFalse(resA.hasSellSide());
+
+        // Case B: 13.5% Gold drift (Gold weight = 23.5% vs 10.0% target on 1,000,000 corpus)
+        // Core: 450,000 (45.0% - ratio 0.60 -> no drift)
+        // Satellite: 255,000 (25.5% - target 30%, drift 4.5% < 5.0% threshold -> no drift)
+        // Liquid: 60,000 (6.0% - target 10%, drift 4.0% < 5.0% threshold -> no drift)
+        // Gold: 235,000 (23.5% - target 10%, drift 13.5% >= 12.0% threshold -> DRIFT TRIGGERED!)
+        // Total = 450k + 255k + 60k + 235k = 1,000,000.00 (100.0%)
+        List<Lot> lotsCaseB = List.of(
+            new Lot("c1-ltcg", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", acqDate, new BigDecimal("2690"), new BigDecimal("2690"), nav, new BigDecimal("269000.00"), false, null),
+            new Lot("c1-sip", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
+            new Lot("c2-ltcg", "INF879O01027", "Parag Parikh Flexi Cap Fund", acqDate, new BigDecimal("1790"), new BigDecimal("1790"), nav, new BigDecimal("179000.00"), false, null),
+            new Lot("c2-sip", "INF879O01027", "Parag Parikh Flexi Cap Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
+            new Lot("s1-ltcg", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", acqDate, new BigDecimal("2540"), new BigDecimal("2540"), nav, new BigDecimal("254000.00"), false, null),
+            new Lot("s1-sip", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
+            new Lot("l1-ltcg", "INF205K01KR8", "Invesco India Arbitrage Fund", acqDate, new BigDecimal("590"), new BigDecimal("590"), nav, new BigDecimal("59000.00"), false, null),
+            new Lot("l1-sip", "INF205K01KR8", "Invesco India Arbitrage Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
+            new Lot("g1-ltcg", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", acqDate, new BigDecimal("2340"), new BigDecimal("2340"), nav, new BigDecimal("234000.00"), false, null),
+            new Lot("g1-sip", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null)
+        );
+
+        RebalanceTriggerEvaluator.TriggerResolution resB = evaluator.getCurrentStatus(
+            lotsCaseB, navMap, benchmark, benchmark, null, null, today
+        );
+
+        // Assertion 2: At 13.5% drift, Gold crosses the 12% threshold and DOES trigger rebalance
+        assertEquals("DRIFT", resB.triggerType(),
+            "Gold at 23.5% weight (13.5% drift) must trigger DRIFT because 13.5% >= 12.0% threshold");
+        assertEquals("DRIFT_THRESHOLD_EXCEEDED", resB.reasonCode());
+        assertTrue(resB.reasonLabel().contains("GOLD_SILVER"),
+            "Reason label must identify GOLD_SILVER as the drifted bucket: " + resB.reasonLabel());
+        assertTrue(resB.hasSellSide());
+
+        // -----------------------------------------------------------------------------------------
+        // Component 3: Multi-bucket trim waterfall end-to-end plan sizing
+        // -----------------------------------------------------------------------------------------
+        // On 1,000,000 corpus with v2.3 active targets:
+        // Gold target is 10.0% (100,000.00). Current is 235,000.00.
+        // Excess = 135,000.00.
+        // driftPct = (135,000 / 100,000) * 100 = 135% (> 30% disciplined cap of 0.75x).
+        // dampenedTrim = 135,000 * 0.75 = 101,250.00.
+        // Notice: un-dampened linear trim would have been 135,000.00!
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            lotsCaseB, Collections.emptyList(), navMap, today,
+            corpus, benchmark, null, "2026-27", null, null, evaluator
+        );
+
+        assertNotNull(plan);
+        assertEquals("DRIFT", plan.trigger().type());
+        assertNotNull(plan.sellSide());
+        assertNotNull(plan.buySide());
+
+        BigDecimal expectedDampenedTrim = new BigDecimal("101250.00");
+        BigDecimal unDampenedLinearExcess = new BigDecimal("135000.00");
+
+        assertEquals(0, expectedDampenedTrim.compareTo(plan.buySide().totalToInvest()),
+            "Total buy-side invest pool must equal dampened trim (101,250.00), NOT un-dampened excess (135,000.00)");
+
+        // Verify sell waterfall sold specifically from Gold bucket
+        List<RebalanceLotImpactDto> soldLots = plan.sellSide().waterfall().stream()
+            .flatMap(t -> t.lots().stream())
+            .toList();
+        assertFalse(soldLots.isEmpty(), "Sell waterfall must have lots to sell");
+        assertTrue(soldLots.stream().allMatch(l -> "INF247L01BM8".equals(l.fundId())),
+            "Only Gold fund lots must be sold");
+
+        BigDecimal totalGoldSold = soldLots.stream()
+            .map(RebalanceLotImpactDto::saleProceeds)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(0, expectedDampenedTrim.compareTo(totalGoldSold),
+            "Gold sale proceeds must match exactly 101,250.00");
+        assertNotEquals(0, unDampenedLinearExcess.compareTo(totalGoldSold),
+            "Gold sale proceeds must NOT equal un-dampened linear excess");
+
+        // Verify post-rebalance percentage of Gold:
+        // postVal = 235,000 - 101,250 + 0 = 133,750.00
+        // postRebalancePct = (133,750 / 1,000,000) * 100 = 13.38% (13.4%)
+        RebalanceBucketAllocationDto goldAllocation = plan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.GOLD_SILVER.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+        assertEquals(13.4, goldAllocation.postRebalancePct(), 0.1,
+            "Gold postRebalancePct must be ~13.4% reflecting 235k - 101.25k trim");
     }
 }
