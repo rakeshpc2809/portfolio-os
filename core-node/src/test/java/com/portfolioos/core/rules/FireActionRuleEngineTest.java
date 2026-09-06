@@ -94,4 +94,35 @@ public class FireActionRuleEngineTest {
         System.out.println("Full Headroom Rationale    : " + cardA.detailedRationale());
         System.out.println("Consumed Headroom Rationale: " + cardB.detailedRationale());
     }
+
+    @Test
+    public void testConcentrationActionWithPortfolioPercentageKey() {
+        FireActionRuleEngine engine = new FireActionRuleEngine();
+
+        // Prepare single-stock concentration data using the canonical portfolio_percentage key
+        // HDFCBANK benchmark weight in NIFTY50_BENCHMARK_WEIGHTS is ~11.5% or default 1.50
+        // Top stock with portfolio_percentage = 8.5% against default 1.50% gives activeOverweight = 7.0% (> 2.50%)
+        Map<String, Object> concentrationItem = new HashMap<>();
+        concentrationItem.put("stock_symbol", "RELIANCE");
+        concentrationItem.put("rupee_exposure", 250000.0);
+        concentrationItem.put("portfolio_percentage", 12.5); // benchmark is 9.50%, activeOverweight = 3.0% > 2.50%
+        concentrationItem.put("is_audited", true);
+
+        List<Map<String, Object>> concentrations = List.of(concentrationItem);
+
+        ExemptionTracker.ExemptionStatus exFull = ExemptionTracker.calculateExemptionStatus(Collections.emptyList(), "2026-27");
+        List<FireActionRuleEngine.ActionRecommendationCard> cards = engine.evaluateRules(
+            null, false, 33.15, 0.84, new BigDecimal("75000"), Collections.emptyList(), concentrations, Collections.emptyList(), exFull
+        );
+
+        FireActionRuleEngine.ActionRecommendationCard concCard = cards.stream()
+            .filter(c -> "CARD_CONCENTRATION_ACTION".equals(c.cardId()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Expected CARD_CONCENTRATION_ACTION to fire when active overweight > 2.50%"));
+
+        assertNotNull(concCard);
+        assertEquals("ACTIVE_CONCENTRATION", concCard.category());
+        assertTrue(concCard.detailedRationale().contains("RELIANCE"));
+        assertEquals(12.5, ((Number) concCard.metrics().get("blended_weight_pct")).doubleValue());
+    }
 }

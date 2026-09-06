@@ -13,3 +13,5 @@ pandas>=2.2.0
 quantstats>=0.0.62
 pydantic>=2.6.0
 python-multipart>=0.0.9
+skfolio>=1.0.0
+duckdb>=1.0.0

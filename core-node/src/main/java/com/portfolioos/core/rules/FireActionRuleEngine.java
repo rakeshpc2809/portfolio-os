@@ -242,7 +242,7 @@ public class FireActionRuleEngine {
 
         for (Map<String, Object> c : concentrations) {
             String sym = (String) c.get("stock_symbol");
-            double w = ((Number) c.getOrDefault("portfolio_weight_pct", 0.0)).doubleValue();
+            double w = ((Number) c.getOrDefault("portfolio_percentage", 0.0)).doubleValue();
             double bmWeight = NIFTY50_BENCHMARK_WEIGHTS.getOrDefault(sym, 1.50);
             double activeOverweight = w - bmWeight;
 

@@ -548,7 +548,7 @@ class BtopTaxAndStrategyDeck(Static):
                 if concentrations:
                     top_stock = concentrations[0]
                     sym = top_stock.get("stock_symbol", "—")
-                    wt = float(top_stock.get("portfolio_weight_pct", 0.0))
+                    wt = float(top_stock.get("portfolio_percentage", 0.0))
                     lines.append(f"  [#6e738d]Concentration:[/] [bold #ffffff]{sym}[/] [#6e738d]{wt:.1f}% port[/]")
 
         # Real Benchmark Analytics strip (from /api/v1/analytics/benchmark)

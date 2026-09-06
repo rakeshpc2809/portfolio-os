@@ -95,8 +95,12 @@ public class RebalanceWaterfallEngine {
                                        lotBucket == BucketEngine.Bucket.SATELLITE_MOMENTUM ||
                                        lotBucket == BucketEngine.Bucket.SATELLITE_SMALLCAP);
                 boolean isCore = (bucket == BucketEngine.Bucket.EQUITY_CORE) && (lotBucket == BucketEngine.Bucket.EQUITY_CORE);
+                boolean isGold = (bucket == BucketEngine.Bucket.GOLD_SILVER || bucket == BucketEngine.Bucket.HEDGE_COMMODITY) &&
+                                 (lotBucket == BucketEngine.Bucket.GOLD_SILVER || lotBucket == BucketEngine.Bucket.HEDGE_COMMODITY);
+                boolean isLiquid = (bucket == BucketEngine.Bucket.LIQUID_BUFFER || bucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE) &&
+                                   (lotBucket == BucketEngine.Bucket.LIQUID_BUFFER || lotBucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
 
-                if (bucket == null || lotBucket == bucket || isSatellite || isCore) {
+                if (bucket == null || lotBucket == bucket || isSatellite || isCore || isGold || isLiquid) {
                     coreLots.add(lot);
                 }
             }

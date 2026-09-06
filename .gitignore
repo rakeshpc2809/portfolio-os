@@ -55,6 +55,7 @@ jdbc:duckdb*
 portfolio-os-codebase.xml
 *.wal
 *.duckdb.wal
+*.parquet
 
 # Review packages & evidence scripts
 claude_review_package/

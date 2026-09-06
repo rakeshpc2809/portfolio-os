@@ -40,13 +40,10 @@ public class DefaultGoogleSheetsClient implements GoogleSheetsClient {
     public int appendRows(String spreadsheetId, String range, List<List<Object>> rows) throws IOException {
         File keyFile = new File(keyPath);
         if (!keyFile.exists()) {
-            log.warn("Google Sheets backup key file not found at '{}'. Skipping external write.", keyFile.getAbsolutePath());
-            return rows.size();
+            throw new IOException("Google Sheets backup key file not found at '" + keyFile.getAbsolutePath() + "'. Cannot perform off-site backup.");
         }
 
-        // In active production runtime with service account key present,
-        // Google Sheets API v4 Sheets client executes AppendValues.
-        log.info("Appended batch of {} rows to Google Sheet {} at range {}", rows.size(), spreadsheetId, range);
-        return rows.size();
+        // Active production runtime requires Google Sheets API v4 transport
+        throw new IOException("Google Sheets API v4 transport is not configured on this environment. Cannot perform off-site backup.");
     }
 }

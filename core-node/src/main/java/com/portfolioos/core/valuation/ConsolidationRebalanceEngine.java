@@ -11,6 +11,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,54 +77,66 @@ public class ConsolidationRebalanceEngine {
 
         for (Map.Entry<String, List<Lot>> entry : grouped.entrySet()) {
             String assetId = entry.getKey();
-            List<Lot> lots = entry.getValue();
+            List<Lot> lots = new ArrayList<>(entry.getValue());
+            lots.sort(Comparator.comparing(l -> l.acquisitionDate() != null ? l.acquisitionDate() : currentDate));
 
             String assetName = lots.get(0).assetName();
-            BigDecimal totalUnits = BigDecimal.ZERO;
-            BigDecimal totalCost = BigDecimal.ZERO;
-            LocalDate oldestAcq = null;
+            BigDecimal nav = NavResolver.requireValidNav(navMap, assetId, assetName, "ConsolidationRebalanceEngine");
+            AssetCategory category = TaxClassifier.detectCategory(assetId, assetName);
+
+            BigDecimal fundUnits = BigDecimal.ZERO;
+            BigDecimal fundCost = BigDecimal.ZERO;
+            BigDecimal fundCurVal = BigDecimal.ZERO;
+            BigDecimal fundGain = BigDecimal.ZERO;
+            BigDecimal fundTaxDrag = BigDecimal.ZERO;
+            boolean hasLtcgLot = false;
 
             for (Lot lot : lots) {
-                totalUnits = totalUnits.add(lot.remainingUnits());
-                totalCost = totalCost.add(lot.totalCostBasis());
-                if (oldestAcq == null || lot.acquisitionDate().isBefore(oldestAcq)) {
-                    oldestAcq = lot.acquisitionDate();
+                BigDecimal units = lot.remainingUnits();
+                BigDecimal cost = lot.totalCostBasis();
+                BigDecimal lotVal = units.multiply(nav);
+                BigDecimal lotGain = lotVal.subtract(cost);
+
+                long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate() != null ? lot.acquisitionDate() : currentDate, currentDate);
+                com.portfolioos.core.model.TaxTerm term = TaxClassifier.classifyTaxTerm(
+                    category,
+                    holdingDays,
+                    fiscalYear,
+                    TaxClassifier.isListed(assetId, assetName),
+                    lot.acquisitionDate(),
+                    currentDate
+                );
+                boolean lotIsLtcg = (term == com.portfolioos.core.model.TaxTerm.LONG_TERM);
+                if (lotIsLtcg) {
+                    hasLtcgLot = true;
                 }
+
+                BigDecimal lotTax = BigDecimal.ZERO;
+                if (lotGain.compareTo(BigDecimal.ZERO) > 0) {
+                    if (category == AssetCategory.EQUITY && lotIsLtcg) {
+                        BigDecimal exemptPortion = lotGain.min(unusedExemption);
+                        BigDecimal taxableGain = lotGain.subtract(exemptPortion);
+                        unusedExemption = unusedExemption.subtract(exemptPortion).max(BigDecimal.ZERO);
+                        lotTax = taxableGain.multiply(rules.equityLtcgRate());
+                    } else {
+                        BigDecimal rate = TaxClassifier.resolveTaxRate(category, term, rules);
+                        lotTax = lotGain.multiply(rate);
+                    }
+                }
+
+                fundUnits = fundUnits.add(units);
+                fundCost = fundCost.add(cost);
+                fundCurVal = fundCurVal.add(lotVal);
+                fundGain = fundGain.add(lotGain);
+                fundTaxDrag = fundTaxDrag.add(lotTax);
             }
 
-            BigDecimal nav = NavResolver.requireValidNav(navMap, assetId, assetName, "ConsolidationRebalanceEngine");
-            BigDecimal curVal = totalUnits.multiply(nav);
-            BigDecimal gain = curVal.subtract(totalCost);
-
-            AssetCategory category = TaxClassifier.detectCategory(assetId, assetName);
-            long holdingDays = ChronoUnit.DAYS.between(oldestAcq != null ? oldestAcq : currentDate, currentDate);
-            
-            long thresholdDays = switch (category) {
-                case EQUITY -> rules.equityLtcgThresholdDays();
-                case GOLD_SILVER, INTERNATIONAL, SGB -> rules.goldInternationalThresholdDays();
-                case DEBT_SPECIFIED_50AA -> -1L;
-            };
-
-            boolean isLtcg = thresholdDays > 0 && holdingDays >= thresholdDays;
-
-            BigDecimal taxDrag = BigDecimal.ZERO;
-            if (gain.compareTo(BigDecimal.ZERO) > 0) {
-                if (isLtcg) {
-                    BigDecimal exemptPortion = gain.min(unusedExemption);
-                    BigDecimal taxableGain = gain.subtract(exemptPortion);
-                    unusedExemption = unusedExemption.subtract(exemptPortion).max(BigDecimal.ZERO);
-                    taxDrag = taxableGain.multiply(rules.equityLtcgRate());
-                } else {
-                    taxDrag = gain.multiply(rules.equityStcgRate());
-                }
-            }
-
-            totalProceeds = totalProceeds.add(curVal);
-            totalGain = totalGain.add(gain);
-            totalTaxDrag = totalTaxDrag.add(taxDrag);
+            totalProceeds = totalProceeds.add(fundCurVal);
+            totalGain = totalGain.add(fundGain);
+            totalTaxDrag = totalTaxDrag.add(fundTaxDrag);
 
             phasedSummaries.add(new PhasedOutAssetSummary(
-                assetId, assetName, totalUnits, curVal, totalCost, gain, isLtcg, taxDrag
+                assetId, assetName, fundUnits, fundCurVal, fundCost, fundGain, hasLtcgLot, fundTaxDrag
             ));
         }
 

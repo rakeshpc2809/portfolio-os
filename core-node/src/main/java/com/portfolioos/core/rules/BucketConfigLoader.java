@@ -116,6 +116,10 @@ public class BucketConfigLoader {
         cachedRules = null;
     }
 
+    public static synchronized void setCachedConfig(BucketRulesConfig config) {
+        cachedRules = config;
+    }
+
     public static synchronized BucketRulesConfig loadConfig() {
         if (cachedRules != null) {
             return cachedRules;

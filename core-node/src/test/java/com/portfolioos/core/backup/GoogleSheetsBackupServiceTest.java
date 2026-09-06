@@ -211,4 +211,67 @@ class GoogleSheetsBackupServiceTest {
         assertEquals(1, storedEvents.size());
         assertEquals("CAS-EVENT-101", storedEvents.get(0).id());
     }
+
+    @Test
+    @DisplayName("F-01 Invariant: DefaultGoogleSheetsClient throws IOException when unconfigured, preventing checkpoint advancement")
+    void testDefaultGoogleSheetsClientFailureLeavesCheckpointUnchanged() {
+        DefaultGoogleSheetsClient defaultClient = new DefaultGoogleSheetsClient("non_existent_key_path.json");
+        GoogleSheetsBackupService service = new GoogleSheetsBackupService(
+            eventStore, defaultClient, "test_spreadsheet_123", 0L
+        );
+
+        TaxEvent e = createMockEvent("EVT-FAIL-1", "INF109K0101", "100.0", "50.0", "5000.0");
+        eventStore.appendEvents(List.of(e));
+
+        // When syncIncrementalEvents runs, DefaultGoogleSheetsClient must throw IOException and abort before updating checkpoint
+        assertThrows(RuntimeException.class, () -> {
+            service.syncIncrementalEvents();
+        });
+
+        // Verify SQLite backup checkpoint was NOT advanced
+        String checkpoint = eventStore.getBackupSyncCheckpoint(GoogleSheetsBackupService.SYNC_TARGET_SHEETS);
+        assertNull(checkpoint, "Checkpoint must remain null when GoogleSheetsClient fails to write");
+    }
+
+    @Test
+    @DisplayName("F-01 Multi-batch failure mode: partial batch success followed by later batch failure leaves checkpoint un-advanced")
+    void testMultiBatchPartialFailureLeavesCheckpointUnchangedAndSubjectToReplay() {
+        // Prepare 600 events (batch 1: 500, batch 2: 100)
+        List<TaxEvent> events = new ArrayList<>();
+        for (int i = 1; i <= 600; i++) {
+            events.add(createMockEvent("EVT-" + i, "INF109K0" + i, "1.0", "100.0", "100.0"));
+        }
+        eventStore.appendEvents(events);
+
+        List<Integer> successfullyAppendedBatchSizes = new ArrayList<>();
+        AtomicInteger callCount = new AtomicInteger(0);
+
+        GoogleSheetsClient partiallyFailingClient = (spreadsheetId, range, rows) -> {
+            int call = callCount.incrementAndGet();
+            if (call == 1) {
+                // Batch 1 (500 rows) succeeds
+                successfullyAppendedBatchSizes.add(rows.size());
+                return rows.size();
+            } else {
+                // Batch 2 (100 rows) fails on all retry attempts
+                throw new IOException("Simulated network drop on batch 2");
+            }
+        };
+
+        GoogleSheetsBackupService service = new GoogleSheetsBackupService(
+            eventStore, partiallyFailingClient, "test_spreadsheet_123", 0L
+        );
+
+        // syncIncrementalEvents must fail due to batch 2 failure
+        assertThrows(RuntimeException.class, () -> {
+            service.syncIncrementalEvents();
+        });
+
+        // Verify: Batch 1 (500 rows) was sent to sheets
+        assertEquals(List.of(500), successfullyAppendedBatchSizes);
+
+        // Invariant: Checkpoint was NOT advanced past 0 (remains null)
+        String checkpoint = eventStore.getBackupSyncCheckpoint(GoogleSheetsBackupService.SYNC_TARGET_SHEETS);
+        assertNull(checkpoint, "Checkpoint must remain null so unsynced tail is not lost, even though batch 1 reached sheets");
+    }
 }
