@@ -62,7 +62,10 @@ class PortfolioQueryToolsTest {
             }
         };
 
-        PortfolioValuationService mockValuationService = new PortfolioValuationService(mockCacheService) {
+        com.portfolioos.core.persistence.DuckDbProjector mockDuckDb = com.portfolioos.core.persistence.DuckDbProjector.noOpForTesting();
+        com.portfolioos.core.rpc.FlightRpcClient mockFlightRpc = new com.portfolioos.core.rpc.FlightRpcClient("localhost", 9999);
+
+        PortfolioValuationService mockValuationService = new PortfolioValuationService(mockCacheService, mockDuckDb, mockFlightRpc, null) {
             @Override
             public PortfolioSummaryResponse getPortfolioSummary(String fy) {
                 return new PortfolioSummaryResponse(
@@ -71,13 +74,11 @@ class PortfolioQueryToolsTest {
             }
         };
 
-        DuckDbProjector duckDbProjector = new DuckDbProjector();
-
         queryTools = new PortfolioQueryTools(
             mockValuationService,
             null,
             null,
-            duckDbProjector,
+            mockDuckDb,
             mockCacheService
         );
     }

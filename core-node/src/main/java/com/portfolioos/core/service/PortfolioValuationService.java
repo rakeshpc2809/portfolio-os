@@ -19,6 +19,7 @@ import com.portfolioos.core.xirr.CashFlow;
 import com.portfolioos.core.xirr.XirrEngine;
 import com.portfolioos.core.nav.NseIndexConstituentDownloader;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -37,11 +38,21 @@ public class PortfolioValuationService {
 
     private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
-    private final FlightRpcClient flightRpcClient = new FlightRpcClient();
-    private final DuckDbProjector duckDbProjector = new DuckDbProjector();
+    private final FlightRpcClient flightRpcClient;
+    private final DuckDbProjector duckDbProjector;
+    private final com.portfolioos.core.rules.MarketIndicatorsReader marketIndicatorsReader;
 
-    public PortfolioValuationService(LedgerCacheService cacheService) {
+    @Autowired
+    public PortfolioValuationService(
+        LedgerCacheService cacheService,
+        DuckDbProjector duckDbProjector,
+        FlightRpcClient flightRpcClient,
+        com.portfolioos.core.rules.MarketIndicatorsReader marketIndicatorsReader
+    ) {
         this.cacheService = cacheService;
+        this.duckDbProjector = duckDbProjector;
+        this.flightRpcClient = flightRpcClient;
+        this.marketIndicatorsReader = marketIndicatorsReader != null ? marketIndicatorsReader : new com.portfolioos.core.rules.MarketIndicatorsReader();
     }
 
     private String fmt(BigDecimal val) {
@@ -813,7 +824,21 @@ public class PortfolioValuationService {
         FireTracker.FireSummary fire = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now());
         BigDecimal currentSip = fire.monthlyContribution();
 
-        return engine.evaluateRules(this, isProvisional, avgFailRate, relStdDev, currentSip, pairwise, concentrations, openLots, exStatus);
+        BigDecimal totalMFValue = BigDecimal.ZERO;
+        for (Lot lot : openLots) {
+            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "PortfolioValuationService.getActionRecommendations.totalMFValue");
+            if (lot.remainingUnits() != null) {
+                totalMFValue = totalMFValue.add(lot.remainingUnits().multiply(nav));
+            }
+        }
+
+        com.portfolioos.core.rules.MarketIndicatorsReader.MarketIndicators indicators = 
+            marketIndicatorsReader != null ? marketIndicatorsReader.readIndicators() : new com.portfolioos.core.rules.MarketIndicatorsReader().readIndicators();
+
+        return engine.evaluateRules(
+            this, isProvisional, avgFailRate, relStdDev, currentSip,
+            pairwise, concentrations, openLots, exStatus, fire, totalMFValue, indicators
+        );
     }
 
     public Map<String, Object> getFundRegistry() {

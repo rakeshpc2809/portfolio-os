@@ -63,7 +63,19 @@ class SyncControllerTest {
             }
         };
 
-        syncController = new SyncController(mockCacheService, new com.portfolioos.core.service.PortfolioValuationService(mockCacheService));
+        com.portfolioos.core.persistence.DuckDbProjector mockDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
+            @Override
+            public void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, java.util.Set<String> heldIsins, LocalDate asOfDate) {}
+            @Override
+            public Map<String, NavHistorySeriesEntry> getNavHistorySeriesWithDates(java.util.Set<String> heldIsins) {
+                return java.util.Collections.emptyMap();
+            }
+        };
+        com.portfolioos.core.rpc.FlightRpcClient mockFlightRpc = new com.portfolioos.core.rpc.FlightRpcClient("localhost", 9999);
+        com.portfolioos.core.service.PortfolioValuationService valuationService = 
+            new com.portfolioos.core.service.PortfolioValuationService(mockCacheService, mockDuckDb, mockFlightRpc, null);
+
+        syncController = new SyncController(mockCacheService, valuationService, mockDuckDb, mockFlightRpc);
     }
 
     @Test

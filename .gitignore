@@ -84,3 +84,8 @@ repomix*.md
 credentials/
 **/credentials/*.json
 *service_account*.json
+
+# Testing databases
+.jqwik-database
+**/.jqwik-database
+extracted_doc.txt

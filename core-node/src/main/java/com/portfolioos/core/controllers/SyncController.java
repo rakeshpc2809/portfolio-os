@@ -22,6 +22,7 @@ import com.portfolioos.core.valuation.HarvestAdvisor;
 import com.portfolioos.core.xirr.CashFlow;
 import com.portfolioos.core.xirr.XirrEngine;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -41,12 +42,20 @@ public class SyncController {
 
     private final LedgerCacheService cacheService;
     private final com.portfolioos.core.service.PortfolioValuationService valuationService;
-    private final DuckDbProjector duckDbProjector = new DuckDbProjector();
-    private final FlightRpcClient flightRpcClient = new FlightRpcClient();
+    private final DuckDbProjector duckDbProjector;
+    private final FlightRpcClient flightRpcClient;
 
-    public SyncController(LedgerCacheService cacheService, com.portfolioos.core.service.PortfolioValuationService valuationService) {
+    @Autowired
+    public SyncController(
+        LedgerCacheService cacheService,
+        com.portfolioos.core.service.PortfolioValuationService valuationService,
+        DuckDbProjector duckDbProjector,
+        FlightRpcClient flightRpcClient
+    ) {
         this.cacheService = cacheService;
         this.valuationService = valuationService;
+        this.duckDbProjector = duckDbProjector;
+        this.flightRpcClient = flightRpcClient;
     }
 
     private static String detectFineBucket(String assetName) {

@@ -14,7 +14,7 @@ import java.sql.Statement;
 import java.time.LocalDate;
 import java.util.*;
 
-public class DuckDbProjector {
+public class DuckDbProjector implements AutoCloseable {
 
     private final String dbPath;
     private final String jdbcUrl;
@@ -28,6 +28,16 @@ public class DuckDbProjector {
     public DuckDbProjector() {
         this(System.getenv("DUCKDB_PATH") != null && !System.getenv("DUCKDB_PATH").isBlank()
              ? System.getenv("DUCKDB_PATH") : "data/tax_ledger.duckdb");
+    }
+
+    public static DuckDbProjector noOpForTesting() {
+        return new DuckDbProjector(true);
+    }
+
+    protected DuckDbProjector(boolean testNoOp) {
+        this.dbPath = ":memory:";
+        this.jdbcUrl = "jdbc:duckdb:";
+        this.dataSource = null;
     }
 
     public DuckDbProjector(String dbPath) {
@@ -48,6 +58,14 @@ public class DuckDbProjector {
             jdbcUrl = "jdbc:duckdb:" + file.getAbsolutePath();
         }
 
+        int duckDbThreads = 1;
+        String envThreads = System.getenv("DUCKDB_THREADS");
+        if (envThreads != null && !envThreads.isBlank()) {
+            try {
+                duckDbThreads = Integer.parseInt(envThreads.trim());
+            } catch (NumberFormatException ignored) {}
+        }
+
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(jdbcUrl);
         config.setDriverClassName("org.duckdb.DuckDBDriver");
@@ -55,18 +73,23 @@ public class DuckDbProjector {
         config.setMinimumIdle(2);
         config.setIdleTimeout(30000);
         config.setPoolName("DuckDbProjectorPool");
+        config.setConnectionInitSql("SET threads = " + duckDbThreads + ";");
 
         this.dataSource = new HikariDataSource(config);
-        initReadSchema();
+        initReadSchema(duckDbThreads);
     }
 
     public Connection getConnection() throws SQLException {
+        if (dataSource == null) {
+            throw new SQLException("DuckDbProjector initialized in no-op testing mode; no DataSource available.");
+        }
         return dataSource.getConnection();
     }
 
-    private void initReadSchema() {
+    private void initReadSchema(int duckDbThreads) {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
+            stmt.execute("SET threads = " + duckDbThreads + ";");
             stmt.execute(
                 "CREATE TABLE IF NOT EXISTS projected_events (" +
                 "  id VARCHAR PRIMARY KEY," +
@@ -917,5 +940,12 @@ public class DuckDbProjector {
         res.put("total_rows", rows.size());
         res.put("rows", rows);
         return res;
+    }
+
+    @Override
+    public void close() {
+        if (dataSource != null && !dataSource.isClosed()) {
+            dataSource.close();
+        }
     }
 }

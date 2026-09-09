@@ -123,7 +123,8 @@ public class FifoMatcher {
                         if (updatedRemaining.compareTo(BigDecimal.ZERO) <= 0) {
                             openLotsQueue.remove(i);
                         } else {
-                            openLotsQueue.set(i, currentLot.withRemainingUnitsAndCost(updatedRemaining, currentLot.costPerUnit(), currentLot.totalCostBasis()));
+                            BigDecimal updatedRemainingCost = currentLot.totalCostBasis().subtract(costBasisSlice).max(BigDecimal.ZERO);
+                            openLotsQueue.set(i, currentLot.withRemainingUnitsAndCost(updatedRemaining, currentLot.costPerUnit(), updatedRemainingCost));
                             i++;
                         }
                     }
