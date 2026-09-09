@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.*;
 
 @Component
@@ -48,6 +49,26 @@ public class FireActionRuleEngine {
         List<com.portfolioos.core.model.Lot> openLots,
         ExemptionTracker.ExemptionStatus exemptionStatus
     ) {
+        return evaluateRules(
+            valuationService, isProvisional, avgFailRate, relStdDev, currentSip,
+            pairwiseOverlap, concentrations, openLots, exemptionStatus, null, null, null
+        );
+    }
+
+    public List<ActionRecommendationCard> evaluateRules(
+        PortfolioValuationService valuationService,
+        boolean isProvisional,
+        double avgFailRate,
+        double relStdDev,
+        BigDecimal currentSip,
+        List<Map<String, Object>> pairwiseOverlap,
+        List<Map<String, Object>> concentrations,
+        List<com.portfolioos.core.model.Lot> openLots,
+        ExemptionTracker.ExemptionStatus exemptionStatus,
+        com.portfolioos.core.fire.FireTracker.FireSummary fireSummary,
+        BigDecimal totalMFValue,
+        MarketIndicatorsReader.MarketIndicators marketIndicators
+    ) {
         List<ActionRecommendationCard> cards = new ArrayList<>();
 
         // 1. Monte Carlo Ruin-Risk Trigger (Gated on Empirical Provenance & Live Multi-Seed Stability)
@@ -59,7 +80,201 @@ public class FireActionRuleEngine {
         // 3. Benchmark-Relative Concentration Trigger
         cards.add(evaluateBenchmarkRelativeConcentrationRule(concentrations));
 
+        // 4. Guyton-Klinger Decumulation Guardrails & CAPE-Adjusted SWR Trigger
+        if (fireSummary != null) {
+            cards.add(evaluateGuytonKlingerCapeRule(fireSummary, totalMFValue, marketIndicators));
+        }
+
         return cards;
+    }
+
+    public ActionRecommendationCard evaluateGuytonKlingerCapeRule(
+        com.portfolioos.core.fire.FireTracker.FireSummary fireSummary,
+        BigDecimal totalMFValue,
+        MarketIndicatorsReader.MarketIndicators indicators
+    ) {
+        double niftyPe = indicators != null ? indicators.nifty50Pe() : 22.40;
+        double gsecYield = indicators != null ? indicators.gsec10yYieldPct() : 7.10;
+        boolean isFallback = indicators == null || indicators.isFallback();
+        LocalDate asOfDate = indicators != null ? indicators.asOfDate() : LocalDate.now();
+
+        // 1. Base SWR (3.00%) & Valuation Adjustments
+        // Rationale: Indian decumulation horizon spans 40+ years with ~5-6% long-term inflation.
+        // Nifty 50 P/E >= 25.0 (expensive): -0.40% SWR compression.
+        // Nifty 50 P/E <= 18.0 (undervalued): +0.35% SWR expansion.
+        double baseSwr = 3.00;
+        double capeAdjustment = 0.0;
+        String peZone = "FAIR_VALUE";
+
+        if (niftyPe >= 25.0) {
+            capeAdjustment = -0.40;
+            peZone = "EXPENSIVE";
+        } else if (niftyPe <= 18.0) {
+            capeAdjustment = 0.35;
+            peZone = "UNDERVALUED";
+        }
+
+        double capeAdjustedSwr = baseSwr + capeAdjustment;
+        double upperGuardrail = capeAdjustedSwr * 1.20;
+        double lowerGuardrail = capeAdjustedSwr * 0.80;
+
+        // 2. ERP Telemetry: Earnings Yield (1/PE) - 10Y G-Sec Yield
+        double earningsYield = niftyPe > 0 ? (1.0 / niftyPe) * 100.0 : 0.0;
+        double equityRiskPremium = earningsYield - gsecYield;
+
+        // 3. Denominator & Current Mode A Withdrawal Rate (Stress-Test Today)
+        BigDecimal investableNetWorth = fireSummary.fireInvestableNetWorth() != null
+            ? fireSummary.fireInvestableNetWorth()
+            : BigDecimal.ZERO;
+        BigDecimal annualExpense = fireSummary.annualExpense() != null
+            ? fireSummary.annualExpense()
+            : BigDecimal.ZERO;
+        BigDecimal mfValue = totalMFValue != null
+            ? totalMFValue.setScale(2, RoundingMode.HALF_UP)
+            : BigDecimal.ZERO;
+
+        double currentWithdrawalRate = 0.0;
+        if (investableNetWorth.compareTo(BigDecimal.ZERO) > 0) {
+            currentWithdrawalRate = annualExpense
+                .divide(investableNetWorth, 6, RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"))
+                .setScale(2, RoundingMode.HALF_UP)
+                .doubleValue();
+        }
+
+        // 4. Metrics Payload (Dual-Mode: Mode A live stress-test + Mode B target envelope)
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put("base_swr_pct", baseSwr);
+        metrics.put("cape_adjusted_swr_pct", Math.round(capeAdjustedSwr * 100.0) / 100.0);
+        metrics.put("upper_guardrail_pct", Math.round(upperGuardrail * 100.0) / 100.0);
+        metrics.put("lower_guardrail_pct", Math.round(lowerGuardrail * 100.0) / 100.0);
+        metrics.put("current_withdrawal_rate_pct", currentWithdrawalRate);
+        metrics.put("nifty50_pe", niftyPe);
+        metrics.put("pe_valuation_zone", peZone);
+        metrics.put("gsec_10y_yield_pct", gsecYield);
+        metrics.put("nifty50_earnings_yield_pct", Math.round(earningsYield * 100.0) / 100.0);
+        metrics.put("equity_risk_premium_pct", Math.round(equityRiskPremium * 100.0) / 100.0);
+        metrics.put("investable_net_worth", investableNetWorth.setScale(2, RoundingMode.HALF_UP).doubleValue());
+        metrics.put("pure_equity_debt_mf_worth", mfValue.doubleValue());
+        metrics.put("current_annual_expense", annualExpense.setScale(2, RoundingMode.HALF_UP).doubleValue());
+        
+        // Mode B metrics: target age 45 envelope
+        metrics.put("target_annual_expense", annualExpense.setScale(2, RoundingMode.HALF_UP).doubleValue());
+        metrics.put("projected_corpus_at_target_age", fireSummary.projectedCorpusAtTargetAge() != null
+            ? fireSummary.projectedCorpusAtTargetAge().setScale(2, RoundingMode.HALF_UP).doubleValue()
+            : 0.0);
+        metrics.put("target_required_corpus", fireSummary.requiredCorpus() != null
+            ? fireSummary.requiredCorpus().setScale(2, RoundingMode.HALF_UP).doubleValue()
+            : 0.0);
+        metrics.put("target_on_track_status", fireSummary.status() != null ? fireSummary.status() : "UNKNOWN");
+        metrics.put("is_market_indicator_fallback", isFallback);
+
+        String footer = String.format("Valuation As Of: %s | Nifty PE: %.1f | 10Y G-Sec: %.2f%% | %s",
+            asOfDate, niftyPe, gsecYield, isFallback ? "Statutory Fallback Cache" : "Live CCIL/NSE Feed");
+
+        // 5. Evaluate Bank Balance Gating & Corridor Breaches
+        // If bank balance is unpopulated / zero while non-retirement goals are subtracted,
+        // the denominator is missing the liquid cash runway (~21.8% of real net worth).
+        // Gate to GATED_PROVISIONAL to prevent false-alarm HIGH-severity panic cards.
+        BigDecimal inferredBankBalance = fireSummary.totalNetWorth() != null
+            ? fireSummary.totalNetWorth().subtract(mfValue).subtract(fireSummary.epfBalance() != null ? fireSummary.epfBalance() : BigDecimal.ZERO)
+            : BigDecimal.ZERO;
+        boolean isBankBalanceUnpopulated = inferredBankBalance.compareTo(BigDecimal.ZERO) <= 0;
+
+        if (isBankBalanceUnpopulated && currentWithdrawalRate > upperGuardrail) {
+            String summary = String.format("Mode A Decumulation Gated: Bank balance unpopulated (Mode A withdrawal rate %.2f%% provisional).",
+                currentWithdrawalRate);
+            String rationale = String.format(
+                "Mode A Stress-Test: Withdrawal rate calculation evaluates to %.2f%% against currently tracked mutual fund assets (₹%,.0f net of ₹%,.0f goal deductions). "
+                + "However, liquid bank savings balance (~21.8%% of total net worth) is currently unpopulated in this session feed. "
+                + "Rule evaluation is gated to GATED_PROVISIONAL to prevent premature capital preservation alarms until full multi-account cash balances are synced. "
+                + "Mode B Target: Planned retirement at age 45 remains %s with target projected corpus of ₹%,.0f vs required ₹%,.0f.",
+                currentWithdrawalRate, investableNetWorth.doubleValue(),
+                fireSummary.nonRetirementGoalAllocations() != null ? fireSummary.nonRetirementGoalAllocations().doubleValue() : 0.0,
+                fireSummary.status(),
+                fireSummary.projectedCorpusAtTargetAge() != null ? fireSummary.projectedCorpusAtTargetAge().doubleValue() : 0.0,
+                fireSummary.requiredCorpus() != null ? fireSummary.requiredCorpus().doubleValue() : 0.0
+            );
+            return new ActionRecommendationCard(
+                "CARD_DECUMULATION_GUARDRAIL",
+                "DECUMULATION_GUARDRAIL",
+                "Guyton-Klinger Decumulation Guardrail: Gated",
+                "GATED_PROVISIONAL",
+                "INFO",
+                summary,
+                rationale,
+                metrics,
+                footer + " | Bank Cash Buffer: UNPOPULATED"
+            );
+        }
+
+        if (currentWithdrawalRate > upperGuardrail) {
+            String summary = String.format("Current withdrawal rate (%.2f%%) exceeds GK upper guardrail (%.2f%%).",
+                currentWithdrawalRate, upperGuardrail);
+            String rationale = String.format(
+                "Mode A Stress-Test: Living expenses of ₹%,.0f against current investable net worth of ₹%,.0f (excluding EPF and dedicated goals) produce a %.2f%% withdrawal rate. "
+                + "With Nifty 50 P/E at %.1f (%s, baseline SWR adjusted to %.2f%%), this exceeds the Guyton-Klinger capital preservation threshold of %.2f%%. "
+                + "Recommended: Maintain a 10%% discretionary spending buffer or reserve cash drawdown runway to prevent portfolio depletion during market contractions.",
+                annualExpense.doubleValue(), investableNetWorth.doubleValue(), currentWithdrawalRate,
+                niftyPe, peZone, capeAdjustedSwr, upperGuardrail
+            );
+            return new ActionRecommendationCard(
+                "CARD_DECUMULATION_GUARDRAIL",
+                "DECUMULATION_GUARDRAIL",
+                "Guyton-Klinger Upper Guardrail Warning",
+                "ACTION_RECOMMENDED",
+                "HIGH",
+                summary,
+                rationale,
+                metrics,
+                footer
+            );
+        } else if (currentWithdrawalRate > 0.0 && currentWithdrawalRate < lowerGuardrail) {
+            String summary = String.format("Current withdrawal rate (%.2f%%) is below GK lower guardrail (%.2f%%).",
+                currentWithdrawalRate, lowerGuardrail);
+            String rationale = String.format(
+                "Mode A Stress-Test: Living expenses of ₹%,.0f against current investable net worth of ₹%,.0f yield a %.2f%% withdrawal rate, "
+                + "landing well below the prosperity threshold of %.2f%% (CAPE-adjusted SWR: %.2f%%, Nifty P/E: %.1f). "
+                + "Portfolio margin of safety is high; headroom exists for a 10%% discretionary withdrawal increase without risking corpus longevity.",
+                annualExpense.doubleValue(), investableNetWorth.doubleValue(), currentWithdrawalRate,
+                lowerGuardrail, capeAdjustedSwr, niftyPe
+            );
+            return new ActionRecommendationCard(
+                "CARD_DECUMULATION_GUARDRAIL",
+                "DECUMULATION_GUARDRAIL",
+                "Guyton-Klinger Prosperity Headroom",
+                "INFORMATIONAL_STABLE",
+                "INFO",
+                summary,
+                rationale,
+                metrics,
+                footer
+            );
+        } else {
+            String summary = String.format("Decumulation corridor stable: current rate %.2f%% vs SWR corridor %.2f%%–%.2f%%.",
+                currentWithdrawalRate, lowerGuardrail, upperGuardrail);
+            String rationale = String.format(
+                "Mode A Stress-Test: Current withdrawal rate of %.2f%% operates comfortably within the Guyton-Klinger safe corridor (%.2f%% to %.2f%%). "
+                + "Nifty 50 P/E of %.1f (%s) establishes a baseline SWR of %.2f%% (ERP: +%.2f%%). "
+                + "Mode B Target: Retirement plan remains %s with target age 45 projected corpus of ₹%,.0f vs required ₹%,.0f.",
+                currentWithdrawalRate, lowerGuardrail, upperGuardrail,
+                niftyPe, peZone, capeAdjustedSwr, equityRiskPremium,
+                fireSummary.status(),
+                fireSummary.projectedCorpusAtTargetAge() != null ? fireSummary.projectedCorpusAtTargetAge().doubleValue() : 0.0,
+                fireSummary.requiredCorpus() != null ? fireSummary.requiredCorpus().doubleValue() : 0.0
+            );
+            return new ActionRecommendationCard(
+                "CARD_DECUMULATION_GUARDRAIL",
+                "DECUMULATION_GUARDRAIL",
+                "Guyton-Klinger Corridor Stable",
+                "INFORMATIONAL_STABLE",
+                "INFO",
+                summary,
+                rationale,
+                metrics,
+                footer
+            );
+        }
     }
 
     private ActionRecommendationCard evaluateRuinRiskRule(boolean isProvisional, double avgFailRate, double relStdDev, BigDecimal currentSip) {

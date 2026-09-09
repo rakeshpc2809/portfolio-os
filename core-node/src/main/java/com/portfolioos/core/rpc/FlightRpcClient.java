@@ -154,13 +154,19 @@ public class FlightRpcClient {
 
     @SuppressWarnings("unchecked")
     public Map<String, Object> runMonteCarloFireSimulation(List<Double> dailyReturns, double currentCorpus, double annualExpense, double monthlyContribution, int yearsToRetirement, int numSimulations) {
-        String targetHost = System.getenv("QUANT_SIDECAR_HOST");
-        if (targetHost == null || targetHost.isBlank()) {
-            targetHost = "127.0.0.1";
+        Set<String> hostsToTry = new LinkedHashSet<>();
+        if (this.host != null && !this.host.isBlank()) {
+            hostsToTry.add(this.host);
         }
+        String envHost = System.getenv("QUANT_SIDECAR_HOST");
+        if (envHost != null && !envHost.isBlank()) {
+            hostsToTry.add(envHost);
+        }
+        hostsToTry.add("quant-sidecar");
+        hostsToTry.add("127.0.0.1");
+        hostsToTry.add("localhost");
 
-        System.out.println("FlightRpcClient: Starting runMonteCarloFireSimulation call. TargetHost=" + targetHost);
-        for (String h : List.of(targetHost, "127.0.0.1", "localhost", "quant-sidecar")) {
+        for (String h : hostsToTry) {
             try {
                 Location location = Location.forGrpcInsecure(h, port);
                 try (FlightClient client = FlightClient.builder(allocator, location).build()) {
@@ -184,7 +190,6 @@ public class FlightRpcClient {
                 }
             } catch (Exception e) {
                 System.err.println("Flight RPC attempt for host " + h + " failed: " + e.getMessage());
-                e.printStackTrace();
             }
         }
         System.err.println("Flight RPC Monte Carlo FIRE simulation error: all host candidates failed. Triggering HTTP fallback...");
