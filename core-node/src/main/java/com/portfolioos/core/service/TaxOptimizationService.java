@@ -15,6 +15,7 @@ import com.portfolioos.core.reporting.TaxReportExporter;
 import com.portfolioos.core.rules.TaxRulesConfig;
 import com.portfolioos.core.rules.TaxRulesLoader;
 import com.portfolioos.core.valuation.HarvestAdvisor;
+import com.portfolioos.core.valuation.RebalanceEngine;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -164,5 +165,81 @@ public class TaxOptimizationService {
             .collect(Collectors.toMap(TaxEvent::assetId, TaxEvent::assetName, (a, b) -> a));
 
         return Itr2CsvExporter.exportItr2ScheduleCg(matchedLots, fy, assetNameMap, fmv2018Map != null ? fmv2018Map : Map.of());
+    }
+
+    public RebalancePreviewDto getTaxOptimalLiquidationPlan(BigDecimal targetAmount, String fy) {
+        return getTaxOptimalLiquidationPlan(targetAmount, fy, BigDecimal.ZERO);
+    }
+
+    public RebalancePreviewDto getTaxOptimalLiquidationPlan(BigDecimal targetAmount, String fy, BigDecimal reservedExemption) {
+        List<TaxEvent> allEvents = eventStore.getAllEvents();
+        FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(allEvents);
+        List<Lot> openLots = fifoResult.openLots();
+        List<MatchedLot> matchedLots = fifoResult.matchedLots();
+        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        String currentFy = (fy != null && !fy.isBlank()) ? fy : TaxRulesLoader.detectFiscalYear(LocalDate.now());
+
+        ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, currentFy);
+        BigDecimal remExemption = new BigDecimal(status.exemptionRemaining());
+
+        RebalanceEngine.RebalancePreviewResult result = RebalanceEngine.calculateRebalancePreview(
+            openLots, navMap, targetAmount, remExemption, reservedExemption, currentFy, true
+        );
+
+        List<RebalanceLotDto> selectedDtos = result.selectedLots().stream().map(s -> new RebalanceLotDto(
+            s.assetName(),
+            fmt(s.unitsToSell()),
+            fmt(s.redemptionProceeds()),
+            fmt(s.estimatedGain()),
+            s.taxTerm(),
+            fmt(s.estimatedTaxDrag()),
+            s.tier() != null ? s.tier().displayName() : "Section 112A LTCG (Taxable)"
+        )).toList();
+
+        return new RebalancePreviewDto(
+            fmt(result.targetRedemptionAmount()),
+            fmt(result.actualRedemptionAmount()),
+            fmt(result.totalEstimatedGain()),
+            fmt(result.totalTaxDrag()),
+            String.format("%.2f%%", result.effectiveTaxRatePct()),
+            fmt(result.ltcgExemptionHarvested()),
+            selectedDtos,
+            result.exemptionHeadroomCaveat()
+        );
+    }
+
+    public record CombinedHarvestAndLiquidationPlanDto(
+        HarvestAdvisor.TaxHarvestResult harvestPlan,
+        RebalancePreviewDto liquidationPlan,
+        String coordinationSummary
+    ) {}
+
+    public CombinedHarvestAndLiquidationPlanDto getCombinedHarvestAndLiquidationPlan(BigDecimal targetAmount, String fy) {
+        List<TaxEvent> allEvents = eventStore.getAllEvents();
+        FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(allEvents);
+        List<Lot> openLots = fifoResult.openLots();
+        List<MatchedLot> matchedLots = fifoResult.matchedLots();
+        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        String currentFy = (fy != null && !fy.isBlank()) ? fy : TaxRulesLoader.detectFiscalYear(LocalDate.now());
+
+        ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, currentFy);
+        BigDecimal usedExemption = new BigDecimal(status.exemptionUsed());
+
+        HarvestAdvisor.TaxHarvestResult harvestPlan = HarvestAdvisor.generateHarvestPlan(
+            openLots, navMap, usedExemption, currentFy
+        );
+
+        BigDecimal reservedForHarvest = harvestPlan.harvestableLtcgGain();
+
+        RebalancePreviewDto liquidationPlan = getTaxOptimalLiquidationPlan(targetAmount, currentFy, reservedForHarvest);
+
+        String summary = String.format(
+            "Coordinated Plan: ₹%s LTCG allocated for tax-gain harvesting; ₹%s effective headroom reserved, preventing double-spend across ₹%s cash liquidation.",
+            fmt(harvestPlan.harvestableLtcgGain()),
+            fmt(reservedForHarvest),
+            fmt(targetAmount)
+        );
+
+        return new CombinedHarvestAndLiquidationPlanDto(harvestPlan, liquidationPlan, summary);
     }
 }

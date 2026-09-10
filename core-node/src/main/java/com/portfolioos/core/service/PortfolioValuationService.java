@@ -376,6 +376,10 @@ public class PortfolioValuationService {
     }
 
     public RebalancePreviewDto getRebalancePreview(BigDecimal targetAmount, String fy) {
+        return getRebalancePreview(targetAmount, fy, BigDecimal.ZERO);
+    }
+
+    public RebalancePreviewDto getRebalancePreview(BigDecimal targetAmount, String fy, BigDecimal reservedExemption) {
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<Lot> openLots = state.fifoResult().openLots();
         List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
@@ -385,7 +389,7 @@ public class PortfolioValuationService {
         BigDecimal remExemption = new BigDecimal(status.exemptionRemaining());
 
         RebalanceEngine.RebalancePreviewResult result = RebalanceEngine.calculateRebalancePreview(
-            openLots, navMap, targetAmount, remExemption, fy
+            openLots, navMap, targetAmount, remExemption, reservedExemption, fy, true
         );
 
         List<RebalanceLotDto> selectedDtos = result.selectedLots().stream().map(s -> new RebalanceLotDto(
@@ -394,7 +398,8 @@ public class PortfolioValuationService {
             fmt(s.redemptionProceeds()),
             fmt(s.estimatedGain()),
             s.taxTerm(),
-            fmt(s.estimatedTaxDrag())
+            fmt(s.estimatedTaxDrag()),
+            s.tier() != null ? s.tier().displayName() : "Section 112A LTCG (Taxable)"
         )).toList();
 
         return new RebalancePreviewDto(
@@ -404,7 +409,8 @@ public class PortfolioValuationService {
             fmt(result.totalTaxDrag()),
             String.format("%.2f%%", result.effectiveTaxRatePct()),
             fmt(result.ltcgExemptionHarvested()),
-            selectedDtos
+            selectedDtos,
+            result.exemptionHeadroomCaveat()
         );
     }
 

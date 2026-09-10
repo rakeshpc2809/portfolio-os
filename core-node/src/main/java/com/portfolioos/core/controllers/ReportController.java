@@ -96,6 +96,22 @@ public class ReportController {
         return ResponseEntity.ok(taxService.getRealizedLog(fy));
     }
 
+    @GetMapping({"/reports/tax/liquidation-plan", "/tax/liquidation-plan"})
+    public ResponseEntity<RebalancePreviewDto> getTaxOptimalLiquidationPlan(
+        @RequestParam(value = "amount", defaultValue = "100000") BigDecimal amount,
+        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+    ) {
+        return ResponseEntity.ok(taxService.getTaxOptimalLiquidationPlan(amount, fy));
+    }
+
+    @GetMapping({"/reports/tax/combined-plan", "/tax/combined-plan"})
+    public ResponseEntity<TaxOptimizationService.CombinedHarvestAndLiquidationPlanDto> getCombinedHarvestAndLiquidationPlan(
+        @RequestParam(value = "amount", defaultValue = "100000") BigDecimal amount,
+        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+    ) {
+        return ResponseEntity.ok(taxService.getCombinedHarvestAndLiquidationPlan(amount, fy));
+    }
+
     @GetMapping({"/reports/tax/itr2/csv", "/tax/export/itr2/zip"})
     public ResponseEntity<byte[]> downloadItr2Csv(
         @RequestParam(value = "fy", defaultValue = "2026-27") String fy

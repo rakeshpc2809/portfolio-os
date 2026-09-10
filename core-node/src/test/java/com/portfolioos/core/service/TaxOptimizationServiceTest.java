@@ -1,6 +1,6 @@
 package com.portfolioos.core.service;
 
-import com.portfolioos.core.dtos.ReportDtos.HarvestOpportunityDto;
+import com.portfolioos.core.dtos.ReportDtos.*;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.ports.EventStorePort;
@@ -89,5 +89,57 @@ class TaxOptimizationServiceTest {
 
         assertTrue(totalHarvestableGain.compareTo(new BigDecimal("125000.00")) <= 0,
             "With 0 realized gain, full 1,25,000 headroom is available");
+    }
+
+    @Test
+    void testGetTaxOptimalLiquidationPlan() {
+        TaxEvent acqLoss = new TaxEvent(
+            "EV_ACQ_LOSS", "INF109KC13X2", "ICICI Nifty200", "INF109KC13X2",
+            EventType.ACQUISITION, LocalDate.of(2024, 1, 1),
+            new BigDecimal("100.0"), new BigDecimal("100.0"), new BigDecimal("10000.0"),
+            "CAS_IMPORT", Instant.now()
+        );
+
+        TaxEvent acqGain = new TaxEvent(
+            "EV_ACQ_GAIN", "INF109KC13X2", "ICICI Nifty200", "INF109KC13X2",
+            EventType.ACQUISITION, LocalDate.of(2024, 1, 1),
+            new BigDecimal("1000.0"), new BigDecimal("5.0"), new BigDecimal("5000.0"),
+            "CAS_IMPORT", Instant.now()
+        );
+
+        EventStorePort mockEventStore = createMockEventStore(List.of(acqLoss, acqGain));
+        TaxOptimizationService service = new TaxOptimizationService(mockEventStore);
+
+        RebalancePreviewDto plan = service.getTaxOptimalLiquidationPlan(new BigDecimal("50000.00"), "2026-27");
+        assertNotNull(plan);
+        assertNotNull(plan.selectedLots());
+        assertEquals(2, plan.selectedLots().size());
+        assertNotNull(plan.exemptionHeadroomCaveat());
+
+        RebalanceLotDto firstLot = plan.selectedLots().get(0);
+        assertEquals("Capital Loss Harvesting", firstLot.tier());
+
+        RebalanceLotDto secondLot = plan.selectedLots().get(1);
+        assertEquals("Section 112A LTCG (Exempt Headroom)", secondLot.tier());
+    }
+
+    @Test
+    void testGetCombinedHarvestAndLiquidationPlanPreventsDoubleSpend() {
+        TaxEvent acq1 = new TaxEvent(
+            "EV_ACQ_1", "INF109KC13X2", "ICICI Nifty200", "INF109KC13X2",
+            EventType.ACQUISITION, LocalDate.of(2024, 1, 1),
+            new BigDecimal("2000.0"), new BigDecimal("100.0"), new BigDecimal("200000.0"),
+            "CAS_IMPORT", Instant.now()
+        );
+
+        EventStorePort mockEventStore = createMockEventStore(List.of(acq1));
+        TaxOptimizationService service = new TaxOptimizationService(mockEventStore);
+
+        TaxOptimizationService.CombinedHarvestAndLiquidationPlanDto combined = service.getCombinedHarvestAndLiquidationPlan(new BigDecimal("50000.00"), "2026-27");
+        assertNotNull(combined);
+        assertNotNull(combined.harvestPlan());
+        assertNotNull(combined.liquidationPlan());
+        assertNotNull(combined.coordinationSummary());
+        assertTrue(combined.coordinationSummary().contains("Coordinated Plan"));
     }
 }

@@ -242,8 +242,20 @@ public class ReportDtos {
         String redemptionProceeds,
         String estimatedGain,
         String taxTerm,
-        String estimatedTaxDrag
-    ) {}
+        String estimatedTaxDrag,
+        String tier
+    ) {
+        public RebalanceLotDto(
+            String assetName,
+            String unitsToSell,
+            String redemptionProceeds,
+            String estimatedGain,
+            String taxTerm,
+            String estimatedTaxDrag
+        ) {
+            this(assetName, unitsToSell, redemptionProceeds, estimatedGain, taxTerm, estimatedTaxDrag, "Section 112A LTCG (Taxable)");
+        }
+    }
 
     public record RebalancePreviewDto(
         String targetRedemptionAmount,
@@ -252,8 +264,21 @@ public class ReportDtos {
         String totalTaxDrag,
         String effectiveTaxRatePct,
         String ltcgExemptionHarvested,
-        List<RebalanceLotDto> selectedLots
-    ) {}
+        List<RebalanceLotDto> selectedLots,
+        String exemptionHeadroomCaveat
+    ) {
+        public RebalancePreviewDto(
+            String targetRedemptionAmount,
+            String actualRedemptionAmount,
+            String totalEstimatedGain,
+            String totalTaxDrag,
+            String effectiveTaxRatePct,
+            String ltcgExemptionHarvested,
+            List<RebalanceLotDto> selectedLots
+        ) {
+            this(targetRedemptionAmount, actualRedemptionAmount, totalEstimatedGain, totalTaxDrag, effectiveTaxRatePct, ltcgExemptionHarvested, selectedLots, null);
+        }
+    }
 
     public record PhasedOutAssetSummaryDto(
         String assetId,
