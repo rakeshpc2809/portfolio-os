@@ -230,4 +230,152 @@ public class PortfolioQueryTools {
         result.put("notice", res.taxSummaryNotice());
         return result;
     }
+
+    public List<ToolDtos.ToolDefinitionDto> getToolDefinitions() {
+        return List.of(
+            new ToolDtos.ToolDefinitionDto(
+                "getPortfolioValuation",
+                "Get real-time overall portfolio valuation, invested cost, unrealized gain, active scheme count, and money-weighted XIRR.",
+                new ToolDtos.ToolParameterSchema("object", Map.of(), List.of())
+            ),
+            new ToolDtos.ToolDefinitionDto(
+                "getFundRegistry",
+                "Get list of registered mutual funds in the portfolio registry including ISIN codes, scheme names, asset classes, and active/legacy SIP status.",
+                new ToolDtos.ToolParameterSchema("object", Map.of(), List.of())
+            ),
+            new ToolDtos.ToolDefinitionDto(
+                "getFireSummary",
+                "Calculate Financial Independence / Retire Early (FIRE) metrics including monthly expenses, annual burn rate, current corpus multiple, and projected FIRE target date.",
+                new ToolDtos.ToolParameterSchema("object", Map.of(), List.of())
+            ),
+            new ToolDtos.ToolDefinitionDto(
+                "getRebalancePlan",
+                "Get point-in-time portfolio drawdown context, armed drawdown tier, and scheduled or induced rebalance sell-side & buy-side waterfall steps.",
+                new ToolDtos.ToolParameterSchema("object", Map.of(), List.of())
+            ),
+            new ToolDtos.ToolDefinitionDto(
+                "getTaxHarvestOpportunities",
+                "Calculate tax-loss and tax-free gain harvest opportunities evaluated against remaining Sec 112A FY LTCG exemption headroom.",
+                new ToolDtos.ToolParameterSchema("object", Map.of(), List.of())
+            ),
+            new ToolDtos.ToolDefinitionDto(
+                "getPairwiseFundOverlap",
+                "Calculate pairwise stock portfolio overlap percentage and common stock holdings between two mutual fund ISINs.",
+                new ToolDtos.ToolParameterSchema(
+                    "object",
+                    Map.of(
+                        "fundA", new ToolDtos.ToolPropertySchema("string", "Primary fund ISIN code (e.g. INF109KC13X2) or scheme name"),
+                        "fundB", new ToolDtos.ToolPropertySchema("string", "Secondary fund ISIN code (e.g. INF879O01027) or scheme name")
+                    ),
+                    List.of("fundA", "fundB")
+                )
+            ),
+            new ToolDtos.ToolDefinitionDto(
+                "simulateTrade",
+                "Simulate a what-if trade (DISPOSAL or ACQUISITION) to preview estimated capital gains tax drag, LTCG exemption headroom impact, and post-trade simulated state without persisting events.",
+                new ToolDtos.ToolParameterSchema(
+                    "object",
+                    Map.of(
+                        "isin", new ToolDtos.ToolPropertySchema("string", "Fund ISIN code (e.g. INF109KC13X2)"),
+                        "schemeName", new ToolDtos.ToolPropertySchema("string", "Fund scheme name"),
+                        "units", new ToolDtos.ToolPropertySchema("number", "Positive number of units to sell or buy"),
+                        "pricePerUnit", new ToolDtos.ToolPropertySchema("number", "NAV / price per unit"),
+                        "tradeType", new ToolDtos.ToolPropertySchema("string", "Trade action type", List.of("DISPOSAL", "ACQUISITION"))
+                    ),
+                    List.of("isin", "schemeName", "units", "pricePerUnit", "tradeType")
+                )
+            )
+        );
+    }
+
+    public static BigDecimal parseBigDecimal(Object value) {
+        if (value == null) return null;
+        if (value instanceof BigDecimal bd) return bd;
+        if (value instanceof Integer || value instanceof Long || value instanceof Short || value instanceof Byte) {
+            return BigDecimal.valueOf(((Number) value).longValue());
+        }
+        if (value instanceof Number n) {
+            return BigDecimal.valueOf(n.doubleValue());
+        }
+        if (value instanceof String s) {
+            try {
+                return new BigDecimal(s.trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    public ToolDtos.ToolExecutionResponse executeTool(String toolName, Map<String, Object> args) {
+        if (toolName == null || toolName.isBlank()) {
+            return ToolDtos.ToolExecutionResponse.invalidParam(toolName, "Tool name cannot be null or blank.");
+        }
+
+        Map<String, Object> safeArgs = args != null ? args : Map.of();
+
+        try {
+            switch (toolName) {
+                case "getPortfolioValuation" -> {
+                    return ToolDtos.ToolExecutionResponse.success(toolName, getPortfolioValuation());
+                }
+                case "getFundRegistry" -> {
+                    return ToolDtos.ToolExecutionResponse.success(toolName, getFundRegistry());
+                }
+                case "getFireSummary" -> {
+                    return ToolDtos.ToolExecutionResponse.success(toolName, getFireSummary());
+                }
+                case "getRebalancePlan" -> {
+                    return ToolDtos.ToolExecutionResponse.success(toolName, getRebalancePlan());
+                }
+                case "getTaxHarvestOpportunities" -> {
+                    return ToolDtos.ToolExecutionResponse.success(toolName, getTaxHarvestOpportunities());
+                }
+                case "getPairwiseFundOverlap" -> {
+                    Object fa = safeArgs.get("fundA");
+                    Object fb = safeArgs.get("fundB");
+                    if (fa == null || fb == null || fa.toString().isBlank() || fb.toString().isBlank()) {
+                        return ToolDtos.ToolExecutionResponse.invalidParam(toolName, "Both fundA and fundB parameters are required.");
+                    }
+                    Map<String, Object> overlapRes = getPairwiseFundOverlap(fa.toString().trim(), fb.toString().trim());
+                    if ("INVALID_PARAM".equals(overlapRes.get("status"))) {
+                        return ToolDtos.ToolExecutionResponse.invalidParam(toolName, (String) overlapRes.get("message"));
+                    }
+                    if ("NOT_FOUND".equals(overlapRes.get("status"))) {
+                        return ToolDtos.ToolExecutionResponse.notFound(toolName, (String) overlapRes.get("message"));
+                    }
+                    return ToolDtos.ToolExecutionResponse.success(toolName, overlapRes);
+                }
+                case "simulateTrade" -> {
+                    String isin = safeArgs.get("isin") != null ? safeArgs.get("isin").toString().trim() : null;
+                    String schemeName = safeArgs.get("schemeName") != null ? safeArgs.get("schemeName").toString().trim() : null;
+                    BigDecimal units = parseBigDecimal(safeArgs.get("units"));
+                    BigDecimal pricePerUnit = parseBigDecimal(safeArgs.get("pricePerUnit"));
+                    String tradeType = safeArgs.get("tradeType") != null ? safeArgs.get("tradeType").toString().trim().toUpperCase() : null;
+
+                    if (isin == null || isin.isBlank() || schemeName == null || schemeName.isBlank() ||
+                        units == null || units.compareTo(BigDecimal.ZERO) <= 0 ||
+                        pricePerUnit == null || pricePerUnit.compareTo(BigDecimal.ZERO) <= 0 ||
+                        tradeType == null || (!tradeType.equals("DISPOSAL") && !tradeType.equals("ACQUISITION"))) {
+                        return ToolDtos.ToolExecutionResponse.invalidParam(
+                            toolName,
+                            "Trade simulation requires valid parameters: non-blank isin, non-blank schemeName, positive numeric units, positive numeric pricePerUnit, and tradeType ('DISPOSAL' or 'ACQUISITION')."
+                        );
+                    }
+
+                    Map<String, Object> simRes = simulateTrade(isin, schemeName, units, pricePerUnit, tradeType);
+                    if ("INVALID_PARAM".equals(simRes.get("status"))) {
+                        return ToolDtos.ToolExecutionResponse.invalidParam(toolName, (String) simRes.get("message"));
+                    }
+                    return ToolDtos.ToolExecutionResponse.success(toolName, simRes);
+                }
+                default -> {
+                    return ToolDtos.ToolExecutionResponse.notFound(toolName, "Unknown tool: " + toolName);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Tool execution error for {}: {}", toolName, e.getMessage(), e);
+            return ToolDtos.ToolExecutionResponse.error(toolName, "Internal execution error: " + e.getMessage());
+        }
+    }
 }
