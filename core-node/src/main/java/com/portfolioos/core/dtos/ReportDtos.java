@@ -331,4 +331,25 @@ public class ReportDtos {
         String totalTaxDrag,
         String ltcgExemptionConsumed
     ) {}
+
+    public record BucketTargetDto(
+        String bucket,
+        String targetPct,
+        String bandPct
+    ) {}
+
+    public record MacroRegimeDto(
+        String regime,
+        String displayName,
+        double niftyPe,
+        double gsec10yYieldPct,
+        double repoRatePct,
+        double yieldCurveSlopePct,
+        double beerSpreadPct,
+        String liquidBufferTargetPct,
+        int recommendedRunwayMonths,
+        String rationale,
+        List<BucketTargetDto> adjustedBucketTargets,
+        String scopeCaveat
+    ) {}
 }

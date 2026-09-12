@@ -112,6 +112,11 @@ public class ReportController {
         return ResponseEntity.ok(taxService.getCombinedHarvestAndLiquidationPlan(amount, fy));
     }
 
+    @GetMapping({"/reports/macro-regime/buffer-status", "/macro-regime/buffer-status"})
+    public ResponseEntity<MacroRegimeDto> getMacroRegimeBufferStatus() {
+        return ResponseEntity.ok(valuationService.getMacroRegimeBufferStatus());
+    }
+
     @GetMapping({"/reports/tax/itr2/csv", "/tax/export/itr2/zip"})
     public ResponseEntity<byte[]> downloadItr2Csv(
         @RequestParam(value = "fy", defaultValue = "2026-27") String fy

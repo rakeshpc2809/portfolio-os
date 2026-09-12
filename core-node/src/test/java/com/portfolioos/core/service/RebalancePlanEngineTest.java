@@ -779,4 +779,67 @@ class RebalancePlanEngineTest {
         assertEquals(13.4, goldAllocation.postRebalancePct(), 0.1,
             "Gold postRebalancePct must be ~13.4% reflecting 235k - 101.25k trim");
     }
+
+    @Test
+    @DisplayName("Macro Regime Overlay: Advisory targets adjust only when useMacroRegimeOverlay is explicitly true")
+    void testMacroRegimeOverlayAdvisoryTargetRouting() {
+        LocalDate today = LocalDate.of(2026, 9, 1);
+        BigDecimal nav = new BigDecimal("100.00");
+        Map<String, BigDecimal> navMap = Map.of("INF109K018C5", nav);
+        List<Lot> lots = List.of(
+            new Lot("lot-1", "INF109K018C5", "Parag Parikh Flexi Cap", today.minusDays(400),
+                new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null)
+        );
+
+        // 1. Default preview (overlay = false): targets must remain pinned to baseline (Core 50%, Sat 30%, Gold 10%, Buffer 10%)
+        RebalancePlanDto baselinePlan = RebalancePlanEngine.buildPreviewPlan(
+            lots, Collections.emptyList(), navMap, today,
+            new BigDecimal("100000.00"), new BigDecimal("100000.00"), null, "2026-27", "MANUAL_LUMPSUM", new BigDecimal("10000.00"),
+            false, evaluator
+        );
+
+        RebalanceBucketAllocationDto baseBuffer = baselinePlan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.LIQUID_BUFFER.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+        RebalanceBucketAllocationDto baseCore = baselinePlan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.EQUITY_CORE.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+        RebalanceBucketAllocationDto baseSat = baselinePlan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.EQUITY_SATELLITE.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+
+        assertEquals(10.0, baseBuffer.targetPct(), 0.01);
+        assertEquals(50.0, baseCore.targetPct(), 0.01);
+        assertEquals(30.0, baseSat.targetPct(), 0.01);
+
+        // 2. Explicit overlay preview (overlay = true): targets adjust to macro regime (EXPANSION_RISK_OFF: Buffer 15%, Core 46.88%, Sat 28.12%)
+        RebalancePlanDto overlayPlan = RebalancePlanEngine.buildPreviewPlan(
+            lots, Collections.emptyList(), navMap, today,
+            new BigDecimal("100000.00"), new BigDecimal("100000.00"), null, "2026-27", "MANUAL_LUMPSUM", new BigDecimal("10000.00"),
+            false, evaluator, true
+        );
+
+        RebalanceBucketAllocationDto overlayBuffer = overlayPlan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.LIQUID_BUFFER.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+        RebalanceBucketAllocationDto overlayCore = overlayPlan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.EQUITY_CORE.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+        RebalanceBucketAllocationDto overlaySat = overlayPlan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.EQUITY_SATELLITE.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+        RebalanceBucketAllocationDto overlayGold = overlayPlan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.GOLD_SILVER.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+
+        assertEquals(15.0, overlayBuffer.targetPct(), 0.01);
+        assertEquals(46.88, overlayCore.targetPct(), 0.01);
+        assertEquals(28.12, overlaySat.targetPct(), 0.01);
+        assertEquals(10.0, overlayGold.targetPct(), 0.01);
+
+        // Exact sum verification: 15.00 + 46.88 + 28.12 + 10.00 = 100.00%
+        double sum = overlayBuffer.targetPct() + overlayCore.targetPct() + overlaySat.targetPct() + overlayGold.targetPct();
+        assertEquals(100.00, sum, 0.001);
+    }
 }
+

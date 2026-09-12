@@ -142,7 +142,12 @@ public class FireActionRuleEngine {
                 .doubleValue();
         }
 
-        // 4. Metrics Payload (Dual-Mode: Mode A live stress-test + Mode B target envelope)
+        // 4. Macro Regime & Sizing Routing
+        MacroRegime regime = MacroRegimeRouter.classifyRegime(indicators);
+        double repoRate = indicators != null ? indicators.repoRatePct() : 5.25;
+        double slope = indicators != null ? indicators.yieldCurveSlopePct() : (gsecYield - repoRate);
+
+        // 5. Metrics Payload (Dual-Mode: Mode A live stress-test + Mode B target envelope)
         Map<String, Object> metrics = new LinkedHashMap<>();
         metrics.put("base_swr_pct", baseSwr);
         metrics.put("cape_adjusted_swr_pct", Math.round(capeAdjustedSwr * 100.0) / 100.0);
@@ -152,6 +157,12 @@ public class FireActionRuleEngine {
         metrics.put("nifty50_pe", niftyPe);
         metrics.put("pe_valuation_zone", peZone);
         metrics.put("gsec_10y_yield_pct", gsecYield);
+        metrics.put("repo_rate_pct", repoRate);
+        metrics.put("yield_curve_slope_pct", Math.round(slope * 100.0) / 100.0);
+        metrics.put("macro_regime", regime.name());
+        metrics.put("macro_regime_display", regime.displayName());
+        metrics.put("recommended_cash_runway_months", regime.recommendedRunwayMonths());
+        metrics.put("recommended_liquid_buffer_pct", regime.targetLiquidBufferPct().setScale(2, RoundingMode.HALF_UP).doubleValue());
         metrics.put("nifty50_earnings_yield_pct", Math.round(earningsYield * 100.0) / 100.0);
         metrics.put("equity_risk_premium_pct", Math.round(equityRiskPremium * 100.0) / 100.0);
         metrics.put("investable_net_worth", investableNetWorth.setScale(2, RoundingMode.HALF_UP).doubleValue());
@@ -169,10 +180,10 @@ public class FireActionRuleEngine {
         metrics.put("target_on_track_status", fireSummary.status() != null ? fireSummary.status() : "UNKNOWN");
         metrics.put("is_market_indicator_fallback", isFallback);
 
-        String footer = String.format("Valuation As Of: %s | Nifty PE: %.1f | 10Y G-Sec: %.2f%% | %s",
-            asOfDate, niftyPe, gsecYield, isFallback ? "Statutory Fallback Cache" : "Live CCIL/NSE Feed");
+        String footer = String.format("Valuation As Of: %s | Nifty PE: %.1f | 10Y G-Sec: %.2f%% | Repo: %.2f%% (Slope: +%.2f%%) | Regime: %s | %s",
+            asOfDate, niftyPe, gsecYield, repoRate, slope, regime.name(), isFallback ? "Statutory Fallback Cache" : "Live CCIL/NSE Feed");
 
-        // 5. Evaluate Bank Balance Gating & Corridor Breaches
+        // 6. Evaluate Bank Balance Gating & Corridor Breaches
         // If bank balance is unpopulated / zero while non-retirement goals are subtracted,
         // the denominator is missing the liquid cash runway (~21.8% of real net worth).
         // Gate to GATED_PROVISIONAL to prevent false-alarm HIGH-severity panic cards.

@@ -5,6 +5,7 @@ import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.model.TaxTerm;
 import com.portfolioos.core.reporting.ExemptionTracker;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -465,6 +466,20 @@ public class FireActionRuleEngineTest {
         System.out.println("=== BANK BALANCE GATED TEST PASSED ===");
         System.out.println("Status  : " + card.status() + " | Severity: " + card.severity());
         System.out.println("Summary : " + card.summary());
+    }
+
+    @Test
+    @DisplayName("Market Indicators: Repo rate defaults to 5.25% and yield curve slope evaluates to 10Y - Repo")
+    void testMarketIndicatorsRepoRateAndYieldCurveSlope() {
+        MarketIndicatorsReader reader = new MarketIndicatorsReader();
+        MarketIndicatorsReader.MarketIndicators indicators = reader.readIndicators();
+
+        assertNotNull(indicators);
+        // Statutory default / cached repo rate is 5.25% (August 2026 RBI MPC decision)
+        assertEquals(5.25, indicators.repoRatePct(), 0.001);
+        assertEquals(7.10, indicators.gsec10yYieldPct(), 0.001);
+        // Slope = 7.10 - 5.25 = +1.85% (+185 bps)
+        assertEquals(1.85, indicators.yieldCurveSlopePct(), 0.001);
     }
 }
 

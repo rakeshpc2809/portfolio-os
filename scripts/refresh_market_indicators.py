@@ -20,10 +20,11 @@ STATUTORY_FALLBACK_INDICATORS = {
     "as_of_date": "2026-08-31",
     "updated_at": "2026-08-31 00:00:00",
     "gsec_10y_yield_pct": 7.10,
+    "repo_rate_pct": 5.25,
     "nifty50_pe": 22.40,
     "is_fallback": True,
     "source_status": "STATUTORY_BENCHMARK_FALLBACK",
-    "source_notes": "10Y G-Sec: CCIL Benchmark / RBI DBIE; Nifty 50 PE: NSE Daily Indices Disclosures"
+    "source_notes": "10Y G-Sec: CCIL Benchmark / RBI DBIE; Repo: RBI Policy Rate; Nifty 50 PE: NSE Daily Indices Disclosures"
 }
 
 def fetch_live_nifty_pe():
@@ -81,6 +82,27 @@ def fetch_live_gsec_yield():
             continue
     return None, None
 
+def fetch_live_repo_rate():
+    """Attempts to fetch current RBI Policy Repo Rate from RBI official home page."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    urls = [
+        "https://www.rbi.org.in/"
+    ]
+    for url in urls:
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                html = resp.read().decode('utf-8', errors='ignore')
+                match = re.search(r'Policy\s+Repo\s+Rate[^0-9]*([0-9]+\.[0-9]+)\s*%', html, re.IGNORECASE)
+                if match:
+                    repo_val = float(match.group(1))
+                    return repo_val, datetime.now().strftime("%Y-%m-%d")
+        except Exception:
+            continue
+    return None, None
+
 def main():
     os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
     
@@ -93,38 +115,44 @@ def main():
         except Exception:
             existing = {}
 
-    print("[INFO] Attempting live network fetch for 10Y G-Sec Yield and Nifty 50 PE...")
+    print("[INFO] Attempting live network fetch for 10Y G-Sec Yield, RBI Repo Rate, and Nifty 50 PE...")
     live_pe, pe_date = fetch_live_nifty_pe()
     live_gsec, gsec_date = fetch_live_gsec_yield()
+    live_repo, repo_date = fetch_live_repo_rate()
 
-    if live_pe is not None and live_gsec is not None:
-        as_of = pe_date or gsec_date or datetime.now().strftime("%Y-%m-%d")
+    all_live_succeeded = (live_pe is not None and live_gsec is not None and live_repo is not None)
+
+    if all_live_succeeded:
+        as_of = pe_date or gsec_date or repo_date or datetime.now().strftime("%Y-%m-%d")
         payload = {
             "as_of_date": as_of,
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "gsec_10y_yield_pct": round(live_gsec, 2),
+            "repo_rate_pct": round(live_repo, 2),
             "nifty50_pe": round(live_pe, 2),
             "is_fallback": False,
             "source_status": "LIVE_NETWORK_FETCH",
-            "source_notes": "Live fetch: CCIL 10Y G-Sec / NSE Nifty 50 PE"
+            "source_notes": "Live fetch: CCIL 10Y G-Sec / RBI Repo Rate / NSE Nifty 50 PE"
         }
-        print(f"[SUCCESS] Live indicators retrieved: 10Y G-Sec={payload['gsec_10y_yield_pct']}%, Nifty50 PE={payload['nifty50_pe']} (As of: {as_of})")
+        print(f"[SUCCESS] Live indicators retrieved: 10Y G-Sec={payload['gsec_10y_yield_pct']}%, Repo={payload['repo_rate_pct']}%, Nifty50 PE={payload['nifty50_pe']} (As of: {as_of})")
     else:
         # Preserve existing cached date without fraudulently claiming new date
         preserved_date = existing.get("as_of_date", STATUTORY_FALLBACK_INDICATORS["as_of_date"])
         gsec_val = existing.get("gsec_10y_yield_pct", STATUTORY_FALLBACK_INDICATORS["gsec_10y_yield_pct"])
+        repo_val = existing.get("repo_rate_pct", STATUTORY_FALLBACK_INDICATORS["repo_rate_pct"])
         pe_val = existing.get("nifty50_pe", STATUTORY_FALLBACK_INDICATORS["nifty50_pe"])
         
         payload = {
             "as_of_date": preserved_date,
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "gsec_10y_yield_pct": gsec_val,
+            "repo_rate_pct": repo_val,
             "nifty50_pe": pe_val,
             "is_fallback": True,
             "source_status": "FALLBACK_CACHED",
-            "source_notes": "10Y G-Sec: CCIL Benchmark / RBI DBIE; Nifty 50 PE: NSE Daily Indices Disclosures"
+            "source_notes": "10Y G-Sec: CCIL Benchmark / RBI DBIE; Repo: RBI Policy Rate; Nifty 50 PE: NSE Daily Indices Disclosures"
         }
-        print(f"[WARN] Live network fetch unavailable. Preserved existing cached date ({preserved_date}) with is_fallback=True: 10Y G-Sec={gsec_val}%, Nifty50 PE={pe_val}")
+        print(f"[WARN] Live network fetch incomplete/unavailable. Preserved existing cached date ({preserved_date}) with is_fallback=True: 10Y G-Sec={gsec_val}%, Repo={repo_val}%, Nifty50 PE={pe_val}")
 
     with open(CACHE_PATH, "w") as f:
         json.dump(payload, f, indent=2)

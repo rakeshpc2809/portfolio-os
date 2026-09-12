@@ -82,7 +82,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPlanInternal(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, true
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, true, false
         );
     }
 
@@ -101,7 +101,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPlanInternal(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, triggerEvaluator, true
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, triggerEvaluator, true, false
         );
     }
 
@@ -138,7 +138,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPlanInternal(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, triggerEvaluator, false
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, triggerEvaluator, false, false
         );
     }
 
@@ -158,7 +158,28 @@ public class RebalancePlanEngine {
     ) {
         return buildPlanInternal(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, false
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, false, false
+        );
+    }
+
+    public static RebalancePlanDto buildPreviewPlan(
+        List<Lot> openLots,
+        List<MatchedLot> matchedLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate currentDate,
+        BigDecimal benchmarkCurrent,
+        BigDecimal benchmarkRollingHigh,
+        List<BucketEngine.BucketTarget> customTargets,
+        String fiscalYear,
+        String requestedTriggerType,
+        BigDecimal manualLumpsumAmount,
+        boolean includeRebalance,
+        RebalanceTriggerEvaluator triggerEvaluator,
+        boolean useMacroRegimeOverlay
+    ) {
+        return buildPlanInternal(
+            openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, false, useMacroRegimeOverlay
         );
     }
 
@@ -175,7 +196,8 @@ public class RebalancePlanEngine {
         BigDecimal manualLumpsumAmount,
         boolean includeRebalance,
         RebalanceTriggerEvaluator triggerEvaluator,
-        boolean recordExecution
+        boolean recordExecution,
+        boolean useMacroRegimeOverlay
     ) {
         String planId = UUID.randomUUID().toString();
         LocalDate today = currentDate != null ? currentDate : LocalDate.now();
@@ -184,6 +206,12 @@ public class RebalancePlanEngine {
         // 1. Point-in-Time Bucket Targets
         List<BucketEngine.BucketTarget> activeTargets = (customTargets != null && !customTargets.isEmpty())
             ? customTargets : BucketConfigLoader.getActiveBucketTargets(today);
+        if (useMacroRegimeOverlay) {
+            com.portfolioos.core.rules.MarketIndicatorsReader.MarketIndicators indicators = 
+                new com.portfolioos.core.rules.MarketIndicatorsReader().readIndicators();
+            com.portfolioos.core.rules.MacroRegime regime = com.portfolioos.core.rules.MacroRegimeRouter.classifyRegime(indicators);
+            activeTargets = com.portfolioos.core.rules.MacroRegimeRouter.adjustBucketTargets(activeTargets, regime);
+        }
         BucketConfigLoader.BucketTargetVersion activeVersion = BucketConfigLoader.getActiveVersion(today);
 
         // 2. Portfolio Valuation

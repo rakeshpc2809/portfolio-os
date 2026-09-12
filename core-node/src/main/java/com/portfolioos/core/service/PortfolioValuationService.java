@@ -916,4 +916,36 @@ public class PortfolioValuationService {
     public DuckDbProjector getDuckDbProjector() {
         return this.duckDbProjector;
     }
+
+    public com.portfolioos.core.dtos.ReportDtos.MacroRegimeDto getMacroRegimeBufferStatus() {
+        com.portfolioos.core.rules.MarketIndicatorsReader.MarketIndicators indicators = 
+            marketIndicatorsReader != null ? marketIndicatorsReader.readIndicators() : new com.portfolioos.core.rules.MarketIndicatorsReader().readIndicators();
+
+        List<com.portfolioos.core.valuation.BucketEngine.BucketTarget> baseTargets = 
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now());
+
+        com.portfolioos.core.rules.MacroRegimeRouter.RegimeEvaluationResult eval = 
+            com.portfolioos.core.rules.MacroRegimeRouter.evaluate(indicators, baseTargets);
+
+        List<com.portfolioos.core.dtos.ReportDtos.BucketTargetDto> targetDtos = eval.adjustedBucketTargets().stream().map(bt -> new com.portfolioos.core.dtos.ReportDtos.BucketTargetDto(
+            bt.bucket().name(),
+            bt.targetPct().setScale(2, RoundingMode.HALF_UP).toPlainString(),
+            bt.bandPct().setScale(2, RoundingMode.HALF_UP).toPlainString()
+        )).toList();
+
+        return new com.portfolioos.core.dtos.ReportDtos.MacroRegimeDto(
+            eval.regime().name(),
+            eval.regime().displayName(),
+            eval.niftyPe(),
+            eval.gsec10yYieldPct(),
+            eval.repoRatePct(),
+            eval.yieldCurveSlopePct(),
+            eval.beerSpreadPct(),
+            eval.liquidBufferTargetPct().setScale(2, RoundingMode.HALF_UP).toPlainString(),
+            eval.recommendedRunwayMonths(),
+            eval.rationale(),
+            targetDtos,
+            "Advisory preview overlay only. Live rebalance drift thresholds and trade executions remain strictly pinned to baseline bucket_targets.yaml."
+        );
+    }
 }
