@@ -26,6 +26,11 @@ from textual.widgets import (
     Static,
 )
 
+try:
+    from tui.daily_summary_helper import build_summary_markup
+except ImportError:
+    from daily_summary_helper import build_summary_markup
+
 CONFIG_FILE = os.path.expanduser("~/Projects/portfolio-os/tui/tui_config.yaml")
 
 
@@ -162,6 +167,11 @@ def render_btop_bar(pct: float, width: int = 20, fill_color: str = "#ecc093") ->
 
 
 class TaxLotsModal(ModalScreen):
+    BINDINGS = [
+        Binding("escape", "close_modal", "Close", priority=True),
+        Binding("q", "close_modal", "Close", priority=True),
+    ]
+
     def __init__(self, lots: List[Dict[str, Any]]):
         super().__init__()
         self.lots = lots
@@ -199,12 +209,20 @@ class TaxLotsModal(ModalScreen):
                 action_tag,
             )
 
+    def action_close_modal(self) -> None:
+        self.app.pop_screen()
+
     @on(Button.Pressed, "#close-btn")
     def action_close(self) -> None:
         self.app.pop_screen()
 
 
 class RebalanceModal(ModalScreen):
+    BINDINGS = [
+        Binding("escape", "close_modal", "Close", priority=True),
+        Binding("q", "close_modal", "Close", priority=True),
+    ]
+
     def __init__(self, plan: Optional[Dict[str, Any]]):
         super().__init__()
         self.plan = plan or {}
@@ -232,6 +250,35 @@ class RebalanceModal(ModalScreen):
             yield Static(content)
             with Horizontal(id="modal-buttons"):
                 yield Button("Acknowledge & Close [Esc]", variant="primary", id="close-btn")
+
+    def action_close_modal(self) -> None:
+        self.app.pop_screen()
+
+    @on(Button.Pressed, "#close-btn")
+    def action_close(self) -> None:
+        self.app.pop_screen()
+
+
+class DailySummaryModal(ModalScreen):
+    BINDINGS = [
+        Binding("escape", "close_modal", "Close", priority=True),
+        Binding("q", "close_modal", "Close", priority=True),
+    ]
+
+    def __init__(self, snapshot: Dict[str, Any]):
+        super().__init__()
+        self.snapshot = snapshot
+
+    def compose(self) -> ComposeResult:
+        markup = build_summary_markup(self.snapshot, palette=PALETTE)
+        with Vertical(id="modal-dialog"):
+            yield Label("Daily Executive Summary & Quant Advisory", id="modal-title")
+            yield Static(markup, id="daily-summary-content")
+            with Horizontal(id="modal-buttons"):
+                yield Button("Close [Esc]", variant="primary", id="close-btn")
+
+    def action_close_modal(self) -> None:
+        self.app.pop_screen()
 
     @on(Button.Pressed, "#close-btn")
     def action_close(self) -> None:
@@ -595,7 +642,7 @@ class BtopFooter(Static):
 
         self.update(
             f" {c_status}  {q_status}  {sec}  [#4e5268]· {ts} ·[/]  "
-            f"[#6e738d][bold #cdd6f4][p][/] plan  [bold #cdd6f4][t][/] lots  [bold #cdd6f4][r][/] sync  [bold #cdd6f4][q][/] exit[/]"
+            f"[#6e738d][bold #cdd6f4][d][/] brief  [bold #cdd6f4][p][/] plan  [bold #cdd6f4][t][/] lots  [bold #cdd6f4][r][/] sync  [bold #cdd6f4][q][/] exit[/]"
         )
 
 
@@ -683,6 +730,11 @@ def build_btop_css() -> str:
         height: 1fr;
         background: #000000;
     }}
+    #daily-summary-content {{
+        height: 1fr;
+        overflow-y: auto;
+        padding: 0 1;
+    }}
     """
 
 
@@ -690,6 +742,7 @@ class PortfolioOSTUI(App):
     CSS = build_btop_css()
 
     BINDINGS = [
+        Binding("d", "open_daily_summary", "Daily Summary", priority=True),
         Binding("r", "refresh_data", "Refresh", priority=True),
         Binding("p", "open_rebalance", "Rebalance Waterfall", priority=True),
         Binding("t", "open_tax_lots", "Tax Lots Drill-Down", priority=True),
@@ -820,6 +873,9 @@ class PortfolioOSTUI(App):
     def action_open_rebalance(self) -> None:
         plan = self.cached_snapshot.get("rebalance_plan", {})
         self.push_screen(RebalanceModal(plan))
+
+    def action_open_daily_summary(self) -> None:
+        self.push_screen(DailySummaryModal(self.cached_snapshot))
 
 
 if __name__ == "__main__":

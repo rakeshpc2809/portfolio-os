@@ -88,6 +88,10 @@ alloc-hrp:
 tui:
     cd tui && python3 portfolio_os_tui.py
 
+# Run TUI unit & modal lifecycle tests
+test-tui:
+    cd tui && python3 -m unittest discover -v -s tests
+
 # Launch TUI with hot-reloading DevTools
 tui-dev:
     cd tui && textual run --dev portfolio_os_tui.py
