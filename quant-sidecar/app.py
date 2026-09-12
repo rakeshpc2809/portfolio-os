@@ -20,6 +20,11 @@ from quant.analytics_engine import (
     FireSimulationResponse,
     BenchmarkAnalyticsResponse
 )
+from quant.hrp_allocator import (
+    run_hrp_allocation,
+    HrpAllocationRequest,
+    HrpAllocationResponse
+)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -120,6 +125,19 @@ async def analyze_benchmark(req: BenchmarkAnalyticsRequest):
     )
     if result.get("status") == "ERROR":
         raise HTTPException(status_code=422, detail=result.get("message", "Benchmark analytics computation error"))
+    return result
+
+@app.post("/api/v1/allocator/hrp", response_model=HrpAllocationResponse, dependencies=[Depends(verify_auth_token)])
+async def allocate_hrp(req: HrpAllocationRequest):
+    result = await asyncio.to_thread(
+        run_hrp_allocation,
+        mode=req.mode,
+        risk_measure_str=req.risk_measure,
+        lookback_days=req.lookback_days,
+        dump_cache=req.dump_cache
+    )
+    if result.status == "ERROR":
+        raise HTTPException(status_code=500, detail=result.message or "HRP allocation execution error")
     return result
 
 def run_flight_server():
