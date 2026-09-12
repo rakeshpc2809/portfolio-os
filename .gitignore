@@ -46,12 +46,14 @@ dist/
 .vite/
 
 # Databases & local data files
-/data/
+data/
+quant-sidecar/data/
 *.db
 *.duckdb
 jdbc:duckdb*
 *.zip
 *.pdf
+*.docx
 portfolio-os-codebase.xml
 *.wal
 *.duckdb.wal

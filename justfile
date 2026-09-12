@@ -45,6 +45,10 @@ run-core:
 clean-core:
     cd core-node && mvn clean
 
+# Query available LLM tool-calling schemas from Core Node
+agent-tools:
+    @curl -s -H "X-Api-Key: ${API_KEY:-dev_secret_key_123}" http://localhost:8080/api/v1/agent/tools | jq .
+
 # -------------------------------------------------------------
 # Frontend Dashboard (JavaScript / Bun)
 # -------------------------------------------------------------
@@ -64,6 +68,17 @@ setup-quant:
 # Run Quant Sidecar with uv
 run-quant:
     cd quant-sidecar && uv run uvicorn app:app --host 127.0.0.1 --port 8000 --reload
+
+# Run Quant sidecar unit tests
+test-quant:
+    cd quant-sidecar && uv run python -m unittest discover -v -s tests
+
+# Query HRP allocator dynamic weights (advisory diagnostic)
+alloc-hrp:
+    @curl -s -X POST http://127.0.0.1:8000/api/v1/allocator/hrp \
+      -H "Content-Type: application/json" \
+      -H "X-Api-Auth-Token: ${API_AUTH_TOKEN:-dev_secret_key_123}" \
+      -d '{"mode":"INTRA_BUCKET"}' | jq .
 
 # -------------------------------------------------------------
 # Portfolio OS TUI Terminal Cockpit (Textual)
