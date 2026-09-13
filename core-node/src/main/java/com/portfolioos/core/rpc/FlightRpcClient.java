@@ -185,6 +185,7 @@ public class FlightRpcClient {
                     Iterator<Result> results = client.doAction(action);
                     if (results.hasNext()) {
                         Result res = results.next();
+                        System.out.println("Flight RPC Monte Carlo FIRE simulation succeeded via host " + h + ":" + port);
                         return mapper.readValue(res.getBody(), Map.class);
                     }
                 }

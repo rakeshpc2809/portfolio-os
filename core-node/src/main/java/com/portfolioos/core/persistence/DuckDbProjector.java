@@ -26,8 +26,7 @@ public class DuckDbProjector implements AutoCloseable {
     ) {}
 
     public DuckDbProjector() {
-        this(System.getenv("DUCKDB_PATH") != null && !System.getenv("DUCKDB_PATH").isBlank()
-             ? System.getenv("DUCKDB_PATH") : "data/tax_ledger.duckdb");
+        this(com.portfolioos.core.config.DbPathResolver.resolveDatabasePath("data/tax_ledger.duckdb", "DUCKDB_PATH"));
     }
 
     public static DuckDbProjector noOpForTesting() {
@@ -41,17 +40,20 @@ public class DuckDbProjector implements AutoCloseable {
     }
 
     public DuckDbProjector(String dbPath) {
-        this.dbPath = dbPath;
+        String resolvedPath = com.portfolioos.core.config.DbPathResolver.resolveDatabasePath(dbPath, "DUCKDB_PATH");
+        this.dbPath = resolvedPath;
         try {
             Class.forName("org.duckdb.DuckDBDriver");
         } catch (ClassNotFoundException e) {
             throw new RuntimeException("DuckDB JDBC driver not found", e);
         }
 
-        if (":memory:".equals(dbPath)) {
+        if (":memory:".equals(resolvedPath)) {
             jdbcUrl = "jdbc:duckdb:";
+        } else if (resolvedPath != null && resolvedPath.startsWith("jdbc:duckdb:")) {
+            jdbcUrl = resolvedPath;
         } else {
-            File file = new File(dbPath);
+            File file = new File(resolvedPath);
             if (file.getParentFile() != null) {
                 file.getParentFile().mkdirs();
             }
@@ -277,7 +279,7 @@ public class DuckDbProjector implements AutoCloseable {
         }
     }
 
-    public void projectEvents(List<TaxEvent> events) {
+    public synchronized void projectEvents(List<TaxEvent> events) {
         if (events == null || events.isEmpty()) return;
 
         try (Connection conn = getConnection()) {

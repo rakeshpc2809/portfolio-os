@@ -21,7 +21,7 @@ class QuantFlightServer(flight.FlightServerBase):
                 params = json.loads(action.body.to_pybytes().decode('utf-8'))
                 missing_keys = [k for k in ("current_corpus", "annual_expense", "monthly_contribution", "years_to_retirement") if k not in params]
                 if missing_keys:
-                    raise flight.FlightInvalidArgument(f"Missing required simulation parameters: {', '.join(missing_keys)}")
+                    raise flight.FlightServerError(f"Missing required simulation parameters: {', '.join(missing_keys)}")
 
                 daily_returns = params.get("daily_returns", [])
                 current_corpus = float(params["current_corpus"])

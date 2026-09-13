@@ -33,6 +33,8 @@ public class StatementIngestionUseCase {
         this.sheetsBackupService = sheetsBackupService;
     }
 
+    private final Object ingestionLock = new Object();
+
     public List<TaxEvent> ingestParsedEvents(ParsedEventDto[] dtoList) {
         if (dtoList == null || dtoList.length == 0) {
             return List.of();
@@ -56,26 +58,35 @@ public class StatementIngestionUseCase {
             taxEvents.add(te);
         }
 
-        // Dual-write step 1: Write to primary SQLite Ledger
-        eventStore.appendEvents(taxEvents);
+        synchronized (ingestionLock) {
+            // Dual-write step 1: Write to primary SQLite Ledger
+            eventStore.appendEvents(taxEvents);
 
-        try {
-            // Dual-write step 2: Re-project events in DuckDB analytical database
-            List<TaxEvent> allEvents = eventStore.getAllEvents();
-            duckDbProjector.projectEvents(allEvents);
-        } catch (Exception e) {
-            System.err.println("CRITICAL: DuckDB projection failed during statement ingestion: " + e.getMessage());
-            throw new RuntimeException("Dual-write failure: Analytical DuckDB projection failed: " + e.getMessage(), e);
+            try {
+                // Dual-write step 2: Re-project events in DuckDB analytical database
+                List<TaxEvent> allEvents = eventStore.getAllEvents();
+                duckDbProjector.projectEvents(allEvents);
+            } catch (Exception e) {
+                System.err.println("CRITICAL: DuckDB projection failed during statement ingestion: " + e.getMessage());
+                try {
+                    List<String> rollbackIds = taxEvents.stream().map(TaxEvent::id).toList();
+                    eventStore.deleteEvents(rollbackIds);
+                    System.err.println("Rolled back " + rollbackIds.size() + " events from SQLite ledger following projection failure.");
+                } catch (Exception rollbackEx) {
+                    System.err.println("CRITICAL: Failed to rollback SQLite ledger: " + rollbackEx.getMessage());
+                }
+                throw new RuntimeException("Dual-write failure: Analytical DuckDB projection failed: " + e.getMessage(), e);
+            }
+
+            // Evict/Invalidate central ledger cache
+            cacheService.invalidateCache();
+
+            // Non-blocking asynchronous backup sync to Google Sheets (failures never block or fail ledger commit)
+            if (sheetsBackupService != null) {
+                sheetsBackupService.triggerAsyncIncrementalBackup();
+            }
+
+            return taxEvents;
         }
-
-        // Evict/Invalidate central ledger cache
-        cacheService.invalidateCache();
-
-        // Non-blocking asynchronous backup sync to Google Sheets (failures never block or fail ledger commit)
-        if (sheetsBackupService != null) {
-            sheetsBackupService.triggerAsyncIncrementalBackup();
-        }
-
-        return taxEvents;
     }
 }

@@ -85,11 +85,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     fun fetchRestAnalytics() {
         viewModelScope.launch(Dispatchers.IO) {
             val token = SnapshotCacheManager.getAuthToken(context)
-            val urls = listOf(
-                SyncApiClient.USB_BASE_URL,
-                SyncApiClient.WIFI_BASE_URL,
-                SyncApiClient.EMULATOR_BASE_URL
-            )
+            val urls = SyncApiClient.getCandidateBaseUrls(context)
             for (baseUrl in urls) {
                 try {
                     val service = SyncApiClient.createService(baseUrl)
@@ -114,11 +110,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     fun fetchOverlapAnalytics(includeUnverified: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             val token = SnapshotCacheManager.getAuthToken(context)
-            val urls = listOf(
-                SyncApiClient.USB_BASE_URL,
-                SyncApiClient.WIFI_BASE_URL,
-                SyncApiClient.EMULATOR_BASE_URL
-            )
+            val urls = SyncApiClient.getCandidateBaseUrls(context)
             for (baseUrl in urls) {
                 try {
                     val service = SyncApiClient.createService(baseUrl)

@@ -137,7 +137,7 @@ public class BucketEngine {
 
         // 2-arg caller or empty active set: check against known preferred funds in active config
         if (com.portfolioos.core.rules.BucketConfigLoader.isPreferredFund(assetId)) {
-            return Bucket.EQUITY_CORE;
+            throw new IllegalStateException("CRITICAL CONFIG ERROR: Asset '" + assetId + "' (" + assetName + ") is flagged as a preferred fund but has no mapped bucket target in active bucket configuration.");
         }
 
         return Bucket.LEGACY_HOLDINGS;

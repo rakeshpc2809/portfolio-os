@@ -12,12 +12,12 @@ import java.util.Map;
 @RequestMapping("/api/v1")
 public class ConfigController {
 
-    @GetMapping("/config/bucket-targets")
+    @GetMapping({"/config/bucket-targets", "/sync/config/bucket-targets"})
     public ResponseEntity<BucketConfigLoader.BucketRulesConfig> getBucketTargets() {
         return ResponseEntity.ok(BucketConfigLoader.loadConfig());
     }
 
-    @PutMapping("/config/bucket-targets")
+    @PutMapping({"/config/bucket-targets", "/sync/config/bucket-targets"})
     public ResponseEntity<?> updateBucketTargets(@RequestBody Map<String, Object> req) {
         try {
             String effectiveFrom = (String) req.getOrDefault("effectiveFrom", req.get("effective_from"));

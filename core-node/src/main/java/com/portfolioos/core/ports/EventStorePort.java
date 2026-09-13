@@ -16,6 +16,7 @@ public interface EventStorePort {
         return null;
     }
     default void updateBackupSyncCheckpoint(String syncTarget, String lastSyncedEventId, int newRowsAdded) {}
+    default void deleteEvents(List<String> eventIds) {}
     default List<TaxEvent> getEventsAfter(String lastEventId) {
         return getAllEvents();
     }

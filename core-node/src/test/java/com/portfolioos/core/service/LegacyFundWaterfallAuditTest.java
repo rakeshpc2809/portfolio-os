@@ -290,12 +290,13 @@ class LegacyFundWaterfallAuditTest {
     @Test
     @DisplayName("Audit 5: Real Portfolio E2E Fresh Baseline Run")
     void testRealPortfolioE2EBaseline() {
-        java.io.File dbFile = new java.io.File("data/tax_ledger.db");
+        String dbPath = com.portfolioos.core.config.DbPathResolver.resolveDatabasePath("data/tax_ledger.db", "SQLITE_PATH");
+        java.io.File dbFile = new java.io.File(dbPath);
         if (!dbFile.exists()) {
-            System.out.println("Skipping real DB run: data/tax_ledger.db not found");
+            System.out.println("Skipping real DB run: " + dbPath + " not found");
             return;
         }
-        com.portfolioos.core.persistence.SqliteEventStore store = new com.portfolioos.core.persistence.SqliteEventStore("data/tax_ledger.db");
+        com.portfolioos.core.persistence.SqliteEventStore store = new com.portfolioos.core.persistence.SqliteEventStore(dbPath);
         List<com.portfolioos.core.model.TaxEvent> events = store.getAllEvents();
         if (events == null || events.isEmpty()) {
             System.out.println("Skipping real DB run: data/tax_ledger.db has no events");

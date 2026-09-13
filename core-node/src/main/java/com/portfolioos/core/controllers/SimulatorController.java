@@ -22,4 +22,12 @@ public class SimulatorController {
     ) {
         return ResponseEntity.ok(simulationService.simulateTrade(req));
     }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<java.util.Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest().body(java.util.Map.of(
+            "error", "BAD_REQUEST",
+            "message", ex.getMessage()
+        ));
+    }
 }

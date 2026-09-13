@@ -39,7 +39,7 @@ test-core:
 
 # Run Spring Boot app locally
 run-core:
-    cd core-node && mvn spring-boot:run
+    cd core-node && LEDGER_HMAC_SECRET="$${LEDGER_HMAC_SECRET:-dev_secret_key_123}" QUANT_SIDECAR_HOST="$${QUANT_SIDECAR_HOST:-127.0.0.1}" DUCKDB_PATH="$$(pwd)/../data/tax_ledger.duckdb" SQLITE_PATH="$$(pwd)/../data/tax_ledger.db" mvn spring-boot:run
 
 # Clean Maven target directory
 clean-core:
@@ -72,6 +72,10 @@ run-quant:
 # Run Quant sidecar unit tests
 test-quant:
     cd quant-sidecar && uv run python -m unittest discover -v -s tests
+
+# Refresh historical NAV export (Parquet) for HRP allocator
+refresh-nav-export:
+    cd quant-sidecar && uv run python scripts/backfill_nav_history.py
 
 # Query HRP allocator dynamic weights (advisory diagnostic)
 alloc-hrp:
@@ -146,4 +150,14 @@ logs:
 # Clean all build outputs (Maven, Gradle, Temp files)
 clean: clean-mobile clean-core
     @echo "Cleaned all build directories."
+
+# -------------------------------------------------------------
+# AI Code Review Packages
+# -------------------------------------------------------------
+
+# Pack minimal production codebase for Gemini Pro review (XML & Markdown)
+repomix:
+    npx repomix
+    npx repomix --style markdown -o repomix-minimal.md
+
 

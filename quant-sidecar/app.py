@@ -2,6 +2,7 @@ import os
 import tempfile
 import threading
 import logging
+from contextlib import asynccontextmanager
 from typing import List, Optional
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Depends
 from pydantic import BaseModel
@@ -39,7 +40,33 @@ def verify_auth_token(x_api_auth_token: Optional[str] = Header(None)):
     if not x_api_auth_token or not secrets.compare_digest(x_api_auth_token, token):
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-Api-Auth-Token header")
 
-app = FastAPI(title="Portfolio OS Quant & Parser Sidecar", version="3.0.0")
+_flight_server: Optional[QuantFlightServer] = None
+_flight_thread: Optional[threading.Thread] = None
+
+def run_flight_server():
+    global _flight_server
+    try:
+        _flight_server = QuantFlightServer("0.0.0.0", 8001)
+        logger.info("Starting Apache Arrow Flight RPC server on port 8001...")
+        _flight_server.serve()
+    except Exception as e:
+        logger.error(f"Failed to start Flight server: {e}", exc_info=True)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _flight_thread, _flight_server
+    _flight_thread = threading.Thread(target=run_flight_server, daemon=True, name="ArrowFlightServerThread")
+    _flight_thread.start()
+    logger.info("Arrow Flight RPC background thread launched on port 8001.")
+    yield
+    if _flight_server:
+        logger.info("Shutting down Arrow Flight RPC server on port 8001...")
+        try:
+            _flight_server.shutdown()
+        except Exception as e:
+            logger.warning(f"Error shutting down Flight server: {e}")
+
+app = FastAPI(title="Portfolio OS Quant & Parser Sidecar", version="3.0.0", lifespan=lifespan)
 
 @app.get("/health")
 def health_check():
@@ -140,17 +167,6 @@ async def allocate_hrp(req: HrpAllocationRequest):
         raise HTTPException(status_code=500, detail=result.message or "HRP allocation execution error")
     return result
 
-def run_flight_server():
-    try:
-        server = QuantFlightServer("0.0.0.0", 8001)
-        logger.info("Starting Apache Arrow Flight RPC server on port 8001...")
-        server.serve()
-    except Exception as e:
-        logger.error(f"Failed to start Flight server: {e}", exc_info=True)
-
 if __name__ == "__main__":
-    flight_thread = threading.Thread(target=run_flight_server, daemon=True)
-    flight_thread.start()
-    
     logger.info("Starting FastAPI HTTP Server on port 8000...")
     uvicorn.run(app, host="0.0.0.0", port=8000)

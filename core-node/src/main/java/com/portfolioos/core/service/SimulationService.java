@@ -25,11 +25,21 @@ public class SimulationService {
     }
 
     public static record TradeSimulationRequest(
+        @com.fasterxml.jackson.annotation.JsonProperty("isin")
         String isin,
+        @com.fasterxml.jackson.annotation.JsonProperty("schemeName")
+        @com.fasterxml.jackson.annotation.JsonAlias({"scheme_name"})
         String schemeName,
+        @com.fasterxml.jackson.annotation.JsonProperty("units")
         BigDecimal units,
+        @com.fasterxml.jackson.annotation.JsonProperty("pricePerUnit")
+        @com.fasterxml.jackson.annotation.JsonAlias({"price_per_unit", "price"})
         BigDecimal pricePerUnit,
+        @com.fasterxml.jackson.annotation.JsonProperty("tradeDate")
+        @com.fasterxml.jackson.annotation.JsonAlias({"trade_date"})
         String tradeDate,
+        @com.fasterxml.jackson.annotation.JsonProperty("tradeType")
+        @com.fasterxml.jackson.annotation.JsonAlias({"trade_type", "type"})
         String tradeType // DISPOSAL or ACQUISITION
     ) {}
 
@@ -58,6 +68,25 @@ public class SimulationService {
     }
 
     public TradeSimulationResult simulateTrade(TradeSimulationRequest req) {
+        if (req == null) {
+            throw new IllegalArgumentException("Trade simulation request cannot be null.");
+        }
+        if (req.isin() == null || req.isin().isBlank()) {
+            throw new IllegalArgumentException("Trade simulation requires a valid non-empty ISIN.");
+        }
+        if (req.schemeName() == null || req.schemeName().isBlank()) {
+            throw new IllegalArgumentException("Trade simulation requires a valid non-empty scheme name.");
+        }
+        if (req.units() == null || req.units().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Trade simulation requires positive unit quantity. Provided: " + req.units());
+        }
+        if (req.pricePerUnit() == null || req.pricePerUnit().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Trade simulation requires positive price per unit. Provided: " + req.pricePerUnit());
+        }
+        if (req.tradeType() == null || (!"ACQUISITION".equalsIgnoreCase(req.tradeType()) && !"DISPOSAL".equalsIgnoreCase(req.tradeType()))) {
+            throw new IllegalArgumentException("Trade simulation requires tradeType of 'ACQUISITION' or 'DISPOSAL'. Provided: " + req.tradeType());
+        }
+
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<TaxEvent> existingEvents = state.events();
         Map<String, BigDecimal> navMap = state.navMap();
@@ -69,8 +98,8 @@ public class SimulationService {
         String targetFy = TaxRulesLoader.detectFiscalYear(tradeDate);
         TaxRulesConfig rules = TaxRulesLoader.loadRules(targetFy);
 
-        BigDecimal unitsBd = req.units() != null ? req.units().setScale(4, RoundingMode.HALF_UP) : BigDecimal.ZERO;
-        BigDecimal priceBd = req.pricePerUnit() != null ? req.pricePerUnit().setScale(4, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        BigDecimal unitsBd = req.units().setScale(4, RoundingMode.HALF_UP);
+        BigDecimal priceBd = req.pricePerUnit().setScale(4, RoundingMode.HALF_UP);
         BigDecimal grossAmount = unitsBd.multiply(priceBd).setScale(2, RoundingMode.HALF_UP);
 
         EventType type = "ACQUISITION".equalsIgnoreCase(req.tradeType()) ? EventType.ACQUISITION : EventType.DISPOSAL;

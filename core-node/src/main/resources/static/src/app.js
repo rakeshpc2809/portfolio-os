@@ -249,36 +249,111 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    // Default SSE AI prompt stream
-    results.innerHTML =
-      '<div style="padding:12px; color:#d0ff00; font-family:monospace;">⚡ Streaming response from Qwen LLM...</div><div id="cmdKOutput" style="white-space:pre-wrap; font-size:13px; font-family:monospace; color:#f8fafc; max-height:280px; overflow-y:auto; padding:10px; background:rgba(0,0,0,0.4); border-radius:8px; border:1px solid rgba(255,255,255,0.1);"></div>';
+    // Execute via backend Agent Tools API (/api/v1/agent/tools/execute)
+    let toolName = "getPortfolioValuation";
+    let toolArgs = {};
 
-    const resEl = document.getElementById("cmdKOutput");
-    const token =
-      localStorage.getItem("API_AUTH_TOKEN") || window.API_AUTH_TOKEN || DEFAULT_AUTH_TOKEN;
-    const url = `${API_BASE}/llm/stream?prompt=${encodeURIComponent(promptText)}&token=${encodeURIComponent(token)}`;
+    if (promptLower.includes("valuation") || promptLower.includes("worth") || promptLower.includes("summary")) {
+      toolName = "getPortfolioValuation";
+    } else if (promptLower.includes("fire") || promptLower.includes("retire") || promptLower.includes("corpus") || promptLower.includes("coast")) {
+      toolName = "getFireSummary";
+    } else if (promptLower.includes("harvest") || promptLower.includes("tax") || promptLower.includes("ltcg") || promptLower.includes("saving")) {
+      toolName = "getTaxHarvestOpportunities";
+    } else if (promptLower.includes("rebalance") || promptLower.includes("target") || promptLower.includes("drift")) {
+      toolName = "getRebalancePlan";
+    } else if (promptLower.includes("fund") || promptLower.includes("holding") || promptLower.includes("registry") || promptLower.includes("scheme")) {
+      toolName = "getFundRegistry";
+    } else if (promptLower.includes("overlap")) {
+      toolName = "getPairwiseFundOverlap";
+      toolArgs = { fundA: "INF109KC12U0", fundB: "INF879O01027" };
+    }
 
-    const eventSource = new EventSource(url);
-    let outputText = "";
+    results.innerHTML = `<div style="padding:12px; color:#d0ff00; font-family:monospace;">⚡ Executing Agent Tool [${toolName}]...</div>`;
 
-    eventSource.onmessage = (event) => {
-      if (event.data) {
-        outputText += event.data;
-        if (resEl) {
-          resEl.textContent = outputText;
-          resEl.scrollTop = resEl.scrollHeight;
-        }
+    try {
+      const data = await fetchJson("/agent/tools/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tool: toolName, arguments: toolArgs }),
+      });
+
+      if (!data || data.status !== "SUCCESS") {
+        const errMsg = data?.error_message || data?.errorMessage || "Tool execution failed";
+        results.innerHTML = `
+          <div class="cmd-action-card" style="border-color: #ef4444;">
+            <div class="cmd-action-header" style="color: #ef4444;">
+              <span>⚠️ Agent Tool Error [${toolName}]</span>
+            </div>
+            <div style="font-size:12px; color:#fca5a5; padding:8px 0;">${errMsg}</div>
+          </div>
+        `;
+        return;
       }
-    };
 
-    eventSource.onerror = (err) => {
-      console.error("SSE stream error:", err);
-      eventSource.close();
-      if (resEl && !outputText) {
-        resEl.innerHTML =
-          '<div style="padding:12px; color:#ef4444; font-family:monospace;">⚠️ Streaming failed. Verify connection or authentication token.</div>';
+      const res = data.result || {};
+      let bodyHtml = "";
+
+      if (toolName === "getPortfolioValuation") {
+        bodyHtml = `
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px; margin-top:8px;">
+            <div>Net Worth: <strong style="color:#d0ff00;" class="font-mono">₹ ${formatINR(parseFloat(res.total_net_worth || 0))}</strong></div>
+            <div>Invested: <strong style="color:#94a3b8;" class="font-mono">₹ ${formatINR(parseFloat(res.total_invested_cost || 0))}</strong></div>
+            <div>Unrealized: <strong style="color:#10b981;" class="font-mono">₹ ${formatINR(parseFloat(res.total_unrealized_gain || 0))}</strong></div>
+            <div>XIRR: <strong style="color:#06b6d4;" class="font-mono">${res.portfolio_xirr || "0.0"}%</strong></div>
+          </div>
+        `;
+      } else if (toolName === "getFireSummary") {
+        const netWorth = parseFloat(res.total_net_worth || 0);
+        const reqCorpus = parseFloat(res.required_fire_corpus || 0);
+        const progressPct = reqCorpus > 0 ? ((netWorth / reqCorpus) * 100).toFixed(1) : "0.0";
+        bodyHtml = `
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px; margin-top:8px;">
+            <div>Net Worth: <strong style="color:#d0ff00;" class="font-mono">₹ ${formatINR(netWorth)}</strong></div>
+            <div>Required FIRE: <strong style="color:#94a3b8;" class="font-mono">₹ ${formatINR(reqCorpus)}</strong></div>
+            <div>FIRE Progress: <strong style="color:#10b981;" class="font-mono">${progressPct}%</strong> (${res.years_remaining || 0} yrs left)</div>
+            <div>Status: <strong style="color:#06b6d4;">${res.fire_status || "IN_PROGRESS"}</strong> (${res.active_scenario_label || "Base"})</div>
+          </div>
+        `;
+      } else if (toolName === "getTaxHarvestOpportunities") {
+        bodyHtml = `
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px; margin-top:8px;">
+            <div>Exemption Left: <strong style="color:#10b981;" class="font-mono">₹ ${formatINR(parseFloat(res.exemption_remaining || 0))}</strong></div>
+            <div>Taxable LTCG YTD: <strong style="color:#06b6d4;" class="font-mono">₹ ${formatINR(parseFloat(res.taxable_ltcg_so_far || 0))}</strong></div>
+            <div>Available Lots: <strong style="color:#d0ff00;">${res.total_opportunities || 0} lots</strong></div>
+            <div>Fiscal Year: <strong style="color:#94a3b8;">FY ${res.fiscal_year || ""}</strong></div>
+          </div>
+        `;
+      } else if (toolName === "getFundRegistry") {
+        const funds = res.funds || [];
+        const rows = funds.slice(0, 5).map((f) => `
+          <div class="cmd-step-row">
+            <span>${f.scheme_name} (${f.status})</span>
+            <span class="font-mono">₹ ${formatINR(parseFloat(f.current_value || 0))}</span>
+          </div>
+        `).join("");
+        bodyHtml = `
+          <div style="font-size:12px; color:#94a3b8; margin-top:6px;">Total Tracked Funds: <strong>${res.total_funds || funds.length}</strong></div>
+          <div class="cmd-action-steps">${rows}</div>
+        `;
+      } else {
+        bodyHtml = `
+          <pre style="white-space:pre-wrap; font-size:11px; font-family:monospace; color:#cbd5e1; max-height:180px; overflow-y:auto; margin-top:8px; padding:6px; background:rgba(0,0,0,0.3); border-radius:4px;">${JSON.stringify(res, null, 2)}</pre>
+        `;
       }
-    };
+
+      results.innerHTML = `
+        <div class="cmd-action-card">
+          <div class="cmd-action-header">
+            <span>⚡ Agent Tool Result: <strong style="color:#d0ff00;">${toolName}</strong></span>
+            <span style="font-size:11px; color:#10b981;">STATUS: ${data.status}</span>
+          </div>
+          ${bodyHtml}
+        </div>
+      `;
+    } catch (err) {
+      console.error("Agent tool execution error:", err);
+      results.innerHTML = `<div style="padding:12px; color:#ef4444; font-family:monospace;">⚠️ Tool execution failed: ${err.message}</div>`;
+    }
   };
 
   document.addEventListener("keydown", (e) => {

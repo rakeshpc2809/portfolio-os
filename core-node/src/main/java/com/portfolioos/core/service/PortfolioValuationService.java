@@ -62,6 +62,31 @@ public class PortfolioValuationService {
         return val.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
+    public static boolean isNavStale(LocalDate navDate, LocalDate asOfDate) {
+        if (navDate == null) {
+            return true;
+        }
+        if (asOfDate == null) {
+            asOfDate = LocalDate.now();
+        }
+        if (navDate.isAfter(asOfDate)) {
+            return false;
+        }
+        // Count elapsed business days (excluding Saturday and Sunday)
+        int businessDays = 0;
+        LocalDate curr = navDate.plusDays(1);
+        while (!curr.isAfter(asOfDate)) {
+            java.time.DayOfWeek dow = curr.getDayOfWeek();
+            if (dow != java.time.DayOfWeek.SATURDAY && dow != java.time.DayOfWeek.SUNDAY) {
+                businessDays++;
+            }
+            curr = curr.plusDays(1);
+        }
+        // If more than 3 business days elapsed without an updated NAV, or more than 7 calendar days total, flag as stale
+        long calendarDays = ChronoUnit.DAYS.between(navDate, asOfDate);
+        return businessDays > 3 || calendarDays > 7;
+    }
+
     public record PortfolioValuationMetrics(
         BigDecimal totalInvested,
         BigDecimal totalCurrentValue,
@@ -175,13 +200,15 @@ public class PortfolioValuationService {
 
     public PortfolioSummaryResponse getPortfolioSummary(String fy) {
         PortfolioValuationMetrics metrics = computeValuationMetrics(fy);
+        List<HoldingDetailDto> holdings = getHoldings();
+        int staleNavCount = (int) holdings.stream().filter(HoldingDetailDto::navStale).count();
         return new PortfolioSummaryResponse(
             fmt(metrics.totalInvested()),
             fmt(metrics.totalCurrentValue()),
             fmt(metrics.totalGain()),
             metrics.formattedXirr(),
             metrics.distinctAssetCount(),
-            0
+            staleNavCount
         );
     }
 
@@ -220,6 +247,7 @@ public class PortfolioValuationService {
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<Lot> openLots = state.fifoResult().openLots();
         Map<String, BigDecimal> navMap = state.navMap();
+        Map<String, LocalDate> navDateMap = (state != null && state.navDateMap() != null) ? state.navDateMap() : Collections.emptyMap();
         LocalDate today = LocalDate.now();
 
         BigDecimal totalCurrentValAll = BigDecimal.ZERO;
@@ -233,7 +261,8 @@ public class PortfolioValuationService {
 
             String assetName = lots.get(0).assetName();
             BigDecimal currentNav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, assetId, assetName, "PortfolioValuationService.getHoldings");
-            boolean isStale = !navMap.containsKey(assetId);
+            LocalDate navDate = navDateMap.get(assetId);
+            boolean isStale = isNavStale(navDate, today);
             String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(today);
             com.portfolioos.core.rules.TaxRulesConfig taxRules = com.portfolioos.core.rules.TaxRulesLoader.loadRules(currentFy);
             AssetCategory catEnum = TaxClassifier.detectCategory(assetId, assetName);

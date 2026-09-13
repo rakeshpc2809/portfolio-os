@@ -47,6 +47,9 @@ class HrpAllocationResponse(BaseModel):
     status: str  # SUCCESS, INSUFFICIENT_HISTORY, ERROR
     mode: str
     risk_measure: str
+    is_fallback: bool = False
+    data_source: str = "DUCKDB_LIVE"  # DUCKDB_LIVE or PARQUET_STATIC
+    data_as_of_date: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     trading_days: int = 0
@@ -55,9 +58,10 @@ class HrpAllocationResponse(BaseModel):
     bucket_summary: Dict[str, BucketRollup] = {}
     message: Optional[str] = None
 
-def load_nav_dataframe() -> pl.DataFrame:
+def load_nav_dataframe() -> tuple[pl.DataFrame, str, bool, Optional[str]]:
     """
     Loads NAV history prioritizing direct DuckDB access, falling back to Parquet export.
+    Returns: (df, data_source, is_fallback, data_as_of_date)
     """
     candidate_db_paths = [
         Path("data/tax_ledger.duckdb"),
@@ -71,10 +75,14 @@ def load_nav_dataframe() -> pl.DataFrame:
                 df = con.execute("SELECT asset_id AS isin, nav_date, nav AS nav_value FROM nav_history").pl()
                 con.close()
                 if len(df) > 0:
-                    logger.info(f"Loaded {len(df)} NAV rows directly from DuckDB at {db_path}")
-                    return df.with_columns(pl.col("nav_date").str.to_date(strict=False))
+                    df = df.with_columns(pl.col("nav_date").str.to_date(strict=False))
+                    as_of = str(df["nav_date"].max())
+                    logger.info(f"Loaded {len(df)} NAV rows directly from DuckDB at {db_path} (as_of={as_of})")
+                    return df, "DUCKDB_LIVE", False, as_of
             except Exception as e:
-                logger.warning(f"Failed to query DuckDB at {db_path}: {e}")
+                logger.warning(
+                    f"Direct DuckDB access unavailable at {db_path} ({e}). Falling back to Parquet snapshot."
+                )
 
     candidate_parquet_paths = [
         Path("quant-sidecar/data/nav_export.parquet"),
@@ -90,8 +98,12 @@ def load_nav_dataframe() -> pl.DataFrame:
                     df = df.rename({"asset_id": "isin"})
                 if "nav" in df.columns:
                     df = df.rename({"nav": "nav_value"})
-                logger.info(f"Loaded {len(df)} NAV rows from Parquet export at {p_path}")
-                return df.with_columns(pl.col("nav_date").str.to_date(strict=False))
+                df = df.with_columns(pl.col("nav_date").str.to_date(strict=False))
+                as_of = str(df["nav_date"].max())
+                logger.warning(
+                    f"FALLBACK ENGAGED: Loaded {len(df)} NAV rows from static Parquet export at {p_path} (as_of={as_of})"
+                )
+                return df, "PARQUET_STATIC", True, as_of
             except Exception as e:
                 logger.warning(f"Failed to read Parquet at {p_path}: {e}")
 
@@ -163,13 +175,16 @@ def run_hrp_allocation(
     Main entry point for HRP Allocation.
     """
     try:
-        df = load_nav_dataframe()
+        df, data_source, is_fallback, data_as_of = load_nav_dataframe()
     except Exception as e:
         logger.error(f"Error loading NAV data: {e}", exc_info=True)
         return HrpAllocationResponse(
             status="ERROR",
             mode=mode,
             risk_measure=risk_measure_str,
+            is_fallback=True,
+            data_source="NONE",
+            data_as_of_date=None,
             message=f"NAV data loading failure: {str(e)}"
         )
 
@@ -194,6 +209,9 @@ def run_hrp_allocation(
                     status="INSUFFICIENT_HISTORY",
                     mode=mode,
                     risk_measure=risk_measure_str,
+                    is_fallback=is_fallback,
+                    data_source=data_source,
+                    data_as_of_date=data_as_of,
                     start_date=start_d,
                     end_date=end_d,
                     trading_days=t_days,
@@ -257,6 +275,9 @@ def run_hrp_allocation(
             status="SUCCESS",
             mode=mode,
             risk_measure=risk_measure_str.upper(),
+            is_fallback=is_fallback,
+            data_source=data_source,
+            data_as_of_date=data_as_of,
             start_date=min_start_date,
             end_date=max_end_date,
             trading_days=min_trading_days,
@@ -275,6 +296,9 @@ def run_hrp_allocation(
                 status="INSUFFICIENT_HISTORY",
                 mode=mode,
                 risk_measure=risk_measure_str,
+                is_fallback=is_fallback,
+                data_source=data_source,
+                data_as_of_date=data_as_of,
                 start_date=start_d,
                 end_date=end_d,
                 trading_days=t_days,
@@ -301,7 +325,6 @@ def run_hrp_allocation(
             else:
                 equity_target = round(100.0 - cum_equity_target, 2)
                 hrp_pct = round(100.0 - cum_equity_hrp, 2)
-
             drift = round(hrp_pct - equity_target, 2)
             b = meta["bucket"]
             bucket_hrp_totals[b] = bucket_hrp_totals.get(b, 0.0) + hrp_pct
@@ -334,6 +357,9 @@ def run_hrp_allocation(
             status="SUCCESS",
             mode=mode,
             risk_measure=risk_measure_str.upper(),
+            is_fallback=is_fallback,
+            data_source=data_source,
+            data_as_of_date=data_as_of,
             start_date=start_d,
             end_date=end_d,
             trading_days=t_days,
@@ -352,6 +378,9 @@ def run_hrp_allocation(
                 status="INSUFFICIENT_HISTORY",
                 mode=mode,
                 risk_measure=risk_measure_str,
+                is_fallback=is_fallback,
+                data_source=data_source,
+                data_as_of_date=data_as_of,
                 start_date=start_d,
                 end_date=end_d,
                 trading_days=t_days,
@@ -402,6 +431,9 @@ def run_hrp_allocation(
             status="SUCCESS",
             mode=mode,
             risk_measure=risk_measure_str.upper(),
+            is_fallback=is_fallback,
+            data_source=data_source,
+            data_as_of_date=data_as_of,
             start_date=start_d,
             end_date=end_d,
             trading_days=t_days,

@@ -199,4 +199,100 @@ class SyncModelParsingUnitTest {
         assertEquals(99.5, report.coverageTelemetry?.auditedCoveragePct ?: 0.0, 0.01)
         assertEquals(1739500.0, report.coverageTelemetry?.auditedAum ?: 0.0, 0.01)
     }
+
+    @Test
+    fun testTradeSimulationResultDtoSnakeCaseDeserialization() {
+        val json = """
+            {
+                "isin": "INF209K01165",
+                "scheme_name": "Aditya Birla Sun Life Frontline Equity Fund",
+                "trade_type": "DISPOSAL",
+                "units": 100.0,
+                "price_per_unit": 52.45,
+                "gross_trade_amount": 5245.0,
+                "gross_capital_gain": 1245.0,
+                "ltcg_equity": 1000.0,
+                "stcg_equity": 0.0,
+                "slab_rate_gain": 245.0,
+                "sec112a_exemption_applied": 125000.0,
+                "estimated_tax_liability": 0.0,
+                "post_trade_net_worth": 1254300.0,
+                "post_trade_invested_cost": 850000.0,
+                "post_trade_xirr": 14.82,
+                "tax_summary_notice": "Zero liability after Sec 112A exemption."
+            }
+        """.trimIndent()
+
+        val res = gson.fromJson(json, com.portfolioos.mobile.model.TradeSimulationResultDto::class.java)
+        assertNotNull(res)
+        assertEquals("INF209K01165", res.isin)
+        assertEquals("Aditya Birla Sun Life Frontline Equity Fund", res.schemeName)
+        assertEquals("DISPOSAL", res.tradeType)
+        assertEquals(100.0, res.units, 0.001)
+        assertEquals(52.45, res.pricePerUnit, 0.001)
+        assertEquals(5245.0, res.grossTradeAmount, 0.01)
+        assertEquals(1245.0, res.grossCapitalGain, 0.01)
+        assertEquals(1000.0, res.ltcgEquity, 0.01)
+        assertEquals(0.0, res.stcgEquity, 0.01)
+        assertEquals(245.0, res.slabRateGain, 0.01)
+        assertEquals(245.0, res.debtGain, 0.01) // Backward compatibility alias
+        assertEquals(125000.0, res.sec112aExemptionApplied, 0.01)
+        assertEquals(0.0, res.estimatedTaxLiability, 0.01)
+        assertEquals(1254300.0, res.postTradeNetWorth, 0.01)
+        assertEquals(850000.0, res.postTradeInvestedCost, 0.01)
+        assertEquals(14.82, res.postTradeXirr, 0.01)
+        assertEquals("Zero liability after Sec 112A exemption.", res.taxSummaryNotice)
+    }
+
+    @Test
+    fun testTradeSimulationResultDtoCamelCaseBackwardCompatibility() {
+        val json = """
+            {
+                "isin": "INF209K01165",
+                "schemeName": "Legacy Camel Fund",
+                "tradeType": "DISPOSAL",
+                "units": 50.0,
+                "pricePerUnit": 100.0,
+                "grossTradeAmount": 5000.0,
+                "grossCapitalGain": 500.0,
+                "ltcgEquity": 500.0,
+                "stcgEquity": 0.0,
+                "debtGain": 150.0,
+                "sec112aExemptionApplied": 500.0,
+                "estimatedTaxLiability": 0.0,
+                "postTradeNetWorth": 200000.0,
+                "postTradeInvestedCost": 150000.0,
+                "postTradeXirr": 12.5,
+                "taxSummaryNotice": "Legacy OK"
+            }
+        """.trimIndent()
+
+        val res = gson.fromJson(json, com.portfolioos.mobile.model.TradeSimulationResultDto::class.java)
+        assertNotNull(res)
+        assertEquals("Legacy Camel Fund", res.schemeName)
+        assertEquals("DISPOSAL", res.tradeType)
+        assertEquals(100.0, res.pricePerUnit, 0.001)
+        assertEquals(150.0, res.slabRateGain, 0.01)
+        assertEquals(150.0, res.debtGain, 0.01)
+        assertEquals(200000.0, res.postTradeNetWorth, 0.01)
+        assertEquals(12.5, res.postTradeXirr, 0.01)
+    }
+
+    @Test
+    fun testTradeSimulationRequestDtoSerialization() {
+        val req = com.portfolioos.mobile.model.TradeSimulationRequestDto(
+            isin = "INF209K01165",
+            schemeName = "Aditya Birla",
+            units = 25.5,
+            pricePerUnit = 48.2,
+            tradeDate = "2026-09-13",
+            tradeType = "DISPOSAL"
+        )
+        val json = gson.toJson(req)
+        assertTrue(json.contains("\"scheme_name\":\"Aditya Birla\""))
+        assertTrue(json.contains("\"price_per_unit\":48.2"))
+        assertTrue(json.contains("\"trade_date\":\"2026-09-13\""))
+        assertTrue(json.contains("\"trade_type\":\"DISPOSAL\""))
+    }
 }
+

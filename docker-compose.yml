@@ -15,6 +15,7 @@ services:
       - DUCKDB_PATH=/app/data/tax_ledger.duckdb
       - SIDECAR_HTTP_URL=http://quant-sidecar:8000
       - SIDECAR_FLIGHT_URL=grpc+tcp://quant-sidecar:8001
+      - QUANT_SIDECAR_HOST=quant-sidecar
       - SPRING_WEB_RESOURCES_STATIC_LOCATIONS=file:/app/static/,classpath:/static/
       - RULES_DIR=/app/rules
     volumes:

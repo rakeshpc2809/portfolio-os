@@ -59,6 +59,18 @@ object SyncApiClient {
         "http://192.168.1.2:8080/"
     )
 
+    fun getCandidateBaseUrls(context: Context): List<String> {
+        val urls = mutableListOf<String>()
+        val customUrl = SnapshotCacheManager.getCustomUrl(context)
+        if (!customUrl.isNullOrBlank()) {
+            urls.add(if (customUrl.endsWith("/")) customUrl else "$customUrl/")
+        }
+        urls.add(USB_BASE_URL)
+        urls.add(EMULATOR_BASE_URL)
+        urls.addAll(WIFI_CANDIDATE_URLS)
+        return urls.distinct()
+    }
+
     fun createService(baseUrl: String = USB_BASE_URL): SyncApiService {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
@@ -80,72 +92,36 @@ object SyncApiClient {
     }
 
     suspend fun fetchSnapshotWithFallback(context: Context): SyncSnapshot {
-        val customUrl = SnapshotCacheManager.getCustomUrl(context)
         val authToken = SnapshotCacheManager.getAuthToken(context)
-        
-        // 1. Try Custom Remote/Tunnel URL if configured
-        if (!customUrl.isNullOrBlank()) {
+        val candidateUrls = getCandidateBaseUrls(context)
+
+        for (baseUrl in candidateUrls) {
             try {
-                val formatted = if (customUrl.endsWith("/")) customUrl else "$customUrl/"
-                val remoteSnapshot = createService(formatted).getSnapshot(token = authToken)
-                SnapshotCacheManager.saveSnapshot(context, remoteSnapshot, isFullLedgerSync = true)
-                return remoteSnapshot
+                val snapshot = createService(baseUrl).getSnapshot(token = authToken)
+                SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
+                return snapshot
             } catch (e: Exception) {
-                // fallthrough to local networks
+                // continue to next candidate
             }
         }
 
-        // 2. Try USB Loopback (adb reverse)
-        try {
-            val snapshot = createService(USB_BASE_URL).getSnapshot(token = authToken)
-            SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
-            return snapshot
-        } catch (e1: Exception) {
-            // 3. Try Android Emulator loopback
-            try {
-                val snapshot = createService(EMULATOR_BASE_URL).getSnapshot(token = authToken)
-                SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
-                return snapshot
-            } catch (e2: Exception) {
-                // 4. Try Wi-Fi LAN Candidate IPs
-                for (wifiUrl in WIFI_CANDIDATE_URLS) {
-                    try {
-                        val snapshot = createService(wifiUrl).getSnapshot(token = authToken)
-                        SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
-                        return snapshot
-                    } catch (e3: Exception) {
-                        // continue to next candidate IP
-                    }
-                }
-                
-                // 5. Offline Fallback: Return cached snapshot if available
-                val cached = SnapshotCacheManager.loadSnapshot(context)
-                return cached ?: throw java.io.IOException("No network connection available to sync snapshot and no local cache present.")
-            }
-        }
+        // Offline Fallback: Return cached snapshot if available
+        val cached = SnapshotCacheManager.loadSnapshot(context)
+        return cached ?: throw java.io.IOException("No network connection available to sync snapshot and no local cache present.")
     }
 
     suspend fun simulateTradeWithFallback(context: Context, request: TradeSimulationRequestDto): TradeSimulationResultDto {
-        val customUrl = SnapshotCacheManager.getCustomUrl(context)
         val authToken = SnapshotCacheManager.getAuthToken(context)
+        val candidateUrls = getCandidateBaseUrls(context)
 
-        if (!customUrl.isNullOrBlank()) {
+        var lastException: Exception? = null
+        for (baseUrl in candidateUrls) {
             try {
-                val formatted = if (customUrl.endsWith("/")) customUrl else "$customUrl/"
-                return createService(formatted).simulateTrade(token = authToken, request = request)
+                return createService(baseUrl).simulateTrade(token = authToken, request = request)
             } catch (e: Exception) {
-                // fallthrough
+                lastException = e
             }
         }
-
-        try {
-            return createService(USB_BASE_URL).simulateTrade(token = authToken, request = request)
-        } catch (e1: Exception) {
-            try {
-                return createService(EMULATOR_BASE_URL).simulateTrade(token = authToken, request = request)
-            } catch (e2: Exception) {
-                return createService(WIFI_BASE_URL).simulateTrade(token = authToken, request = request)
-            }
-        }
+        throw lastException ?: java.io.IOException("Unable to connect to any backend candidate URL.")
     }
 }

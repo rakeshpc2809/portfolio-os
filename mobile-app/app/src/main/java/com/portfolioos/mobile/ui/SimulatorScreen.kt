@@ -141,7 +141,7 @@ fun SimulatorView(holdings: List<FlatHoldingDto>) {
                             • Trade Type: ${res.tradeType} (${res.units} Units @ ₹${res.pricePerUnit})
                             • Gross Trade Amount: ${formatInr(res.grossTradeAmount)}
                             • Gross Capital Gain: ${formatInr(res.grossCapitalGain)}
-                            • LTCG Equity: ${formatInr(res.ltcgEquity)} | STCG Equity: ${formatInr(res.stcgEquity)}
+                            • LTCG Equity: ${formatInr(res.ltcgEquity)} | STCG Equity: ${formatInr(res.stcgEquity)}${if (res.slabRateGain > 0.0) " | Slab Gain: " + formatInr(res.slabRateGain) else ""}
                             • Sec 112A Exemption Applied: ${formatInr(res.sec112aExemptionApplied)}
                             • Projected Tax Liability: ${formatInr(res.estimatedTaxLiability)}
                             • Post-Trade Valuation: ${formatInr(res.postTradeNetWorth)}

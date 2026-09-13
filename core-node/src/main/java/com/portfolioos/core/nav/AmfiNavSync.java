@@ -29,6 +29,9 @@ public class AmfiNavSync {
     private static List<NavEntry> cachedNavs = null;
     private static long lastFetchTimeMs = 0L;
 
+    private static final java.time.format.DateTimeFormatter AMFI_DATE_FMT =
+        java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yyyy", java.util.Locale.ENGLISH);
+
     public List<NavEntry> parseAmfiFeed(String feedContent) {
         List<NavEntry> entries = new ArrayList<>();
         LocalDate today = LocalDate.now();
@@ -53,15 +56,23 @@ public class AmfiNavSync {
                     } catch (Exception ignored) {}
                 }
 
+                LocalDate navDate = today;
+                if (parts.length >= 6) {
+                    String lastPart = parts[parts.length - 1].trim();
+                    try {
+                        navDate = LocalDate.parse(lastPart, AMFI_DATE_FMT);
+                    } catch (Exception ignored) {}
+                }
+
                 if (nav != null) {
                     if (isin1 != null && !isin1.isEmpty() && !"-".equals(isin1)) {
-                        entries.add(new NavEntry(schemeCode, isin1, schemeName, nav, today));
+                        entries.add(new NavEntry(schemeCode, isin1, schemeName, nav, navDate));
                     }
                     if (isin2 != null && !isin2.isEmpty() && !"-".equals(isin2) && !isin2.equalsIgnoreCase(isin1)) {
-                        entries.add(new NavEntry(schemeCode, isin2, schemeName, nav, today));
+                        entries.add(new NavEntry(schemeCode, isin2, schemeName, nav, navDate));
                     }
                     if ((isin1 == null || isin1.isEmpty() || "-".equals(isin1)) && (isin2 == null || isin2.isEmpty() || "-".equals(isin2))) {
-                        entries.add(new NavEntry(schemeCode, null, schemeName, nav, today));
+                        entries.add(new NavEntry(schemeCode, null, schemeName, nav, navDate));
                     }
                 }
             }
@@ -120,5 +131,24 @@ public class AmfiNavSync {
             }
         }
         return navMap;
+    }
+
+    public Map<String, LocalDate> getNavDateMap() {
+        List<NavEntry> entries = fetchLatestNavsFromAmfi();
+        Map<String, LocalDate> dateMap = new HashMap<>();
+        for (NavEntry entry : entries) {
+            if (entry.date() != null) {
+                if (entry.isin() != null && !entry.isin().isEmpty()) {
+                    dateMap.put(entry.isin(), entry.date());
+                }
+                if (entry.schemeCode() != null && !entry.schemeCode().isEmpty()) {
+                    dateMap.put(entry.schemeCode(), entry.date());
+                }
+                if (entry.schemeName() != null && !entry.schemeName().isEmpty()) {
+                    dateMap.put(entry.schemeName(), entry.date());
+                }
+            }
+        }
+        return dateMap;
     }
 }

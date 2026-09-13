@@ -148,6 +148,35 @@ class SnapshotCacheManagerUnitTest {
         assertTrue(fallback.netWorthHistory?.isEmpty() == true)
         assertNull(fallback.rebalancePlan)
     }
+
+    @Test
+    fun candidateBaseUrls_withoutCustomUrl_returnsLocalFallbacksInOrder() {
+        val candidates = com.portfolioos.mobile.api.SyncApiClient.getCandidateBaseUrls(mockContext)
+        assertFalse("Candidates list must not be empty", candidates.isEmpty())
+        assertEquals("First candidate must be USB loopback", com.portfolioos.mobile.api.SyncApiClient.USB_BASE_URL, candidates[0])
+        assertEquals("Second candidate must be Emulator loopback", com.portfolioos.mobile.api.SyncApiClient.EMULATOR_BASE_URL, candidates[1])
+        assertTrue("Must contain WiFi candidates", candidates.containsAll(com.portfolioos.mobile.api.SyncApiClient.WIFI_CANDIDATE_URLS))
+    }
+
+    @Test
+    fun candidateBaseUrls_withCustomUrl_prioritizesCustomUrlAtHead() {
+        val customRemote = "https://tailscale.portfolio-os.internal:8443"
+        SnapshotCacheManager.setCustomUrl(mockContext, customRemote)
+
+        val candidates = com.portfolioos.mobile.api.SyncApiClient.getCandidateBaseUrls(mockContext)
+        assertEquals("Custom URL with trailing slash must be candidate index 0", "$customRemote/", candidates[0])
+        assertEquals("USB loopback must follow custom URL at index 1", com.portfolioos.mobile.api.SyncApiClient.USB_BASE_URL, candidates[1])
+        assertEquals("Emulator loopback must follow at index 2", com.portfolioos.mobile.api.SyncApiClient.EMULATOR_BASE_URL, candidates[2])
+    }
+
+    @Test
+    fun candidateBaseUrls_preservesTrailingSlashWhenAlreadyPresent() {
+        val customWithSlash = "http://192.168.1.50:8080/"
+        SnapshotCacheManager.setCustomUrl(mockContext, customWithSlash)
+
+        val candidates = com.portfolioos.mobile.api.SyncApiClient.getCandidateBaseUrls(mockContext)
+        assertEquals("Candidate index 0 must match custom URL without duplicate slash", customWithSlash, candidates[0])
+    }
 }
 
 /**

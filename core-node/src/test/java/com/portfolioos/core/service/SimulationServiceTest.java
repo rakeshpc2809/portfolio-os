@@ -186,4 +186,74 @@ class SimulationServiceTest {
         assertFalse(content.contains("new BigDecimal(\"0.3\")"), "Must not contain hardcoded 0.3 rate literal");
         assertTrue(content.contains("default -> throw new IllegalStateException"), "Must contain explicit default throw branch");
     }
+
+    @Test
+    void testNegativeUnitsThrowsIllegalArgument() {
+        SimulationService.TradeSimulationRequest req = new SimulationService.TradeSimulationRequest(
+            "INF109KC13X2",
+            "ICICI Nifty200",
+            new BigDecimal("-100.0"),
+            new BigDecimal("15.0"),
+            "2026-05-01",
+            "DISPOSAL"
+        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> simulationService.simulateTrade(req));
+        assertTrue(ex.getMessage().contains("positive unit quantity"), "Expected positive unit quantity message");
+    }
+
+    @Test
+    void testZeroUnitsThrowsIllegalArgument() {
+        SimulationService.TradeSimulationRequest req = new SimulationService.TradeSimulationRequest(
+            "INF109KC13X2",
+            "ICICI Nifty200",
+            BigDecimal.ZERO,
+            new BigDecimal("15.0"),
+            "2026-05-01",
+            "DISPOSAL"
+        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> simulationService.simulateTrade(req));
+        assertTrue(ex.getMessage().contains("positive unit quantity"));
+    }
+
+    @Test
+    void testNegativePriceThrowsIllegalArgument() {
+        SimulationService.TradeSimulationRequest req = new SimulationService.TradeSimulationRequest(
+            "INF109KC13X2",
+            "ICICI Nifty200",
+            new BigDecimal("100.0"),
+            new BigDecimal("-15.0"),
+            "2026-05-01",
+            "DISPOSAL"
+        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> simulationService.simulateTrade(req));
+        assertTrue(ex.getMessage().contains("positive price per unit"));
+    }
+
+    @Test
+    void testBlankIsinThrowsIllegalArgument() {
+        SimulationService.TradeSimulationRequest req = new SimulationService.TradeSimulationRequest(
+            "   ",
+            "ICICI Nifty200",
+            new BigDecimal("100.0"),
+            new BigDecimal("15.0"),
+            "2026-05-01",
+            "DISPOSAL"
+        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> simulationService.simulateTrade(req));
+        assertTrue(ex.getMessage().contains("valid non-empty ISIN"));
+    }
+
+    @Test
+    void testInvalidTradeTypeThrowsIllegalArgument() {
+        SimulationService.TradeSimulationRequest req = new SimulationService.TradeSimulationRequest(
+            "INF109KC13X2",
+            "ICICI Nifty200",
+            new BigDecimal("100.0"),
+            new BigDecimal("15.0"),
+            "2026-05-01",
+            "INVALID_TYPE"
+        );
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> simulationService.simulateTrade(req));
+        assertTrue(ex.getMessage().contains("tradeType of 'ACQUISITION' or 'DISPOSAL'"));
+    }
 }

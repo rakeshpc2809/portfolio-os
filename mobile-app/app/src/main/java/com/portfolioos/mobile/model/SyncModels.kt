@@ -231,32 +231,35 @@ data class RadarSignalDto(
 @Immutable
 data class TradeSimulationRequestDto(
     @SerializedName("isin") val isin: String,
-    @SerializedName("schemeName") val schemeName: String,
+    @SerializedName("scheme_name", alternate = ["schemeName"]) val schemeName: String,
     @SerializedName("units") val units: Double,
-    @SerializedName("pricePerUnit") val pricePerUnit: Double,
-    @SerializedName("tradeDate") val tradeDate: String = "",
-    @SerializedName("tradeType") val tradeType: String // DISPOSAL or ACQUISITION
+    @SerializedName("price_per_unit", alternate = ["pricePerUnit", "price"]) val pricePerUnit: Double,
+    @SerializedName("trade_date", alternate = ["tradeDate"]) val tradeDate: String = "",
+    @SerializedName("trade_type", alternate = ["tradeType", "type"]) val tradeType: String // DISPOSAL or ACQUISITION
 )
 
 @Immutable
 data class TradeSimulationResultDto(
     @SerializedName("isin") val isin: String = "",
-    @SerializedName("schemeName") val schemeName: String = "",
-    @SerializedName("tradeType") val tradeType: String = "",
+    @SerializedName("scheme_name", alternate = ["schemeName"]) val schemeName: String = "",
+    @SerializedName("trade_type", alternate = ["tradeType"]) val tradeType: String = "",
     @SerializedName("units") val units: Double = 0.0,
-    @SerializedName("pricePerUnit") val pricePerUnit: Double = 0.0,
-    @SerializedName("grossTradeAmount") val grossTradeAmount: Double = 0.0,
-    @SerializedName("grossCapitalGain") val grossCapitalGain: Double = 0.0,
-    @SerializedName("ltcgEquity") val ltcgEquity: Double = 0.0,
-    @SerializedName("stcgEquity") val stcgEquity: Double = 0.0,
-    @SerializedName("debtGain") val debtGain: Double = 0.0,
-    @SerializedName("sec112aExemptionApplied") val sec112aExemptionApplied: Double = 0.0,
-    @SerializedName("estimatedTaxLiability") val estimatedTaxLiability: Double = 0.0,
-    @SerializedName("postTradeNetWorth") val postTradeNetWorth: Double = 0.0,
-    @SerializedName("postTradeInvestedCost") val postTradeInvestedCost: Double = 0.0,
-    @SerializedName("postTradeXirr") val postTradeXirr: Double = 0.0,
-    @SerializedName("taxSummaryNotice") val taxSummaryNotice: String = ""
-)
+    @SerializedName("price_per_unit", alternate = ["pricePerUnit"]) val pricePerUnit: Double = 0.0,
+    @SerializedName("gross_trade_amount", alternate = ["grossTradeAmount"]) val grossTradeAmount: Double = 0.0,
+    @SerializedName("gross_capital_gain", alternate = ["grossCapitalGain"]) val grossCapitalGain: Double = 0.0,
+    @SerializedName("ltcg_equity", alternate = ["ltcgEquity"]) val ltcgEquity: Double = 0.0,
+    @SerializedName("stcg_equity", alternate = ["stcgEquity"]) val stcgEquity: Double = 0.0,
+    @SerializedName("slab_rate_gain", alternate = ["debtGain"]) val slabRateGain: Double = 0.0,
+    @SerializedName("sec112a_exemption_applied", alternate = ["sec112aExemptionApplied"]) val sec112aExemptionApplied: Double = 0.0,
+    @SerializedName("estimated_tax_liability", alternate = ["estimatedTaxLiability"]) val estimatedTaxLiability: Double = 0.0,
+    @SerializedName("post_trade_net_worth", alternate = ["postTradeNetWorth"]) val postTradeNetWorth: Double = 0.0,
+    @SerializedName("post_trade_invested_cost", alternate = ["postTradeInvestedCost"]) val postTradeInvestedCost: Double = 0.0,
+    @SerializedName("post_trade_xirr", alternate = ["postTradeXirr"]) val postTradeXirr: Double = 0.0,
+    @SerializedName("tax_summary_notice", alternate = ["taxSummaryNotice"]) val taxSummaryNotice: String = ""
+) {
+    val debtGain: Double
+        get() = slabRateGain
+}
 
 @Immutable
 data class FanChartTrajectoryDto(

@@ -19,11 +19,11 @@ public class TriggerHistoryRepository {
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     public TriggerHistoryRepository() {
-        this(System.getenv("SQLITE_PATH") != null && !System.getenv("SQLITE_PATH").isBlank()
-             ? System.getenv("SQLITE_PATH") : "data/tax_ledger.db");
+        this(com.portfolioos.core.config.DbPathResolver.resolveDatabasePath("data/tax_ledger.db", "SQLITE_PATH"));
     }
 
     public TriggerHistoryRepository(String dbPath) {
+        String resolvedPath = com.portfolioos.core.config.DbPathResolver.resolveDatabasePath(dbPath, "SQLITE_PATH");
         try {
             Class.forName("org.sqlite.JDBC");
         } catch (ClassNotFoundException e) {
@@ -31,10 +31,12 @@ public class TriggerHistoryRepository {
         }
 
         String jdbcUrl;
-        if (":memory:".equals(dbPath)) {
+        if (":memory:".equals(resolvedPath)) {
             jdbcUrl = "jdbc:sqlite::memory:";
+        } else if (resolvedPath != null && resolvedPath.startsWith("jdbc:sqlite:")) {
+            jdbcUrl = resolvedPath;
         } else {
-            File file = new File(dbPath);
+            File file = new File(resolvedPath);
             if (file.getParentFile() != null) {
                 file.getParentFile().mkdirs();
             }

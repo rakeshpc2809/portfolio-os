@@ -53,8 +53,12 @@ def fetch_nav_series(scheme_code: int, isin: str, name: str) -> list[dict]:
 def main():
     repo_root = Path(__file__).resolve().parent.parent.parent
     duckdb_path = repo_root / "data" / "tax_ledger.duckdb"
-    parquet_path = repo_root / "quant-sidecar" / "data" / "nav_export.parquet"
-    parquet_path.parent.mkdir(parents=True, exist_ok=True)
+    parquet_paths = [
+        repo_root / "quant-sidecar" / "data" / "nav_export.parquet",
+        repo_root / "data" / "nav_export.parquet",
+    ]
+    for p in parquet_paths:
+        p.parent.mkdir(parents=True, exist_ok=True)
 
     print("=" * 72)
     print("MFAPI HISTORICAL NAV BACKFILL (OFFLINE BATCH JOB)")
@@ -118,8 +122,9 @@ def main():
         pl.col("nav").alias("nav_value"),
     ]).sort(["isin", "nav_date"])
     
-    export_df.write_parquet(parquet_path)
-    print(f"[+] Wrote {len(export_df)} total records to {parquet_path}")
+    for p in parquet_paths:
+        export_df.write_parquet(p)
+        print(f"[+] Wrote {len(export_df)} total records to {p}")
 
     # 3. Print Intersection / Common Alignment Window Report
     print("\n" + "=" * 72)

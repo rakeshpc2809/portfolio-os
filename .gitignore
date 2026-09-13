@@ -47,6 +47,7 @@ dist/
 
 # Databases & local data files
 data/
+core-node/data/
 quant-sidecar/data/
 *.db
 *.duckdb
@@ -78,7 +79,10 @@ ehthumbs.db
 Desktop.ini
 
 # Repomix bundles
+repomix*.xml
 repomix*.md
+!repomix.config.json
+
 
 .aider*
 
@@ -86,6 +90,9 @@ repomix*.md
 credentials/
 **/credentials/*.json
 *service_account*.json
+.env
+.env.*
+*.env
 
 # Testing databases
 .jqwik-database

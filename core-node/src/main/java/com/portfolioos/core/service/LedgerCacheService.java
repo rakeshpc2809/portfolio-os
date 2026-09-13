@@ -49,8 +49,20 @@ public class LedgerCacheService {
         Map<String, BigDecimal> navMap,
         String ledgerHash,
         long lastNavFreshnessTimestamp,
-        String healthStatus // HEALTHY, DEGRADED_AMFI_TIMEOUT
-    ) {}
+        String healthStatus, // HEALTHY, DEGRADED_AMFI_TIMEOUT
+        Map<String, java.time.LocalDate> navDateMap
+    ) {
+        public CachedLedgerState(
+            List<TaxEvent> events,
+            FifoMatcher.FifoResult fifoResult,
+            Map<String, BigDecimal> navMap,
+            String ledgerHash,
+            long lastNavFreshnessTimestamp,
+            String healthStatus
+        ) {
+            this(events, fifoResult, navMap, ledgerHash, lastNavFreshnessTimestamp, healthStatus, Collections.emptyMap());
+        }
+    }
 
     @EventListener(ApplicationReadyEvent.class)
     @Scheduled(fixedRate = 30000)
@@ -66,8 +78,10 @@ public class LedgerCacheService {
                     List<TaxEvent> events = eventStore.getAllEvents();
                     FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(events);
                     Map<String, BigDecimal> navMap = null;
+                    Map<String, java.time.LocalDate> navDateMap = Collections.emptyMap();
                     try {
                         navMap = amfiSync.getNavMap();
+                        navDateMap = amfiSync.getNavDateMap();
                         if (navMap == null || navMap.isEmpty()) {
                             log.warn("AMFI_NAV_SYNC_ALERT: navMap returned empty or null after AMFI sync attempt!");
                             health = "DEGRADED_AMFI_EMPTY";
@@ -76,9 +90,10 @@ public class LedgerCacheService {
                         log.warn("AMFI_NAV_SYNC_ALERT: Exception during AMFI NAV sync: {}", amfiEx.getMessage());
                         health = "DEGRADED_AMFI_TIMEOUT";
                         navMap = current != null ? current.navMap() : java.util.Collections.emptyMap();
+                        navDateMap = current != null && current.navDateMap() != null ? current.navDateMap() : Collections.emptyMap();
                     }
                     
-                    stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash, now, health));
+                    stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash, now, health, navDateMap));
                     lastNavSyncTime = now;
                 }
             } catch (Exception e) {

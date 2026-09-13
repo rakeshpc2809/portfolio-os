@@ -30,12 +30,12 @@ public class SqliteEventStore implements EventStorePort {
     private final HikariDataSource dataSource;
 
     public SqliteEventStore() {
-        this(System.getenv("SQLITE_PATH") != null && !System.getenv("SQLITE_PATH").isBlank() 
-             ? System.getenv("SQLITE_PATH") : "data/tax_ledger.db");
+        this(com.portfolioos.core.config.DbPathResolver.resolveDatabasePath("data/tax_ledger.db", "SQLITE_PATH"));
     }
 
     public SqliteEventStore(String dbPath) {
-        this.dbPath = dbPath;
+        String resolvedPath = com.portfolioos.core.config.DbPathResolver.resolveDatabasePath(dbPath, "SQLITE_PATH");
+        this.dbPath = resolvedPath;
         String envSecret = System.getenv("LEDGER_HMAC_SECRET");
         if (envSecret == null || envSecret.isBlank()) {
             throw new IllegalStateException("SECURITY CRITICAL: LEDGER_HMAC_SECRET environment variable is required and cannot be empty.");
@@ -48,10 +48,12 @@ public class SqliteEventStore implements EventStorePort {
             throw new RuntimeException("SQLite JDBC driver not found", e);
         }
 
-        if (":memory:".equals(dbPath)) {
+        if (":memory:".equals(resolvedPath)) {
             jdbcUrl = "jdbc:sqlite::memory:";
+        } else if (resolvedPath != null && resolvedPath.startsWith("jdbc:sqlite:")) {
+            jdbcUrl = resolvedPath;
         } else {
-            File file = new File(dbPath);
+            File file = new File(resolvedPath);
             if (file.getParentFile() != null) {
                 file.getParentFile().mkdirs();
             }
@@ -359,6 +361,22 @@ public class SqliteEventStore implements EventStorePort {
             stmt.execute("DELETE FROM tax_events");
         } catch (SQLException e) {
             throw new RuntimeException("Failed to clear ledger", e);
+        }
+    }
+
+    @Override
+    public synchronized void deleteEvents(List<String> eventIds) {
+        if (eventIds == null || eventIds.isEmpty()) return;
+        String placeholders = String.join(",", Collections.nCopies(eventIds.size(), "?"));
+        String sql = "DELETE FROM tax_events WHERE id IN (" + placeholders + ")";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            for (int i = 0; i < eventIds.size(); i++) {
+                stmt.setString(i + 1, eventIds.get(i));
+            }
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to rollback events from SQLite ledger", e);
         }
     }
 

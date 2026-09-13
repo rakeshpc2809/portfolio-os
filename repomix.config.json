@@ -1,0 +1,69 @@
+{
+  "$schema": "https://raw.githubusercontent.com/yamadashy/repomix/main/repomix.config.schema.json",
+  "output": {
+    "filePath": "repomix-minimal.xml",
+    "style": "xml",
+    "parsableStyle": true,
+    "fileSummary": true,
+    "directoryStructure": true,
+    "removeComments": false,
+    "removeEmptyLines": true,
+    "topFilesLength": 10,
+    "showLineNumbers": false,
+    "headerText": "PORTFOLIO OS v3.0 — MINIMAL PRODUCTION CODEBASE REVIEW PACK FOR GEMINI PRO\n\nSystem Overview:\nPortfolio OS is a local-first personal investment management system with three core tiers:\n1. Java 21 Core Node (Spring Boot 3.2.5): Cryptographic append-only SQLite HMAC-SHA256 ledger, real-time DuckDB analytical projection, Section 112A / 50AA FIFO tax engine with Jan 31 2018 grandfathering, macro regime cash-buffer router, rebalancing waterfall, and agent tool-calling discovery.\n2. Python Quant Sidecar (FastAPI + PyArrow): Zero-copy Apache Arrow Flight RPC server (port 8001), HRP intra-bucket allocator, CVaR risk bounds, and CAS PDF / broker CSV parsers.\n3. Android Companion App (Kotlin + Jetpack Compose): Offline-first Material 3 client, biometric authentication, and dynamic snapshot synchronization.\n4. Python TUI: Textual-based live dashboard with Daily Executive Summary modal.\n\nReview Objectives:\n- Architectural contracts between Core Node, Quant Sidecar (Arrow Flight RPC), and Android client.\n- Financial math & tax engine precision (FIFO matching, grandfathered FMV, rebalance waterfall budget conservation).\n- Concurrency, locking, and data integrity (HMAC chain verification, DuckDB projection sync, transactional state management).\n- Security posture (token interceptor, secret isolation, input sanitization).\n- Identification of latent defects, race conditions, or optimization bottlenecks."
+  },
+  "include": [
+    "core-node/src/main/java/**",
+    "core-node/rules/**",
+    "core-node/pom.xml",
+    "quant-sidecar/app.py",
+    "quant-sidecar/flight_server.py",
+    "quant-sidecar/quant/**",
+    "quant-sidecar/parsers/**",
+    "quant-sidecar/requirements.txt",
+    "tui/portfolio_os_tui.py",
+    "tui/daily_summary_helper.py",
+    "tui/tui_config.yaml",
+    "mobile-app/app/src/main/java/**",
+    "mobile-app/app/build.gradle.kts",
+    "docker-compose.yml",
+    "justfile"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "**/*Test*.java",
+      "**/*test*.py",
+      "**/src/test/**",
+      "**/tests/**",
+      "**/build/**",
+      "**/target/**",
+      "**/.gradle/**",
+      "**/res/font/**",
+      "**/res/drawable*/**",
+      "**/*.ttf",
+      "**/*.png",
+      "**/*.webp",
+      "**/*.pdf",
+      "**/*.docx",
+      "**/*.zip",
+      "**/*.parquet",
+      "**/*.db",
+      "**/*.duckdb",
+      "**/*.wal",
+      "**/*.class",
+      "**/*.jar",
+      "core-node/src/main/resources/static/**",
+      "repomix*",
+      ".aider*",
+      "*.log",
+      "claude_review_package/**",
+      "extracted_doc.txt",
+      "thumbnail.webp"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  }
+}
