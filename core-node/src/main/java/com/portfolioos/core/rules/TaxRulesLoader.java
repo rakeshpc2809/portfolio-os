@@ -92,11 +92,11 @@ public class TaxRulesLoader {
 
             TaxRulesConfig config = new TaxRulesConfig(
                 fiscalYear,
-                eqMonths * 30L,
+                eqMonths * 365L / 12L,
                 eqLtcgRate,
                 eqStcgRate,
                 eqExemption,
-                goldMonths * 30L,
+                goldMonths * 365L / 12L,
                 goldLtcgRate,
                 debtShortTerm
             );

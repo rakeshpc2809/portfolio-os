@@ -101,6 +101,64 @@ class Itr2CsvExporterTest {
     }
 
     @Test
+    void testMultiUnitPre2018GrandfatheringDimensionalIntegrity() {
+        // Multi-unit lot: 100 units @ 100 cost = 10,000 costBasis. Proceeds = 20,000 (200/unit).
+        // FMV = 150/unit -> Total FMV = 15,000.
+        // Lower bound = min(15000, 20000) = 15,000.
+        // Deemed cost = max(10000, 15000) = 15,000. Realized gain = 5,000.
+        MatchedLot multiUnitPre = new MatchedLot(
+            "MATCH_MULTI_PRE", "EV_DISP_1", "LOT_MULTI_PRE", "INF109KC13X2",
+            LocalDate.of(2017, 1, 1), LocalDate.of(2026, 5, 1),
+            new BigDecimal("100.0"), new BigDecimal("10000.0"), new BigDecimal("20000.0"),
+            new BigDecimal("10000.0"), 3000L, TaxTerm.LONG_TERM, AssetCategory.EQUITY
+        );
+
+        String csv = Itr2CsvExporter.generateSchedule112aCsv(
+            List.of(multiUnitPre), "2026-27", Map.of("INF109KC13X2", "Fund Multi Pre"),
+            Map.of("INF109KC13X2", new BigDecimal("150.0"))
+        );
+
+        // Asserts: totalUnits=100.00, proceeds=20000.00, deemedCost=15000.00, displayFmv=150.00, gain=5000.00
+        assertTrue(csv.contains("100.00,20000.00,15000.00,150.00,0.00,5000.00,\"VALIDATED_SECTION_55_2_AC\""),
+            "Multi-unit pre-2018 lot must compute deemedCost using total units * unit FMV, not raw unit FMV");
+    }
+
+    @Test
+    void testMixedPreAndPost2018LotsInSameIsinGroup() {
+        // Lot 1: Pre-2018. 50 units @ 100 = 5,000 cost. Proceeds = 10,000 (200/unit).
+        // FMV = 150/unit -> Total FMV = 7,500. Deemed cost = 7,500.
+        MatchedLot lotPre = new MatchedLot(
+            "MATCH_PRE", "EV_DISP_PRE", "LOT_PRE", "INF109KC13X2",
+            LocalDate.of(2017, 6, 1), LocalDate.of(2026, 5, 1),
+            new BigDecimal("50.0"), new BigDecimal("5000.0"), new BigDecimal("10000.0"),
+            new BigDecimal("5000.0"), 3200L, TaxTerm.LONG_TERM, AssetCategory.EQUITY
+        );
+
+        // Lot 2: Post-2018. 50 units @ 120 = 6,000 cost. Proceeds = 10,000 (200/unit).
+        // Not grandfathered -> Deemed cost = actual cost = 6,000.
+        MatchedLot lotPost = new MatchedLot(
+            "MATCH_POST", "EV_DISP_POST", "LOT_POST", "INF109KC13X2",
+            LocalDate.of(2023, 1, 1), LocalDate.of(2026, 5, 1),
+            new BigDecimal("50.0"), new BigDecimal("6000.0"), new BigDecimal("10000.0"),
+            new BigDecimal("4000.0"), 1200L, TaxTerm.LONG_TERM, AssetCategory.EQUITY
+        );
+
+        String csv = Itr2CsvExporter.generateSchedule112aCsv(
+            List.of(lotPre, lotPost), "2026-27", Map.of("INF109KC13X2", "Fund Mixed"),
+            Map.of("INF109KC13X2", new BigDecimal("150.0"))
+        );
+
+        // Aggregate asserts:
+        // totalUnits = 100.00
+        // proceeds = 20000.00
+        // deemedCost = 7500.00 (pre) + 6000.00 (post) = 13500.00
+        // gain = 20000.00 - 13500.00 = 6500.00
+        // status = MIXED_PRE_AND_POST_2018
+        assertTrue(csv.contains("100.00,20000.00,13500.00,150.00,0.00,6500.00,\"MIXED_PRE_AND_POST_2018\""),
+            "Mixed pre- and post-2018 lots must compute deemed cost lot-by-lot without cross-contamination");
+    }
+
+    @Test
     void testRegressionNoEmptyMapDefaultInSchedule112a() throws Exception {
         java.io.File exporterFile = new java.io.File("src/main/java/com/portfolioos/core/reporting/Itr2CsvExporter.java");
         assertTrue(exporterFile.exists());

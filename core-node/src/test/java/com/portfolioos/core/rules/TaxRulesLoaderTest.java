@@ -18,6 +18,8 @@ class TaxRulesLoaderTest {
         assertEquals(0, new BigDecimal("125000").compareTo(config.equityExemptionLimit()));
         assertEquals(0, new BigDecimal("0.125").compareTo(config.equityLtcgRate()));
         assertEquals(0, new BigDecimal("0.20").compareTo(config.equityStcgRate()));
+        assertEquals(365L, config.equityLtcgThresholdDays(), "Equity LTCG threshold must be exactly 365 calendar days");
+        assertEquals(730L, config.goldInternationalThresholdDays(), "Gold/International LTCG threshold must be exactly 730 calendar days");
     }
 
     @Test

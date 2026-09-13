@@ -55,47 +55,43 @@ public class Itr2CsvExporter {
             String name = assetNameMap.getOrDefault(isin, isin);
             BigDecimal totalUnits = BigDecimal.ZERO;
             BigDecimal proceeds = BigDecimal.ZERO;
-            BigDecimal actualCost = BigDecimal.ZERO;
+            BigDecimal deemedCost = BigDecimal.ZERO;
 
             boolean isPre2018 = false;
+            boolean hasPost2018 = false;
+            BigDecimal fmvJan2018 = (fmv2018Map != null) ? fmv2018Map.get(isin) : null;
+
             for (MatchedLot lot : lots) {
                 totalUnits = totalUnits.add(lot.unitsMatched());
                 proceeds = proceeds.add(lot.saleProceeds());
-                actualCost = actualCost.add(lot.costBasis());
-                if (lot.acquisitionDate().isBefore(GRANDFATHER_CUTOFF) || lot.acquisitionDate().isEqual(GRANDFATHER_CUTOFF)) {
+
+                boolean lotPre2018 = !lot.acquisitionDate().isAfter(GRANDFATHER_CUTOFF);
+                if (lotPre2018) {
                     isPre2018 = true;
-                }
-            }
-
-            BigDecimal fmvJan2018 = null;
-            boolean fmvAvailable = false;
-            if (isPre2018) {
-                if (fmv2018Map != null && fmv2018Map.containsKey(isin)) {
-                    fmvJan2018 = fmv2018Map.get(isin);
-                    fmvAvailable = true;
+                    if (fmvJan2018 == null) {
+                        System.err.println("CRITICAL ERROR: Pre-2018 lot for ISIN " + isin + " (" + name + ") has no 2018-01-31 FMV data. Sec 55(2)(ac) calculation cannot proceed safely.");
+                        throw new IllegalStateException("MISSING_FMV_DATA: Pre-2018 grandfathered equity lot for ISIN " + isin + " (" + name + ") requires 2018-01-31 FMV to compute Sec 55(2)(ac) cost basis accurately. Please configure NAV as of 31-Jan-2018 before exporting Schedule 112A.");
+                    }
+                    BigDecimal lotFmv = fmvJan2018.multiply(lot.unitsMatched());
+                    BigDecimal lotLowerBound = lotFmv.min(lot.saleProceeds());
+                    deemedCost = deemedCost.add(lot.costBasis().max(lotLowerBound));
                 } else {
-                    System.err.println("WARNING: Pre-2018 lot for ISIN " + isin + " has no 2018-01-31 FMV data in fmv2018Map. Flagged as FMV_UNAVAILABLE_REVIEW_REQUIRED.");
+                    hasPost2018 = true;
+                    deemedCost = deemedCost.add(lot.costBasis());
                 }
             }
 
-            BigDecimal deemedCost;
             String statusRemark;
-            if (isPre2018) {
-                if (fmvAvailable && fmvJan2018 != null) {
-                    BigDecimal lowerBound = fmvJan2018.min(proceeds);
-                    deemedCost = actualCost.max(lowerBound);
-                    statusRemark = "VALIDATED_SECTION_55_2_AC";
-                } else {
-                    System.err.println("CRITICAL ERROR: Pre-2018 lot for ISIN " + isin + " (" + name + ") has no 2018-01-31 FMV data. Sec 55(2)(ac) calculation cannot proceed safely.");
-                    throw new IllegalStateException("MISSING_FMV_DATA: Pre-2018 grandfathered equity lot for ISIN " + isin + " (" + name + ") requires 2018-01-31 FMV to compute Sec 55(2)(ac) cost basis accurately. Please configure NAV as of 31-Jan-2018 before exporting Schedule 112A.");
-                }
+            if (isPre2018 && hasPost2018) {
+                statusRemark = "MIXED_PRE_AND_POST_2018";
+            } else if (isPre2018) {
+                statusRemark = "VALIDATED_SECTION_55_2_AC";
             } else {
-                deemedCost = actualCost;
                 statusRemark = "POST_2018_ACQUISITION";
             }
 
             BigDecimal gain = proceeds.subtract(deemedCost);
-            BigDecimal displayFmv = (isPre2018 && fmvAvailable && fmvJan2018 != null) ? fmvJan2018 : BigDecimal.ZERO;
+            BigDecimal displayFmv = (isPre2018 && fmvJan2018 != null) ? fmvJan2018 : BigDecimal.ZERO;
 
             sb.append("\"").append(isin).append("\",\"")
               .append(name.replace("\"", "\"\"")).append("\",")

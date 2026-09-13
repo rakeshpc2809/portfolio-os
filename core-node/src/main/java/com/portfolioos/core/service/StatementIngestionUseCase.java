@@ -67,15 +67,9 @@ public class StatementIngestionUseCase {
                 List<TaxEvent> allEvents = eventStore.getAllEvents();
                 duckDbProjector.projectEvents(allEvents);
             } catch (Exception e) {
-                System.err.println("CRITICAL: DuckDB projection failed during statement ingestion: " + e.getMessage());
-                try {
-                    List<String> rollbackIds = taxEvents.stream().map(TaxEvent::id).toList();
-                    eventStore.deleteEvents(rollbackIds);
-                    System.err.println("Rolled back " + rollbackIds.size() + " events from SQLite ledger following projection failure.");
-                } catch (Exception rollbackEx) {
-                    System.err.println("CRITICAL: Failed to rollback SQLite ledger: " + rollbackEx.getMessage());
-                }
-                throw new RuntimeException("Dual-write failure: Analytical DuckDB projection failed: " + e.getMessage(), e);
+                // SQLite ledger commit is immutable. Never delete events from the HMAC chain.
+                System.err.println("ALERT: Analytical DuckDB projection failed post-ledger commit. Ledger remains intact: " + e.getMessage());
+                throw new RuntimeException("Dual-write failure: Analytical DuckDB projection failed (ledger committed intact): " + e.getMessage(), e);
             }
 
             // Evict/Invalidate central ledger cache

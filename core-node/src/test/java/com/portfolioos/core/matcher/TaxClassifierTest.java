@@ -38,4 +38,33 @@ class TaxClassifierTest {
         );
         assertEquals(TaxTerm.LONG_TERM, term1095);
     }
+
+    @Test
+    void testEquityHoldingPeriod360vs365Days() {
+        LocalDate acq = LocalDate.of(2025, 1, 1);
+        LocalDate disp362 = acq.plusDays(362);
+        LocalDate disp365 = acq.plusDays(365);
+
+        // 362 days: under 360d bug this was LONG_TERM. Under statutory rule must be SHORT_TERM.
+        TaxTerm term362 = TaxClassifier.classifyTaxTerm(
+            AssetCategory.EQUITY,
+            362L,
+            "2026-27",
+            true,
+            acq,
+            disp362
+        );
+        assertEquals(TaxTerm.SHORT_TERM, term362, "362 days equity holding must be SHORT_TERM (< 365 days)");
+
+        // Exactly 365 days: LONG_TERM
+        TaxTerm term365 = TaxClassifier.classifyTaxTerm(
+            AssetCategory.EQUITY,
+            365L,
+            "2026-27",
+            true,
+            acq,
+            disp365
+        );
+        assertEquals(TaxTerm.LONG_TERM, term365, "365 days equity holding must be LONG_TERM");
+    }
 }
