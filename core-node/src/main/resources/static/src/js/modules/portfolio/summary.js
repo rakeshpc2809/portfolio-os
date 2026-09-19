@@ -124,18 +124,23 @@ export function renderBeerValuationCard(beerCtx) {
   const eyVal = document.getElementById("beerEarningsYieldVal");
   const spreadVal = document.getElementById("beerSpreadVal");
 
-  const gsec = beerCtx.gsec_10y_yield_pct ?? beerCtx.gsec10yYieldPct ?? 7.10;
-  const pe = beerCtx.nifty50_pe ?? beerCtx.nifty50Pe ?? 22.40;
-  const ey = beerCtx.nifty50_earnings_yield_pct ?? beerCtx.nifty50EarningsYieldPct ?? 4.46;
-  const spread = beerCtx.beer_spread_pct ?? beerCtx.beerSpreadPct ?? 2.64;
-  const zone = beerCtx.valuation_zone ?? beerCtx.valuationZone ?? "EQUITY_EXPENSIVE";
-  const asOf = beerCtx.as_of_date || beerCtx.asOfDate || "2026-08-31";
+  const gsec = beerCtx.gsec_10y_yield_pct ?? beerCtx.gsec10yYieldPct ?? null;
+  const pe = beerCtx.nifty50_pe ?? beerCtx.nifty50Pe ?? null;
+  const ey = beerCtx.nifty50_earnings_yield_pct ?? beerCtx.nifty50EarningsYieldPct ?? null;
+  const spread = beerCtx.beer_spread_pct ?? beerCtx.beerSpreadPct ?? null;
+  const zone = beerCtx.valuation_zone ?? beerCtx.valuationZone ?? "UNKNOWN";
+  const asOf = beerCtx.as_of_date || beerCtx.asOfDate || null;
+  const isFallback = beerCtx.is_fallback ?? beerCtx.isFallback ?? false;
 
-  if (asOfText) asOfText.textContent = `As of: ${asOf}`;
-  if (gsecVal) gsecVal.textContent = `${gsec.toFixed(2)}%`;
-  if (niftyPeVal) niftyPeVal.textContent = `${pe.toFixed(2)}`;
-  if (eyVal) eyVal.textContent = `${ey.toFixed(2)}%`;
-  if (spreadVal) spreadVal.textContent = `${spread >= 0 ? "+" : ""}${spread.toFixed(2)}%`;
+  const fallbackBadgeHtml = isFallback 
+    ? `<span style="font-size: 0.65rem; padding: 1px 5px; border-radius: 3px; background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); margin-left: 6px;">FALLBACK</span>`
+    : "";
+
+  if (asOfText) asOfText.innerHTML = `As of: ${asOf || "--"}${fallbackBadgeHtml}`;
+  if (gsecVal) gsecVal.textContent = gsec != null ? `${Number(gsec).toFixed(2)}%` : "--";
+  if (niftyPeVal) niftyPeVal.textContent = pe != null ? `${Number(pe).toFixed(2)}` : "--";
+  if (eyVal) eyVal.textContent = ey != null ? `${Number(ey).toFixed(2)}%` : "--";
+  if (spreadVal) spreadVal.textContent = spread != null ? `${spread >= 0 ? "+" : ""}${Number(spread).toFixed(2)}%` : "--";
 
   if (zoneBadge) {
     zoneBadge.textContent = zone.replace(/_/g, " ");

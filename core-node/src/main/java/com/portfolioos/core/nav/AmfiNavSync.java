@@ -56,7 +56,7 @@ public class AmfiNavSync {
                     } catch (Exception ignored) {}
                 }
 
-                LocalDate navDate = today;
+                LocalDate navDate = null;
                 if (parts.length >= 6) {
                     String lastPart = parts[parts.length - 1].trim();
                     try {

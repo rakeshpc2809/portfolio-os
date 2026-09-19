@@ -19,9 +19,9 @@ class GoldSilverRatioCalculatorTest {
         assertEquals("SILVER_UNDERVALUED", ctx.signal());
         assertEquals(40.0, ctx.goldTargetSplitPct());
         assertEquals(60.0, ctx.silverTargetSplitPct());
-        assertFalse(ctx.isEstimated());
-        assertEquals("LIVE_AMFI_ETF_SPOT", ctx.source());
-        assertEquals("2026-08-31", ctx.asOfDate());
+        assertTrue(ctx.isEstimated());
+        assertEquals("STATUTORY_BENCHMARK_ESTIMATE", ctx.source());
+        assertNull(ctx.asOfDate());
     }
 
     @Test
@@ -45,7 +45,7 @@ class GoldSilverRatioCalculatorTest {
     }
 
     @Test
-    @DisplayName("Should calculate ratio dynamically from live GOLDBEES and SILVERBEES NAVs")
+    @DisplayName("Should calculate ratio dynamically from live GOLDBEES and SILVERBEES NAVs with navDateMap")
     void testLiveNavMapCalculation() {
         // Gold NAV = 75.0 (0.01g gold => 7500/g), Silver NAV = 88.0 (1g silver => 88/g)
         // Ratio = 7500 / 88 = 85.22 => rounded to 85.2
@@ -53,18 +53,38 @@ class GoldSilverRatioCalculatorTest {
             "GOLDBEES", new BigDecimal("75.00"),
             "SILVERBEES", new BigDecimal("88.00")
         );
+        Map<String, java.time.LocalDate> navDateMap = Map.of(
+            "GOLDBEES", java.time.LocalDate.parse("2026-09-18"),
+            "SILVERBEES", java.time.LocalDate.parse("2026-09-17")
+        );
 
-        GoldSilverContextDto ctx = GoldSilverRatioCalculator.calculateRatio(navMap);
+        GoldSilverContextDto ctx = GoldSilverRatioCalculator.calculateRatio(navMap, navDateMap);
         assertEquals(85.2, ctx.goldSilverRatio(), 0.1);
         assertEquals("SILVER_UNDERVALUED", ctx.signal());
         assertEquals(40.0, ctx.goldTargetSplitPct());
         assertEquals(60.0, ctx.silverTargetSplitPct());
         assertFalse(ctx.isEstimated());
         assertEquals("LIVE_AMFI_ETF_SPOT", ctx.source());
+        assertEquals("2026-09-18", ctx.asOfDate());
     }
 
     @Test
-    @DisplayName("Should calculate ratio dynamically using benchmark ETF ISINs from AMFI NAV feed")
+    @DisplayName("Should return estimated when navDateMap is absent")
+    void testLiveNavMapWithoutDatesIsEstimated() {
+        Map<String, BigDecimal> navMap = Map.of(
+            "GOLDBEES", new BigDecimal("75.00"),
+            "SILVERBEES", new BigDecimal("88.00")
+        );
+
+        GoldSilverContextDto ctx = GoldSilverRatioCalculator.calculateRatio(navMap);
+        assertEquals(85.2, ctx.goldSilverRatio(), 0.1);
+        assertTrue(ctx.isEstimated());
+        assertEquals("STATUTORY_BENCHMARK_ESTIMATE", ctx.source());
+        assertNull(ctx.asOfDate());
+    }
+
+    @Test
+    @DisplayName("Should calculate ratio dynamically using benchmark ETF ISINs from AMFI NAV feed with dates")
     void testLiveBenchmarkIsinCalculation() {
         // Nippon Gold ETF (INF204KB17I5) NAV = 127.54, Nippon Silver ETF (INF204KC1402) NAV = 224.41
         // Gold per gram: 127.54 * 100 = 12754; Silver per gram: 224.41 => ratio = 12754 / 224.41 = 56.8x (GOLD_UNDERVALUED)
@@ -72,14 +92,19 @@ class GoldSilverRatioCalculatorTest {
             "INF204KB17I5", new BigDecimal("127.54"),
             "INF204KC1402", new BigDecimal("224.41")
         );
+        Map<String, java.time.LocalDate> navDateMap = Map.of(
+            "INF204KB17I5", java.time.LocalDate.parse("2026-09-18"),
+            "INF204KC1402", java.time.LocalDate.parse("2026-09-18")
+        );
 
-        GoldSilverContextDto ctx = GoldSilverRatioCalculator.calculateRatio(navMap);
+        GoldSilverContextDto ctx = GoldSilverRatioCalculator.calculateRatio(navMap, navDateMap);
         assertEquals(56.8, ctx.goldSilverRatio(), 0.1);
         assertEquals("GOLD_UNDERVALUED", ctx.signal());
         assertEquals(60.0, ctx.goldTargetSplitPct());
         assertEquals(40.0, ctx.silverTargetSplitPct());
         assertFalse(ctx.isEstimated());
         assertEquals("LIVE_AMFI_ETF_SPOT", ctx.source());
+        assertEquals("2026-09-18", ctx.asOfDate());
     }
 
     @Test
@@ -96,6 +121,6 @@ class GoldSilverRatioCalculatorTest {
         assertEquals("SILVER_UNDERVALUED", ctx.signal());
         assertTrue(ctx.isEstimated());
         assertEquals("STATUTORY_BENCHMARK_ESTIMATE", ctx.source());
-        assertEquals("2026-08-31", ctx.asOfDate());
+        assertNull(ctx.asOfDate());
     }
 }

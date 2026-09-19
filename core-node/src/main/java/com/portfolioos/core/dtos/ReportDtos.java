@@ -350,6 +350,9 @@ public class ReportDtos {
         int recommendedRunwayMonths,
         String rationale,
         List<BucketTargetDto> adjustedBucketTargets,
-        String scopeCaveat
+        String scopeCaveat,
+        boolean isFallback,
+        String sourceStatus,
+        String asOfDate
     ) {}
 }

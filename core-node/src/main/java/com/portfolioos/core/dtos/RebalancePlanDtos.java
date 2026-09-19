@@ -27,7 +27,7 @@ public class RebalancePlanDtos {
                 silverTargetSplitPct,
                 true,
                 "STATUTORY_BENCHMARK_ESTIMATE",
-                "2026-08-31"
+                null
             );
         }
     }
@@ -64,8 +64,8 @@ public class RebalancePlanDtos {
                 beerSpreadPct,
                 valuationZone,
                 asOfDate,
-                false,
-                "LIVE_FETCH"
+                asOfDate == null || asOfDate.isBlank(),
+                (asOfDate == null || asOfDate.isBlank()) ? "FALLBACK_CACHED" : "LIVE_FETCH"
             );
         }
     }

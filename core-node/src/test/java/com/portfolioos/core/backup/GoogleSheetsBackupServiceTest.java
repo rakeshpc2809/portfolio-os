@@ -180,7 +180,7 @@ class GoogleSheetsBackupServiceTest {
         );
 
         LedgerCacheService cacheService = new LedgerCacheService(eventStore);
-        DuckDbProjector projector = new DuckDbProjector();
+        DuckDbProjector projector = new DuckDbProjector(":memory:");
 
         StatementIngestionUseCase useCase = new StatementIngestionUseCase(
             eventStore, projector, cacheService, failingService

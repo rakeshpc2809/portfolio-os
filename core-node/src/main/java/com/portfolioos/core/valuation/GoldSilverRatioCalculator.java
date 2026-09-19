@@ -12,8 +12,14 @@ public class GoldSilverRatioCalculator {
     public static final double STATUTORY_BENCHMARK_RATIO = 84.50;
 
     public static GoldSilverContextDto calculateRatio(Map<String, BigDecimal> navMap) {
+        return calculateRatio(navMap, null);
+    }
+
+    public static GoldSilverContextDto calculateRatio(Map<String, BigDecimal> navMap, Map<String, java.time.LocalDate> navDateMap) {
         double goldNav = 0.0;
         double silverNav = 0.0;
+        String goldKey = null;
+        String silverKey = null;
 
         if (navMap != null) {
             for (Map.Entry<String, BigDecimal> entry : navMap.entrySet()) {
@@ -25,6 +31,7 @@ public class GoldSilverRatioCalculator {
                         || key.equals("INF179KC1981") || key.equals("INF109KC1NT3") || (key.contains("GOLD") && key.contains("ETF") && !key.contains("FOF") && !key.contains("FUND OF FUND"))) {
                     if (goldNav == 0.0) {
                         goldNav = entry.getValue().doubleValue();
+                        goldKey = entry.getKey();
                     }
                 }
 
@@ -33,34 +40,37 @@ public class GoldSilverRatioCalculator {
                         || key.equals("INF179KC1DI2") || key.equals("INF109KC1Y56") || (key.contains("SILVER") && key.contains("ETF") && !key.contains("FOF") && !key.contains("FUND OF FUND"))) {
                     if (silverNav == 0.0) {
                         silverNav = entry.getValue().doubleValue();
+                        silverKey = entry.getKey();
                     }
                 }
             }
         }
-
-        boolean isEstimated = false;
-        String source = "LIVE_AMFI_ETF_SPOT";
-        String asOfDate = "2026-08-31";
-        double ratio;
 
         if (goldNav > 0 && silverNav > 0) {
             // Gold ETF represents 0.01g gold per unit; Silver ETF represents 1g silver per unit
             // Normalized 1g Gold to 1g Silver ratio = (goldNav * 100) / silverNav
             double normalizedGoldPricePerGram = goldNav >= 1000 ? goldNav : goldNav * 100.0;
             double normalizedSilverPricePerGram = silverNav;
-            ratio = normalizedGoldPricePerGram / normalizedSilverPricePerGram;
+            double ratio = normalizedGoldPricePerGram / normalizedSilverPricePerGram;
+
+            if (navDateMap != null && goldKey != null && silverKey != null
+                    && navDateMap.containsKey(goldKey) && navDateMap.containsKey(silverKey)
+                    && navDateMap.get(goldKey) != null && navDateMap.get(silverKey) != null) {
+                java.time.LocalDate gDate = navDateMap.get(goldKey);
+                java.time.LocalDate sDate = navDateMap.get(silverKey);
+                java.time.LocalDate maxDate = gDate.isAfter(sDate) ? gDate : sDate;
+                return evaluateRatio(ratio, false, "LIVE_AMFI_ETF_SPOT", maxDate.toString());
+            } else {
+                return evaluateRatio(ratio, true, "STATUTORY_BENCHMARK_ESTIMATE", null);
+            }
         } else {
             // When specific separate ETFs are absent from user ledger / offline test fixtures
-            ratio = STATUTORY_BENCHMARK_RATIO;
-            isEstimated = true;
-            source = "STATUTORY_BENCHMARK_ESTIMATE";
+            return evaluateRatio(STATUTORY_BENCHMARK_RATIO, true, "STATUTORY_BENCHMARK_ESTIMATE", null);
         }
-
-        return evaluateRatio(ratio, isEstimated, source, asOfDate);
     }
 
     public static GoldSilverContextDto evaluateRatio(double ratio) {
-        return evaluateRatio(ratio, false, "LIVE_AMFI_ETF_SPOT", "2026-08-31");
+        return evaluateRatio(ratio, true, "STATUTORY_BENCHMARK_ESTIMATE", null);
     }
 
     public static GoldSilverContextDto evaluateRatio(double ratio, boolean isEstimated, String source, String asOfDate) {
@@ -90,7 +100,7 @@ public class GoldSilverRatioCalculator {
             silverTargetSplitPct,
             isEstimated,
             source != null ? source : "STATUTORY_BENCHMARK_ESTIMATE",
-            asOfDate != null ? asOfDate : "2026-08-31"
+            asOfDate
         );
     }
 }

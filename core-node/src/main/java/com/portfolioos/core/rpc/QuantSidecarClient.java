@@ -57,13 +57,10 @@ public class QuantSidecarClient {
     private static String resolveAuthToken() {
         String token = System.getenv("API_AUTH_TOKEN");
         if (token == null || token.isBlank()) {
-            String activeProfiles = System.getProperty("spring.profiles.active", "");
-            if (activeProfiles.contains("test") && System.getProperty("API_AUTH_TOKEN") != null) {
-                token = System.getProperty("API_AUTH_TOKEN");
-            }
+            token = System.getProperty("API_AUTH_TOKEN");
         }
         if (token == null || token.isBlank()) {
-            token = "dev_secret_key_123";
+            throw new IllegalStateException("SECURITY CRITICAL: API_AUTH_TOKEN environment variable or system property is required for QuantSidecarClient.");
         }
         return token;
     }

@@ -55,6 +55,22 @@ class AmfiNavSyncTest {
     }
 
     @Test
+    void testParseAmfiFeed_UnparseableDateReturnsNullAndIsStale() {
+        AmfiNavSync sync = new AmfiNavSync();
+        String feedWithBadDate = """
+            Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date
+            199999;INF999K01999;-;Test Stale Scheme;50.00;INVALID_DATE_STRING
+            """;
+        List<AmfiNavSync.NavEntry> entries = sync.parseAmfiFeed(feedWithBadDate);
+        assertEquals(1, entries.size());
+        assertNull(entries.get(0).date(), "Unparseable date must default to null rather than today's date");
+        assertTrue(
+            com.portfolioos.core.service.PortfolioValuationService.isNavStale(entries.get(0).date(), java.time.LocalDate.now()),
+            "Null navDate must be identified as stale by isNavStale"
+        );
+    }
+
+    @Test
     void testIsNavStaleBusinessDays() {
         java.time.LocalDate friday = java.time.LocalDate.of(2026, 9, 11);
         java.time.LocalDate sunday = java.time.LocalDate.of(2026, 9, 13);

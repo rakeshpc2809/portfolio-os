@@ -13,7 +13,7 @@ public class BeerSpreadCalculator {
     public static BeerSpreadContextDto calculateCurrentSpread() {
         double gsecYield = 7.10;
         double niftyPe = 22.40;
-        String asOfDate = "2026-08-31";
+        String asOfDate = null;
         boolean isFallback = true;
         String sourceStatus = "FALLBACK_CACHED";
 
@@ -41,13 +41,13 @@ public class BeerSpreadCalculator {
                 if (root.has("nifty50_pe")) {
                     niftyPe = root.get("nifty50_pe").asDouble();
                 }
-                if (root.has("as_of_date")) {
+                if (root.has("as_of_date") && !root.get("as_of_date").isNull()) {
                     asOfDate = root.get("as_of_date").asText();
                 }
                 if (root.has("is_fallback")) {
                     isFallback = root.get("is_fallback").asBoolean();
                 }
-                if (root.has("source_status")) {
+                if (root.has("source_status") && !root.get("source_status").isNull()) {
                     sourceStatus = root.get("source_status").asText();
                 }
             }
@@ -59,7 +59,9 @@ public class BeerSpreadCalculator {
     }
 
     public static BeerSpreadContextDto evaluateBeerSpread(double gsecYield, double niftyPe, String asOfDate) {
-        return evaluateBeerSpread(gsecYield, niftyPe, asOfDate, false, "LIVE_FETCH");
+        boolean isFallback = (asOfDate == null || asOfDate.isBlank());
+        String sourceStatus = isFallback ? "FALLBACK_CACHED" : "LIVE_FETCH";
+        return evaluateBeerSpread(gsecYield, niftyPe, asOfDate, isFallback, sourceStatus);
     }
 
     public static BeerSpreadContextDto evaluateBeerSpread(double gsecYield, double niftyPe, String asOfDate, boolean isFallback, String sourceStatus) {
@@ -84,9 +86,9 @@ public class BeerSpreadCalculator {
             earningsYield,
             spread,
             valuationZone,
-            asOfDate != null ? asOfDate : "2026-08-31",
+            asOfDate,
             isFallback,
-            sourceStatus != null ? sourceStatus : "LIVE_FETCH"
+            sourceStatus != null ? sourceStatus : (isFallback ? "FALLBACK_CACHED" : "LIVE_FETCH")
         );
     }
 }

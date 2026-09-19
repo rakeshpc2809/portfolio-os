@@ -37,7 +37,7 @@ data class GoldSilverContextDto(
     @SerializedName("silver_target_split_pct") val silverTargetSplitPct: Double = 60.0,
     @SerializedName("is_estimated") val isEstimated: Boolean = true,
     @SerializedName("source") val source: String = "STATUTORY_BENCHMARK_ESTIMATE",
-    @SerializedName("as_of_date") val asOfDate: String = "2026-08-31"
+    @SerializedName("as_of_date") val asOfDate: String = ""
 )
 
 @Immutable
@@ -50,14 +50,14 @@ data class ReconstitutionContextDto(
 
 @Immutable
 data class BeerSpreadContextDto(
-    @SerializedName("gsec_10y_yield_pct") val gsec10yYieldPct: Double = 7.10,
-    @SerializedName("nifty50_pe") val nifty50Pe: Double = 22.40,
-    @SerializedName("nifty50_earnings_yield_pct") val nifty50EarningsYieldPct: Double = 4.46,
-    @SerializedName("beer_spread_pct") val beerSpreadPct: Double = 2.64,
-    @SerializedName("valuation_zone") val valuationZone: String = "EQUITY_EXPENSIVE",
-    @SerializedName("as_of_date") val asOfDate: String = "2026-08-31",
-    @SerializedName("is_fallback") val isFallback: Boolean = false,
-    @SerializedName("source_status") val sourceStatus: String = "LIVE_FETCH"
+    @SerializedName("gsec_10y_yield_pct") val gsec10yYieldPct: Double? = null,
+    @SerializedName("nifty50_pe") val nifty50Pe: Double? = null,
+    @SerializedName("nifty50_earnings_yield_pct") val nifty50EarningsYieldPct: Double? = null,
+    @SerializedName("beer_spread_pct") val beerSpreadPct: Double? = null,
+    @SerializedName("valuation_zone") val valuationZone: String = "UNKNOWN",
+    @SerializedName("as_of_date") val asOfDate: String = "",
+    @SerializedName("is_fallback") val isFallback: Boolean = true,
+    @SerializedName("source_status") val sourceStatus: String = "FALLBACK_CACHED"
 )
 
 @Immutable
@@ -197,9 +197,9 @@ data class FlatHoldingDto(
     @SerializedName("portfolio_weight_pct") val portfolioWeightPct: Double = 0.0,
     @SerializedName("formatted_current_value") val formattedCurrentValue: String = "",
     @SerializedName("formatted_invested_value") val formattedInvestedValue: String = "",
-    @SerializedName("expense_ratio") val expenseRatio: Double = 0.20,
-    @SerializedName("ter_status") val terStatus: String = "OPTIMAL",
-    @SerializedName("ter_as_of_date") val terAsOfDate: String = "Aug 2026"
+    @SerializedName("expense_ratio") val expenseRatio: Double? = null,
+    @SerializedName("ter_status") val terStatus: String = "UNKNOWN",
+    @SerializedName("ter_as_of_date") val terAsOfDate: String = ""
 ) {
     val effectivePortfolioPct: Double
         get() = if (portfolioPercentage > 0.0) portfolioPercentage else portfolioWeightPct

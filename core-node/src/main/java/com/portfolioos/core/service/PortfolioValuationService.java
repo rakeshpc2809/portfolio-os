@@ -572,7 +572,7 @@ public class PortfolioValuationService {
         List<Lot> openLots = state.fifoResult().openLots();
         Map<String, BigDecimal> navMap = state.navMap();
         BucketEngine.RebalanceEngineResult result = BucketEngine.evaluateRebalance(
-            openLots, state.fifoResult().matchedLots(), navMap, LocalDate.now(), benchmarkCurrent, benchmarkRollingHigh, BucketEngine.DEFAULT_TARGETS, fy
+            openLots, state.fifoResult().matchedLots(), navMap, LocalDate.now(), benchmarkCurrent, benchmarkRollingHigh, com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), fy
         );
 
         List<BucketStatusDto> statuses = result.bucketStatuses().stream().map(s -> new BucketStatusDto(
@@ -761,6 +761,9 @@ public class PortfolioValuationService {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
         response.put("holding_coverage_type", coverageType);
+        response.put("constituent_source", NseIndexConstituentDownloader.CONSTITUENT_SOURCE);
+        response.put("disclosure_date", NseIndexConstituentDownloader.DISCLOSURE_DATE);
+        response.put("is_live_download", NseIndexConstituentDownloader.IS_LIVE_DOWNLOAD);
         response.put("pairwise_overlap", pairwise);
         response.put("pairwise_matrix", matrix);
         response.put("portfolio_top_stock_concentrations", concResult.get("concentrations"));
@@ -783,6 +786,9 @@ public class PortfolioValuationService {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
         response.put("holding_coverage_type", coverageType);
+        response.put("constituent_source", NseIndexConstituentDownloader.CONSTITUENT_SOURCE);
+        response.put("disclosure_date", NseIndexConstituentDownloader.DISCLOSURE_DATE);
+        response.put("is_live_download", NseIndexConstituentDownloader.IS_LIVE_DOWNLOAD);
         response.put("upset_combinations", upset);
         response.put("evaluated_funds", evalFundIds);
         return response;
@@ -974,7 +980,10 @@ public class PortfolioValuationService {
             eval.recommendedRunwayMonths(),
             eval.rationale(),
             targetDtos,
-            "Advisory preview overlay only. Live rebalance drift thresholds and trade executions remain strictly pinned to baseline bucket_targets.yaml."
+            "Advisory preview overlay only. Live rebalance drift thresholds and trade executions remain strictly pinned to baseline bucket_targets.yaml.",
+            indicators.isFallback(),
+            indicators.sourceStatus(),
+            indicators.asOfDate() != null ? indicators.asOfDate().toString() : null
         );
     }
 }

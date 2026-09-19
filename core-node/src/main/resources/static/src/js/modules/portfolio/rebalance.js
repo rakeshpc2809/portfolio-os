@@ -447,16 +447,17 @@ export function renderUnifiedRebalancePlanUI(plan) {
     const badgeEl = document.getElementById("goldSilverSignalBadge");
     const splitEl = document.getElementById("goldSilverTargetSplitText");
 
-    const ratio = goldSilverCtx.gold_silver_ratio ?? goldSilverCtx.goldSilverRatio ?? 84.5;
-    const signal = goldSilverCtx.signal ?? "SILVER_UNDERVALUED";
-    const goldPct = goldSilverCtx.gold_target_split_pct ?? goldSilverCtx.goldTargetSplitPct ?? 40;
-    const silverPct = goldSilverCtx.silver_target_split_pct ?? goldSilverCtx.silverTargetSplitPct ?? 60;
+    const ratio = goldSilverCtx.gold_silver_ratio ?? goldSilverCtx.goldSilverRatio ?? null;
+    const signal = goldSilverCtx.signal ?? "NEUTRAL";
+    const goldPct = goldSilverCtx.gold_target_split_pct ?? goldSilverCtx.goldTargetSplitPct ?? 50;
+    const silverPct = goldSilverCtx.silver_target_split_pct ?? goldSilverCtx.silverTargetSplitPct ?? 50;
     const isEstimated = goldSilverCtx.is_estimated ?? goldSilverCtx.isEstimated ?? true;
     const source = goldSilverCtx.source || (isEstimated ? "STATUTORY_BENCHMARK_ESTIMATE" : "LIVE_AMFI_ETF_SPOT");
-    const asOf = goldSilverCtx.as_of_date || goldSilverCtx.asOfDate || "2026-08-31";
+    const asOf = goldSilverCtx.as_of_date || goldSilverCtx.asOfDate || null;
 
     if (ratioEl) {
-      ratioEl.innerHTML = `${ratio.toFixed(1)}x <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; vertical-align: middle; ${isEstimated ? "background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b;" : "background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981;"}">${isEstimated ? "ESTIMATED" : "LIVE AMFI"}</span>`;
+      const ratioStr = ratio != null ? `${Number(ratio).toFixed(1)}x` : "--";
+      ratioEl.innerHTML = `${ratioStr} <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; vertical-align: middle; ${isEstimated ? "background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b;" : "background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981;"}">${isEstimated ? "ESTIMATED" : "LIVE AMFI"}</span>`;
     }
     if (badgeEl) {
       badgeEl.textContent = signal.replace(/_/g, " ");
@@ -475,7 +476,8 @@ export function renderUnifiedRebalancePlanUI(plan) {
       }
     }
     if (splitEl) {
-      splitEl.innerHTML = `Target Split: <strong style="color: #fbbf24;">${Math.round(goldPct)}% Gold / ${Math.round(silverPct)}% Silver</strong> <span style="color: #64748b; font-size: 0.72rem; margin-left: 6px;">(As of: ${asOf})</span>`;
+      const asOfStr = asOf ? `(As of: ${asOf})` : "(Statutory Estimate)";
+      splitEl.innerHTML = `Target Split: <strong style="color: #fbbf24;">${Math.round(goldPct)}% Gold / ${Math.round(silverPct)}% Silver</strong> <span style="color: #64748b; font-size: 0.72rem; margin-left: 6px;">${asOfStr}</span>`;
     }
   }
 
@@ -485,12 +487,12 @@ export function renderUnifiedRebalancePlanUI(plan) {
     const daysEl = document.getElementById("reconstitutionDaysVal");
     const badgeEl = document.getElementById("reconstitutionWindowBadge");
 
-    const reconDate = reconCtx.next_reconstitution_date || reconCtx.nextReconstitutionDate || "2026-09-30";
-    const days = reconCtx.days_to_reconstitution ?? reconCtx.daysToReconstitution ?? 30;
+    const reconDate = reconCtx.next_reconstitution_date || reconCtx.nextReconstitutionDate || "--";
+    const days = reconCtx.days_to_reconstitution ?? reconCtx.daysToReconstitution ?? null;
     const isWin = reconCtx.is_window_active ?? reconCtx.isWindowActive ?? false;
 
     if (dateEl) dateEl.textContent = reconDate;
-    if (daysEl) daysEl.textContent = `${days} days remaining`;
+    if (daysEl) daysEl.textContent = days != null ? `${days} days remaining` : "--";
     if (badgeEl) {
       if (isWin) {
         badgeEl.textContent = "48H BLACKOUT: PAUSE REBALANCE";
@@ -515,18 +517,23 @@ export function renderUnifiedRebalancePlanUI(plan) {
     const eyVal = document.getElementById("beerEarningsYieldVal");
     const spreadVal = document.getElementById("beerSpreadVal");
 
-    const gsec = beerCtx.gsec_10y_yield_pct ?? beerCtx.gsec10yYieldPct ?? 7.10;
-    const pe = beerCtx.nifty50_pe ?? beerCtx.nifty50Pe ?? 22.40;
-    const ey = beerCtx.nifty50_earnings_yield_pct ?? beerCtx.nifty50EarningsYieldPct ?? 4.46;
-    const spread = beerCtx.beer_spread_pct ?? beerCtx.beerSpreadPct ?? 2.64;
-    const zone = beerCtx.valuation_zone ?? beerCtx.valuationZone ?? "EQUITY_EXPENSIVE";
-    const asOf = beerCtx.as_of_date || beerCtx.asOfDate || "2026-08-31";
+    const gsec = beerCtx.gsec_10y_yield_pct ?? beerCtx.gsec10yYieldPct ?? null;
+    const pe = beerCtx.nifty50_pe ?? beerCtx.nifty50Pe ?? null;
+    const ey = beerCtx.nifty50_earnings_yield_pct ?? beerCtx.nifty50EarningsYieldPct ?? null;
+    const spread = beerCtx.beer_spread_pct ?? beerCtx.beerSpreadPct ?? null;
+    const zone = beerCtx.valuation_zone ?? beerCtx.valuationZone ?? "UNKNOWN";
+    const asOf = beerCtx.as_of_date || beerCtx.asOfDate || null;
+    const isFallback = beerCtx.is_fallback ?? beerCtx.isFallback ?? false;
 
-    if (asOfText) asOfText.textContent = `As of: ${asOf}`;
-    if (gsecVal) gsecVal.textContent = `${gsec.toFixed(2)}%`;
-    if (niftyPeVal) niftyPeVal.textContent = `${pe.toFixed(2)}`;
-    if (eyVal) eyVal.textContent = `${ey.toFixed(2)}%`;
-    if (spreadVal) spreadVal.textContent = `${spread >= 0 ? "+" : ""}${spread.toFixed(2)}%`;
+    const fallbackBadgeHtml = isFallback 
+      ? `<span style="font-size: 0.65rem; padding: 1px 5px; border-radius: 3px; background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); margin-left: 6px;">FALLBACK</span>`
+      : "";
+
+    if (asOfText) asOfText.innerHTML = `As of: ${asOf || "--"}${fallbackBadgeHtml}`;
+    if (gsecVal) gsecVal.textContent = gsec != null ? `${Number(gsec).toFixed(2)}%` : "--";
+    if (niftyPeVal) niftyPeVal.textContent = pe != null ? `${Number(pe).toFixed(2)}` : "--";
+    if (eyVal) eyVal.textContent = ey != null ? `${Number(ey).toFixed(2)}%` : "--";
+    if (spreadVal) spreadVal.textContent = spread != null ? `${spread >= 0 ? "+" : ""}${Number(spread).toFixed(2)}%` : "--";
 
     if (zoneBadge) {
       zoneBadge.textContent = zone.replace(/_/g, " ");

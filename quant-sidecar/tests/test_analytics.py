@@ -45,7 +45,7 @@ class TestAnalyticsEngine(unittest.TestCase):
         np.random.seed(42)
         # N = 0
         res_0 = run_monte_carlo_fire_simulation(daily_returns_list=[], num_simulations=100)
-        self.assertEqual(res_0["data_source"], "SYNTHETIC_MARKET_BENCHMARK")
+        self.assertEqual(res_0["data_source"], "SYNTHETIC_GAUSSIAN_PRIOR")
         self.assertEqual(res_0["confidence_ramp_weight"], 0.0)
 
         # N = 375 (exactly 50% ramp weight)

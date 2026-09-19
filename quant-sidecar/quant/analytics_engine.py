@@ -208,8 +208,8 @@ def run_monte_carlo_fire_simulation(
     bench_returns = bench_returns - bench_returns.mean() + 0.00045
 
     if w_ramp <= 0.0:
-        data_source = "SYNTHETIC_MARKET_BENCHMARK"
-        data_source_label = "Nifty 50 Historical Return Model (0 Days Empirical History)"
+        data_source = "SYNTHETIC_GAUSSIAN_PRIOR"
+        data_source_label = "Calibrated Synthetic Gaussian Prior (μ=11.3% p.a., σ=17.5% p.a. - Zero Empirical History)"
     elif w_ramp >= 1.0:
         data_source = "EMPIRICAL_PORTFOLIO"
         data_source_label = f"Empirical Portfolio Return History ({n_emp} Days, 15-Day Block Bootstrap)"
@@ -217,7 +217,7 @@ def run_monte_carlo_fire_simulation(
         data_source = "BLENDED_CONFIDENCE_RAMP"
         pct_emp = round(w_ramp * 100.0, 1)
         pct_prior = round((1.0 - w_ramp) * 100.0, 1)
-        data_source_label = f"Blended Return Distribution (Linear Confidence Ramp: {pct_emp}% Empirical [{n_emp}d], {pct_prior}% Benchmark Prior)"
+        data_source_label = f"Blended Return Distribution (Linear Confidence Ramp: {pct_emp}% Empirical [{n_emp}d], {pct_prior}% Gaussian Prior)"
 
     if regime:
         data_source_label += f" · Regime-Conditioned: {regime}"

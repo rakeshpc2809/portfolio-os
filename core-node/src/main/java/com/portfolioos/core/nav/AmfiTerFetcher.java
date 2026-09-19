@@ -72,6 +72,6 @@ public class AmfiTerFetcher {
             case SGB -> 0.00;
         };
 
-        return new TerMetadata(defaultTer, "OPTIMAL", globalAsOfDate);
+        return new TerMetadata(defaultTer, "BENCHMARK_ESTIMATE", null);
     }
 }

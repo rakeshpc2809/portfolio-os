@@ -33,11 +33,14 @@ logger = logging.getLogger("quant-sidecar")
 
 import secrets
 
-EXPECTED_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
-
 def verify_auth_token(x_api_auth_token: Optional[str] = Header(None)):
-    token = EXPECTED_AUTH_TOKEN or "dev_secret_key_123"
-    if not x_api_auth_token or not secrets.compare_digest(x_api_auth_token, token):
+    expected_token = os.getenv("API_AUTH_TOKEN")
+    if not expected_token or not expected_token.strip():
+        raise HTTPException(
+            status_code=500,
+            detail="SECURITY CRITICAL: API_AUTH_TOKEN environment variable is not configured on Quant Sidecar"
+        )
+    if not x_api_auth_token or not secrets.compare_digest(x_api_auth_token, expected_token):
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-Api-Auth-Token header")
 
 @asynccontextmanager

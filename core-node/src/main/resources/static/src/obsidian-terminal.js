@@ -146,35 +146,44 @@ function setupQuietMode() {
 // ==========================================================================
 async function loadLiveDashboard() {
   try {
-    // 1. Fetch fast summary, holdings, trend, and rebalance plan in parallel
-    const [summary, holdings, trend, rebalancePlan] = await Promise.all([
+    // 1. Fetch live summary, holdings, trend, rebalance plan, macro regime, bucket allocations, and FIRE summary in parallel
+    const [summary, holdings, trend, rebalancePlan, macroRegime, bucketAllocations, fireSummary] = await Promise.all([
       fetchJson('/reports/summary').catch(e => { console.warn('Summary fetch error:', e); return null; }),
       fetchJson('/reports/holdings').catch(e => { console.warn('Holdings fetch error:', e); return null; }),
       fetchJson('/portfolio/net-worth-trend').catch(e => { console.warn('Trend fetch error:', e); return null; }),
-      fetchJson('/rebalance/plan').catch(e => { console.warn('Rebalance plan fetch error:', e); return null; })
+      fetchJson('/rebalance/plan').catch(e => { console.warn('Rebalance plan fetch error:', e); return null; }),
+      fetchJson('/reports/macro-regime/buffer-status').catch(e => { console.warn('Macro regime fetch error:', e); return null; }),
+      fetchJson('/reports/allocations/bucket').catch(e => { console.warn('Bucket allocations fetch error:', e); return null; }),
+      fetchJson('/fire/summary').catch(e => { console.warn('FIRE summary fetch error:', e); return null; })
     ]);
 
     state.summary = summary;
     state.holdings = holdings;
     state.trendData = trend;
     state.rebalancePlan = rebalancePlan;
+    state.macroRegime = macroRegime;
+    state.bucketAllocations = bucketAllocations;
+    state.fireSummary = fireSummary;
 
     // 1. Resolve Finding #1: Update NAV Freshness Pill honestly
     updateNavFreshnessPill(summary, holdings);
 
-    // 2. Render Top Metric HUD (resolving Finding #3 Unallocated Cash)
+    // 2. Render Top Metric HUD (resolving Finding #3 Unallocated Cash & #16 fake XIRR)
     renderTopMetrics(summary, holdings, rebalancePlan);
 
     // 3. Render Tab 1 (Lightweight Charts + Allocation + Sentinel)
     renderLightweightTimeline(trend);
-    renderAllocationMatrix(holdings);
-    renderMarketRiskSentinel(summary);
+    renderAllocationMatrix(bucketAllocations);
+    renderMarketRiskSentinel(macroRegime);
 
     // 4. Render Tab 2 (Scheme Tax Lots)
     renderTaxLots(holdings);
 
     // 5. Render Tab 3 (Rebalance & FIRE Simulation)
     renderRebalancePlan(rebalancePlan);
+    if (state.activeTab === 'fire') {
+      renderFireSimulation();
+    }
 
   } catch (err) {
     console.error('Failed to load dashboard data:', err);
@@ -210,7 +219,7 @@ function updateNavFreshnessPill(summary, holdings) {
 }
 
 // ==========================================================================
-// TOP METRICS HUD (Resolves Finding #3 Unallocated Cash Fallback)
+// TOP METRICS HUD (Resolves Finding #3 Unallocated Cash Fallback & #16 XIRR literal)
 // ==========================================================================
 function renderTopMetrics(summary, holdings, rebalancePlan) {
   if (!summary) return;
@@ -266,11 +275,11 @@ function renderTopMetrics(summary, holdings, rebalancePlan) {
   if (ltcgFillEl) ltcgFillEl.style.width = `${pctUsed}%`;
   if (ltcgSubEl) ltcgSubEl.textContent = `${pctUsed}% used · ${formatINR(remainingLtcg)} available`;
 
-  // Money-Weighted Portfolio XIRR
+  // Money-Weighted Portfolio XIRR (Finding #16: no hardcoded literal fallback)
   const xirrEl = document.getElementById('hudXirrVal');
   const xirrSubEl = document.getElementById('hudXirrSub');
   if (xirrEl) {
-    const xirrVal = summary.xirr_percentage || summary.formatted_xirr || '5.36%';
+    const xirrVal = summary.xirr_percentage || summary.formatted_xirr || '--';
     xirrEl.textContent = xirrVal;
   }
   if (xirrSubEl) {
@@ -416,56 +425,115 @@ function setupTimeRangeButtons() {
 }
 
 // ==========================================================================
-// TAB 1: ALLOCATION MATRIX & RISK SENTINEL (Resolves Finding #7 Right Column)
+// TAB 1: ALLOCATION MATRIX & RISK SENTINEL (Resolves Finding #1, #2, #16)
 // ==========================================================================
-function renderAllocationMatrix(snapshot) {
+function renderAllocationMatrix(bucketAllocations) {
   const tbody = document.getElementById('allocTableBody');
   if (!tbody) return;
 
-  const sampleBuckets = [
-    { name: 'Equity Core', target: 50.0, actual: 52.6, color: '#10B981' },
-    { name: 'Equity Satellite', target: 30.0, actual: 40.5, color: '#F59E0B' },
-    { name: 'Gold & Silver', target: 10.0, actual: 1.7, color: '#06B6D4' },
-    { name: 'Liquid Buffer', target: 10.0, actual: 5.2, color: '#8B5CF6' }
-  ];
+  if (!bucketAllocations || !Array.isArray(bucketAllocations) || bucketAllocations.length === 0) {
+    tbody.innerHTML = `
+      <tr class="loading-row">
+        <td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);font-family:var(--font-mono);font-size:0.85rem;">
+          Awaiting Bucket Allocation Telemetry...
+        </td>
+      </tr>
+    `;
+    return;
+  }
 
-  tbody.innerHTML = sampleBuckets.map(b => {
-    const diff = (b.actual - b.target).toFixed(1);
-    const isDrift = Math.abs(diff) > 5.0;
+  const bucketColors = {
+    'EQUITY_CORE': '#10B981',
+    'EQUITY_SATELLITE': '#F59E0B',
+    'GOLD_SILVER': '#06B6D4',
+    'LIQUID_BUFFER': '#8B5CF6'
+  };
+
+  const bucketDisplayNames = {
+    'EQUITY_CORE': 'Equity Core',
+    'EQUITY_SATELLITE': 'Equity Satellite',
+    'GOLD_SILVER': 'Gold & Silver',
+    'LIQUID_BUFFER': 'Liquid Buffer'
+  };
+
+  tbody.innerHTML = bucketAllocations.map(b => {
+    const rawName = b.bucket || b.bucket_name || '';
+    if (rawName === 'LEGACY_HOLDINGS') return '';
+    const displayName = bucketDisplayNames[rawName] || rawName;
+    const color = bucketColors[rawName] || '#94A3B8';
+
+    const actualPct = parseFloat(String(b.current_pct || b.current_percentage || '0').replace('%', ''));
+    const targetPct = parseFloat(String(b.target_pct || b.target_percentage || '0').replace('%', ''));
+    const driftPct = parseFloat(String(b.drift_pct || b.drift_percentage || (actualPct - targetPct)).replace('%', ''));
+    const isDrift = b.is_drifted === true || b.drifted === true || Math.abs(driftPct) > 5.0;
+
     return `
-      <tr>
-        <td style="font-weight:600;color:#FFFFFF;">${b.name}</td>
-        <td style="color:var(--text-muted);">${b.target.toFixed(1)}%</td>
-        <td style="color:${b.color};font-weight:700;">${b.actual.toFixed(1)}%</td>
+      <tr data-bucket="${rawName}">
+        <td style="font-weight:600;color:#FFFFFF;">${displayName}</td>
+        <td style="color:var(--text-muted);">${targetPct.toFixed(1)}%</td>
+        <td style="color:${color};font-weight:700;">${actualPct.toFixed(1)}%</td>
         <td>
           <div class="alloc-bar-track">
-            <div class="alloc-bar-fill" style="width:${Math.min(100, b.actual * 1.5)}%;background:${b.color};"></div>
+            <div class="alloc-bar-fill" style="width:${Math.min(100, actualPct * 1.5)}%;background:${color};"></div>
           </div>
         </td>
         <td style="font-size:0.72rem;color:${isDrift ? 'var(--accent-amber)' : 'var(--accent-emerald)'};">
-          ${isDrift ? 'DRIFT' : 'BALANCED'} (${diff > 0 ? '+' : ''}${diff}%)
+          ${isDrift ? 'DRIFT' : 'BALANCED'} (${driftPct > 0 ? '+' : ''}${driftPct.toFixed(1)}%)
         </td>
       </tr>
     `;
   }).join('');
 }
 
-function renderMarketRiskSentinel(snapshot) {
+function renderMarketRiskSentinel(macroRegime) {
   const container = document.getElementById('sentinelGrid');
   if (!container) return;
 
+  const zoneBadge = document.getElementById('sentinelZoneBadge');
+  if (zoneBadge) {
+    if (macroRegime && macroRegime.regime) {
+      zoneBadge.textContent = (macroRegime.regime || 'EVALUATING').replace(/_/g, ' ');
+      const isExpensive = (macroRegime.beer_spread_pct != null && macroRegime.beer_spread_pct > 2.5);
+      zoneBadge.style.color = isExpensive ? 'var(--accent-amber)' : 'var(--accent-emerald)';
+      zoneBadge.style.borderColor = zoneBadge.style.color;
+    } else {
+      zoneBadge.textContent = 'EVALUATING';
+    }
+  }
+
+  if (!macroRegime) {
+    container.innerHTML = `
+      <div class="sentinel-pending" style="grid-column: 1 / -1; text-align: center; padding: 24px; color: var(--text-muted); font-family: var(--font-mono); font-size: 0.85rem;">
+        Awaiting Macro Risk Sentinel Indicators...
+      </div>
+    `;
+    return;
+  }
+
+  const isFallback = macroRegime.is_fallback === true;
+  const badgeHtml = isFallback 
+    ? `<span class="fallback-badge" style="display:inline-block;margin-left:6px;padding:1px 5px;border-radius:3px;font-size:0.65rem;background:rgba(245,158,11,0.2);color:#F59E0B;border:1px solid rgba(245,158,11,0.4);">[ESTIMATED CACHED]</span>` 
+    : '';
+
+  const gsecVal = macroRegime.gsec10y_yield_pct != null ? `${Number(macroRegime.gsec10y_yield_pct).toFixed(2)}%` : '--';
+  const niftyPeVal = macroRegime.nifty_pe != null ? Number(macroRegime.nifty_pe).toFixed(2) : '--';
+  const beerSpreadVal = macroRegime.beer_spread_pct != null ? `${macroRegime.beer_spread_pct >= 0 ? '+' : ''}${Number(macroRegime.beer_spread_pct).toFixed(2)}%` : '--';
+  const slopeVal = macroRegime.yield_curve_slope_pct != null ? `${macroRegime.yield_curve_slope_pct >= 0 ? '+' : ''}${Number(macroRegime.yield_curve_slope_pct).toFixed(2)}%` : '--';
+  const runwayVal = macroRegime.recommended_runway_months != null ? `${macroRegime.recommended_runway_months} Months` : '--';
+  const regimeVal = macroRegime.regime || macroRegime.display_name || '--';
+
   const indicators = [
-    { label: '10Y G-Sec Yield', val: '7.10%', color: '#06B6D4' },
-    { label: 'Nifty 50 PE', val: '22.40', color: '#FFFFFF' },
-    { label: 'BEER Spread', val: '+2.64%', color: '#F59E0B' },
-    { label: 'Yield Curve (10Y-Repo)', val: '+0.60%', color: '#10B981' },
-    { label: 'Runway Guard', val: '18 Months', color: '#D0FF00' },
-    { label: 'Macro Regime', val: 'EXPANSION', color: '#C084FC' }
+    { label: '10Y G-Sec Yield', val: gsecVal, color: '#06B6D4' },
+    { label: 'Nifty 50 PE', val: niftyPeVal, color: '#FFFFFF' },
+    { label: 'BEER Spread', val: beerSpreadVal, color: macroRegime.beer_spread_pct > 2.5 ? '#F59E0B' : '#10B981' },
+    { label: 'Yield Curve (10Y-Repo)', val: slopeVal, color: '#10B981' },
+    { label: 'Runway Guard', val: runwayVal, color: '#D0FF00' },
+    { label: 'Macro Regime', val: regimeVal, color: '#C084FC' }
   ];
 
   container.innerHTML = indicators.map(i => `
     <div class="sentinel-item">
-      <div class="sentinel-label">${i.label}</div>
+      <div class="sentinel-label">${i.label}${badgeHtml}</div>
       <div class="sentinel-val" style="color:${i.color};">${i.val}</div>
     </div>
   `).join('');
@@ -544,86 +612,156 @@ function renderTaxLots(holdingsData) {
 // ==========================================================================
 // TAB 3: STREAMLINED REBALANCE & FIRE (Resolves Findings #6 & #7)
 // ==========================================================================
-function renderRebalancePlan(snapshot) {
+function renderRebalancePlan(rebalancePlan) {
   // Telemetry Gauge
   const marker = document.getElementById('ddGaugeMarker');
   const ddValText = document.getElementById('ddCurrentPctText');
-  if (marker) marker.style.left = '0%';
-  if (ddValText) ddValText.textContent = '0.0% (Nominal)';
+  const ddPct = parseFloat(rebalancePlan?.trigger?.drawdown_context?.current_drawdown_pct ?? 0);
+  if (marker) marker.style.left = `${Math.min(100, Math.max(0, ddPct * 5))}%`;
+  if (ddValText) ddValText.textContent = `${ddPct.toFixed(1)}% (${rebalancePlan?.trigger?.reason_label || 'Nominal'})`;
 
-  // Trade Flow List
-  const sellContainer = document.getElementById('rebalanceSellCol');
-  const buyContainer = document.getElementById('rebalanceBuyCol');
+  // Pool Amount
   const poolAmountEl = document.getElementById('rebalancePoolAmount');
+  const poolVal = rebalancePlan?.sell_side?.total_required ?? rebalancePlan?.buy_side?.total_to_invest;
+  if (poolAmountEl) poolAmountEl.textContent = poolVal != null ? formatINR(poolVal) : '₹ 0';
 
+  // Sell Side Container (Resolves Finding #3: Dynamic from live plan)
+  const sellContainer = document.getElementById('rebalanceSellCol');
   if (sellContainer) {
-    sellContainer.innerHTML = `
-      <div class="trade-item sell">
-        <div>
-          <div style="font-weight:700;color:#FFFFFF;">Motilal Nifty Midcap 150</div>
-          <div style="font-size:0.72rem;color:var(--accent-emerald);">LTCG Exempt Lot (Saved ₹801 Tax)</div>
+    const sellLots = [];
+    if (rebalancePlan?.sell_side?.waterfall) {
+      rebalancePlan.sell_side.waterfall.forEach(tier => {
+        if (Array.isArray(tier.lots)) {
+          tier.lots.forEach(l => sellLots.push(l));
+        }
+      });
+    }
+
+    if (sellLots.length > 0) {
+      sellContainer.innerHTML = sellLots.map(l => {
+        const fundName = l.fund_name || l.fund_id || 'Holding';
+        const proceeds = parseFloat(l.sale_proceeds || l.amount || 0);
+        const taxImpact = l.tax_impact || {};
+        const exemption = parseFloat(taxImpact.exemption_applied || 0);
+        const subtext = exemption > 0 
+          ? `LTCG Exempt Lot (Saved ${formatINR(exemption * 0.125)} Tax)` 
+          : (taxImpact.regime === 'SEC_112A_EXEMPT' ? 'Sec 112A Exempt' : 'Taxable Trim');
+
+        return `
+          <div class="trade-item sell">
+            <div>
+              <div style="font-weight:700;color:#FFFFFF;">${fundName}</div>
+              <div style="font-size:0.72rem;color:var(--accent-emerald);">${subtext}</div>
+            </div>
+            <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-rose);">
+              <span class="lot-val-pnl">- ${formatINR(proceeds)}</span>
+              <span class="lot-val-masked" style="display:none;">- ₹ ••,•••</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      sellContainer.innerHTML = `
+        <div class="trade-item-empty" style="padding:16px;text-align:center;color:var(--text-muted);font-family:var(--font-mono);font-size:0.8rem;">
+          No Sell Actions Required (Within Bands)
         </div>
-        <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-rose);">
-          <span class="lot-val-pnl">- ₹ 34,469</span>
-          <span class="lot-val-masked" style="display:none;">- ₹ ••,•••</span>
-        </div>
-      </div>
-      <div class="trade-item sell">
-        <div>
-          <div style="font-weight:700;color:#FFFFFF;">Motilal Nifty Microcap 250</div>
-          <div style="font-size:0.72rem;color:var(--accent-emerald);">LTCG Exempt Lot (Saved ₹77 Tax)</div>
-        </div>
-        <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-rose);">
-          <span class="lot-val-pnl">- ₹ 3,054</span>
-          <span class="lot-val-masked" style="display:none;">- ₹ ••,•••</span>
-        </div>
-      </div>
-    `;
+      `;
+    }
   }
 
-  if (poolAmountEl) poolAmountEl.textContent = '₹ 37,523';
-
+  // Buy Side Container (Resolves Finding #3: Dynamic from live plan)
+  const buyContainer = document.getElementById('rebalanceBuyCol');
   if (buyContainer) {
-    buyContainer.innerHTML = `
-      <div class="trade-item buy">
-        <div>
-          <div style="font-weight:700;color:#FFFFFF;">Motilal Gold & Silver Passive FoF</div>
-          <div style="font-size:0.72rem;color:var(--accent-cyan);">Intra-Bucket Target Split Sizing</div>
+    const buyItems = [];
+    if (rebalancePlan?.buy_side?.buckets) {
+      rebalancePlan.buy_side.buckets.forEach(b => {
+        const rawBucket = b.bucket || b.bucket_name || 'Target';
+        if (Array.isArray(b.fund_breakdown) && b.fund_breakdown.length > 0) {
+          b.fund_breakdown.forEach(f => {
+            const amt = parseFloat(f.amount || 0);
+            if (amt > 0) {
+              buyItems.push(`
+                <div class="trade-item buy">
+                  <div>
+                    <div style="font-weight:700;color:#FFFFFF;">${f.fund_name || f.fund_id}</div>
+                    <div style="font-size:0.72rem;color:var(--accent-cyan);">${rawBucket} Allocation Sizing</div>
+                  </div>
+                  <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-emerald);">
+                    <span class="lot-val-pnl">+ ${formatINR(amt)}</span>
+                    <span class="lot-val-masked" style="display:none;">+ ₹ ••,•••</span>
+                  </div>
+                </div>
+              `);
+            }
+          });
+        } else if (parseFloat(b.amount_allocated || 0) > 0) {
+          const amt = parseFloat(b.amount_allocated);
+          buyItems.push(`
+            <div class="trade-item buy">
+              <div>
+                <div style="font-weight:700;color:#FFFFFF;">${rawBucket}</div>
+                <div style="font-size:0.72rem;color:var(--accent-cyan);">Target Rebalance</div>
+              </div>
+              <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-emerald);">
+                <span class="lot-val-pnl">+ ${formatINR(amt)}</span>
+                <span class="lot-val-masked" style="display:none;">+ ₹ ••,•••</span>
+              </div>
+            </div>
+          `);
+        }
+      });
+    }
+
+    if (buyItems.length > 0) {
+      buyContainer.innerHTML = buyItems.join('');
+    } else {
+      buyContainer.innerHTML = `
+        <div class="trade-item-empty" style="padding:16px;text-align:center;color:var(--text-muted);font-family:var(--font-mono);font-size:0.8rem;">
+          No Buy Allocations Required (Within Bands)
         </div>
-        <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-emerald);">
-          <span class="lot-val-pnl">+ ₹ 23,562</span>
-          <span class="lot-val-masked" style="display:none;">+ ₹ ••,•••</span>
-        </div>
-      </div>
-      <div class="trade-item buy">
-        <div>
-          <div style="font-weight:700;color:#FFFFFF;">Invesco Arbitrage Fund</div>
-          <div style="font-size:0.72rem;color:var(--accent-cyan);">Liquid Buffer Rebalance</div>
-        </div>
-        <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-emerald);">
-          <span class="lot-val-pnl">+ ₹ 13,962</span>
-          <span class="lot-val-masked" style="display:none;">+ ₹ ••,•••</span>
-        </div>
-      </div>
-    `;
+      `;
+    }
   }
 }
 
 // ==========================================================================
-// FINDING #6 RESOLUTION: INTERACTIVE FIRE MONTE CARLO FAN CHART
+// FINDING #4 RESOLUTION: LIVE PARAMETRIC FIRE MONTE CARLO FAN CHART
 // ==========================================================================
 function renderFireSimulation() {
   const container = document.getElementById('fireCanvasContainer');
   if (!container) return;
 
+  if (!state.fireSummary || !state.fireSummary.required_corpus || !state.fireSummary.fire_investable_net_worth) {
+    container.innerHTML = `
+      <div class="fire-pending" style="padding:60px 20px;text-align:center;color:var(--text-muted);font-family:var(--font-mono);font-size:0.9rem;">
+        Awaiting Portfolio Valuation &amp; FIRE Parameters from Core Node...
+      </div>
+    `;
+    return;
+  }
+
   const sipSlider = document.getElementById('fireSipInput');
   const expSlider = document.getElementById('fireExpInput');
   const yrsSlider = document.getElementById('fireYrsInput');
 
+  // Initialize sliders to live server parameters if not yet adjusted
+  if (expSlider && !expSlider.dataset.initialized && state.fireSummary.monthly_expense_today) {
+    expSlider.value = parseFloat(state.fireSummary.monthly_expense_today);
+    expSlider.dataset.initialized = 'true';
+  }
+  if (yrsSlider && !yrsSlider.dataset.initialized && state.fireSummary.years_remaining) {
+    yrsSlider.value = state.fireSummary.years_remaining;
+    yrsSlider.dataset.initialized = 'true';
+  }
+
   function updateSimulation() {
+    const baselineExp = parseFloat(state.fireSummary.monthly_expense_today);
+    const baselineCorpus = parseFloat(state.fireSummary.required_corpus);
+    const initialWealth = parseFloat(state.fireSummary.fire_investable_net_worth);
+
     const sip = parseFloat(sipSlider ? sipSlider.value : 75000);
-    const exp = parseFloat(expSlider ? expSlider.value : 60000);
-    const yrs = parseInt(yrsSlider ? yrsSlider.value : 13, 10);
+    const exp = parseFloat(expSlider ? expSlider.value : baselineExp);
+    const yrs = parseInt(yrsSlider ? yrsSlider.value : (state.fireSummary.years_remaining || 13), 10);
 
     const sipValEl = document.getElementById('sipValDisplay');
     const expValEl = document.getElementById('expValDisplay');
@@ -632,11 +770,12 @@ function renderFireSimulation() {
     if (expValEl) expValEl.textContent = formatINR(exp);
     if (yrsValEl) yrsValEl.textContent = `${yrs} Years`;
 
-    // Generate dynamic parametric cone of uncertainty
-    const initialWealth = 1713908;
-    const requiredCorpus = exp * 12 * 33.3; // 30x SWR rule
-    const points = [];
+    // Scale required corpus strictly with expense slider relative to live server baseline
+    const requiredCorpus = (baselineExp > 0 && baselineCorpus > 0)
+      ? (exp / baselineExp) * baselineCorpus
+      : baselineCorpus;
 
+    const points = [];
     const expectedReturn = 0.11;
     const vol = 0.15;
 
@@ -674,12 +813,10 @@ function renderFireSimulation() {
     const scaleX = y => pad + (y / yrs) * (width - pad * 2);
     const scaleY = v => height - pad - (v / maxVal) * (height - pad * 2);
 
-    // Build SVG Path strings
     const p10Points = points.map(p => `${scaleX(p.year)},${scaleY(p.p10)}`).join(' ');
     const p50Points = points.map(p => `${scaleX(p.year)},${scaleY(p.p50)}`).join(' ');
     const p90Points = points.map(p => `${scaleX(p.year)},${scaleY(p.p90)}`).join(' ');
 
-    // Cone Polygon (P10 to P90)
     const revP10 = [...points].reverse().map(p => `${scaleX(p.year)},${scaleY(p.p10)}`).join(' ');
     const conePolygon = `${points.map(p => `${scaleX(p.year)},${scaleY(p.p90)}`).join(' ')} ${revP10}`;
 

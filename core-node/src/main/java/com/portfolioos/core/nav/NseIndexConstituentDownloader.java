@@ -10,8 +10,12 @@ import java.util.*;
  */
 public class NseIndexConstituentDownloader {
 
+    public static final String CONSTITUENT_SOURCE = "STATIC_DISCLOSURE_SEED";
+    public static final String DISCLOSURE_DATE = "2026-03-31";
+    public static final boolean IS_LIVE_DOWNLOAD = false;
+
     public void seedStandardIndexConstituents(DuckDbProjector projector) {
-        String disclosureDate = "2026-03-31"; // Semi-annual March snapshot
+        String disclosureDate = DISCLOSURE_DATE; // Semi-annual March snapshot
 
         // 1. ICICI Prudential Nifty LargeMidcap 250 Index Fund (INF109KC12U0 / 147702)
         List<Map<String, Object>> lm250 = Arrays.asList(

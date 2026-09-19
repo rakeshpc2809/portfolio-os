@@ -1158,7 +1158,10 @@ fun M3HoldingCard(
                     shape = ShapeTokens.PillShape
                 ) {
                     Text(
-                        text = "TER %.2f%% (%s)".format(holding.expenseRatio, holding.terAsOfDate),
+                        text = if (holding.expenseRatio != null) {
+                            if (holding.terAsOfDate.isNotBlank()) "TER %.2f%% (%s)".format(holding.expenseRatio, holding.terAsOfDate)
+                            else "TER %.2f%%".format(holding.expenseRatio)
+                        } else "TER UNKNOWN",
                         style = TypographyTokens.BadgeTag.copy(
                             color = if (holding.terStatus == "ELEVATED_DRAG") ColorTokens.RedNegative else ColorTokens.CyanBright,
                             fontSize = 9.sp
@@ -2432,8 +2435,8 @@ fun BeerValuationSpreadCard(beerSpreadContext: com.portfolioos.mobile.model.Beer
                     }
                 }
                 Text(
-                    text = "As of: ${ctx.asOfDate}",
-                    style = TypographyTokens.BadgeTag.copy(color = ColorTokens.TextMuted, fontSize = 10.sp)
+                    text = if (ctx.asOfDate.isNotBlank()) "As of: ${ctx.asOfDate}" else if (ctx.isFallback) "ESTIMATED (CACHED)" else "--",
+                    style = TypographyTokens.BadgeTag.copy(color = if (ctx.isFallback) ColorTokens.AmberWarning else ColorTokens.TextMuted, fontSize = 10.sp)
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -2443,19 +2446,22 @@ fun BeerValuationSpreadCard(beerSpreadContext: com.portfolioos.mobile.model.Beer
             ) {
                 Column {
                     Text(text = "10Y G-Sec", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp))
-                    Text(text = "${"%.2f".format(ctx.gsec10yYieldPct)}%", style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = ColorTokens.CyanBright))
+                    Text(text = ctx.gsec10yYieldPct?.let { "${"%.2f".format(it)}%" } ?: "--", style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = ColorTokens.CyanBright))
                 }
                 Column {
                     Text(text = "Nifty 50 PE", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp))
-                    Text(text = "%.2f".format(ctx.nifty50Pe), style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = Color.White))
+                    Text(text = ctx.nifty50Pe?.let { "%.2f".format(it) } ?: "--", style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = Color.White))
                 }
                 Column {
                     Text(text = "Earnings Yield", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp))
-                    Text(text = "${"%.2f".format(ctx.nifty50EarningsYieldPct)}%", style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = ColorTokens.PurpleAccent))
+                    Text(text = ctx.nifty50EarningsYieldPct?.let { "${"%.2f".format(it)}%" } ?: "--", style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = ColorTokens.PurpleAccent))
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(text = "Spread (G-Sec - EY)", style = TypographyTokens.MetricLabel.copy(fontSize = 10.sp))
-                    Text(text = "${if (ctx.beerSpreadPct >= 0) "+" else ""}${"%.2f".format(ctx.beerSpreadPct)}%", style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = ColorTokens.AmberWarning))
+                    Text(
+                        text = ctx.beerSpreadPct?.let { "${if (it >= 0) "+" else ""}${"%.2f".format(it)}%" } ?: "--",
+                        style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp, color = ColorTokens.AmberWarning)
+                    )
                 }
             }
         }
