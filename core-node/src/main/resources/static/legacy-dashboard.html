@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portfolio OS - Web Cockpit (v3.0)</title>
+  <link rel="stylesheet" href="./src/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <script>
+    window.openCmdPalette = function() {
+      var modal = document.getElementById('commandPaletteModal');
+      var input = document.getElementById('commandPaletteInput');
+      if (modal) {
+        modal.style.display = 'flex';
+        if (input) {
+          setTimeout(function() { input.focus(); input.select(); }, 50);
+        }
+      }
+    };
+    window.closeCmdPalette = function() {
+      var modal = document.getElementById('commandPaletteModal');
+      if (modal) modal.style.display = 'none';
+    };
+  </script>
+</head>
+<body class="bg-obsidian">
+  <!-- Glowing Background Ambient Spheres -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <div id="app" class="container">
+    <!-- Clean Minimalist Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">🚀</div>
+        <div class="brand-title-group">
+          <div class="brand-title-row">
+            <h1 class="brand-title">Portfolio OS</h1>
+            <span class="v2-tag">v3.0 Vapor</span>
+          </div>
+          <div class="fy-selector-row">
+            <span>PERIOD:</span>
+            <select class="fy-select" id="fySelect">
+              <option value="2024-25">FY 2024-25</option>
+              <option value="2025-26">FY 2025-26</option>
+              <option value="2026-27" selected>FY 2026-27</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="cmdKTriggerBtn" class="upload-btn cmd-k-btn" onclick="window.openCmdPalette && window.openCmdPalette()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          ⚡ AI Search <kbd>/</kbd> <kbd>⌘K</kbd>
+        </button>
+
+        <button id="exportZipBtn" class="upload-btn export-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Export ITR-2 Bundle (.zip)
+        </button>
+
+        <button type="button" class="upload-btn" onclick="document.getElementById('fileUploadInput').click()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Upload CAS PDF / CSV
+        </button>
+        <input type="file" id="fileUploadInput" accept=".pdf,.csv" onchange="window.handleFileSelect && window.handleFileSelect(event)" style="display: none;">
+
+        <div class="status-pill">
+          <span class="status-dot"></span> SHA-256 Engine Active
+        </div>
+        <div id="navFreshnessPill" class="status-pill" title="AMFI NAV Data Freshness">
+          <span class="status-dot" style="background:#10B981"></span> All NAVs Fresh
+        </div>
+        <button id="quietModeToggle" class="status-pill" style="cursor: pointer; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #94A3B8;" title="Toggle Quiet Mode (suppresses routine drift alerts; preserves critical drawdown & stale NAV alerts)">
+          <span id="quietModeDot" class="status-dot" style="background:#64748B"></span> <span id="quietModeLabel">Quiet Mode: OFF</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Top Key Metrics Row -->
+    <section class="top-metrics-grid">
+      <div class="glass-card metric-box">
+        <div class="metric-label">NET WORTH</div>
+        <div class="metric-value font-mono skeleton net-worth-val">₹ --,--,---</div>
+        <div class="metric-delta neutral net-worth-gain">Unrealized gain: --</div>
+      </div>
+
+      <div class="glass-card metric-box">
+        <div class="metric-label">UNALLOCATED CASH</div>
+        <div class="metric-value font-mono highlight-cyan skeleton idle-cash-val">₹ --,--,---</div>
+        <div class="metric-subtext">Sitting idle across Liquid & Bank</div>
+      </div>
+
+      <div class="glass-card metric-box exemption-box">
+        <div class="metric-label">LTCG EXEMPTION (SEC 112A)</div>
+        <div class="metric-value font-mono skeleton ltcg-meter-val">₹ 0 <span class="sub-limit">/ 1.25L</span></div>
+        <div class="progress-track">
+          <div class="progress-fill-gradient" style="width: 0%;"></div>
+        </div>
+        <div class="meter-meta">
+          <span class="pct-used">0% Used</span>
+          <span class="remaining">₹ 1,25,000 Available</span>
+        </div>
+      </div>
+
+      <div class="glass-card metric-box">
+        <div class="metric-label">PORTFOLIO XIRR</div>
+        <div class="metric-value font-mono highlight-cyan skeleton xirr-val">--%</div>
+        <div class="metric-subtext">Money-Weighted XIRR</div>
+      </div>
+    </section>
+
+    <!-- Minimalist Tab Navigation Bar -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="overview">📊 Executive Overview</button>
+      <button class="tab-btn" data-tab="tax-lots">📋 Scheme-Grouped Tax Lots</button>
+      <button class="tab-btn" data-tab="fire">🎯 Unified Rebalance & FIRE</button>
+    </nav>
+
+    <!-- TAB 1: Executive Overview -->
+    <main class="tab-content active" id="tab-overview">
+      <div class="dashboard-grid">
+        <!-- Bucket Allocation: Planned vs. Actual Chart -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Bucket Allocation: Planned vs. Actual</h2>
+            <span class="live-tag">PLANNED VS ACTUAL</span>
+          </div>
+          <div class="canvas-wrapper-large" id="bucketAllocationChart" style="height: 320px; width: 100%;"></div>
+        </div>
+
+        <!-- Scheme/Fund Allocation: Planned vs. Actual Chart -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Scheme Allocation: Planned vs. Actual</h2>
+            <span class="live-tag">SCHEME TARGET VS ACTUAL</span>
+          </div>
+          <div class="canvas-wrapper-large" id="fundAllocationCompareChart" style="height: 380px; width: 100%;"></div>
+        </div>
+
+        <!-- Unified Market & Risk Sentinel Card (Advisory Macro Regime, BEER Spread & Yield Curve) -->
+        <div class="glass-card col-12" id="marketRiskSentinelCard" style="margin-bottom: 24px; padding: 20px 24px; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 14px; background: rgba(15, 23, 42, 0.8);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <span style="font-size: 0.85rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.08em; text-transform: uppercase;">🛡️ Market & Risk Sentinel</span>
+              <span id="beerValuationZoneBadge" class="live-tag" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b; font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">EQUITY EXPENSIVE</span>
+              <span id="macroRegimeBadge" class="live-tag" style="background: rgba(147, 51, 234, 0.15); color: #c084fc; border: 1px solid #a855f7; font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">REGIME: EXPANSION / RISK-OFF</span>
+            </div>
+            <span id="beerAsOfDateText" style="font-size: 0.75rem; color: #94a3b8; font-family: monospace;">As of: 2026-08-31</span>
+          </div>
+
+          <!-- Indicator Metrics Grid -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; background: rgba(255,255,255,0.02); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">10Y G-Sec Yield</div>
+              <div id="beerGsecYieldVal" style="font-size: 1.1rem; font-weight: 800; color: #38bdf8; font-family: monospace; margin-top: 4px;">7.10%</div>
+            </div>
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Nifty 50 PE</div>
+              <div id="beerNiftyPeVal" style="font-size: 1.1rem; font-weight: 800; color: #f8fafc; font-family: monospace; margin-top: 4px;">22.40</div>
+            </div>
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Earnings Yield (1/PE)</div>
+              <div id="beerEarningsYieldVal" style="font-size: 1.1rem; font-weight: 800; color: #a78bfa; font-family: monospace; margin-top: 4px;">4.46%</div>
+            </div>
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">BEER Spread (G-Sec - EY)</div>
+              <div id="beerSpreadVal" style="font-size: 1.1rem; font-weight: 800; color: #f59e0b; font-family: monospace; margin-top: 4px;">+2.64%</div>
+            </div>
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Yield Curve (10Y - Repo)</div>
+              <div id="yieldCurveSlopeVal" style="font-size: 1.1rem; font-weight: 800; color: #34d399; font-family: monospace; margin-top: 4px;">+0.60%</div>
+            </div>
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Recommended Runway</div>
+              <div id="recommendedRunwayVal" style="font-size: 1.1rem; font-weight: 800; color: #fbbf24; font-family: monospace; margin-top: 4px;">18 Months</div>
+            </div>
+          </div>
+
+          <!-- Advisory Rationale & Disclaimer -->
+          <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <div id="regimeRationaleText" style="font-size: 0.78rem; color: #cbd5e1; line-height: 1.5; padding: 8px 12px; background: rgba(0,0,0,0.25); border-radius: 6px; border-left: 3px solid #38bdf8;">
+              Equity PE &gt; 22.0 indicates elevated valuation; yield curve is non-inverted (+0.60%). Recommended stance favors maintaining liquid reserves while letting equity run.
+            </div>
+            <div id="sentinelScopeCaveatText" style="font-size: 0.72rem; color: #94a3b8; font-style: italic; display: flex; align-items: center; gap: 6px;">
+              <span>ℹ️</span> Advisory preview overlay only. Live rebalance drift thresholds and trade executions remain strictly pinned to baseline bucket_targets.yaml.
+            </div>
+          </div>
+        </div>
+
+        <!-- Net Worth & Capital Invested Timeline Chart -->
+        <div class="glass-card col-12">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px;">
+            <div>
+              <h2 style="margin: 0; font-size: 1.1rem; color: #f8fafc;">Net Worth & Capital Invested Timeline</h2>
+              <span class="sub font-mono" id="netWorthWindowBadge" style="color: #cbd5e1; font-size: 0.8rem;">Daily Valuation & Capital Contributed</span>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <span class="live-tag positive-tag" id="netWorthMoMBadge" style="font-size: 0.75rem; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981; padding: 2px 8px; border-radius: 4px; font-weight: 600;">MoM: --%</span>
+              <div class="btn-group" style="display: flex; gap: 6px;">
+                <button type="button" id="btnNetWorthDaily" class="secondary-btn active" style="padding: 4px 10px; font-size: 0.72rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; border-radius: 4px; cursor: pointer;">Daily</button>
+                <button type="button" id="btnNetWorthMonthly" class="secondary-btn" style="padding: 4px 10px; font-size: 0.72rem; background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; cursor: pointer;">12-Mo Monthly</button>
+              </div>
+            </div>
+          </div>
+          <div class="canvas-wrapper-large" id="netWorthChartContainer" style="height: 320px; width: 100%;"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB: Scheme-Grouped Tax Lots -->
+    <main class="tab-content" id="tab-tax-lots">
+      <div class="dashboard-grid">
+        <div class="glass-card col-12">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h2 style="margin: 0;">Open Tax Lots Grouped by Mutual Fund Scheme</h2>
+              <span class="sub font-mono" style="color: #cbd5e1; font-size: 0.8rem;">FIFO Tax Lot Classification · LTCG Tax-Free vs STCG Locked</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <button id="btnOpenOverlapModal" class="btn btn-secondary" style="font-size: 0.75rem; padding: 6px 14px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; color: #38bdf8; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px;" onclick="window.openOverlapModal && window.openOverlapModal()">
+                <span>🔍</span> Inspect Overlap & Concentration
+              </button>
+              <span class="live-tag">FIFO LEDGER</span>
+            </div>
+          </div>
+
+          <!-- Filter Chips & Sort Controls -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 14px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <div id="taxLotsFilterChips" style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button type="button" class="filter-chip active" data-filter="all" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 20px; border: 1px solid #38bdf8; background: rgba(56, 189, 248, 0.2); color: #38bdf8; cursor: pointer; font-weight: 600;">All Lots</button>
+              <button type="button" class="filter-chip" data-filter="ltcg" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 20px; border: 1px solid rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.08); color: #10b981; cursor: pointer; font-weight: 600;">LTCG Mature</button>
+              <button type="button" class="filter-chip" data-filter="stcg" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 20px; border: 1px solid rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.08); color: #f59e0b; cursor: pointer; font-weight: 600;">STCG Locked</button>
+              <button type="button" class="filter-chip" data-filter="losses" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 20px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.08); color: #f87171; cursor: pointer; font-weight: 600;">Loss-Harvest Candidates</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label for="taxLotsSortSelect" style="font-size: 0.75rem; color: #94a3b8;">Sort Lots:</label>
+              <select id="taxLotsSortSelect" style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; font-size: 0.75rem; border-radius: 6px; padding: 4px 8px; cursor: pointer;">
+                <option value="fifo_asc">Acquisition Date (FIFO / Oldest First)</option>
+                <option value="fifo_desc">Acquisition Date (LIFO / Newest First)</option>
+                <option value="tax_drag_asc">Tax Drag (Lowest First — Tax-Optimal)</option>
+                <option value="tax_drag_desc">Tax Drag (Highest First)</option>
+                <option value="gain_desc">Unrealized Gain (Highest First)</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="groupedTaxLotsContainer" style="margin-top: 16px; display: flex; flex-direction: column; gap: 14px;">
+            <div class="loading-td" style="color: #64748b; padding: 16px;">Loading scheme-grouped open tax lots...</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 3: Unified Rebalance & FIRE -->
+    <main class="tab-content" id="tab-fire">
+      <div class="dashboard-grid">
+        <!-- Persistent Unified Rebalance Trigger Status Strip -->
+        <div class="glass-card col-12" id="rebalanceStatusStrip" style="padding: 14px 20px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(56, 189, 248, 0.2); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <span id="rebalanceTriggerBadge" class="live-tag" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; font-weight: 700; font-size: 0.8rem; padding: 4px 10px;">
+              INDUCED — 15% Drawdown Tier
+            </span>
+            <div style="font-size: 0.85rem; color: #94a3b8;">
+              <strong style="color: #f8fafc;">Drawdown Status:</strong> <span id="stripDrawdownPct" style="color: #38bdf8;">15.4%</span> below rolling high (<span id="stripRollingHigh">₹18.50L</span>)
+            </div>
+            <div style="font-size: 0.85rem; color: #94a3b8;">
+              <strong style="color: #f8fafc;">Scheduled Reconstitution:</strong> <span id="stripReconWindow">March 2027 Window (~204 Days)</span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="btnViewRebalancePlan" class="btn btn-primary" style="font-size: 0.75rem; padding: 6px 12px; background: #0284c7; border: none; border-radius: 4px; color: white; cursor: pointer;">
+              View Plan & Waterfall
+            </button>
+            <button id="btnSimulateLumpsum" class="btn btn-secondary" style="font-size: 0.75rem; padding: 6px 12px; background: #334155; border: 1px solid #475569; border-radius: 4px; color: #f8fafc; cursor: pointer;">
+              + Simulate Lump-Sum
+            </button>
+          </div>
+        </div>
+
+        <!-- Unified Rebalance Plan & Waterfall -->
+        <div class="glass-card col-12" id="rebalancePlanCard">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Unified Rebalance & Capital Router</h2>
+            <div style="font-size: 0.75rem; color: #94a3b8;" id="planMetaTimestamp">Generated At: 2026-08-08</div>
+          </div>
+
+          <!-- Section A: Drawdown & Exemption -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px;">
+            <div style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h4 style="color: #38bdf8; font-size: 0.85rem; margin: 0;">Multi-Tier Drawdown Tripwire Depth Gauge</h4>
+                <span id="drawdownTripwireLabel" class="live-tag" style="font-size: 0.7rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8;">DYNAMIC TRIPWIRE GAUGE</span>
+              </div>
+              <div id="drawdownGaugeContainer" style="margin-top: 12px;">
+                <!-- Dynamically generated tiered visual progress bar & threshold markers -->
+                <div id="multiTierGaugeBar" style="height: 18px; background: #1e293b; border-radius: 9px; position: relative; overflow: hidden; display: flex;">
+                  <div id="gaugeZone0" style="flex: 5; background: rgba(16, 185, 129, 0.4); border-right: 1px solid rgba(255,255,255,0.2);"></div>
+                  <div id="gaugeZone1" style="flex: 5; background: rgba(245, 158, 11, 0.4); border-right: 1px solid rgba(255,255,255,0.2);"></div>
+                  <div id="gaugeZone2" style="flex: 5; background: rgba(239, 68, 68, 0.4); border-right: 1px solid rgba(255,255,255,0.2);"></div>
+                  <div id="gaugeZone3" style="flex: 10; background: rgba(185, 28, 28, 0.6);"></div>
+                  <div id="gaugeIndicatorMarker" style="position: absolute; top: 0; bottom: 0; width: 4px; background: #ffffff; box-shadow: 0 0 10px #ffffff; transition: left 0.4s ease; left: 0%;"></div>
+                </div>
+                <div id="gaugeZoneLabels" style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #94a3b8; margin-top: 6px; font-family: monospace;">
+                  <span>0% (Nominal)</span>
+                  <span id="gaugeTier1Label">5% (T1)</span>
+                  <span id="gaugeTier2Label">10% (T2)</span>
+                  <span id="gaugeTier3Label">15%+ (T3)</span>
+                </div>
+                <div id="gaugeNextTierCallout" style="margin-top: 8px; font-size: 0.78rem; color: #cbd5e1; background: rgba(255,255,255,0.03); padding: 6px 10px; border-radius: 4px; display: flex; justify-content: space-between;">
+                  <span>Current DD: <strong id="gaugeCurrentDDPct" style="color: #38bdf8;">0.0%</strong></span>
+                  <span id="gaugeDistanceText" style="color: #94a3b8;">Distance to next tripwire: <strong style="color: #f8fafc;">--</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section A2: Market Overlays (Gold-Silver Ratio & NSE Reconstitution) -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px;">
+            <!-- Gold-Silver Ratio Intra-Bucket Sizing Card -->
+            <div id="goldSilverRatioCard" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h4 style="color: #fbbf24; font-size: 0.85rem; margin: 0;">Gold-Silver Ratio (Intra-Bucket Split)</h4>
+                <span id="goldSilverSignalBadge" class="live-tag" style="font-size: 0.7rem; background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid #fbbf24;">SILVER UNDERVALUED</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <div style="font-size: 1.2rem; font-weight: 800; color: #f8fafc; font-family: monospace;" id="goldSilverRatioVal">84.5x</div>
+                <div style="font-size: 0.8rem; color: #cbd5e1; font-family: monospace;" id="goldSilverTargetSplitText">Target Split: <strong style="color: #fbbf24;">40% Gold / 60% Silver</strong></div>
+              </div>
+            </div>
+
+            <!-- NSE Semi-Annual Reconstitution Card -->
+            <div id="reconstitutionCard" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h4 style="color: #38bdf8; font-size: 0.85rem; margin: 0;">NSE Index Reconstitution Calendar</h4>
+                <span id="reconstitutionWindowBadge" class="live-tag" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid #10b981;">NORMAL EXECUTION</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <div style="font-size: 0.82rem; color: #cbd5e1;">Next Reconstitution: <strong id="reconstitutionDateVal" style="color: #f8fafc; font-family: monospace;">2026-09-30</strong></div>
+                <div style="font-size: 0.82rem; color: #38bdf8; font-weight: 700; font-family: monospace;" id="reconstitutionDaysVal">30 days remaining</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section B: Capital Routing & Rebalance Trade Flow -->
+          <div style="margin-top: 16px; background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(56, 189, 248, 0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="color: #38bdf8; font-size: 0.9rem; margin: 0;">1. Capital Routing & Rebalance Trade Flow</h3>
+            </div>
+
+            <!-- YTD-Aware Tax Summary Line -->
+            <div id="rebalanceSummaryLine" style="background: rgba(30, 41, 59, 0.6); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center;">
+              <div><span style="color: #94a3b8;">Total Realized:</span> <strong id="sumRealizedProceeds" style="color: #f8fafc;">₹88,142</strong></div>
+              <div><span style="color: #94a3b8;">LTCG Exempt Gain:</span> <strong id="sumTradeExemption" style="color: #10b981;">₹12,124</strong></div>
+              <div><span style="color: #94a3b8;">Tax Saved (Sec 112A):</span> <strong id="sumTaxSaved" style="color: #34d399; font-weight: 800;">+₹2,673</strong></div>
+              <div><span style="color: #94a3b8;">Remaining Headroom:</span> <strong id="sumRemainingHeadroom" style="color: #38bdf8;">₹1,12,876</strong></div>
+              <div><span style="color: #94a3b8;">Tax Owed:</span> <strong id="sumTaxOwed" style="color: #ef4444;">₹0</strong></div>
+            </div>
+
+            <!-- Primary Box & Connector Layout Container -->
+            <div id="rebalanceBoxConnectorContainer" style="position: relative; width: 100%; min-height: 280px; display: flex; align-items: stretch; justify-content: space-between; gap: 12px; margin-bottom: 16px;">
+              <!-- Sell Side Cards Column (Left) -->
+              <div id="rebalanceSellCardsCol" style="flex: 1; display: flex; flex-direction: column; gap: 8px; z-index: 2;">
+                <!-- Populated dynamically -->
+              </div>
+
+              <!-- Central Cash Pool & SVG Connectors (Middle) -->
+              <div style="width: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; z-index: 2;">
+                <div id="rebalanceCentralPoolPill" style="background: linear-gradient(135deg, #0284c7, #0f766e); padding: 12px 14px; border-radius: 20px; text-align: center; border: 1px solid #38bdf8; box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);">
+                  <div style="font-size: 0.65rem; color: #bae6fd; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Rebalance Cash Pool</div>
+                  <div id="rebalancePoolAmount" style="font-size: 0.95rem; font-weight: 800; color: #ffffff; margin-top: 2px;">₹88,142</div>
+                </div>
+              </div>
+
+              <!-- Buy Side Cards Column (Right) -->
+              <div id="rebalanceBuyCardsCol" style="flex: 1; display: flex; flex-direction: column; gap: 8px; z-index: 2;">
+                <!-- Populated dynamically -->
+              </div>
+
+              <!-- SVG Bezier Connector Canvas -->
+              <svg id="rebalanceSvgConnectors" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;">
+                <!-- Drawn dynamically -->
+              </svg>
+            </div>
+
+            <!-- Pre/Post Bucket Progression Delta Badges -->
+            <div style="background: rgba(15, 23, 42, 0.4); border-radius: 6px; padding: 12px; border: 1px solid rgba(255,255,255,0.04);">
+              <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 700; margin-bottom: 8px;">TARGET BUCKET PROGRESSION (PRE ➔ POST REBALANCE)</div>
+              <div id="rebalanceAllocationDeltaContainer" style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <!-- Pre/Post Scheme Fund Progression Delta Badges -->
+            <div style="background: rgba(15, 23, 42, 0.4); border-radius: 6px; padding: 12px; border: 1px solid rgba(255,255,255,0.04); margin-top: 10px;">
+              <div style="font-size: 0.75rem; color: #38bdf8; font-weight: 700; margin-bottom: 8px;">TARGET SCHEME/FUND PROGRESSION (PRE ➔ POST REBALANCE BY SCHEME)</div>
+              <div id="rebalanceFundProgressionContainer" style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Section C: Interactive Tactical Action Matrix -->
+          <div style="margin-top: 16px; background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(56, 189, 248, 0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="color: #38bdf8; font-size: 0.9rem; margin: 0;">2. Sell-Side Lot Sourcing (Selected Sell Lots & Tax Term)</h3>
+              <div style="display: flex; gap: 16px; align-items: center;">
+                <div>
+                  <div style="font-size: 0.7rem; color: #94a3b8;">SELECTED PROCEEDS</div>
+                  <div id="matrixLiveProceeds" style="font-size: 1.1rem; font-weight: 800; color: #38bdf8;">₹0</div>
+                </div>
+                <div>
+                  <div style="font-size: 0.7rem; color: #94a3b8;">TAX DRAG</div>
+                  <div id="matrixLiveTaxDrag" style="font-size: 1.1rem; font-weight: 800; color: #ef4444;">₹0</div>
+                </div>
+              </div>
+            </div>
+            <div style="overflow-x: auto; margin-top: 12px;">
+              <table class="report-table" style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+                <thead>
+                  <tr style="color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
+                    <th style="text-align: center; width: 40px;"><input type="checkbox" id="matrixSelectAllLots" checked style="accent-color: #06b6d4;"></th>
+                    <th>Scheme Name</th>
+                    <th>Acquired</th>
+                    <th>Holding</th>
+                    <th>Cost Basis</th>
+                    <th>Sale Proceeds</th>
+                    <th>Realized Gain</th>
+                    <th>Tax Term</th>
+                    <th>Tax Drag</th>
+                  </tr>
+                </thead>
+                <tbody id="matrixLotTableBody">
+                  <tr><td colspan="9" class="loading-td" style="text-align: center; color: #64748b; padding: 20px;">Loading sell-side lot matrix...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIRE Tracker Module -->
+        <div class="glass-card col-12 fire-card">
+          <div class="card-header">
+            <div class="title-with-badge">
+              <h2>FIRE Tracker & Decumulation Runway</h2>
+              <span class="fire-status-pill on-track" id="fireStatusPill">ON TRACK</span>
+            </div>
+            <div class="live-tag font-mono" id="fireScenarioLabel">Scenario: Primary Target</div>
+          </div>
+
+          <div class="fire-metrics-grid">
+            <div class="fire-stat-box">
+              <span class="lbl">Investable Net Worth</span>
+              <strong class="val font-mono highlight-cyan" id="fireInvestableNw">₹ --</strong>
+              <span class="sub font-mono">Liquid Investments</span>
+            </div>
+            <div class="fire-stat-box">
+              <span class="lbl">Required Corpus (Age 45)</span>
+              <strong class="val font-mono" id="fireRequiredCorpus">₹ --</strong>
+              <span class="sub font-mono" id="fireExpenseSub">3.0% SWR @ ₹60k/mo</span>
+            </div>
+            <div class="fire-stat-box">
+              <span class="lbl">Projected Corpus @ 45</span>
+              <strong class="val font-mono positive" id="fireProjectedCorpus">₹ --</strong>
+              <span class="sub font-mono" id="fireYearsSub">6% Real Return</span>
+            </div>
+          </div>
+
+          <!-- Fan Chart SVG & Sensitivity Sliders Widget -->
+          <div style="margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 style="color: #38bdf8; font-size: 1.05rem; margin: 0;">FIRE Fan Chart (Cone of Uncertainty over 43-Year Horizon)</h3>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <span class="live-tag positive-tag" id="fireSuccessRateBadge">Monte Carlo Success: --%</span>
+                <span class="live-tag" id="fireDataSourceLabel" style="font-size: 0.72rem;">15-Day Block Bootstrap</span>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start;">
+              <!-- SVG Fan Chart Container -->
+              <div id="fanChartSvgContainer" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); height: 320px; position: relative;">
+                <div class="loading-td" style="text-align: center; color: #64748b; margin-top: 130px;">Loading FIRE Fan Chart...</div>
+              </div>
+
+              <!-- Interactive Sensitivity Sliders -->
+              <div style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 16px;">
+                <h4 style="color: #cbd5e1; font-size: 0.88rem; margin: 0; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">Scenario Sensitivity Sliders</h4>
+                
+                <div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
+                    <span style="color: #94a3b8;">Monthly SIP Contribution:</span>
+                    <strong class="font-mono highlight-cyan" id="sipSliderVal">₹ 75,000</strong>
+                  </div>
+                  <input type="range" id="fireSipSlider" min="10000" max="300000" step="5000" value="75000" style="width: 100%;">
+                </div>
+
+                <div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
+                    <span style="color: #94a3b8;">FIRE Monthly Expense:</span>
+                    <strong class="font-mono highlight-cyan" id="expSliderVal">₹ 60,000</strong>
+                  </div>
+                  <input type="range" id="fireExpSlider" min="30000" max="250000" step="5000" value="60000" style="width: 100%;">
+                </div>
+
+                <div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
+                    <span style="color: #94a3b8;">Years to Retirement:</span>
+                    <strong class="font-mono highlight-cyan" id="yrsSliderVal">13 Years</strong>
+                  </div>
+                  <input type="range" id="fireYrsSlider" min="5" max="30" step="1" value="13" style="width: 100%;">
+                </div>
+
+                <div style="background: rgba(255,255,255,0.03); border-radius: 6px; padding: 10px; border: 1px solid rgba(255,255,255,0.05); margin-top: 4px;">
+                  <div style="font-size: 0.75rem; color: #64748b;">Simulated Ending Median Wealth:</div>
+                  <div class="font-mono positive" id="fireSimulatedMedian" style="font-size: 1.1rem; font-weight: bold; margin-top: 2px;">₹ -- Cr</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tax-Aware Rebalancing Predictor -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Tax-Aware Rebalancing Predictor</h2>
+            <span class="live-tag">TAX DRAG CALCULATOR</span>
+          </div>
+          <div class="rebalance-controls">
+            <label class="input-lbl">Target Redemption Amount (INR):</label>
+            <div class="slider-box">
+              <input type="range" id="rebalanceSlider" min="25000" max="1000000" step="25000" value="100000">
+              <span class="font-mono slider-val" id="rebalanceSliderVal">₹ 1,00,000</span>
+            </div>
+            <div class="rebalance-summary-box">
+              <div class="reb-stat"><span class="lbl">Predicted Tax Drag:</span> <strong class="val font-mono highlight-cyan" id="rebTaxDrag">₹ 0</strong></div>
+              <div class="reb-stat"><span class="lbl">Effective Tax Rate:</span> <strong class="val font-mono" id="rebEffRate">0.00%</strong></div>
+              <div class="reb-stat"><span class="lbl">LTCG Tax-Free Harvested:</span> <strong class="val font-mono" id="rebLtcgHarvested">₹ 0</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bucket Rebalancing -->
+        <div class="glass-card col-6">
+          <div class="card-header">
+            <h2>Flat Bucket Rebalancer</h2>
+            <span class="live-tag" id="drawdownTag">Nifty 500: Normal</span>
+          </div>
+          <div class="bucket-grid" id="bucketGrid">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Disciplined Consolidation -->
+        <div class="glass-card col-12">
+          <div class="card-header">
+            <h2>Disciplined Consolidation Plan</h2>
+            <span class="live-tag" id="consolidationWindowBadge">March / September Window</span>
+          </div>
+          <div id="consolidationPlanContainer">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Global Command Palette Modal -->
+  <div id="commandPaletteModal" class="cmd-modal-overlay" style="display: none;">
+    <div class="command-palette-box">
+      <div class="command-palette-header">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D0FF00" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="commandPaletteInput" placeholder="Type an AI prompt, SQL query, or tax question... (Press Enter to Ask AI)">
+        <button type="button" id="submitCmdPromptBtn" onclick="window.submitAiPrompt && window.submitAiPrompt()" style="background:#06b6d4; color:#000; border:none; border-radius:6px; padding:6px 14px; font-weight:700; font-size:12px; cursor:pointer; font-family:'Inter', sans-serif; flex-shrink: 0; white-space: nowrap;">Ask AI</button>
+        <button type="button" id="closeCmdPaletteBtn" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:18px; font-weight:bold; padding:0 4px;" title="Close (Esc)">✕</button>
+      </div>
+      <!-- Conversational Copilot Quick Action Prompts -->
+      <div class="cmd-quick-prompts" id="cmdQuickPrompts" style="display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(0,0,0,0.25);">
+        <button type="button" class="cmd-chip" data-prompt="Simulate selling 50 units of Parag Parikh" style="background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 20px; font-size: 11px; padding: 4px 10px; cursor: pointer; font-weight: 600;">⚡ Simulate selling 50 units of Parag Parikh</button>
+        <button type="button" class="cmd-chip" data-prompt="Tax consequence of rebalancing today" style="background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 20px; font-size: 11px; padding: 4px 10px; cursor: pointer; font-weight: 600;">⚖️ Tax consequence of rebalancing today</button>
+        <button type="button" class="cmd-chip" data-prompt="Explain rebalance triggers" style="background: rgba(245, 158, 11, 0.12); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 20px; font-size: 11px; padding: 4px 10px; cursor: pointer; font-weight: 600;">🎯 Explain rebalance triggers</button>
+        <button type="button" class="cmd-chip" data-prompt="Run Monte Carlo FIRE simulation" style="background: rgba(208, 255, 0, 0.12); color: #d0ff00; border: 1px solid rgba(208, 255, 0, 0.3); border-radius: 20px; font-size: 11px; padding: 4px 10px; cursor: pointer; font-weight: 600;">🔥 Run Monte Carlo FIRE simulation</button>
+      </div>
+      <div class="command-palette-results" id="commandPaletteResults">
+        <div class="cmd-item" data-action="whatif">⚡ Open What-If Trade Simulator</div>
+        <div class="cmd-item" data-action="schedule-cg">📄 Download Schedule CG Tax CSV</div>
+        <div class="cmd-item" data-action="rebalance">⚖️ Run Portfolio Rebalance Engine</div>
+        <div class="cmd-item" data-action="holdings">📊 Jump to Holdings & NAV Trend</div>
+        <div class="cmd-item" data-action="radar">🧠 View AI Quant Radar Signals</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CAS PDF Password Modal -->
+  <div id="casPasswordModal" class="cmd-modal-overlay" style="display: none;">
+    <div class="glass-card" style="width: 100%; max-width: 440px; padding: 24px; border: 1px solid rgba(208, 255, 0, 0.3); background: rgba(5, 8, 17, 0.95); backdrop-filter: blur(16px); border-radius: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+          <span>🔒 Password Protected CAS PDF</span>
+        </h3>
+        <button type="button" onclick="window.closeCasPasswordModal && window.closeCasPasswordModal()" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">✕</button>
+      </div>
+
+      <p style="font-size: 13px; color: #94a3b8; margin-bottom: 16px; line-height: 1.5;">
+        The CAS PDF file <strong id="casModalFilename" style="color: #d0ff00;"></strong> is encrypted. Enter your CAS password (usually your PAN in uppercase + Date of Birth, e.g. <code style="color: #06b6d4;">ABCDE1234F01011990</code>).
+      </p>
+
+      <div style="margin-bottom: 20px;">
+        <label style="display: block; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">CAS Password / Master PIN</label>
+        <input type="password" id="casPasswordInput" placeholder="Enter CAS password" style="width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 14px; font-family: monospace;">
+      </div>
+
+      <div id="casUploadStatus" style="display: none; font-size: 12px; font-family: monospace; margin-bottom: 16px; padding: 10px; border-radius: 8px;"></div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" onclick="window.closeCasPasswordModal && window.closeCasPasswordModal()" style="padding: 8px 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #94a3b8; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">Cancel</button>
+        <button type="button" id="submitCasUploadBtn" onclick="window.submitCasUpload && window.submitCasUpload()" style="padding: 8px 18px; background: #d0ff00; color: #000; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px;">Decrypt & Ingest CAS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual Lump-Sum Simulation Modal -->
+  <div id="lumpsumModalBackdrop" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 999;" onclick="window.closeLumpsumModal && window.closeLumpsumModal()"></div>
+  <div id="lumpsumModal" class="modal-content" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 480px; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 24px; z-index: 1000; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="margin: 0; font-size: 1.1rem; color: #38bdf8;">+ Simulate Manual Lump-Sum</h3>
+      <button type="button" onclick="window.closeLumpsumModal && window.closeLumpsumModal()" style="background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer;">✕</button>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">Fresh Capital Inflow (₹)</label>
+      <input type="number" id="lumpsumAmountInput" value="100000" placeholder="e.g. 100000" style="width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 15px; font-family: monospace; font-weight: 700;">
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <label style="display: block; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 8px;">Rebalance Execution Mode</label>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="lumpsumRebalanceOption" value="false" checked style="accent-color: #38bdf8; margin-top: 3px;">
+          <div>
+            <div style="font-weight: 700; font-size: 0.85rem; color: #f8fafc;">💧 Lump-Sum Only (No Sales)</div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">Deploy fresh cash into under-allocated buckets without trimming existing holdings.</div>
+          </div>
+        </label>
+        <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="lumpsumRebalanceOption" value="true" style="accent-color: #a855f7; margin-top: 3px;">
+          <div>
+            <div style="font-weight: 700; font-size: 0.85rem; color: #c084fc;">⚡ Lump-Sum + Portfolio Rebalance</div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">Deploy fresh cash AND execute rebalance liquidations together in one combined execution.</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 10px;">
+      <button type="button" onclick="window.closeLumpsumModal && window.closeLumpsumModal()" style="padding: 8px 16px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #94a3b8; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px;">Cancel</button>
+      <button type="button" id="submitLumpsumSimBtn" onclick="window.submitLumpsumSim && window.submitLumpsumSim()" style="padding: 8px 18px; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 13px;">Simulate Allocation</button>
+    </div>
+  </div>
+
+  <!-- Slide-Out Holdings Detail Drawer -->
+  <div id="holdingDetailDrawerBackdrop" class="drawer-backdrop" onclick="window.closeHoldingDrawer && window.closeHoldingDrawer()"></div>
+  <aside id="holdingDetailDrawer" class="slide-drawer">
+    <div class="drawer-header">
+      <div>
+        <h3 id="drawerAssetTitle" class="drawer-title">Scheme Details</h3>
+        <span id="drawerAssetCategory" class="live-tag">EQUITY</span>
+      </div>
+      <button type="button" class="drawer-close-btn" onclick="window.closeHoldingDrawer && window.closeHoldingDrawer()">✕</button>
+    </div>
+    <div class="drawer-body" id="drawerBody">
+      <!-- Dynamically populated -->
+    </div>
+  </aside>
+
+  <!-- Portfolio Overlap & Stock Concentration Inspector Modal -->
+  <div id="overlapModalBackdrop" class="modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(5px); z-index: 999;" onclick="window.closeOverlapModal && window.closeOverlapModal()"></div>
+  <div id="overlapInspectorModal" class="modal-content" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 92%; max-width: 820px; max-height: 88vh; overflow-y: auto; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 24px; z-index: 1000; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+      <div>
+        <h3 style="margin: 0; font-size: 1.15rem; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+          <span>🔍</span> Portfolio Overlap & Stock Concentration Inspector
+        </h3>
+        <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 4px;">
+          Pairwise Capital Overlap & Portfolio-Wide Stock Aggregation with Provenance Tracking
+        </div>
+      </div>
+      <button type="button" onclick="window.closeOverlapModal && window.closeOverlapModal()" style="background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; padding: 4px 8px;">✕</button>
+    </div>
+
+    <!-- Section 1: Pairwise Fund Overlap (Dense Horizontal Bars) -->
+    <div style="background: rgba(30, 41, 59, 0.4); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h4 style="margin: 0; font-size: 0.9rem; color: #f8fafc; font-weight: 600;">Pairwise Fund Overlap</h4>
+        <span id="overlapPairwiseCount" style="font-size: 0.72rem; color: #94a3b8; font-family: monospace;">-- pairs</span>
+      </div>
+
+      <!-- Container for sorted horizontal bars & collapsed zero-overlap rows -->
+      <div id="pairwiseBarsContainer" style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="text-align: center; color: #64748b; font-size: 0.8rem; padding: 16px;">Loading pairwise overlap...</div>
+      </div>
+
+      <!-- Collapsed Zero Overlap Section -->
+      <div id="zeroOverlapContainer" style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.08); display: none; flex-direction: column; gap: 4px;">
+        <!-- Filled dynamically -->
+      </div>
+
+      <!-- Provenance Dots Legend -->
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05); font-size: 0.72rem; color: #94a3b8;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <span style="display: flex; align-items: center; gap: 5px;">
+            <span style="width: 7px; height: 7px; border-radius: 50%; background: #38bdf8; display: inline-block;"></span>
+            Audited (Factsheet / NSE Index)
+          </span>
+          <span style="display: flex; align-items: center; gap: 5px;">
+            <span style="width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; display: inline-block;"></span>
+            Provisional Sample
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 2: Top Stock Concentrations (Top 5 Exposures) -->
+    <div style="background: rgba(30, 41, 59, 0.4); border-radius: 8px; padding: 16px; border: 1px solid rgba(255,255,255,0.06);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+        <h4 style="margin: 0; font-size: 0.9rem; color: #f8fafc; font-weight: 600;">Top Stock Concentrations</h4>
+        <!-- Quiet power-user link for provisional estimates -->
+        <a href="javascript:void(0)" id="linkToggleProvisional" style="font-size: 0.72rem; color: #64748b; text-decoration: underline; cursor: pointer;">
+          Show provisional estimates too
+        </a>
+      </div>
+
+      <!-- Single-line coverage caption -->
+      <div id="coverageCaptionLine" style="font-size: 0.76rem; color: #94a3b8; margin-bottom: 12px;">
+        Based on audited holdings — calculating coverage...
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="data-table" id="topStockConcentrationTable" style="width: 100%; font-size: 0.8rem;">
+          <thead>
+            <tr>
+              <th style="text-align: left;">Stock Symbol</th>
+              <th style="text-align: left;">Company Name</th>
+              <th style="text-align: right;">Rupee Exposure</th>
+              <th style="text-align: right;">Portfolio %</th>
+              <th style="text-align: center; width: 60px;">Provenance</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5" style="text-align: center; color: #64748b; padding: 12px;">Loading concentrations...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; margin-top: 18px;">
+      <button type="button" onclick="window.closeOverlapModal && window.closeOverlapModal()" style="padding: 7px 18px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #f8fafc; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">Close</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/app.js?t=1788114000"></script>
+</body>
+</html>

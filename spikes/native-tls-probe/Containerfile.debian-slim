@@ -1,0 +1,15 @@
+# Verified working base image for dynamic GraalVM native binaries requiring glibc + libz + ca-certs
+FROM container-registry.oracle.com/graalvm/native-image:21 AS builder
+WORKDIR /src
+COPY TlsProbe.java .
+RUN javac TlsProbe.java && \
+    native-image --no-fallback --enable-https -H:+AddAllCharsets TlsProbe -o tls-probe
+
+FROM docker.io/library/debian:12-slim
+WORKDIR /app
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends zlib1g ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=builder /src/tls-probe /app/tls-probe
+USER 65532:65532
+ENTRYPOINT ["/app/tls-probe"]

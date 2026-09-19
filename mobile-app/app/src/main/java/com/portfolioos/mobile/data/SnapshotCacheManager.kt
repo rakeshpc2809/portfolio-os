@@ -90,7 +90,7 @@ object SnapshotCacheManager {
     }
 
     fun setQuietModeEnabled(context: Context, enabled: Boolean) {
-        getPrefs(context).edit().putBoolean(KEY_QUIET_MODE, enabled).apply()
+        getPrefs(context).edit().putBoolean(KEY_QUIET_MODE, enabled).commit()
     }
 
     fun getWidgetStatusOverride(context: Context): String? {

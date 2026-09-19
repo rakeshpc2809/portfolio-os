@@ -200,11 +200,43 @@ fun DashboardScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showUrlDialog = true }) {
+                        Surface(
+                            onClick = { onToggleQuietMode(!isQuietModeEnabled) },
+                            color = if (isQuietModeEnabled) ColorTokens.CyanBright.copy(alpha = 0.15f) else ColorTokens.SurfaceCard,
+                            shape = RoundedCornerShape(100.dp),
+                            border = BorderStroke(1.dp, if (isQuietModeEnabled) ColorTokens.CyanBright else ColorTokens.CardBorder),
+                            modifier = Modifier.heightIn(min = 44.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .heightIn(min = 44.dp)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isQuietModeEnabled) ColorTokens.CyanBright else ColorTokens.TextMuted)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isQuietModeEnabled) "Quiet: ON" else "Quiet: OFF",
+                                    color = if (isQuietModeEnabled) ColorTokens.CyanBright else ColorTokens.TextMuted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = { showUrlDialog = true },
+                            modifier = Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = "Server Settings",
-                                tint = M3ElectricLime
+                                tint = ColorTokens.CyanBright
                             )
                         }
                     },
@@ -325,10 +357,16 @@ fun DashboardScreen(
                         if (isExpandedWidth) {
                             Row(modifier = Modifier.fillMaxSize()) {
                                 Box(modifier = Modifier.weight(0.5f).fillMaxHeight()) {
-                                    HoldingsView(snapshot, syncInfo, holdings, onSimulateSale = { h ->
-                                        selectedHoldingForSimulator = h
-                                        showSimulatorBottomSheet = true
-                                    })
+                                    HoldingsView(
+                                        snapshot = snapshot,
+                                        syncInfo = syncInfo,
+                                        holdings = holdings,
+                                        isQuietMode = isQuietModeEnabled,
+                                        onSimulateSale = { h ->
+                                            selectedHoldingForSimulator = h
+                                            showSimulatorBottomSheet = true
+                                        }
+                                    )
                                 }
                                 Box(modifier = Modifier.weight(0.5f).fillMaxHeight()) {
                                     SimulatorView(holdings)
@@ -352,6 +390,7 @@ fun DashboardScreen(
                                         holdings = holdings,
                                         radarSignals = radarSignals,
                                         benchmarkAnalytics = benchmarkData,
+                                        isQuietMode = isQuietModeEnabled,
                                         onSimulateSale = { h ->
                                             selectedHoldingForSimulator = h
                                             showSimulatorBottomSheet = true
@@ -360,8 +399,12 @@ fun DashboardScreen(
                                             showOverlapBottomSheet = true
                                         }
                                     )
-                                    1 -> GroupedTaxLotsView(taxLots, holdings)
-                                    2 -> RebalanceWaterfallView(rebalancePlan = snapshot.rebalancePlan, fireSummary = fireSummaryData)
+                                    1 -> GroupedTaxLotsView(taxLots, holdings, isQuietMode = isQuietModeEnabled)
+                                    2 -> RebalanceWaterfallView(
+                                        rebalancePlan = snapshot.rebalancePlan,
+                                        fireSummary = fireSummaryData,
+                                        isQuietMode = isQuietModeEnabled
+                                    )
                                 }
                             }
                         }
@@ -682,11 +725,14 @@ fun ExpressiveNavPill(
         color = if (selected) activeColor.copy(alpha = 0.22f) else Color.Transparent,
         shape = RoundedCornerShape(100.dp),
         modifier = Modifier
+            .heightIn(min = 44.dp)
             .scale(pillScale)
             .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessHigh))
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            modifier = Modifier
+                .heightIn(min = 44.dp)
+                .padding(horizontal = 14.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -715,6 +761,7 @@ fun HoldingsView(
     holdings: List<FlatHoldingDto>,
     radarSignals: List<RadarSignalDto> = emptyList(),
     benchmarkAnalytics: BenchmarkAnalyticsDto? = null,
+    isQuietMode: Boolean = false,
     onSimulateSale: (FlatHoldingDto) -> Unit = {},
     onInspectOverlap: () -> Unit = {}
 ) {
@@ -758,31 +805,33 @@ fun HoldingsView(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Surface(
-                                color = ColorTokens.ElectricLime.copy(alpha = 0.15f),
+                                color = if (isQuietMode) ColorTokens.CyanBright.copy(alpha = 0.15f) else ColorTokens.GreenPositive.copy(alpha = 0.15f),
                                 shape = ShapeTokens.PillShape
                             ) {
                                 Text(
-                                    text = "NET WORTH VALUATION",
-                                    color = ColorTokens.ElectricLime,
+                                    text = if (isQuietMode) "PORTFOLIO VALUATION" else "NET WORTH VALUATION",
+                                    color = if (isQuietMode) ColorTokens.CyanBright else ColorTokens.GreenPositive,
                                     style = TypographyTokens.MetricLabel.copy(
-                                        color = ColorTokens.ElectricLime,
+                                        color = if (isQuietMode) ColorTokens.CyanBright else ColorTokens.GreenPositive,
                                         letterSpacing = 1.5.sp
                                     ),
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
-                            val xirrText = if (isSyncPopulated && syncInfo != null && syncInfo.xirrPercentage.isNotBlank()) {
+                            val xirrText = if (isQuietMode) {
+                                "Target Aligned"
+                            } else if (isSyncPopulated && syncInfo != null && syncInfo.xirrPercentage.isNotBlank()) {
                                 syncInfo.xirrPercentage
                             } else {
                                 "--% XIRR"
                             }
                             Surface(
-                                color = if (isSyncPopulated) ColorTokens.GreenPositive.copy(alpha = 0.15f) else ColorTokens.CardBorder.copy(alpha = 0.3f),
+                                color = if (isQuietMode) ColorTokens.CyanBright.copy(alpha = 0.15f) else if (isSyncPopulated) ColorTokens.GreenPositive.copy(alpha = 0.15f) else ColorTokens.CardBorder.copy(alpha = 0.3f),
                                 shape = ShapeTokens.PillShape
                             ) {
                                 Text(
                                     text = xirrText,
-                                    color = if (isSyncPopulated) ColorTokens.GreenPositive else ColorTokens.TextMuted,
+                                    color = if (isQuietMode) ColorTokens.CyanBright else if (isSyncPopulated) ColorTokens.GreenPositive else ColorTokens.TextMuted,
                                     style = TypographyTokens.MetricLabel.copy(letterSpacing = 1.sp),
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
@@ -792,7 +841,9 @@ fun HoldingsView(
                         Spacer(modifier = Modifier.height(14.dp))
 
                         // Current Valuation
-                        val valText = if (isSyncPopulated && syncInfo != null) {
+                        val valText = if (isQuietMode) {
+                            "₹ •••,••,•••"
+                        } else if (isSyncPopulated && syncInfo != null) {
                             formatInr(syncInfo.currentValue)
                         } else {
                             "₹ --"
@@ -808,56 +859,82 @@ fun HoldingsView(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Dual Metric Pill Row: Invested vs Unrealized Gain
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
+                        if (isQuietMode) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
-                                    text = "TOTAL INVESTED",
-                                    style = TypographyTokens.MetricLabel.copy(
-                                        color = ColorTokens.TextMuted,
-                                        letterSpacing = 1.sp
+                                    text = "Target Allocation Aligned · P&L Suppressed",
+                                    color = ColorTokens.CyanBright,
+                                    style = TypographyTokens.MetricLabel.copy(letterSpacing = 0.8.sp)
+                                )
+                                Surface(
+                                    color = ColorTokens.CyanBright.copy(alpha = 0.15f),
+                                    shape = ShapeTokens.PillShape
+                                ) {
+                                    Text(
+                                        text = "Quiet Mode Active",
+                                        color = ColorTokens.CyanBright,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                val invText = if (isSyncPopulated && syncInfo != null) {
-                                    formatInr(syncInfo.totalInvested)
-                                } else {
-                                    "₹ --"
                                 }
-                                Text(
-                                    text = invText,
-                                    style = TypographyTokens.FinancialValue.copy(color = ColorTokens.CyanBright)
-                                )
                             }
-
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "UNREALIZED GAIN",
-                                    style = TypographyTokens.MetricLabel.copy(
-                                        color = ColorTokens.TextMuted,
-                                        letterSpacing = 1.sp
+                        } else {
+                            // Dual Metric Pill Row: Invested vs Unrealized Gain
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "TOTAL INVESTED",
+                                        style = TypographyTokens.MetricLabel.copy(
+                                            color = ColorTokens.TextMuted,
+                                            letterSpacing = 1.sp
+                                        )
                                     )
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                val gainText = if (isSyncPopulated && syncInfo != null) {
-                                    val gain = syncInfo.unrealizedGain
-                                    "${if (gain >= 0) "+" else ""}${formatInr(gain)}"
-                                } else {
-                                    "₹ --"
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    val invText = if (isSyncPopulated && syncInfo != null) {
+                                        formatInr(syncInfo.totalInvested)
+                                    } else {
+                                        "₹ --"
+                                    }
+                                    Text(
+                                        text = invText,
+                                        style = TypographyTokens.FinancialValue.copy(color = ColorTokens.CyanBright)
+                                    )
                                 }
-                                Text(
-                                    text = gainText,
-                                    style = TypographyTokens.FinancialValue.copy(
-                                        color = when {
-                                            !isSyncPopulated || syncInfo == null -> ColorTokens.TextMuted
-                                            syncInfo.unrealizedGain >= 0 -> ColorTokens.GreenPositive
-                                            else -> ColorTokens.RedNegative
-                                        }
+
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = "UNREALIZED GAIN",
+                                        style = TypographyTokens.MetricLabel.copy(
+                                            color = ColorTokens.TextMuted,
+                                            letterSpacing = 1.sp
+                                        )
                                     )
-                                )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    val gainText = if (isSyncPopulated && syncInfo != null) {
+                                        val gain = syncInfo.unrealizedGain
+                                        "${if (gain >= 0) "+" else ""}${formatInr(gain)}"
+                                    } else {
+                                        "₹ --"
+                                    }
+                                    Text(
+                                        text = gainText,
+                                        style = TypographyTokens.FinancialValue.copy(
+                                            color = when {
+                                                !isSyncPopulated || syncInfo == null -> ColorTokens.TextMuted
+                                                syncInfo.unrealizedGain >= 0 -> ColorTokens.GreenPositive
+                                                else -> ColorTokens.RedNegative
+                                            }
+                                        )
+                                    )
+                                }
                             }
                         }
                     }
@@ -933,11 +1010,11 @@ fun HoldingsView(
         }
 
         item {
-            HistoricalNetWorthTrendChart(trendPoints = snapshot?.netWorthHistory.orEmpty())
+            HistoricalNetWorthTrendChart(trendPoints = snapshot?.netWorthHistory.orEmpty(), isQuietMode = isQuietMode)
         }
 
         item {
-            PortfolioAllocationBarChart(holdings = holdings)
+            PortfolioAllocationBarChart(holdings = holdings, isQuietMode = isQuietMode)
         }
 
         if (radarSignals.isNotEmpty()) {
@@ -986,12 +1063,15 @@ fun HoldingsView(
                         onClick = onInspectOverlap,
                         color = Color(0xFF38BDF8).copy(alpha = 0.12f),
                         border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.35f)),
-                        shape = RoundedCornerShape(100.dp)
+                        shape = RoundedCornerShape(100.dp),
+                        modifier = Modifier.heightIn(min = 44.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            modifier = Modifier
+                                .heightIn(min = 44.dp)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Text("🔍", fontSize = 10.sp)
                             Text(
@@ -1032,14 +1112,18 @@ fun HoldingsView(
             }
         } else {
             itemsIndexed(holdings, key = { index, h -> "${h.isin}_${h.fundName}_${h.currentValue}_$index" }) { _, holding ->
-                M3HoldingCard(holding, onSimulateSale)
+                M3HoldingCard(holding, isQuietMode = isQuietMode, onSimulateSale = onSimulateSale)
             }
         }
     }
 }
 
 @Composable
-fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> Unit = {}) {
+fun M3HoldingCard(
+    holding: FlatHoldingDto,
+    isQuietMode: Boolean = false,
+    onSimulateSale: (FlatHoldingDto) -> Unit = {}
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = ColorTokens.SurfaceCard),
         shape = ShapeTokens.GlassCardShape,
@@ -1083,18 +1167,34 @@ fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> U
                     )
                 }
                 Spacer(modifier = Modifier.width(4.dp))
-                Surface(
-                    color = if (holding.xirr >= 0) ColorTokens.GreenPositive.copy(alpha = 0.15f) else ColorTokens.RedNegative.copy(alpha = 0.15f),
-                    shape = ShapeTokens.PillShape
-                ) {
-                    Text(
-                        text = "${if (holding.xirr >= 0) "+" else ""}${holding.xirr}% XIRR",
-                        style = TypographyTokens.BadgeTag.copy(
-                            color = if (holding.xirr >= 0) ColorTokens.GreenPositive else ColorTokens.RedNegative,
-                            fontSize = 11.sp
-                        ),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
+                if (isQuietMode) {
+                    Surface(
+                        color = ColorTokens.CyanBright.copy(alpha = 0.15f),
+                        shape = ShapeTokens.PillShape
+                    ) {
+                        Text(
+                            text = "Target Aligned",
+                            style = TypographyTokens.BadgeTag.copy(
+                                color = ColorTokens.CyanBright,
+                                fontSize = 11.sp
+                            ),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                } else {
+                    Surface(
+                        color = if (holding.xirr >= 0) ColorTokens.GreenPositive.copy(alpha = 0.15f) else ColorTokens.RedNegative.copy(alpha = 0.15f),
+                        shape = ShapeTokens.PillShape
+                    ) {
+                        Text(
+                            text = "${if (holding.xirr >= 0) "+" else ""}${holding.xirr}% XIRR",
+                            style = TypographyTokens.BadgeTag.copy(
+                                color = if (holding.xirr >= 0) ColorTokens.GreenPositive else ColorTokens.RedNegative,
+                                fontSize = 11.sp
+                            ),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -1105,11 +1205,11 @@ fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> U
             ) {
                 Column {
                     Text(
-                        text = "Valuation: ${formatInr(holding.currentValue)}",
+                        text = if (isQuietMode) "Valuation: ₹ •••,•••" else "Valuation: ${formatInr(holding.currentValue)}",
                         style = TypographyTokens.FinancialValue.copy(fontSize = 13.sp)
                     )
                     Text(
-                        text = "${holding.totalUnits} Units · Cost: ${formatInr(holding.investedValue)}",
+                        text = if (isQuietMode) "${holding.totalUnits} Units · Cost: ₹ •••,•••" else "${holding.totalUnits} Units · Cost: ${formatInr(holding.investedValue)}",
                         style = TypographyTokens.FinancialValue.copy(color = ColorTokens.TextMuted, fontSize = 11.sp)
                     )
                 }
@@ -1128,12 +1228,12 @@ fun M3HoldingCard(holding: FlatHoldingDto, onSimulateSale: (FlatHoldingDto) -> U
                         onClick = { onSimulateSale(holding) },
                         colors = ButtonDefaults.buttonColors(containerColor = ColorTokens.CyanBright.copy(alpha = 0.2f)),
                         shape = ShapeTokens.PillShape,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.height(28.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        modifier = Modifier.heightIn(min = 44.dp)
                     ) {
                         Text(
                             text = "Simulate ➔",
-                            style = TypographyTokens.MetricLabel.copy(color = ColorTokens.CyanBright, fontSize = 10.sp)
+                            style = TypographyTokens.MetricLabel.copy(color = ColorTokens.CyanBright, fontSize = 11.sp)
                         )
                     }
                 }
@@ -1236,7 +1336,11 @@ fun M3RadarCard(signal: RadarSignalDto) {
 }
 
 @Composable
-fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingDto>) {
+fun GroupedTaxLotsView(
+    taxLots: List<FlatTaxLotDto>,
+    holdings: List<FlatHoldingDto>,
+    isQuietMode: Boolean = false
+) {
     val nameMap = remember(holdings) {
         holdings.associate { it.isin to it.fundName }
     }
@@ -1281,7 +1385,7 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Filter Chips Row
+            // Filter Chips Row with strict 44dp touch targets
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1290,6 +1394,7 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
                     selected = activeFilter == "ALL",
                     onClick = { activeFilter = "ALL" },
                     label = { Text("All (${taxLots.size})", fontSize = 11.sp) },
+                    modifier = Modifier.heightIn(min = 44.dp),
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = ColorTokens.CyanBright.copy(alpha = 0.2f),
                         selectedLabelColor = ColorTokens.CyanBright
@@ -1299,6 +1404,7 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
                     selected = activeFilter == "LTCG",
                     onClick = { activeFilter = "LTCG" },
                     label = { Text("LTCG ($ltcgTotalCount)", fontSize = 11.sp) },
+                    modifier = Modifier.heightIn(min = 44.dp),
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = M3GreenPositive.copy(alpha = 0.2f),
                         selectedLabelColor = M3GreenPositive
@@ -1308,6 +1414,7 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
                     selected = activeFilter == "STCG",
                     onClick = { activeFilter = "STCG" },
                     label = { Text("STCG ($stcgTotalCount)", fontSize = 11.sp) },
+                    modifier = Modifier.heightIn(min = 44.dp),
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = M3AmberWarning.copy(alpha = 0.2f),
                         selectedLabelColor = M3AmberWarning
@@ -1317,6 +1424,7 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
                     selected = activeFilter == "LOSSES",
                     onClick = { activeFilter = "LOSSES" },
                     label = { Text("Losses ($lossTotalCount)", fontSize = 11.sp) },
+                    modifier = Modifier.heightIn(min = 44.dp),
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = Color(0xFFF43F5E).copy(alpha = 0.2f),
                         selectedLabelColor = Color(0xFFFB7185)
@@ -1350,14 +1458,24 @@ fun GroupedTaxLotsView(taxLots: List<FlatTaxLotDto>, holdings: List<FlatHoldingD
         } else {
             itemsIndexed(groupedLots.entries.toList(), key = { index, entry -> "${entry.key}_$index" }) { _, (isin, lots) ->
                 val schemeName = nameMap[isin] ?: isin
-                GroupedSchemeTaxLotCard(schemeName = schemeName, isin = isin, lots = lots)
+                GroupedSchemeTaxLotCard(
+                    schemeName = schemeName,
+                    isin = isin,
+                    lots = lots,
+                    isQuietMode = isQuietMode
+                )
             }
         }
     }
 }
 
 @Composable
-fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTaxLotDto>) {
+fun GroupedSchemeTaxLotCard(
+    schemeName: String,
+    isin: String,
+    lots: List<FlatTaxLotDto>,
+    isQuietMode: Boolean = false
+) {
     var expanded by remember { mutableStateOf(false) }
 
     val ltcgCount = remember(lots) { lots.count { it.isLongTerm } }
@@ -1376,6 +1494,7 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 44.dp)
                     .clickable { expanded = !expanded },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -1389,7 +1508,11 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = (if (isin.isNotBlank()) "$isin · " else "") + "${lots.size} Lots · %.2f Units · Avg ₹%.2f".format(totalUnits, avgCostNav),
+                        text = if (isQuietMode) {
+                            (if (isin.isNotBlank()) "$isin · " else "") + "${lots.size} Lots · %.2f Units · P&L Suppressed".format(totalUnits)
+                        } else {
+                            (if (isin.isNotBlank()) "$isin · " else "") + "${lots.size} Lots · %.2f Units · Avg ₹%.2f".format(totalUnits, avgCostNav)
+                        },
                         color = M3TextMuted,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace
@@ -1397,50 +1520,66 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (ltcgCount > 0) {
+                    if (isQuietMode) {
                         Surface(
-                            color = M3GreenPositive.copy(alpha = 0.15f),
+                            color = ColorTokens.CyanBright.copy(alpha = 0.15f),
                             shape = RoundedCornerShape(100.dp)
                         ) {
                             Text(
-                                text = "$ltcgCount LTCG",
-                                color = M3GreenPositive,
+                                text = "P&L Suppressed",
+                                color = ColorTokens.CyanBright,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(4.dp))
-                    }
-                    if (stcgCount > 0) {
-                        Surface(
-                            color = M3AmberWarning.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(100.dp)
-                        ) {
-                            Text(
-                                text = "$stcgCount STCG",
-                                color = M3AmberWarning,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                    } else {
+                        if (ltcgCount > 0) {
+                            Surface(
+                                color = M3GreenPositive.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(100.dp)
+                            ) {
+                                Text(
+                                    text = "$ltcgCount LTCG",
+                                    color = M3GreenPositive,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-                    if (totalTaxDrag > 0) {
-                        Surface(
-                            color = Color(0xFFF43F5E).copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(100.dp)
-                        ) {
-                            Text(
-                                text = "Drag ${formatInr(totalTaxDrag)}",
-                                color = Color(0xFFFB7185),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                        if (stcgCount > 0) {
+                            Surface(
+                                color = M3AmberWarning.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(100.dp)
+                            ) {
+                                Text(
+                                    text = "$stcgCount STCG",
+                                    color = M3AmberWarning,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
                         }
-                        Spacer(modifier = Modifier.width(4.dp))
+                        if (totalTaxDrag > 0) {
+                            Surface(
+                                color = Color(0xFFF43F5E).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(100.dp)
+                            ) {
+                                Text(
+                                    text = "Drag ${formatInr(totalTaxDrag)}",
+                                    color = Color(0xFFFB7185),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
                     }
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
@@ -1472,7 +1611,11 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "${lot.buyDate} (${lot.holdingDays}d) · ${lot.units} u @ ${formatInr(lot.costPerUnit)}",
+                                    text = if (isQuietMode) {
+                                        "${lot.buyDate} (${lot.holdingDays}d) · ${lot.units} u @ ₹ •••"
+                                    } else {
+                                        "${lot.buyDate} (${lot.holdingDays}d) · ${lot.units} u @ ${formatInr(lot.costPerUnit)}"
+                                    },
                                     color = M3TextMuted,
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace
@@ -1480,12 +1623,18 @@ fun GroupedSchemeTaxLotCard(schemeName: String, isin: String, lots: List<FlatTax
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
-                                    text = if (lot.isLongTerm) "LTCG Free" else "STCG (${lot.daysToLtcg}d to LTCG)",
-                                    color = if (lot.isLongTerm) M3GreenPositive else M3AmberWarning,
+                                    text = if (isQuietMode) {
+                                        "Quiet Mode Protected"
+                                    } else if (lot.isLongTerm) {
+                                        "LTCG Free"
+                                    } else {
+                                        "STCG (${lot.daysToLtcg}d to LTCG)"
+                                    },
+                                    color = if (isQuietMode) ColorTokens.CyanBright else if (lot.isLongTerm) M3GreenPositive else M3AmberWarning,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                                if (lot.estimatedTaxDrag > 0) {
+                                if (!isQuietMode && lot.estimatedTaxDrag > 0) {
                                     Text(
                                         text = "Est Drag: ${formatInr(lot.estimatedTaxDrag)}",
                                         color = Color(0xFFFB7185),
@@ -1543,7 +1692,8 @@ internal fun shortenFundName(rawName: String?): String {
 @Composable
 fun RebalanceWaterfallView(
     rebalancePlan: com.portfolioos.mobile.model.RebalancePlanDto?,
-    fireSummary: FireSummaryResponseDto? = null
+    fireSummary: FireSummaryResponseDto? = null,
+    isQuietMode: Boolean = false
 ) {
     Log.d("SyncAnalytics", "RebalanceWaterfallView Composition: fireSummary isNull=${fireSummary == null}, successRate=${fireSummary?.monteCarloSuccessRatePct}, medianCorpus=${fireSummary?.monteCarloMedianCorpus}")
     val sellSide = rebalancePlan?.sellSide
@@ -1672,7 +1822,7 @@ fun RebalanceWaterfallView(
                                     border = BorderStroke(1.dp, Color(0xFF10B981))
                                 ) {
                                     Text(
-                                        text = "Saved +${formatInr(totalTaxSaved)} Tax",
+                                        text = if (isQuietMode) "Tax Optimized" else "Saved +${formatInr(totalTaxSaved)} Tax",
                                         color = Color(0xFF34D399),
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
@@ -1702,15 +1852,30 @@ fun RebalanceWaterfallView(
                         ) {
                             Column {
                                 Text("SELL TRIM", color = M3TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                Text("-${formatInr(totalRequired)}", color = Color(0xFFFB7185), fontSize = 13.sp, fontWeight = FontWeight.Black)
+                                Text(
+                                    if (isQuietMode) "-₹ ••,•••" else "-${formatInr(totalRequired)}",
+                                    color = Color(0xFFFB7185),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black
+                                )
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("TAX SAVED", color = Color(0xFF34D399), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                Text("+${formatInr(totalTaxSaved)}", color = Color(0xFF34D399), fontSize = 13.sp, fontWeight = FontWeight.Black)
+                                Text(
+                                    if (isQuietMode) "Optimized" else "+${formatInr(totalTaxSaved)}",
+                                    color = Color(0xFF34D399),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black
+                                )
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text("BUY ALLOC", color = M3TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                Text("+${formatInr(totalToInvest)}", color = Color(0xFF34D399), fontSize = 13.sp, fontWeight = FontWeight.Black)
+                                Text(
+                                    if (isQuietMode) "+₹ ••,•••" else "+${formatInr(totalToInvest)}",
+                                    color = Color(0xFF34D399),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black
+                                )
                             }
                         }
                     }
@@ -1719,7 +1884,7 @@ fun RebalanceWaterfallView(
 
             // 1B. MULTI-TIER DRAWDOWN TRIPWIRE GAUGE CARD
             item {
-                MultiTierDrawdownGaugeCard(rebalancePlan)
+                MultiTierDrawdownGaugeCard(rebalancePlan, isQuietMode = isQuietMode)
             }
 
             // 1C. GOLD-SILVER SPOT RATIO CARD
@@ -1777,7 +1942,12 @@ fun RebalanceWaterfallView(
                                         Text("${String.format("%.1f", f.totalUnits)} units · ${f.tierLabel}", color = M3TextMuted, fontSize = 10.sp)
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
-                                        Text("-${formatInr(f.totalProceeds)}", color = Color(0xFFFB7185), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            if (isQuietMode) "-₹ ••,•••" else "-${formatInr(f.totalProceeds)}",
+                                            color = Color(0xFFFB7185),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                         if (f.taxSaved > 0) {
                                             Text("LTCG Exempt", color = Color(0xFF34D399), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                         }
@@ -1799,7 +1969,7 @@ fun RebalanceWaterfallView(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "↓  REDEPLOYING ${formatInr(totalToInvest)} CAPITAL  ↓",
+                            text = if (isQuietMode) "↓  REDEPLOYING CAPITAL (OPTIMIZED)  ↓" else "↓  REDEPLOYING ${formatInr(totalToInvest)} CAPITAL  ↓",
                             color = M3AmberWarning,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
@@ -1852,7 +2022,7 @@ fun RebalanceWaterfallView(
                                 }
                             }
                             Text(
-                                text = formatInr(buySide!!.unallocatedCash),
+                                text = if (isQuietMode) "₹ ••,•••" else formatInr(buySide!!.unallocatedCash),
                                 color = Color(0xFF60A5FA),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
@@ -1902,7 +2072,12 @@ fun RebalanceWaterfallView(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(bkt.bucket.replace('_', ' '), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        Text("+${formatInr(bktAlloc)}", color = Color(0xFF34D399), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            if (isQuietMode) "+₹ ••,•••" else "+${formatInr(bktAlloc)}",
+                                            color = Color(0xFF34D399),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
                                 } else {
                                     funds.forEach { fund ->
@@ -1919,7 +2094,12 @@ fun RebalanceWaterfallView(
                                                 Text(fName, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                                 Text(bkt.bucket.replace('_', ' '), color = M3TextMuted, fontSize = 10.sp)
                                             }
-                                            Text("+${formatInr(fAmt)}", color = Color(0xFF34D399), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                if (isQuietMode) "+₹ ••,•••" else "+${formatInr(fAmt)}",
+                                                color = Color(0xFF34D399),
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
                                     }
                                 }
@@ -2044,7 +2224,7 @@ fun RebalanceWaterfallView(
                                 shape = ShapeTokens.PillShape
                             ) {
                                 Text(
-                                    text = successRateStr,
+                                    text = if (isQuietMode) "Monte Carlo Trajectory: Stable (Quiet Mode)" else successRateStr,
                                     color = M3AmberWarning,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
@@ -2061,11 +2241,17 @@ fun RebalanceWaterfallView(
                         ) {
                             Column {
                                 Text("Median Corpus (p50)", style = TypographyTokens.MetricLabel)
-                                Text(medianCorpusStr, style = TypographyTokens.FinancialValue.copy(color = M3ElectricLime, fontSize = 15.sp))
+                                Text(
+                                    if (isQuietMode) "₹ ••.•• Cr" else medianCorpusStr,
+                                    style = TypographyTokens.FinancialValue.copy(color = M3ElectricLime, fontSize = 15.sp)
+                                )
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text("10th Percentile (p10)", style = TypographyTokens.MetricLabel)
-                                Text(p10CorpusStr, style = TypographyTokens.FinancialValue.copy(color = M3NeonCyan, fontSize = 15.sp))
+                                Text(
+                                    if (isQuietMode) "₹ ••.•• Cr" else p10CorpusStr,
+                                    style = TypographyTokens.FinancialValue.copy(color = M3NeonCyan, fontSize = 15.sp)
+                                )
                             }
                         }
 
@@ -2083,7 +2269,7 @@ fun RebalanceWaterfallView(
 }
 
 @Composable
-fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto) {
+fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto, isQuietMode: Boolean = false) {
     val ddCtx = plan.drawdownContext
     val currentDd = ddCtx?.currentDrawdownPct ?: 0.0
     val thresholds = ddCtx?.tierThresholds?.let { list -> if (list.size >= 3) list else null } ?: listOf(5.0, 10.0, 15.0)
@@ -2121,7 +2307,7 @@ fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto) {
                     shape = ShapeTokens.PillShape
                 ) {
                     Text(
-                        text = "%.1f%% DRAWDOWN".format(currentDd),
+                        text = if (isQuietMode) "Nominal · Capital Protected" else "%.1f%% DRAWDOWN".format(currentDd),
                         color = Color(0xFF38BDF8),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
@@ -2184,11 +2370,15 @@ fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto) {
             ) {
                 Text("Distance to Next Tripwire:", color = M3TextMuted, fontSize = 10.sp)
                 Text(
-                    text = "%.1f%%%s to %s".format(
-                        distPct,
-                        if (distRupees > 0) " (~${formatInr(distRupees)})" else "",
-                        nextTier
-                    ),
+                    text = if (isQuietMode) {
+                        "Protected · Within Target Bounds"
+                    } else {
+                        "%.1f%%%s to %s".format(
+                            distPct,
+                            if (distRupees > 0) " (~${formatInr(distRupees)})" else "",
+                            nextTier
+                        )
+                    },
                     color = Color.White,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,

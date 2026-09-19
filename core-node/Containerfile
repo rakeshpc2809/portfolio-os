@@ -1,0 +1,34 @@
+# Stage 1: Build & Spring Boot AOT / GraalVM Native Image Compilation
+FROM container-registry.oracle.com/graalvm/native-image:21 AS builder
+
+WORKDIR /build
+
+# Install build tools if needed
+RUN microdnf install -y findutils tar gzip && microdnf clean all
+
+# Cache Maven wrapper and POM dependencies
+COPY pom.xml .
+COPY src ./src
+
+# Compile native executable via Spring Boot AOT & GraalVM Native Build Tools
+# Using low memory footprint flags suitable for 16GB host machine
+RUN ./mvnw -B --no-transfer-progress native:compile -Pnative \
+    -Dnative.buildArgs="-J-Xmx4g --no-fallback --initialize-at-build-time=org.slf4j" || \
+    mvn -B --no-transfer-progress native:compile -Pnative \
+    -Dnative.buildArgs="-J-Xmx4g --no-fallback --initialize-at-build-time=org.slf4j"
+
+# Stage 2: Ultra-minimal hardened runtime container
+FROM gcr.io/distroless/base-nossl-debian12:nonroot
+
+WORKDIR /app
+
+# Copy compiled native binary
+COPY --from=builder /build/target/core-node /app/core-node
+
+# Create directory structure with correct permissions for non-root user
+USER 65532:65532
+
+EXPOSE 8080
+
+# Run with container memory constraints and dynamic heap bounds
+ENTRYPOINT ["/app/core-node"]

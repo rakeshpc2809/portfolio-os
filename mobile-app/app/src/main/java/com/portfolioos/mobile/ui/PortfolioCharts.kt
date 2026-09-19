@@ -19,6 +19,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -112,7 +114,8 @@ fun getBucketColor(cat: String): Color {
 @Composable
 fun PortfolioAllocationBarChart(
     holdings: List<FlatHoldingDto>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isQuietMode: Boolean = false
 ) {
     if (holdings.isEmpty()) return
 
@@ -154,7 +157,7 @@ fun PortfolioAllocationBarChart(
                     )
                 }
                 Text(
-                    text = "₹${String.format("%,.0f", totalInvested)}",
+                    text = if (isQuietMode) "₹ •••,••,•••" else "₹${String.format("%,.0f", totalInvested)}",
                     style = TypographyTokens.MetricNumber.copy(
                         fontSize = 15.sp,
                         color = ColorTokens.TextMain
@@ -241,6 +244,7 @@ fun PortfolioAllocationBarChart(
 @Composable
 fun HistoricalNetWorthTrendChart(
     trendPoints: List<NetWorthPointDto>,
+    isQuietMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var selectedPoint by remember { mutableStateOf<NetWorthPointDto?>(null) }
@@ -267,10 +271,22 @@ fun HistoricalNetWorthTrendChart(
                     )
                     Text(
                         text = "NAV Growth & Capital Curve",
-                        style = TypographyTokens.CardTitle.copy(color = ColorTokens.ElectricLime)
+                        style = TypographyTokens.CardTitle.copy(color = ColorTokens.CyanBright)
                     )
                 }
-                if (selectedPoint != null) {
+                if (isQuietMode) {
+                    Surface(
+                        color = ColorTokens.CyanBright.copy(alpha = 0.15f),
+                        shape = ShapeTokens.PillShape
+                    ) {
+                        Text(
+                            text = "TRAJECTORY PROTECTED",
+                            color = ColorTokens.CyanBright,
+                            style = TypographyTokens.BadgeTag.copy(fontSize = 10.sp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                } else if (selectedPoint != null) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = selectedPoint!!.date,
@@ -280,7 +296,7 @@ fun HistoricalNetWorthTrendChart(
                             text = "₹${String.format("%,.0f", selectedPoint!!.valuation)}",
                             style = TypographyTokens.MetricNumber.copy(
                                 fontSize = 14.sp,
-                                color = ColorTokens.ElectricLime
+                                color = ColorTokens.CyanBright
                             )
                         )
                     }
@@ -289,7 +305,35 @@ fun HistoricalNetWorthTrendChart(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (trendPoints.isEmpty()) {
+            if (isQuietMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .background(ColorTokens.GlassSurfaceBase, ShapeTokens.GlassCardShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "🔒 VALUATION & TRAJECTORY MASKED",
+                            color = ColorTokens.CyanBright,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 12.sp,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Quiet Mode Active · Price scales (₹) and valuation curve suppressed",
+                            color = ColorTokens.TextMuted,
+                            fontSize = 10.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else if (trendPoints.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

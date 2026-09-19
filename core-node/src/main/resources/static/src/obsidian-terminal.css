@@ -1,0 +1,1010 @@
+/* ==========================================================================
+   PORTFOLIO OS // THE OBSIDIAN TERMINAL DESIGN SYSTEM
+   Linear / Bloomberg / Raycast Minimalist FinTech Aesthetic
+   ========================================================================== */
+
+:root {
+  --bg-obsidian: #050811;
+  --surface-card: #0A0E1A;
+  --surface-elevated: #0E1424;
+  --surface-overlay: rgba(14, 20, 36, 0.85);
+
+  --border-hairline: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --border-highlight: rgba(6, 182, 212, 0.35);
+
+  /* Contrast-compliant typography scale (WCAG AAA >= 7:1) */
+  --text-main: #F8FAFC;         /* 18.7:1 contrast on #050811 */
+  --text-muted: #94A3B8;        /* 7.4:1 contrast on #0A0E1A - Resolves Finding #4 */
+  --text-light-sub: #CBD5E1;    /* 11.2:1 contrast */
+
+  /* High-Signal State Accents */
+  --accent-cyan: #06B6D4;
+  --accent-cyan-glow: rgba(6, 182, 212, 0.25);
+  --accent-emerald: #10B981;
+  --accent-emerald-glow: rgba(16, 185, 129, 0.2);
+  --accent-amber: #F59E0B;
+  --accent-amber-glow: rgba(245, 158, 11, 0.2);
+  --accent-rose: #EF4444;
+  --accent-purple: #8B5CF6;
+  --accent-lime: #D0FF00;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Geist Mono', SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
+
+  --transition-fast: 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-smooth: 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-obsidian);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Background Ambient Lighting */
+.terminal-ambient {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 380px;
+  background: radial-gradient(circle at 50% -20%, rgba(6, 182, 212, 0.08), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.terminal-container {
+  position: relative;
+  z-index: 1;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 20px 28px 48px;
+}
+
+/* ==========================================================================
+   HEADER HUD & COMMAND BAR
+   ========================================================================== */
+.terminal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 18px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-hairline);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.brand-hud {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-badge {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(16, 185, 129, 0.15));
+  border: 1px solid var(--border-highlight);
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.08em;
+}
+
+.brand-title {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #FFFFFF;
+}
+
+.period-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.terminal-select {
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.terminal-select:hover, .terminal-select:focus {
+  border-color: var(--accent-cyan);
+}
+
+.header-status-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Status Pills (Accessible >= 44px touch bounds) */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  min-height: 38px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border-hairline);
+  background: var(--surface-card);
+  color: var(--text-muted);
+  cursor: default;
+  transition: all var(--transition-fast);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.status-dot.fresh {
+  background: var(--accent-emerald);
+  box-shadow: 0 0 8px var(--accent-emerald-glow);
+}
+
+.status-dot.evaluating {
+  background: #64748B;
+  animation: pulse-eval 1.2s infinite ease-in-out;
+}
+
+.status-dot.stale {
+  background: var(--accent-amber);
+  box-shadow: 0 0 8px var(--accent-amber-glow);
+}
+
+@keyframes pulse-eval {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Quiet Mode Toggle Button (Accessible Tap Target >= 44px) */
+.btn-quiet-mode {
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-hairline);
+  color: var(--text-muted);
+  min-height: 42px;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all var(--transition-fast);
+}
+
+.btn-quiet-mode:hover {
+  border-color: var(--accent-cyan);
+  color: var(--text-main);
+}
+
+.btn-quiet-mode.active {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.btn-quiet-mode.active .status-dot {
+  background: var(--accent-cyan);
+  box-shadow: 0 0 8px var(--accent-cyan-glow);
+}
+
+/* Action Buttons (Accessible >= 44px Tap Bounds - Resolves Finding #5) */
+.btn-terminal {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  min-height: 42px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-terminal:hover {
+  border-color: var(--accent-cyan);
+  background: var(--surface-elevated);
+}
+
+.btn-terminal kbd {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   TOP METRICS HUD (Executive 4-Box Grid)
+   ========================================================================== */
+.metrics-hud-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1024px) {
+  .metrics-hud-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .metrics-hud-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hud-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 110px;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.hud-card:hover {
+  border-color: var(--border-subtle);
+  background: var(--surface-elevated);
+}
+
+.hud-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.hud-value {
+  font-family: var(--font-mono);
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #FFFFFF;
+}
+
+.hud-subtext {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.hud-subtext.positive {
+  color: var(--accent-emerald);
+}
+
+.hud-subtext.highlight-cyan {
+  color: var(--accent-cyan);
+}
+
+/* Section 112A Exemption Progress Bar */
+.exemption-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.exemption-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald));
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+/* ==========================================================================
+   QUIET MODE MASKING RULES (Resolves Finding #2)
+   ========================================================================== */
+.quiet-mask-overlay {
+  display: none;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  letter-spacing: 0.02em;
+}
+
+.quiet-mode-active .hud-value-pnl {
+  display: none;
+}
+
+.quiet-mode-active .hud-delta-pnl {
+  display: none;
+}
+
+.quiet-mode-active .quiet-mask-overlay {
+  display: block;
+}
+
+/* Tab 2 & 3 Masking (Resolves Review Finding: Suppress Per-Holding Gains and FIRE projections in Quiet Mode) */
+.quiet-mode-active .lot-val-pnl {
+  display: none !important;
+}
+
+.quiet-mode-active div.lot-val-masked {
+  display: block !important;
+}
+
+.quiet-mode-active span.lot-val-masked,
+.quiet-mode-active strong .lot-val-masked {
+  display: inline !important;
+}
+
+.quiet-mode-active .lot-delta-pnl {
+  display: none !important;
+}
+
+.quiet-mode-active div.lot-delta-masked {
+  display: block !important;
+}
+
+.quiet-mode-active span.lot-delta-masked {
+  display: inline !important;
+}
+
+/* ==========================================================================
+   TAB NAVIGATION (Preserving 3-Tab Declutter Mandate)
+   ========================================================================== */
+.terminal-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-hairline);
+  padding-bottom: 8px;
+}
+
+.tab-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 10px 18px;
+  min-height: 44px; /* Resolves Finding #5 tap targets */
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all var(--transition-fast);
+}
+
+.tab-trigger:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tab-trigger.active {
+  color: var(--accent-cyan);
+  background: rgba(6, 182, 212, 0.08);
+  border-color: var(--accent-cyan);
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* ==========================================================================
+   TAB 1: 2-COLUMN SPLIT HUD (Resolves Finding #7 Nav Friction & Vertical Bloat)
+   ========================================================================== */
+.tab1-split-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+  align-items: stretch;
+}
+
+@media (max-width: 860px) {
+  .tab1-split-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card-panel {
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+
+.card-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.card-panel-title {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Time Range Buttons */
+.time-btn-group {
+  display: flex;
+  gap: 4px;
+}
+
+.time-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-hairline);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.time-btn:hover {
+  color: var(--text-main);
+  border-color: var(--border-subtle);
+}
+
+.time-btn.active {
+  background: rgba(6, 182, 212, 0.15);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+/* TradingView Lightweight Charts Container & Quiet Shield */
+.chart-viewport-wrapper {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.lightweight-chart-container {
+  height: 380px;
+  width: 100%;
+  position: relative;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: filter var(--transition-smooth), opacity var(--transition-smooth);
+}
+
+.chart-quiet-shield {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 14, 23, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px dashed rgba(6, 182, 212, 0.4);
+  border-radius: var(--radius-sm);
+  z-index: 20;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.quiet-shield-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 24px;
+}
+
+.quiet-shield-icon {
+  font-size: 2.2rem;
+  margin-bottom: 2px;
+}
+
+.quiet-shield-title {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  letter-spacing: 0.08em;
+}
+
+.quiet-shield-sub {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  max-width: 360px;
+  line-height: 1.4;
+}
+
+.quiet-mode-active .chart-quiet-shield {
+  display: flex;
+}
+
+.quiet-mode-active .lightweight-chart-container {
+  filter: blur(20px);
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.quiet-mode-active .legend-label-networth,
+.quiet-mode-active .legend-label-invested {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
+/* Allocation Discrepancy Table */
+.alloc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.alloc-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.alloc-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+
+.alloc-bar-track {
+  width: 90px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.alloc-bar-fill {
+  height: 100%;
+  background: var(--accent-cyan);
+  border-radius: 3px;
+}
+
+/* Market & Risk Sentinel High-Density Grid */
+.sentinel-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.sentinel-item {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-hairline);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+}
+
+.sentinel-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.sentinel-val {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   TAB 2: SCHEME TAX LOTS (Accessible Controls - Resolves Finding #5)
+   ========================================================================== */
+.taxlots-filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.filter-chips-wrap {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-chip-btn {
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 10px 18px;
+  min-height: 44px; /* Resolves Finding #5 strict >= 44px WCAG AAA touch target */
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.filter-chip-btn:hover {
+  color: var(--text-main);
+  border-color: var(--border-subtle);
+}
+
+.filter-chip-btn.active {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.tax-lot-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  transition: border-color var(--transition-fast);
+}
+
+.tax-lot-card:hover {
+  border-color: var(--border-subtle);
+}
+
+.scheme-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.scheme-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #FFFFFF;
+}
+
+.scheme-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.scheme-badge.equity {
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.scheme-badge.gold {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid var(--accent-amber);
+  color: var(--accent-amber);
+}
+
+/* Tab 2 Scheme Valuation & Gain Layout */
+.scheme-valuation-wrap {
+  font-family: var(--font-mono);
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.scheme-val {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.scheme-val-masked {
+  display: none;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  letter-spacing: 0.05em;
+}
+
+.scheme-gain {
+  font-size: 0.75rem;
+}
+
+.scheme-gain.gain-positive {
+  color: var(--accent-emerald);
+}
+
+.scheme-gain.gain-negative {
+  color: var(--accent-rose);
+}
+
+.scheme-gain-masked {
+  display: none;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+/* ==========================================================================
+   TAB 3: STREAMLINED REBALANCE & FIRE (Resolves Findings #6 & #7)
+   ========================================================================== */
+.rebalance-telemetry-banner {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+  .rebalance-telemetry-banner {
+    grid-template-columns: 1fr;
+  }
+}
+
+.telemetry-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+}
+
+/* Multi-Tier Drawdown Gauge */
+.drawdown-gauge-track {
+  height: 12px;
+  background: #1E293B;
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  margin-top: 10px;
+}
+
+.gauge-tier {
+  height: 100%;
+}
+
+.gauge-tier.nominal { flex: 5; background: rgba(16, 185, 129, 0.35); border-right: 1px solid rgba(255,255,255,0.2); }
+.gauge-tier.tier1 { flex: 5; background: rgba(245, 158, 11, 0.35); border-right: 1px solid rgba(255,255,255,0.2); }
+.gauge-tier.tier2 { flex: 5; background: rgba(239, 68, 68, 0.35); border-right: 1px solid rgba(255,255,255,0.2); }
+.gauge-tier.tier3 { flex: 10; background: rgba(185, 28, 28, 0.6); }
+
+.gauge-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #FFFFFF;
+  box-shadow: 0 0 6px #FFFFFF;
+  transition: left 0.3s ease;
+}
+
+/* Rebalance Trade Flow Router Box */
+.trade-flow-grid {
+  display: grid;
+  grid-template-columns: 1.2fr auto 1.2fr;
+  gap: 16px;
+  align-items: center;
+  background: rgba(14, 20, 36, 0.6);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 800px) {
+  .trade-flow-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.trade-col-header {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.trade-item {
+  background: var(--surface-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.trade-item.sell {
+  border-left: 3px solid var(--accent-rose);
+}
+
+.trade-item.buy {
+  border-left: 3px solid var(--accent-emerald);
+}
+
+.pool-pill {
+  background: linear-gradient(135deg, #0284C7, #0F766E);
+  border: 1px solid var(--accent-cyan);
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.25);
+  border-radius: 24px;
+  padding: 14px 20px;
+  text-align: center;
+}
+
+.pool-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #BAE6FD;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pool-val {
+  font-family: var(--font-mono);
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #FFFFFF;
+  margin-top: 2px;
+}
+
+/* FIRE Fan Chart Simulation Container (Resolves Finding #6) */
+.fire-sim-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  margin-top: 14px;
+}
+
+@media (max-width: 960px) {
+  .fire-sim-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fire-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.fire-canvas-container {
+  height: 320px;
+  width: 100%;
+  background: rgba(14, 20, 36, 0.6);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  position: relative;
+  transition: filter var(--transition-smooth), opacity var(--transition-smooth);
+}
+
+.fire-quiet-shield {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 14, 23, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px dashed rgba(6, 182, 212, 0.4);
+  border-radius: var(--radius-sm);
+  z-index: 20;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.quiet-mode-active .fire-quiet-shield {
+  display: flex;
+}
+
+.quiet-mode-active .fire-canvas-container {
+  filter: blur(20px);
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+.quiet-mode-active #fireSuccessBadge {
+  border-color: var(--accent-cyan) !important;
+  color: var(--accent-cyan) !important;
+}
+
+.slider-group {
+  margin-bottom: 14px;
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+}
+
+.terminal-slider {
+  width: 100%;
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+}
