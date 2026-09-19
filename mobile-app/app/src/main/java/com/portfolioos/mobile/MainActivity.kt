@@ -16,6 +16,7 @@ import com.portfolioos.mobile.ui.DashboardScreen
 import com.portfolioos.mobile.ui.DashboardViewModel
 import com.portfolioos.mobile.ui.LockScreenGate
 import com.portfolioos.mobile.ui.theme.PortfolioOSTheme
+import com.portfolioos.mobile.worker.PortfolioSyncWorker
 import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
@@ -24,6 +25,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PortfolioSyncWorker.schedulePeriodicSync(applicationContext)
         val initialPage = intent.getIntExtra("TARGET_PAGE", 0)
         viewModel.setActivePage(initialPage)
 
@@ -100,6 +102,9 @@ class MainActivity : FragmentActivity() {
                             if (enabled) {
                                 triggerBiometricUnlock()
                             }
+                        },
+                        onToggleQuietMode = { enabled ->
+                            viewModel.toggleQuietMode(enabled)
                         }
                     )
                 }

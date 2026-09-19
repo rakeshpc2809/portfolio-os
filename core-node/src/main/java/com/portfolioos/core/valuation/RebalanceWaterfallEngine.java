@@ -276,6 +276,10 @@ public class RebalanceWaterfallEngine {
         @Override
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
             List<Lot> lots = legacyLots.stream().filter(l -> {
+                // Strictly exclude any fund with auto_harvest_eligible: false (e.g. Kotak Nifty 100 Equal Weight INF174KA1TY2)
+                if (!com.portfolioos.core.rules.BucketConfigLoader.isAutoHarvestEligible(l.assetId())) {
+                    return false;
+                }
                 BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.LegacyTier");
                 BigDecimal gain = nav.subtract(l.costPerUnit());
                 if (gain.compareTo(BigDecimal.ZERO) < 0) return true; // Always allow loss harvest

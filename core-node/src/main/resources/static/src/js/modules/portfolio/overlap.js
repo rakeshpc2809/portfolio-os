@@ -486,6 +486,7 @@ if (typeof window !== "undefined") {
   window.loadUpSetAnalytics = loadUpSetAnalytics;
   window.openOverlapModal = openOverlapModal;
   window.closeOverlapModal = closeOverlapModal;
+  window.render2FundVennDiagram = render2FundVennDiagram;
 }
 
 if (typeof document !== "undefined") {
@@ -511,3 +512,5 @@ if (typeof document !== "undefined") {
     }
   });
 }
+
+export const loadOverlapAnalytics = loadOverlapInspectorData;

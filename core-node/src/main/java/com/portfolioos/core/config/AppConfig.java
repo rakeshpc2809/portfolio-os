@@ -3,7 +3,7 @@ package com.portfolioos.core.config;
 import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.persistence.SqliteEventStore;
 import com.portfolioos.core.ports.EventStorePort;
-import com.portfolioos.core.rpc.FlightRpcClient;
+import com.portfolioos.core.rpc.QuantSidecarClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,10 +26,10 @@ public class AppConfig {
     }
 
     @Bean
-    public FlightRpcClient flightRpcClient(
-        @Value("${quant-sidecar.flight.host:${QUANT_SIDECAR_HOST:127.0.0.1}}") String host,
-        @Value("${quant-sidecar.flight.port:8001}") int port
+    public QuantSidecarClient quantSidecarClient(
+        @Value("${quant-sidecar.host:${QUANT_SIDECAR_HOST:127.0.0.1}}") String host,
+        @Value("${quant-sidecar.port:8000}") int port
     ) {
-        return new FlightRpcClient(host, port);
+        return new QuantSidecarClient(host, port);
     }
 }

@@ -74,6 +74,12 @@
         <div class="status-pill">
           <span class="status-dot"></span> SHA-256 Engine Active
         </div>
+        <div id="navFreshnessPill" class="status-pill" title="AMFI NAV Data Freshness">
+          <span class="status-dot" style="background:#10B981"></span> All NAVs Fresh
+        </div>
+        <button id="quietModeToggle" class="status-pill" style="cursor: pointer; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #94A3B8;" title="Toggle Quiet Mode (suppresses routine drift alerts; preserves critical drawdown & stale NAV alerts)">
+          <span id="quietModeDot" class="status-dot" style="background:#64748B"></span> <span id="quietModeLabel">Quiet Mode: OFF</span>
+        </button>
       </div>
     </header>
 
@@ -138,16 +144,19 @@
           <div class="canvas-wrapper-large" id="fundAllocationCompareChart" style="height: 380px; width: 100%;"></div>
         </div>
 
-        <!-- BEER (Bond-Equity Earnings Yield Ratio) Valuation Spread Card -->
-        <div class="glass-card col-12" id="beerValuationCard" style="margin-bottom: 24px; padding: 20px 24px; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 14px; background: rgba(15, 23, 42, 0.8);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 0.8rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.1em; text-transform: uppercase;">BEER Valuation Spread Gauge</span>
+        <!-- Unified Market & Risk Sentinel Card (Advisory Macro Regime, BEER Spread & Yield Curve) -->
+        <div class="glass-card col-12" id="marketRiskSentinelCard" style="margin-bottom: 24px; padding: 20px 24px; border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 14px; background: rgba(15, 23, 42, 0.8);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <span style="font-size: 0.85rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.08em; text-transform: uppercase;">🛡️ Market & Risk Sentinel</span>
               <span id="beerValuationZoneBadge" class="live-tag" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid #f59e0b; font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">EQUITY EXPENSIVE</span>
+              <span id="macroRegimeBadge" class="live-tag" style="background: rgba(147, 51, 234, 0.15); color: #c084fc; border: 1px solid #a855f7; font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">REGIME: EXPANSION / RISK-OFF</span>
             </div>
             <span id="beerAsOfDateText" style="font-size: 0.75rem; color: #94a3b8; font-family: monospace;">As of: 2026-08-31</span>
           </div>
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-top: 12px; background: rgba(255,255,255,0.02); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+
+          <!-- Indicator Metrics Grid -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; background: rgba(255,255,255,0.02); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
             <div>
               <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">10Y G-Sec Yield</div>
               <div id="beerGsecYieldVal" style="font-size: 1.1rem; font-weight: 800; color: #38bdf8; font-family: monospace; margin-top: 4px;">7.10%</div>
@@ -157,12 +166,30 @@
               <div id="beerNiftyPeVal" style="font-size: 1.1rem; font-weight: 800; color: #f8fafc; font-family: monospace; margin-top: 4px;">22.40</div>
             </div>
             <div>
-              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Nifty 50 Earnings Yield (1/PE)</div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Earnings Yield (1/PE)</div>
               <div id="beerEarningsYieldVal" style="font-size: 1.1rem; font-weight: 800; color: #a78bfa; font-family: monospace; margin-top: 4px;">4.46%</div>
             </div>
             <div>
               <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">BEER Spread (G-Sec - EY)</div>
               <div id="beerSpreadVal" style="font-size: 1.1rem; font-weight: 800; color: #f59e0b; font-family: monospace; margin-top: 4px;">+2.64%</div>
+            </div>
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Yield Curve (10Y - Repo)</div>
+              <div id="yieldCurveSlopeVal" style="font-size: 1.1rem; font-weight: 800; color: #34d399; font-family: monospace; margin-top: 4px;">+0.60%</div>
+            </div>
+            <div>
+              <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Recommended Runway</div>
+              <div id="recommendedRunwayVal" style="font-size: 1.1rem; font-weight: 800; color: #fbbf24; font-family: monospace; margin-top: 4px;">18 Months</div>
+            </div>
+          </div>
+
+          <!-- Advisory Rationale & Disclaimer -->
+          <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <div id="regimeRationaleText" style="font-size: 0.78rem; color: #cbd5e1; line-height: 1.5; padding: 8px 12px; background: rgba(0,0,0,0.25); border-radius: 6px; border-left: 3px solid #38bdf8;">
+              Equity PE &gt; 22.0 indicates elevated valuation; yield curve is non-inverted (+0.60%). Recommended stance favors maintaining liquid reserves while letting equity run.
+            </div>
+            <div id="sentinelScopeCaveatText" style="font-size: 0.72rem; color: #94a3b8; font-style: italic; display: flex; align-items: center; gap: 6px;">
+              <span>ℹ️</span> Advisory preview overlay only. Live rebalance drift thresholds and trade executions remain strictly pinned to baseline bucket_targets.yaml.
             </div>
           </div>
         </div>
@@ -551,6 +578,13 @@
         <input type="text" id="commandPaletteInput" placeholder="Type an AI prompt, SQL query, or tax question... (Press Enter to Ask AI)">
         <button type="button" id="submitCmdPromptBtn" onclick="window.submitAiPrompt && window.submitAiPrompt()" style="background:#06b6d4; color:#000; border:none; border-radius:6px; padding:6px 14px; font-weight:700; font-size:12px; cursor:pointer; font-family:'Inter', sans-serif; flex-shrink: 0; white-space: nowrap;">Ask AI</button>
         <button type="button" id="closeCmdPaletteBtn" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:18px; font-weight:bold; padding:0 4px;" title="Close (Esc)">✕</button>
+      </div>
+      <!-- Conversational Copilot Quick Action Prompts -->
+      <div class="cmd-quick-prompts" id="cmdQuickPrompts" style="display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(0,0,0,0.25);">
+        <button type="button" class="cmd-chip" data-prompt="Simulate selling 50 units of Parag Parikh" style="background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 20px; font-size: 11px; padding: 4px 10px; cursor: pointer; font-weight: 600;">⚡ Simulate selling 50 units of Parag Parikh</button>
+        <button type="button" class="cmd-chip" data-prompt="Tax consequence of rebalancing today" style="background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 20px; font-size: 11px; padding: 4px 10px; cursor: pointer; font-weight: 600;">⚖️ Tax consequence of rebalancing today</button>
+        <button type="button" class="cmd-chip" data-prompt="Explain rebalance triggers" style="background: rgba(245, 158, 11, 0.12); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 20px; font-size: 11px; padding: 4px 10px; cursor: pointer; font-weight: 600;">🎯 Explain rebalance triggers</button>
+        <button type="button" class="cmd-chip" data-prompt="Run Monte Carlo FIRE simulation" style="background: rgba(208, 255, 0, 0.12); color: #d0ff00; border: 1px solid rgba(208, 255, 0, 0.3); border-radius: 20px; font-size: 11px; padding: 4px 10px; cursor: pointer; font-weight: 600;">🔥 Run Monte Carlo FIRE simulation</button>
       </div>
       <div class="command-palette-results" id="commandPaletteResults">
         <div class="cmd-item" data-action="whatif">⚡ Open What-If Trade Simulator</div>

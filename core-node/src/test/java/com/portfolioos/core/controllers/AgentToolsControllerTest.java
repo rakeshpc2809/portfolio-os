@@ -83,4 +83,87 @@ public class AgentToolsControllerTest extends BaseIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isBadRequest());
     }
+
+    @Test
+    @DisplayName("Valid X-Api-Auth-Token executes simulateTrade tool and returns SUCCESS with tax details")
+    void testExecuteSimulateTradeSucceeds() throws Exception {
+        String reqJson = """
+            {
+              "tool": "simulateTrade",
+              "arguments": {
+                "isin": "INF879O01027",
+                "schemeName": "Parag Parikh Flexi Cap Fund - Direct Plan - Growth",
+                "units": 50,
+                "pricePerUnit": 84.50,
+                "tradeType": "DISPOSAL"
+              }
+            }
+            """;
+        mockMvc.perform(post("/api/v1/agent/tools/execute")
+                .header("X-Api-Auth-Token", AUTH_TOKEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(reqJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.tool").value("simulateTrade"))
+            .andExpect(jsonPath("$.result.simulation_result.trade_type").value("DISPOSAL"))
+            .andExpect(jsonPath("$.result.simulation_result.units").value(50.0))
+            .andExpect(jsonPath("$.result.simulation_result.gross_trade_amount").value(4225.0))
+            .andExpect(jsonPath("$.result.price_source").value("EXPLICIT_PARAMETER"))
+            .andExpect(jsonPath("$.result.is_price_estimated").value(false));
+    }
+
+    @Test
+    @DisplayName("simulateTrade resolves live NAV from ledger navMap when pricePerUnit is omitted")
+    void testExecuteSimulateTradeResolvesLiveNavFromLedgerCache() throws Exception {
+        String reqJson = """
+            {
+              "tool": "simulateTrade",
+              "arguments": {
+                "isin": "INF879O01027",
+                "schemeName": "Parag Parikh Flexi Cap Fund - Direct Plan - Growth",
+                "units": 50,
+                "tradeType": "DISPOSAL"
+              }
+            }
+            """;
+        mockMvc.perform(post("/api/v1/agent/tools/execute")
+                .header("X-Api-Auth-Token", AUTH_TOKEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(reqJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.tool").value("simulateTrade"))
+            .andExpect(jsonPath("$.status").value("SUCCESS"))
+            .andExpect(jsonPath("$.result.price_source").value("LIVE_LEDGER_NAV"))
+            .andExpect(jsonPath("$.result.is_price_estimated").value(false))
+            .andExpect(jsonPath("$.result.simulation_result.units").value(50.0))
+            .andExpect(jsonPath("$.result.simulation_result.price_per_unit").isNumber());
+    }
+
+    @Test
+    @DisplayName("Valid X-Api-Auth-Token executes getRebalancePlan tool and returns trigger & waterfall steps")
+    void testExecuteGetRebalancePlanSucceeds() throws Exception {
+        mockMvc.perform(post("/api/v1/agent/tools/execute")
+                .header("X-Api-Auth-Token", AUTH_TOKEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"tool\":\"getRebalancePlan\",\"arguments\":{}}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.tool").value("getRebalancePlan"))
+            .andExpect(jsonPath("$.status").value("SUCCESS"))
+            .andExpect(jsonPath("$.result.trigger").exists())
+            .andExpect(jsonPath("$.result.sell_side").exists());
+    }
+
+    @Test
+    @DisplayName("Valid X-Api-Auth-Token executes getFireSummary tool and returns FIRE metrics")
+    void testExecuteGetFireSummarySucceeds() throws Exception {
+        mockMvc.perform(post("/api/v1/agent/tools/execute")
+                .header("X-Api-Auth-Token", AUTH_TOKEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"tool\":\"getFireSummary\",\"arguments\":{}}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.tool").value("getFireSummary"))
+            .andExpect(jsonPath("$.status").value("SUCCESS"))
+            .andExpect(jsonPath("$.result.required_fire_corpus").exists())
+            .andExpect(jsonPath("$.result.fire_status").exists());
+    }
 }

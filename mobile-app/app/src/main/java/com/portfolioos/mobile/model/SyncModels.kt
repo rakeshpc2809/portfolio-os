@@ -178,7 +178,9 @@ data class SyncInfoDto(
     @SerializedName("unrealized_gain") val unrealizedGain: Double = 0.0,
     @SerializedName("formatted_current_value") val formattedCurrentValue: String = "",
     @SerializedName("formatted_total_invested") val formattedTotalInvested: String = "",
-    @SerializedName("formatted_unrealized_gain") val formattedUnrealizedGain: String = ""
+    @SerializedName("formatted_unrealized_gain") val formattedUnrealizedGain: String = "",
+    @SerializedName("stale_nav_count") val staleNavCount: Int = 0,
+    @SerializedName("has_stale_nav") val hasStaleNav: Boolean = false
 )
 
 @Immutable

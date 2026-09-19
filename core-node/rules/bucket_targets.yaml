@@ -147,3 +147,27 @@ versions:
     - fund_id: "INF205K01KR8"
       fund_name: "Invesco India Arbitrage Fund"
       allocation_weight: 1.0
+
+legacy_liquidation_candidates:
+  - isin: "INF174KA1TY2"
+    fund_name: "Kotak Nifty 100 Equal Weight Index Fund Direct Growth"
+    priority: 1
+    auto_harvest_eligible: false
+    reason: "Protected legacy core index holding; strictly exempt from automated harvest liquidation"
+  - isin: "INF247L01916"
+    fund_name: "Motilal Oswal Nifty Midcap 150 Index Fund Direct Growth"
+    priority: 2
+    auto_harvest_eligible: true
+    reason: "Legacy midcap holding slated for systematic tax-free LTCG liquidation"
+  - isin: "INF247L01BQ9"
+    fund_name: "Motilal Oswal Nifty Microcap 250 Index Fund Direct Growth"
+    priority: 3
+    auto_harvest_eligible: true
+    reason: "Legacy microcap holding slated for systematic tax-free LTCG liquidation"
+  - isin: "INF769K01ED6"
+    fund_name: "Mirae Asset Healthcare Fund Direct Growth"
+    priority: 4
+    auto_harvest_eligible: true
+    reason: "Legacy sectoral holding slated for systematic tax-free LTCG liquidation"
+
+

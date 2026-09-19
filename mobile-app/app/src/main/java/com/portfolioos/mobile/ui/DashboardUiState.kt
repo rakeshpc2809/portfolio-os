@@ -17,6 +17,7 @@ data class DashboardUiState(
     val isAppLocked: Boolean = false,
     val isSecurityEnrolled: Boolean = true,
     val isBiometricLockEnabled: Boolean = true,
+    val isQuietModeEnabled: Boolean = false,
     val activePage: Int = 0,
     val benchmarkData: BenchmarkAnalyticsDto? = null,
     val fireSummaryData: FireSummaryResponseDto? = null,

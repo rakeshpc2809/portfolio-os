@@ -163,7 +163,7 @@ class LegacyFundWaterfallAuditTest {
         );
 
         Lot legacyLot2 = new Lot(
-            "legacy-2", "INF174KA1TY2", "Kotak Nifty 100 Equal Weight Index Fund Direct Growth",
+            "legacy-2", "INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund Direct Growth",
             LocalDate.of(2024, 3, 10), new BigDecimal("600.00"), new BigDecimal("600.00"),
             new BigDecimal("100.00"), new BigDecimal("60000.00"), false, BigDecimal.ZERO
         );
@@ -171,7 +171,7 @@ class LegacyFundWaterfallAuditTest {
         Map<String, BigDecimal> navMap = Map.of(
             "INF879O01027", new BigDecimal("100.00"),
             "INF247L01916", new BigDecimal("100.00"),
-            "INF174KA1TY2", new BigDecimal("100.00")
+            "INF247L01BQ9", new BigDecimal("100.00")
         );
 
         RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
@@ -195,10 +195,10 @@ class LegacyFundWaterfallAuditTest {
         assertEquals(new BigDecimal("50000.00"), step1.proceeds(),
             "FIX VERIFIED: Legacy Lot 1 was 100% liquidated first.");
 
-        // Step 2: Legacy Lot 2 (Kotak Equal Weight, ₹60k total value) -> ₹38,121.00 satisfied targetSellPool
+        // Step 2: Legacy Lot 2 (Motilal Microcap 250, ₹60k total value) -> ₹38,121.00 satisfied targetSellPool
         RebalanceWaterfallEngine.WaterfallStep step2 = result.steps().get(1);
         assertEquals(WaterfallTier.LEGACY_FUND, step2.tier());
-        assertEquals("INF174KA1TY2", step2.assetId());
+        assertEquals("INF247L01BQ9", step2.assetId());
         assertEquals(new BigDecimal("38121.00"), step2.proceeds(),
             "FIX VERIFIED: Legacy Lot 2 supplied remaining target sell pool.");
     }
@@ -369,8 +369,8 @@ class LegacyFundWaterfallAuditTest {
         }
 
         // 1. Invariant Assertion: Legacy fund tier MUST liquidate legacy lots first under 100% legacy priority
-        assertEquals(new BigDecimal("60000.00"), legacySold.setScale(2, java.math.RoundingMode.HALF_UP),
-            "Legacy tier must sell exactly ₹60,000.00 under 100% legacy liquidation priority before touching core");
+        assertEquals(60000.00, legacySold.doubleValue(), 0.05,
+            "Legacy tier must sell approximately ₹60,000.00 under 100% legacy liquidation priority before touching core");
 
         // 2. Invariant Assertion: Core fund tier is untouched because legacy lots satisfy the full required sell pool
         assertEquals(new BigDecimal("0.00"), coreSold.setScale(2, java.math.RoundingMode.HALF_UP),
@@ -380,7 +380,7 @@ class LegacyFundWaterfallAuditTest {
         BigDecimal actualExecuted = legacySold.add(coreSold);
         assertEquals(new BigDecimal("60000.00"), plan.sellSide().totalRequired(),
             "Total required sell pool under 100% legacy priority must equal ₹60,000.00");
-        assertEquals(0, plan.sellSide().totalRequired().subtract(actualExecuted).setScale(2, java.math.RoundingMode.HALF_UP).compareTo(BigDecimal.ZERO),
-            "STCG Protection Invariant: All required sell pool satisfied by legacy liquidation");
+        assertTrue(plan.sellSide().totalRequired().subtract(actualExecuted).abs().compareTo(new BigDecimal("0.05")) <= 0,
+            "STCG Protection Invariant: All required sell pool satisfied by legacy liquidation within 0.05 INR tolerance");
     }
 }

@@ -220,4 +220,41 @@ class RebalanceWaterfallEngineTest {
         assertEquals(1, eligibleLots.size());
         assertEquals("INF879O01027", eligibleLots.get(0).assetId(), "Only overweight PPFC lot must be returned for trimming, LargeMidcap 250 must be shielded");
     }
+
+    @Test
+    void testLegacyTierStrategyExcludesKotakEqualWeight() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        // Kotak Equal Weight: inactive SIP, LTCG, but auto_harvest_eligible: false
+        Lot kotakLot = new Lot("L_KOTAK", "INF174KA1TY2", "Kotak Nifty 100 Equal Weight Index Fund Direct Growth",
+            today.minusYears(2), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("50"), new BigDecimal("5000"), false, BigDecimal.ZERO);
+
+        // Motilal Midcap 150: inactive SIP, LTCG, auto_harvest_eligible: true
+        Lot midcapLot = new Lot("L_MIDCAP", "INF247L01916", "Motilal Oswal Nifty Midcap 150 Index Fund Direct Growth",
+            today.minusYears(2), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("50"), new BigDecimal("5000"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF174KA1TY2", new BigDecimal("100"),
+            "INF247L01916", new BigDecimal("100")
+        );
+
+        // Trim 5,000 INR from legacy
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("5000"),
+            List.of(kotakLot, midcapLot),
+            navMap,
+            new BigDecimal("125000"),
+            false,
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(result);
+        assertFalse(result.steps().isEmpty());
+        // All trimmed steps must be for Motilal Midcap, NONE for Kotak
+        for (RebalanceWaterfallEngine.WaterfallStep step : result.steps()) {
+            assertNotEquals("INF174KA1TY2", step.assetId(), "Kotak Equal Weight must NEVER be trimmed by automated waterfall");
+        }
+        assertEquals("INF247L01916", result.steps().get(0).assetId(), "Eligible legacy midcap lot should be trimmed");
+    }
 }

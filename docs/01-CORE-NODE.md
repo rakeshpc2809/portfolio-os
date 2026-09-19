@@ -200,3 +200,14 @@ Empirical `@Test` method counts obtained via `grep -rc "@Test" core-node/src/tes
 1. **AMFI Feed Format Instability**: AMFI text files occasionally omit ISIN codes or shift column positions between 6, 7, and 8 columns. In commit `7ffe854`, `AmfiNavSync.java` was modified to scan dynamically from index 4 onwards. Missing NAVs log `AMFI_NAV_SYNC_ALERT` and fall back to cost basis.
 2. **Strict Exemption Enforcement**: `RebalanceWaterfallEngine` was updated in commit `b7dd4e4` to throw an `IllegalStateException` if an asset is missing both live NAV and `costPerUnit`. Prior versions silently substituted `0.0`.
 3. **Hardcoded Security Token Requirement**: `SecurityInterceptor` requires the `API_AUTH_TOKEN` environment variable to be explicitly defined. If unset or empty, the application throws an `IllegalStateException` at request time.
+
+---
+
+## 6. GraalVM Native-Image Track: Formally Closed & Sunset
+
+An extensive empirical evaluation of Spring Boot AOT / GraalVM native-image compilation was conducted to assess power consumption and cold-start savings.
+
+### Benchmark Findings & Rationale
+1. **Idle Power Ceiling**: Real-world hardware measurement showed the host platform idles at **~19.5W** regardless of workload. The application's own runtime delta is only **~2.85W**. Even under ideal native AOT execution, the maximum achievable saving is **~1.0–1.5W**, completely refuting the speculative 7–11W thesis.
+2. **Operational Fragility**: Native-image builds introduced complex reflection configuration requirements, native shared library linking hurdles (embedded DuckDB and SQLite C-bindings), and container subuid permission mismatches (e.g. `165531` vs host `1000`).
+3. **Definitive Decision**: The GraalVM native-image track is **permanently closed and archived**. The production runtime standard is OpenJDK 21 JVM with Generational ZGC (`-XX:+UseZGC`).

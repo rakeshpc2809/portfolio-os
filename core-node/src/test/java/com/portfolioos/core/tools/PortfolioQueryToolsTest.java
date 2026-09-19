@@ -78,9 +78,9 @@ class PortfolioQueryToolsTest {
             }
         };
 
-        com.portfolioos.core.rpc.FlightRpcClient mockFlightRpc = new com.portfolioos.core.rpc.FlightRpcClient("localhost", 9999);
+        com.portfolioos.core.rpc.QuantSidecarClient mockQuantSidecar = new com.portfolioos.core.rpc.QuantSidecarClient("localhost", 9999);
 
-        PortfolioValuationService mockValuationService = new PortfolioValuationService(mockCacheService, mockDuckDb, mockFlightRpc, null) {
+        PortfolioValuationService mockValuationService = new PortfolioValuationService(mockCacheService, mockDuckDb, mockQuantSidecar, null) {
             @Override
             public PortfolioSummaryResponse getPortfolioSummary(String fy) {
                 return new PortfolioSummaryResponse(

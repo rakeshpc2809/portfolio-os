@@ -167,15 +167,22 @@ def build_summary_markup(
     lines.append(f"  • Sec 112A LTCG Harvested: [{p['gold']}]{inr_format(ltcg_used)}[/] (Exemption Headroom: [bold {p['success']}]{inr_format(headroom)}[/])")
     
     # Next lot milestone if present
-    all_lots = []
-    for tier in sell_side.get("tiers", []):
-        all_lots.extend(tier.get("lots", []))
-    stcg_lots = [l for l in all_lots if l.get("taxTerm") == "STCG" and l.get("holdingDays", 0) < 365]
+    # Primary: authoritative top-level tax_lots unconditionally embedded by /api/v1/sync/snapshot
+    # Fallback: defensive check against tier lots if tax_lots key is omitted in partial/mock snapshots
+    all_lots = snapshot.get("tax_lots", snapshot.get("taxLots", []))
+    if not all_lots:
+        for tier in sell_side.get("waterfall", sell_side.get("tiers", [])):
+            all_lots.extend(tier.get("lots", []))
+    stcg_lots = [
+        l for l in all_lots
+        if (l.get("taxTerm", l.get("tax_term")) == "STCG" or not l.get("is_long_term", l.get("isLongTerm", True)))
+        and l.get("daysToLtcg", l.get("days_to_ltcg", 0)) > 0
+    ]
     if stcg_lots:
-        stcg_lots.sort(key=lambda x: 365 - x.get("holdingDays", 0))
+        stcg_lots.sort(key=lambda x: x.get("daysToLtcg", x.get("days_to_ltcg", 0)))
         nl = stcg_lots[0]
-        fname = nl.get("fundName", "Fund")
-        dl = 365 - nl.get("holdingDays", 0)
+        fname = nl.get("fundName", nl.get("fund_name", nl.get("name", nl.get("isin", "Fund"))))
+        dl = nl.get("daysToLtcg", nl.get("days_to_ltcg", 0))
         lines.append(f"  • Next LTCG Transition:    [#cdd6f4]{fname}[/] ({dl} days remaining)")
 
     lines.append("")

@@ -16,6 +16,10 @@ object SnapshotCacheManager {
     private const val KEY_BIOMETRIC_LOCK = "key_biometric_lock"
     private const val KEY_CUSTOM_URL = "key_custom_url"
     private const val KEY_AUTH_TOKEN = "key_auth_token"
+    private const val KEY_IS_VALUATION_MASKED = "key_is_valuation_masked"
+    private const val KEY_QUIET_MODE = "key_quiet_mode"
+    private const val KEY_WIDGET_STATUS_OVERRIDE = "key_widget_status_override"
+    private const val KEY_DISCONNECT_NOTIFIED_FOR_EPISODE = "key_disconnect_notified_for_episode"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -63,6 +67,50 @@ object SnapshotCacheManager {
 
     fun setAuthToken(context: Context, token: String) {
         getPrefs(context).edit().putString(KEY_AUTH_TOKEN, token).apply()
+    }
+
+    fun isValuationMasked(context: Context): Boolean {
+        // Privacy-first default is true
+        return getPrefs(context).getBoolean(KEY_IS_VALUATION_MASKED, true)
+    }
+
+    fun setValuationMasked(context: Context, masked: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_IS_VALUATION_MASKED, masked).apply()
+    }
+
+    fun toggleValuationMask(context: Context): Boolean {
+        val current = isValuationMasked(context)
+        val next = !current
+        setValuationMasked(context, next)
+        return next
+    }
+
+    fun isQuietModeEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_QUIET_MODE, false)
+    }
+
+    fun setQuietModeEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_QUIET_MODE, enabled).apply()
+    }
+
+    fun getWidgetStatusOverride(context: Context): String? {
+        return getPrefs(context).getString(KEY_WIDGET_STATUS_OVERRIDE, null)
+    }
+
+    fun setWidgetStatusOverride(context: Context, override: String?) {
+        if (override == null) {
+            getPrefs(context).edit().remove(KEY_WIDGET_STATUS_OVERRIDE).apply()
+        } else {
+            getPrefs(context).edit().putString(KEY_WIDGET_STATUS_OVERRIDE, override).apply()
+        }
+    }
+
+    fun hasDisconnectionNotificationFired(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_DISCONNECT_NOTIFIED_FOR_EPISODE, false)
+    }
+
+    fun setDisconnectionNotificationFired(context: Context, fired: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_DISCONNECT_NOTIFIED_FOR_EPISODE, fired).apply()
     }
 
     fun loadSnapshot(context: Context): SyncSnapshot? {

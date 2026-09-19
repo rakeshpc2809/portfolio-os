@@ -19,8 +19,29 @@ public class SyncDtos {
         double unrealizedGain,
         String formattedCurrentValue,
         String formattedTotalInvested,
-        String formattedUnrealizedGain
-    ) {}
+        String formattedUnrealizedGain,
+        int staleNavCount,
+        boolean hasStaleNav
+    ) {
+        public SyncInfoDto(
+            long timestamp,
+            String ledgerHash,
+            String generatedAt,
+            String fiscalYear,
+            double portfolioXirr,
+            String xirrPercentage,
+            double totalInvested,
+            double currentValue,
+            double unrealizedGain,
+            String formattedCurrentValue,
+            String formattedTotalInvested,
+            String formattedUnrealizedGain
+        ) {
+            this(timestamp, ledgerHash, generatedAt, fiscalYear, portfolioXirr, xirrPercentage,
+                 totalInvested, currentValue, unrealizedGain, formattedCurrentValue, formattedTotalInvested,
+                 formattedUnrealizedGain, 0, false);
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record FlatHoldingDto(

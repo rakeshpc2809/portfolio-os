@@ -90,7 +90,8 @@ fun DashboardScreen(
     onSimulateAgedOffline: () -> Unit = {},
     onSimulateRefreshing: () -> Unit = {},
     onSimulateSyncFailure: () -> Unit = {},
-    onToggleBiometricLock: (Boolean) -> Unit = {}
+    onToggleBiometricLock: (Boolean) -> Unit = {},
+    onToggleQuietMode: (Boolean) -> Unit = {}
 ) {
     val snapshot = uiState.snapshot
     val isLoading = uiState.isLoading
@@ -100,6 +101,7 @@ fun DashboardScreen(
     val isAmfiFallback = uiState.isAmfiFallback
     val isFullyOffline = uiState.isFullyOffline
     val isBiometricLockEnabled = uiState.isBiometricLockEnabled
+    val isQuietModeEnabled = uiState.isQuietModeEnabled
     val initialPage = uiState.activePage
     val benchmarkData = uiState.benchmarkData
     val fireSummaryData = uiState.fireSummaryData
@@ -600,6 +602,27 @@ fun DashboardScreen(
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = M3ObsidianDark,
                                         checkedTrackColor = M3ElectricLime
+                                    )
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Quiet Mode", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("Mute routine drift pings; only alert on drawdown or broken sync", color = M3TextMuted, fontSize = 10.sp)
+                                }
+                                Switch(
+                                    checked = isQuietModeEnabled,
+                                    onCheckedChange = { onToggleQuietMode(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = M3ObsidianDark,
+                                        checkedTrackColor = M3NeonCyan
                                     )
                                 )
                             }

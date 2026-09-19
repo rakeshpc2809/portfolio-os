@@ -56,6 +56,12 @@ public class HarvestAdvisor {
             AssetCategory category = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
             if (category != AssetCategory.EQUITY) continue;
 
+            // Consult BucketConfigLoader which checks rules/bucket_targets.yaml (legacy_liquidation_candidates)
+            // and enforces the defense-in-depth exemption for protected ballast holding INF174KA1TY2 (Kotak Nifty 100 Equal Weight).
+            if (!com.portfolioos.core.rules.BucketConfigLoader.isAutoHarvestEligible(lot.assetId())) {
+                continue;
+            }
+
             long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
             if (holdingDays >= rules.equityLtcgThresholdDays()) {
                 BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "HarvestAdvisor");

@@ -88,6 +88,7 @@ public abstract class BaseIntegrationTest {
             Instant.now()
         ));
         navMap.put(ISIN_CORE_PPFAS, new BigDecimal("70.0"));
+        navMap.put("INF879O01027", new BigDecimal("89.5712"));
 
         // 2. Satellite Equity: Motilal Midcap 150 (INF247L01676) -> Target 30%
         events.add(new TaxEvent(

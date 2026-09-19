@@ -14,10 +14,10 @@ from parsers.cas_parser import CasPdfParser
 from parsers.broker_csv_parser import BrokerCsvParser
 from parsers.sip_detector import detect_and_tag_sips
 from parsers.models import TaxEventSchema
-from flight_server import QuantFlightServer
 from quant.analytics_engine import (
     run_monte_carlo_fire_simulation,
     compute_benchmark_analytics,
+    compute_fund_analytics,
     FireSimulationResponse,
     BenchmarkAnalyticsResponse
 )
@@ -40,37 +40,17 @@ def verify_auth_token(x_api_auth_token: Optional[str] = Header(None)):
     if not x_api_auth_token or not secrets.compare_digest(x_api_auth_token, token):
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-Api-Auth-Token header")
 
-_flight_server: Optional[QuantFlightServer] = None
-_flight_thread: Optional[threading.Thread] = None
-
-def run_flight_server():
-    global _flight_server
-    try:
-        _flight_server = QuantFlightServer("0.0.0.0", 8001)
-        logger.info("Starting Apache Arrow Flight RPC server on port 8001...")
-        _flight_server.serve()
-    except Exception as e:
-        logger.error(f"Failed to start Flight server: {e}", exc_info=True)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _flight_thread, _flight_server
-    _flight_thread = threading.Thread(target=run_flight_server, daemon=True, name="ArrowFlightServerThread")
-    _flight_thread.start()
-    logger.info("Arrow Flight RPC background thread launched on port 8001.")
+    logger.info("Portfolio OS Quant & Parser Sidecar starting up on port 8000...")
     yield
-    if _flight_server:
-        logger.info("Shutting down Arrow Flight RPC server on port 8001...")
-        try:
-            _flight_server.shutdown()
-        except Exception as e:
-            logger.warning(f"Error shutting down Flight server: {e}")
+    logger.info("Portfolio OS Quant & Parser Sidecar shutting down...")
 
 app = FastAPI(title="Portfolio OS Quant & Parser Sidecar", version="3.0.0", lifespan=lifespan)
 
 @app.get("/health")
 def health_check():
-    return {"status": "UP", "engine": "Polars + FastAPI + Arrow Flight", "version": "3.0.0"}
+    return {"status": "UP", "engine": "Polars + FastAPI + Direct IPC", "version": "3.0.0"}
 
 @app.post("/api/v1/parse", response_model=List[TaxEventSchema], dependencies=[Depends(verify_auth_token)])
 async def parse_statement(
@@ -124,6 +104,7 @@ class FireSimulationRequest(BaseModel):
     monthly_contribution: float
     years_to_retirement: int
     num_simulations: int = 10000
+    regime: Optional[str] = None
 
 class BenchmarkAnalyticsRequest(BaseModel):
     portfolio_returns: List[float]
@@ -139,7 +120,8 @@ async def simulate_fire(req: FireSimulationRequest):
         annual_expense=req.annual_expense,
         monthly_contribution=req.monthly_contribution,
         years_to_retirement=req.years_to_retirement,
-        num_simulations=req.num_simulations
+        num_simulations=req.num_simulations,
+        regime=req.regime
     )
 
 @app.post("/api/v1/analytics/benchmark", response_model=BenchmarkAnalyticsResponse, dependencies=[Depends(verify_auth_token)])
@@ -153,6 +135,22 @@ async def analyze_benchmark(req: BenchmarkAnalyticsRequest):
     if result.get("status") == "ERROR":
         raise HTTPException(status_code=422, detail=result.get("message", "Benchmark analytics computation error"))
     return result
+
+class FundSeriesItem(BaseModel):
+    amfi_code: str
+    nav_values: List[float]
+    nav_dates: Optional[List[str]] = None
+
+class FundMetricsBatchRequest(BaseModel):
+    funds: List[FundSeriesItem]
+
+@app.post("/api/v1/analytics/fund_metrics", dependencies=[Depends(verify_auth_token)])
+async def compute_batch_fund_metrics(req: FundMetricsBatchRequest):
+    results = {}
+    for item in req.funds:
+        analytics = compute_fund_analytics(item.nav_values, dates=item.nav_dates)
+        results[item.amfi_code] = analytics
+    return results
 
 @app.post("/api/v1/allocator/hrp", response_model=HrpAllocationResponse, dependencies=[Depends(verify_auth_token)])
 async def allocate_hrp(req: HrpAllocationRequest):

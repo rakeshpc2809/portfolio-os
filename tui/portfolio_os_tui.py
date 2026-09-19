@@ -197,8 +197,10 @@ class TaxLotsModal(ModalScreen):
         for lot in self.lots:
             pnl = lot.get("realized_gain", lot.get("unrealized_gain", 0.0))
             pnl_str = f"[{p['success']}]+{inr_format(pnl)}[/]" if pnl >= 0 else f"[{p['danger']}]{inr_format(pnl)}[/]"
-            days_ltcg = lot.get("holding_days", 0)
-            action_tag = f"[{p['success']}]LTCG Eligible[/]" if days_ltcg >= 365 or days_ltcg == 0 else f"[#a6adc8]{days_ltcg}d held[/]"
+            is_ltcg = lot.get("is_long_term", lot.get("isLongTerm", lot.get("tax_term") == "LONG_TERM" or lot.get("taxTerm") == "LONG_TERM"))
+            days_ltcg = lot.get("days_to_ltcg", lot.get("daysToLtcg", 0))
+            holding_days = lot.get("holding_days", lot.get("holdingDays", 0))
+            action_tag = f"[{p['success']}]LTCG Eligible[/]" if (is_ltcg or days_ltcg == 0) else f"[#a6adc8]{holding_days}d held[/]"
 
             table.add_row(
                 lot.get("fund_name", "Unknown")[:28],
@@ -461,15 +463,18 @@ class BtopTaxAndStrategyDeck(Static):
 
     tax_data: Dict[str, Any] = {}
     plan_data: Dict[str, Any] = {}
+    tax_lots: List[Dict[str, Any]] = []
     benchmark_data: Optional[Dict[str, Any]] = None
     overlap_data: Optional[Dict[str, Any]] = None
 
     def on_mount(self) -> None:
         self.render_content()
 
-    def update_data(self, tax: Dict[str, Any], plan: Dict[str, Any]) -> None:
+    def update_data(self, tax: Dict[str, Any], plan: Dict[str, Any], tax_lots: Optional[List[Dict[str, Any]]] = None) -> None:
         self.tax_data = tax
         self.plan_data = plan
+        if tax_lots is not None:
+            self.tax_lots = tax_lots
         self.render_content()
 
     def update_analytics(self, benchmark: Optional[Dict[str, Any]], overlap: Optional[Dict[str, Any]]) -> None:
@@ -562,17 +567,24 @@ class BtopTaxAndStrategyDeck(Static):
                 lines.append(f"  [#6e738d]↳ {p_text}...[/]")
 
         # Next-to-LTCG lot milestone
-        sell_side = plan.get("sell_side", {})
-        all_lots = []
-        for tier in sell_side.get("waterfall", sell_side.get("tiers", [])):
-            all_lots.extend(tier.get("lots", []))
-        stcg_lots = [l for l in all_lots if l.get("taxTerm", l.get("tax_term")) == "STCG" and l.get("holdingDays", l.get("holding_days", 0)) < 365]
+        # Primary: authoritative top-level tax_lots unconditionally embedded by /api/v1/sync/snapshot
+        # Fallback: defensive check against tier lots if tax_lots key is omitted in partial/mock snapshots
+        all_lots = self.tax_lots
+        if not all_lots:
+            sell_side = plan.get("sell_side", {})
+            for tier in sell_side.get("waterfall", sell_side.get("tiers", [])):
+                all_lots.extend(tier.get("lots", []))
+        stcg_lots = [
+            l for l in all_lots
+            if (l.get("taxTerm", l.get("tax_term")) == "STCG" or not l.get("is_long_term", l.get("isLongTerm", True)))
+            and l.get("daysToLtcg", l.get("days_to_ltcg", 0)) > 0
+        ]
         if stcg_lots:
-            stcg_lots.sort(key=lambda x: 365 - x.get("holdingDays", x.get("holding_days", 0)))
+            stcg_lots.sort(key=lambda x: x.get("daysToLtcg", x.get("days_to_ltcg", 0)))
             next_lot = stcg_lots[0]
-            fname = self.resolve_fund_name("", next_lot.get("fundName", next_lot.get("fund_name", "Lot")))
-            days_left = 365 - next_lot.get("holdingDays", next_lot.get("holding_days", 0))
-            lines.append(f"  [#6e738d]⏱ Next LTCG:[/] [bold #ffffff]{fname}[/] [#6e738d]({days_left}d to 1yr)[/]")
+            fname = self.resolve_fund_name("", next_lot.get("fundName", next_lot.get("fund_name", next_lot.get("isin", "Lot"))))
+            days_left = next_lot.get("daysToLtcg", next_lot.get("days_to_ltcg", 0))
+            lines.append(f"  [#6e738d]⏱ Next LTCG:[/] [bold #ffffff]{fname}[/] [#6e738d]({days_left}d to LTCG)[/]")
 
         # Overlap / Concentration flag
         if self.overlap_data:
@@ -850,7 +862,8 @@ class PortfolioOSTUI(App):
                     tax_summary = sell_side.get("tax_summary", {})
 
                     alloc.update_buckets(buy_side.get("buckets", []))
-                    tax_deck.update_data(tax_summary, reb_plan)
+                    tax_lots = self.cached_snapshot.get("tax_lots", self.cached_snapshot.get("taxLots", []))
+                    tax_deck.update_data(tax_summary, reb_plan, tax_lots)
             except Exception:
                 core_online = False
 

@@ -33,6 +33,8 @@ class FireSimulationResponse(BaseModel):
     median_ending_corpus: float
     tenth_percentile_corpus: float
     fan_chart_trajectories: List[TrajectoryPoint]
+    regime_applied: Optional[str] = None
+    confidence_ramp_weight: Optional[float] = None
 
 class BenchmarkAnalyticsResponse(BaseModel):
     status: str
@@ -156,6 +158,36 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
             "beta": 0.0
         }
 
+def _calculate_regime_block_probabilities(returns: np.ndarray, block_size: int, regime: Optional[str]) -> np.ndarray:
+    n_returns = len(returns)
+    max_start = max(1, n_returns - block_size + 1)
+    if regime is None or regime == "CORRIDOR_NEUTRAL" or max_start <= 1:
+        return np.full(max_start, 1.0 / max_start)
+
+    # Compute block returns and realized block volatilities
+    indices = np.arange(max_start)[:, None] + np.arange(block_size)[None, :]
+    blocks = returns[indices]
+    block_rets = blocks.sum(axis=1)
+    block_vols = blocks.std(axis=1)
+
+    # Standardize
+    ret_std = block_rets.std()
+    vol_std = block_vols.std()
+    z_ret = (block_rets - block_rets.mean()) / (ret_std if ret_std > 1e-8 else 1.0)
+    z_vol = (block_vols - block_vols.mean()) / (vol_std if vol_std > 1e-8 else 1.0)
+
+    if regime == "EXPANSION_RISK_OFF":
+        # Overweight higher-volatility and mild/drawdown correction blocks
+        score = -0.5 * z_ret + 0.5 * z_vol
+    elif regime == "ACCUMULATION_RISK_ON":
+        # Overweight post-correction recovery and positive momentum blocks
+        score = 0.5 * z_ret - 0.3 * z_vol
+    else:
+        return np.full(max_start, 1.0 / max_start)
+
+    exp_score = np.exp(score - np.max(score))
+    return exp_score / exp_score.sum()
+
 def run_monte_carlo_fire_simulation(
     daily_returns_list,
     current_corpus=1407122.81,
@@ -163,20 +195,33 @@ def run_monte_carlo_fire_simulation(
     monthly_contribution=75000.0,
     years_to_retirement=13,
     retirement_duration_years=30,
-    num_simulations=10000
+    num_simulations=10000,
+    regime: Optional[str] = None
 ):
-    is_empirical = daily_returns_list is not None and len(daily_returns_list) >= 750
-    if not is_empirical:
-        returns = np.random.normal(loc=0.00045, scale=0.011, size=10000)
-        returns = returns - returns.mean() + 0.00045
-        data_source = "SYNTHETIC_MARKET_BENCHMARK"
-        data_source_label = "Nifty 50 Historical Return Model (Insufficient Empirical History < 3 Years)"
-    else:
-        returns = np.array(daily_returns_list)
-        data_source = "EMPIRICAL_PORTFOLIO"
-        data_source_label = "Empirical Portfolio Return History (15-Day Block Bootstrap)"
+    n_emp = len(daily_returns_list) if daily_returns_list is not None else 0
 
-    n_returns = len(returns)
+    # Linear Confidence Ramp: w = min(1.0, N / 750)
+    w_ramp = float(min(1.0, max(0.0, n_emp / 750.0)))
+
+    # Generate calibrated Nifty 50 historical synthetic benchmark pool
+    bench_returns = np.random.normal(loc=0.00045, scale=0.011, size=10000)
+    bench_returns = bench_returns - bench_returns.mean() + 0.00045
+
+    if w_ramp <= 0.0:
+        data_source = "SYNTHETIC_MARKET_BENCHMARK"
+        data_source_label = "Nifty 50 Historical Return Model (0 Days Empirical History)"
+    elif w_ramp >= 1.0:
+        data_source = "EMPIRICAL_PORTFOLIO"
+        data_source_label = f"Empirical Portfolio Return History ({n_emp} Days, 15-Day Block Bootstrap)"
+    else:
+        data_source = "BLENDED_CONFIDENCE_RAMP"
+        pct_emp = round(w_ramp * 100.0, 1)
+        pct_prior = round((1.0 - w_ramp) * 100.0, 1)
+        data_source_label = f"Blended Return Distribution (Linear Confidence Ramp: {pct_emp}% Empirical [{n_emp}d], {pct_prior}% Benchmark Prior)"
+
+    if regime:
+        data_source_label += f" · Regime-Conditioned: {regime}"
+
     total_years = max(1, years_to_retirement) + max(1, retirement_duration_years)
     total_days = total_years * 252
     accumulation_days = max(1, years_to_retirement) * 252
@@ -184,18 +229,55 @@ def run_monte_carlo_fire_simulation(
     daily_sip = (monthly_contribution * 12.0) / 252.0
     daily_expense = annual_expense / 252.0
 
-    block_size = min(15, n_returns)
+    block_size = 15
     n_blocks_needed = int(np.ceil(total_days / block_size))
 
-    max_start = max(1, n_returns - block_size + 1)
-    start_indices = np.random.randint(0, max_start, size=(num_simulations, n_blocks_needed))
-    offsets = np.arange(block_size)
-    sampled_blocks = start_indices[:, :, None] + offsets[None, None, :]
-    sim_returns = returns[sampled_blocks].reshape(num_simulations, -1)[:, :total_days]
+    # Precompute candidate block probabilities under macro regime
+    bench_probs = _calculate_regime_block_probabilities(bench_returns, block_size, regime)
+    max_start_bench = max(1, len(bench_returns) - block_size + 1)
+
+    if w_ramp > 0.0 and daily_returns_list is not None:
+        emp_returns = np.array(daily_returns_list, dtype=float)
+        # Handle small samples (< 15 days) by tile padding
+        if len(emp_returns) < block_size:
+            emp_returns = np.tile(emp_returns, int(np.ceil(block_size / len(emp_returns))))
+        emp_probs = _calculate_regime_block_probabilities(emp_returns, block_size, regime)
+        max_start_emp = max(1, len(emp_returns) - block_size + 1)
+    else:
+        emp_returns = bench_returns
+        emp_probs = bench_probs
+        max_start_emp = max_start_bench
+
+    # Sample block starting indices
+    if w_ramp >= 1.0:
+        sampled_starts = np.random.choice(max_start_emp, size=(num_simulations, n_blocks_needed), p=emp_probs)
+        source_returns = emp_returns
+    elif w_ramp <= 0.0:
+        sampled_starts = np.random.choice(max_start_bench, size=(num_simulations, n_blocks_needed), p=bench_probs)
+        source_returns = bench_returns
+    else:
+        # Mixture model sampling according to linear confidence ramp weight w_ramp
+        is_emp_block = np.random.rand(num_simulations, n_blocks_needed) < w_ramp
+        sampled_emp = np.random.choice(max_start_emp, size=(num_simulations, n_blocks_needed), p=emp_probs)
+        sampled_bench = np.random.choice(max_start_bench, size=(num_simulations, n_blocks_needed), p=bench_probs)
+
+        # Build block matrix
+        offsets = np.arange(block_size)
+        emp_blocks = emp_returns[sampled_emp[:, :, None] + offsets[None, None, :]]
+        bench_blocks = bench_returns[sampled_bench[:, :, None] + offsets[None, None, :]]
+
+        sim_blocks = np.where(is_emp_block[:, :, None], emp_blocks, bench_blocks)
+        sim_returns = sim_blocks.reshape(num_simulations, -1)[:, :total_days]
+
+    if w_ramp >= 1.0 or w_ramp <= 0.0:
+        offsets = np.arange(block_size)
+        sampled_blocks = sampled_starts[:, :, None] + offsets[None, None, :]
+        sim_returns = source_returns[sampled_blocks].reshape(num_simulations, -1)[:, :total_days]
+
     daily_inflation = 0.06 / 252.0
     real_sim_returns = sim_returns - daily_inflation
 
-    logger.info(f"Realized simulation returns: daily_real_mean={real_sim_returns.mean():.6f}, annualized_real_mean={real_sim_returns.mean()*252:.4f}, annualized_std={real_sim_returns.std()*np.sqrt(252):.4f}")
+    logger.info(f"Realized simulation returns: ramp_weight={w_ramp:.2f}, regime={regime}, daily_real_mean={real_sim_returns.mean():.6f}, annualized_real_mean={real_sim_returns.mean()*252:.4f}, annualized_std={real_sim_returns.std()*np.sqrt(252):.4f}")
 
     corpuses = np.full(num_simulations, float(current_corpus))
     failed = np.zeros(num_simulations, dtype=bool)
@@ -256,7 +338,9 @@ def run_monte_carlo_fire_simulation(
         "tenth_percentile_final_ending_corpus": round(p10_terminal, 2),
         "median_ending_corpus": round(median_ret_start, 2),
         "tenth_percentile_corpus": round(p10_ret_start, 2),
-        "fan_chart_trajectories": trajectories
+        "fan_chart_trajectories": trajectories,
+        "regime_applied": regime,
+        "confidence_ramp_weight": round(w_ramp, 4)
     }
 
 

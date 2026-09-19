@@ -31,14 +31,14 @@ import java.util.stream.Collectors;
 
 import com.portfolioos.core.nav.MfApiNavDownloader;
 import com.portfolioos.core.persistence.DuckDbProjector;
-import com.portfolioos.core.rpc.FlightRpcClient;
+import com.portfolioos.core.rpc.QuantSidecarClient;
 
 @Service
 public class PortfolioValuationService {
 
     private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
-    private final FlightRpcClient flightRpcClient;
+    private final QuantSidecarClient quantSidecarClient;
     private final DuckDbProjector duckDbProjector;
     private final com.portfolioos.core.rules.MarketIndicatorsReader marketIndicatorsReader;
 
@@ -46,12 +46,12 @@ public class PortfolioValuationService {
     public PortfolioValuationService(
         LedgerCacheService cacheService,
         DuckDbProjector duckDbProjector,
-        FlightRpcClient flightRpcClient,
+        QuantSidecarClient quantSidecarClient,
         com.portfolioos.core.rules.MarketIndicatorsReader marketIndicatorsReader
     ) {
         this.cacheService = cacheService;
         this.duckDbProjector = duckDbProjector;
-        this.flightRpcClient = flightRpcClient;
+        this.quantSidecarClient = quantSidecarClient;
         this.marketIndicatorsReader = marketIndicatorsReader != null ? marketIndicatorsReader : new com.portfolioos.core.rules.MarketIndicatorsReader();
     }
 
@@ -498,9 +498,9 @@ public class PortfolioValuationService {
                     }
                 });
             }
-            mcResult = flightRpcClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 10000);
+            mcResult = quantSidecarClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 10000);
         } catch (Exception e) {
-            System.err.println("Failed to fetch Monte Carlo FIRE simulation via Flight RPC: " + e.getMessage());
+            System.err.println("Failed to fetch Monte Carlo FIRE simulation via Quant Sidecar: " + e.getMessage());
         }
 
         double successRate = mcResult.containsKey("success_rate_pct") ? ((Number) mcResult.get("success_rate_pct")).doubleValue() : 0.0;
@@ -700,7 +700,7 @@ public class PortfolioValuationService {
         Map<String, Object> aligned = duckDbProjector.getAlignedPortfolioAndBenchmarkReturns(targetBenchmark);
         List<Double> pReturns = (List<Double>) aligned.getOrDefault("portfolio_returns", java.util.Collections.emptyList());
         List<Double> bReturns = (List<Double>) aligned.getOrDefault("benchmark_returns", java.util.Collections.emptyList());
-        return flightRpcClient.computeBenchmarkAnalytics(pReturns, bReturns, targetBenchmark);
+        return quantSidecarClient.computeBenchmarkAnalytics(pReturns, bReturns, targetBenchmark);
     }
 
     public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB) {
@@ -808,7 +808,7 @@ public class PortfolioValuationService {
 
         List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
 
-        Map<String, Object> mcResult = flightRpcClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 10000);
+        Map<String, Object> mcResult = quantSidecarClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 10000);
 
         Map<String, Object> response = new HashMap<>(mcResult);
         response.put("custom_monthly_sip", monthlyContrib);

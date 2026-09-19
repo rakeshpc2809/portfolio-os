@@ -26,7 +26,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             isAmfiFallback = SnapshotCacheManager.isAmfiFallback(context),
             isFullyOffline = SnapshotCacheManager.isFullyOffline(context),
             isBiometricLockEnabled = SnapshotCacheManager.isBiometricLockEnabled(context),
-            isAppLocked = SnapshotCacheManager.isBiometricLockEnabled(context)
+            isAppLocked = SnapshotCacheManager.isBiometricLockEnabled(context),
+            isQuietModeEnabled = SnapshotCacheManager.isQuietModeEnabled(context)
         )
     )
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
@@ -45,7 +46,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 lastFullLedgerMillis = SnapshotCacheManager.getLastFullLedgerTimestamp(context),
                 isAmfiFallback = SnapshotCacheManager.isAmfiFallback(context),
                 isFullyOffline = SnapshotCacheManager.isFullyOffline(context),
-                isBiometricLockEnabled = SnapshotCacheManager.isBiometricLockEnabled(context)
+                isBiometricLockEnabled = SnapshotCacheManager.isBiometricLockEnabled(context),
+                isQuietModeEnabled = SnapshotCacheManager.isQuietModeEnabled(context)
             )
         }
     }
@@ -139,6 +141,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     fun toggleBiometricLock(enabled: Boolean) {
         SnapshotCacheManager.setBiometricLockEnabled(context, enabled)
         _uiState.update { it.copy(isBiometricLockEnabled = enabled, isAppLocked = enabled) }
+    }
+
+    fun toggleQuietMode(enabled: Boolean) {
+        SnapshotCacheManager.setQuietModeEnabled(context, enabled)
+        _uiState.update { it.copy(isQuietModeEnabled = enabled) }
     }
 
     fun updateCustomUrl(newUrl: String) {

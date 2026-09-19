@@ -71,11 +71,11 @@ class SyncControllerTest {
                 return java.util.Collections.emptyMap();
             }
         };
-        com.portfolioos.core.rpc.FlightRpcClient mockFlightRpc = new com.portfolioos.core.rpc.FlightRpcClient("localhost", 9999);
+        com.portfolioos.core.rpc.QuantSidecarClient mockQuantSidecar = new com.portfolioos.core.rpc.QuantSidecarClient("localhost", 9999);
         com.portfolioos.core.service.PortfolioValuationService valuationService = 
-            new com.portfolioos.core.service.PortfolioValuationService(mockCacheService, mockDuckDb, mockFlightRpc, null);
+            new com.portfolioos.core.service.PortfolioValuationService(mockCacheService, mockDuckDb, mockQuantSidecar, null);
 
-        syncController = new SyncController(mockCacheService, valuationService, mockDuckDb, mockFlightRpc);
+        syncController = new SyncController(mockCacheService, valuationService, mockDuckDb, mockQuantSidecar);
     }
 
     @Test

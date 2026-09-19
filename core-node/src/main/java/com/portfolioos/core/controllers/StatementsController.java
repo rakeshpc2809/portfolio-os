@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/statements")
@@ -41,7 +42,10 @@ public class StatementsController {
         @RequestParam(value = "password", required = false, defaultValue = "") String password
     ) {
         if (file.isEmpty()) {
-            return ResponseEntity.badRequest().body("Uploaded statement file is empty.");
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "EMPTY_FILE",
+                "message", "Uploaded statement file is empty."
+            ));
         }
 
         try {
@@ -94,9 +98,15 @@ public class StatementsController {
 
             return ResponseEntity.ok(dtoList);
         } catch (IOException e) {
-            return ResponseEntity.internalServerError().body("File reading failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of(
+                "error", "FILE_READ_FAILED",
+                "message", e.getMessage() != null ? e.getMessage() : "File reading failed"
+            ));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Upload and parsing failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of(
+                "error", "UPLOAD_FAILED",
+                "message", e.getMessage() != null ? e.getMessage() : "Upload and parsing failed"
+            ));
         }
     }
 }

@@ -177,6 +177,75 @@ class SnapshotCacheManagerUnitTest {
         val candidates = com.portfolioos.mobile.api.SyncApiClient.getCandidateBaseUrls(mockContext)
         assertEquals("Candidate index 0 must match custom URL without duplicate slash", customWithSlash, candidates[0])
     }
+
+    @Test
+    fun testValuationMaskingDefaultsToTrueAndToggles() {
+        // Privacy-first default must be true
+        assertTrue("Valuation mask must default to true for privacy", SnapshotCacheManager.isValuationMasked(mockContext))
+
+        // Toggle to false
+        val state1 = SnapshotCacheManager.toggleValuationMask(mockContext)
+        assertFalse("Toggled state should be false", state1)
+        assertFalse("Getter must reflect unmasked state", SnapshotCacheManager.isValuationMasked(mockContext))
+
+        // Toggle back to true
+        val state2 = SnapshotCacheManager.toggleValuationMask(mockContext)
+        assertTrue("Toggled state should be true", state2)
+        assertTrue("Getter must reflect masked state", SnapshotCacheManager.isValuationMasked(mockContext))
+    }
+
+    @Test
+    fun testQuietModePreferenceDefaultsToFalseAndSets() {
+        assertFalse("Quiet mode must default to false", SnapshotCacheManager.isQuietModeEnabled(mockContext))
+        SnapshotCacheManager.setQuietModeEnabled(mockContext, true)
+        assertTrue("Quiet mode must be true after enabling", SnapshotCacheManager.isQuietModeEnabled(mockContext))
+        SnapshotCacheManager.setQuietModeEnabled(mockContext, false)
+        assertFalse("Quiet mode must be false after disabling", SnapshotCacheManager.isQuietModeEnabled(mockContext))
+    }
+
+    @Test
+    fun testWidgetStatusOverride() {
+        assertNull("Initial widget override should be null", SnapshotCacheManager.getWidgetStatusOverride(mockContext))
+        SnapshotCacheManager.setWidgetStatusOverride(mockContext, "REFRESHING")
+        assertEquals("REFRESHING", SnapshotCacheManager.getWidgetStatusOverride(mockContext))
+        SnapshotCacheManager.setWidgetStatusOverride(mockContext, null)
+        assertNull("Cleared widget override should be null", SnapshotCacheManager.getWidgetStatusOverride(mockContext))
+    }
+
+    @Test
+    fun testOfflineAndDisconnectedAgeSafeguards() {
+        val now = System.currentTimeMillis()
+
+        // 1. Fresh cache (< 36 hours): age = 10 hours
+        val freshSyncTs = now - (10L * 3600L * 1000L)
+        fakePrefs.edit().putLong("key_last_sync_ts", freshSyncTs).apply()
+        val freshAgeHours = (now - SnapshotCacheManager.getLastSyncTimestamp(mockContext)) / (1000L * 3600L)
+        assertTrue("10 hours old is under 36h threshold", freshAgeHours < 36L)
+
+        // 2. Stale cache (>= 36 hours): age = 40 hours
+        val staleSyncTs = now - (40L * 3600L * 1000L)
+        fakePrefs.edit().putLong("key_last_sync_ts", staleSyncTs).apply()
+        val staleAgeHours = (now - SnapshotCacheManager.getLastSyncTimestamp(mockContext)) / (1000L * 3600L)
+        assertTrue("40 hours old is at or above 36h threshold", staleAgeHours >= 36L)
+    }
+
+    @Test
+    fun testDisconnectionNotificationDeduplicationForEpisode() {
+        // Initial state before disconnect: no notification has fired
+        assertFalse("Initial notification fired state must be false", SnapshotCacheManager.hasDisconnectionNotificationFired(mockContext))
+
+        // Worker encounters >=36h disconnect and fires first notification
+        SnapshotCacheManager.setDisconnectionNotificationFired(mockContext, true)
+        assertTrue("Flag must be true after first notification", SnapshotCacheManager.hasDisconnectionNotificationFired(mockContext))
+
+        // Subsequent worker ticks at 42h, 48h check this flag and suppress duplicate alerts
+        val shouldSuppressOnNextCycle = SnapshotCacheManager.hasDisconnectionNotificationFired(mockContext)
+        assertTrue("Subsequent cycles must recognize notification already fired and suppress spam", shouldSuppressOnNextCycle)
+
+        // Core-node reconnects and sync succeeds -> Flag is reset to false
+        SnapshotCacheManager.setDisconnectionNotificationFired(mockContext, false)
+        assertFalse("Flag must reset to false upon successful sync reconnection", SnapshotCacheManager.hasDisconnectionNotificationFired(mockContext))
+    }
 }
 
 /**

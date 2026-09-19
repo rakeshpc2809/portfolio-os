@@ -208,12 +208,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const promptLower = promptText.toLowerCase();
 
-    // Raycast Action Interception for Rebalance & Waterfall
-    if (
-      promptLower.includes("rebalance") ||
-      promptLower.includes("waterfall") ||
-      promptLower.includes("trim")
-    ) {
+    // Check for explicit numeric waterfall command (e.g., "waterfall 50000", "trim 25000", "rebalance 100000")
+    const isExplicitWaterfall =
+      (promptLower.startsWith("waterfall") ||
+        promptLower.startsWith("trim") ||
+        /^rebalance\s+\d+/.test(promptLower)) &&
+      /\d+/.test(promptText);
+
+    if (isExplicitWaterfall) {
       const match = promptText.match(/\d+/);
       const amount = match ? parseInt(match[0]) : 50000;
       results.innerHTML = `<div style="padding:12px; color:#06b6d4;">⚙️ Calculating Tax-Aware Waterfall for ₹${formatINR(amount)}...</div>`;
@@ -249,29 +251,113 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    // Execute via backend Agent Tools API (/api/v1/agent/tools/execute)
+    // Conversational Copilot NLP Routing to Agent Tools (/api/v1/agent/tools/execute)
     let toolName = "getPortfolioValuation";
     let toolArgs = {};
 
-    if (promptLower.includes("valuation") || promptLower.includes("worth") || promptLower.includes("summary")) {
-      toolName = "getPortfolioValuation";
-    } else if (promptLower.includes("fire") || promptLower.includes("retire") || promptLower.includes("corpus") || promptLower.includes("coast")) {
-      toolName = "getFireSummary";
-    } else if (promptLower.includes("harvest") || promptLower.includes("tax") || promptLower.includes("ltcg") || promptLower.includes("saving")) {
-      toolName = "getTaxHarvestOpportunities";
-    } else if (promptLower.includes("rebalance") || promptLower.includes("target") || promptLower.includes("drift")) {
+    if (
+      promptLower.includes("simulate") ||
+      promptLower.includes("selling") ||
+      promptLower.startsWith("sell") ||
+      promptLower.startsWith("buy") ||
+      promptLower.includes("what if") ||
+      promptLower.includes("what-if")
+    ) {
+      toolName = "simulateTrade";
+
+      // Detect trade type
+      const isBuy = promptLower.includes("buy") || promptLower.includes("acquir");
+      const tradeType = isBuy ? "ACQUISITION" : "DISPOSAL";
+
+      // Extract units
+      const unitMatch = promptText.match(/(\d+(?:\.\d+)?)\s*(?:units?|shares?|qty)?/i);
+      const units = unitMatch ? parseFloat(unitMatch[1]) : 50;
+
+      // Match holding scheme name and ISIN
+      let isin = "INF879O01027";
+      let schemeName = "Parag Parikh Flexi Cap Fund - Direct Plan - Growth";
+      let pricePerUnit = null; // Let backend resolve live NAV from DB / cache
+
+      const holdings = state.holdings || [];
+      const matchedHolding = holdings.find((h) => {
+        const name = (h.assetName || "").toLowerCase();
+        const id = (h.assetId || "").toLowerCase();
+        return (
+          (promptLower.includes("parag") || promptLower.includes("parikh")) &&
+          (name.includes("parag") || id === "inf879o01027") ||
+          (promptLower.includes("uti") && name.includes("uti")) ||
+          (promptLower.includes("midcap") && name.includes("midcap")) ||
+          (promptLower.includes("smallcap") && name.includes("smallcap")) ||
+          (promptLower.includes("gold") && name.includes("gold")) ||
+          name.split(" ").some((w) => w.length > 3 && promptLower.includes(w))
+        );
+      });
+
+      if (matchedHolding) {
+        isin = matchedHolding.assetId;
+        schemeName = matchedHolding.assetName;
+        if (matchedHolding.lots && matchedHolding.lots.length > 0) {
+          const nav = parseFloat(matchedHolding.lots[0].currentNav);
+          if (!isNaN(nav) && nav > 0) pricePerUnit = nav;
+        }
+      }
+
+      toolArgs = {
+        isin: isin,
+        schemeName: schemeName,
+        units: units,
+        tradeType: tradeType,
+      };
+      if (pricePerUnit != null && pricePerUnit > 0) {
+        toolArgs.pricePerUnit = pricePerUnit;
+      }
+    } else if (
+      promptLower.includes("explain rebalance") ||
+      promptLower.includes("rebalance trigger") ||
+      promptLower.includes("why rebalance") ||
+      promptLower.includes("consequence of rebalancing") ||
+      promptLower.includes("rebalance plan") ||
+      promptLower.includes("rebalance today")
+    ) {
       toolName = "getRebalancePlan";
-    } else if (promptLower.includes("fund") || promptLower.includes("holding") || promptLower.includes("registry") || promptLower.includes("scheme")) {
+    } else if (
+      promptLower.includes("fire") ||
+      promptLower.includes("retire") ||
+      promptLower.includes("corpus") ||
+      promptLower.includes("coast") ||
+      promptLower.includes("monte carlo")
+    ) {
+      toolName = "getFireSummary";
+    } else if (
+      promptLower.includes("harvest") ||
+      promptLower.includes("tax") ||
+      promptLower.includes("ltcg") ||
+      promptLower.includes("saving") ||
+      promptLower.includes("112a")
+    ) {
+      toolName = "getTaxHarvestOpportunities";
+    } else if (
+      promptLower.includes("fund") ||
+      promptLower.includes("holding") ||
+      promptLower.includes("registry") ||
+      promptLower.includes("scheme")
+    ) {
       toolName = "getFundRegistry";
     } else if (promptLower.includes("overlap")) {
       toolName = "getPairwiseFundOverlap";
       toolArgs = { fundA: "INF109KC12U0", fundB: "INF879O01027" };
+    } else if (
+      promptLower.includes("valuation") ||
+      promptLower.includes("worth") ||
+      promptLower.includes("summary")
+    ) {
+      toolName = "getPortfolioValuation";
     }
 
     results.innerHTML = `<div style="padding:12px; color:#d0ff00; font-family:monospace;">⚡ Executing Agent Tool [${toolName}]...</div>`;
 
     try {
-      const data = await fetchJson("/agent/tools/execute", {
+      const data = await fetchJson("/api/v1/agent/tools/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tool: toolName, arguments: toolArgs }),
@@ -293,7 +379,78 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = data.result || {};
       let bodyHtml = "";
 
-      if (toolName === "getPortfolioValuation") {
+      if (toolName === "simulateTrade") {
+        const sim = res.simulation_result || {};
+        const tradeType = sim.trade_type || sim.tradeType || toolArgs.tradeType || "DISPOSAL";
+        const scheme = sim.scheme_name || sim.schemeName || toolArgs.schemeName;
+        const units = sim.units || toolArgs.units;
+        const navUsed = parseFloat(sim.price_per_unit ?? sim.pricePerUnit ?? 0);
+        const gross = parseFloat(sim.gross_trade_amount ?? sim.grossTradeAmount ?? 0);
+        const gain = parseFloat(sim.gross_capital_gain ?? sim.grossCapitalGain ?? 0);
+        const ltcg = parseFloat(sim.ltcg_equity ?? sim.ltcgEquity ?? 0);
+        const sec112a = parseFloat(sim.sec112a_exemption_applied ?? sim.sec112aExemptionApplied ?? 0);
+        const stcg = parseFloat(sim.stcg_equity ?? sim.stcgEquity ?? 0);
+        const taxLiab = parseFloat(sim.estimated_tax_liability ?? sim.estimatedTaxLiability ?? 0);
+        const nw = parseFloat(sim.post_trade_net_worth ?? sim.postTradeNetWorth ?? 0);
+        const xirr = sim.post_trade_xirr ?? sim.postTradeXirr ?? "0.0";
+        const priceSource = res.price_source || (toolArgs.pricePerUnit ? "EXPLICIT_PARAMETER" : "LIVE_LEDGER_NAV");
+        const isEstimated = res.is_price_estimated === true || priceSource === "ESTIMATED_FALLBACK";
+
+        const sourceTag = isEstimated
+          ? `<span class="live-tag" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid #f59e0b; font-size:10px; padding:2px 6px;">⚠️ ESTIMATED PRICE (₹${navUsed.toFixed(2)})</span>`
+          : `<span class="live-tag" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid #10b981; font-size:10px; padding:2px 6px;">LIVE NAV (₹${navUsed.toFixed(2)})</span>`;
+
+        bodyHtml = `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+            <div style="font-size:13px; font-weight:700; color:#f8fafc;">
+              ${tradeType} ${units} Units · <span style="color:#38bdf8;">${scheme}</span>
+            </div>
+            ${sourceTag}
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px; margin-top:8px;">
+            <div>Gross Proceeds: <strong style="color:#d0ff00;" class="font-mono">₹ ${formatINR(gross)}</strong></div>
+            <div>Capital Gain: <strong style="color:#38bdf8;" class="font-mono">₹ ${formatINR(gain)}</strong></div>
+            <div>LTCG Equity: <strong style="color:#10b981;" class="font-mono">₹ ${formatINR(ltcg)}</strong></div>
+            <div>Sec 112A Exempt: <strong style="color:#a78bfa;" class="font-mono">₹ ${formatINR(sec112a)}</strong></div>
+            <div>STCG Equity: <strong style="color:#f59e0b;" class="font-mono">₹ ${formatINR(stcg)}</strong></div>
+            <div>Est. Tax Liability: <strong style="color:#ef4444;" class="font-mono">₹ ${formatINR(taxLiab)}</strong></div>
+            <div>Post-Trade Net Worth: <strong style="color:#f8fafc;" class="font-mono">₹ ${formatINR(nw)}</strong></div>
+            <div>Post-Trade XIRR: <strong style="color:#06b6d4;" class="font-mono">${xirr}%</strong></div>
+          </div>
+          <div style="margin-top:10px; font-size:11px; color:#94a3b8; line-height:1.4; padding:8px 12px; background:rgba(0,0,0,0.3); border-radius:6px; border-left:3px solid ${isEstimated ? '#f59e0b' : '#10b981'};">
+            ${sim.tax_summary_notice || sim.taxSummaryNotice || res.notice || "Trade simulation completed without updating ledger."}
+          </div>
+        `;
+      } else if (toolName === "getRebalancePlan") {
+        const trigger = res.trigger || {};
+        const sellSide = res.sell_side || {};
+        const buySide = res.buy_side || {};
+        const triggerType = res.derived_trigger_type || trigger.type || "DRIFT";
+
+        const sellSteps = (sellSide.steps || []).slice(0, 4).map((s) => `
+          <div class="cmd-step-row">
+            <span><strong style="color:#f59e0b;">${s.tier || "TRIM"}</strong>: ${s.asset_name || s.assetName || s.assetId}</span>
+            <span class="font-mono">₹ ${formatINR(parseFloat(s.proceeds || 0))}</span>
+          </div>
+        `).join("");
+
+        bodyHtml = `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="font-size:12px; color:#cbd5e1;">Active Trigger: <strong style="color:#d0ff00;">${triggerType}</strong></div>
+            <span style="font-size:11px; color:#94a3b8; font-family:monospace;">FY ${res.fiscal_year || state.currentFy}</span>
+          </div>
+          <div style="font-size:11px; color:#94a3b8; line-height:1.4; padding:6px 10px; background:rgba(0,0,0,0.25); border-radius:6px; margin-bottom:8px;">
+            <strong>Trigger Hierarchy:</strong> Tier 1 Drawdown &gt; Tier 2 Asset Drift (&gt;15% rel) &gt; Tier 3 Scheduled Annual Harvest.
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px;">
+            <div>Sell Proceeds: <strong style="color:#f59e0b;" class="font-mono">₹ ${formatINR(parseFloat(sellSide.totalProceeds || 0))}</strong></div>
+            <div>Estimated Tax Drag: <strong style="color:#ef4444;" class="font-mono">₹ ${formatINR(parseFloat(sellSide.totalTaxDrag || 0))}</strong></div>
+            <div>Exemption Consumed: <strong style="color:#10b981;" class="font-mono">₹ ${formatINR(parseFloat(sellSide.ltcgExemptionConsumed || 0))}</strong></div>
+            <div>Deployable Cash: <strong style="color:#38bdf8;" class="font-mono">₹ ${formatINR(parseFloat(buySide.totalDeployable || 0))}</strong></div>
+          </div>
+          ${sellSteps ? `<div class="cmd-action-steps" style="margin-top:8px;">${sellSteps}</div>` : ""}
+        `;
+      } else if (toolName === "getPortfolioValuation") {
         bodyHtml = `
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px; margin-top:8px;">
             <div>Net Worth: <strong style="color:#d0ff00;" class="font-mono">₹ ${formatINR(parseFloat(res.total_net_worth || 0))}</strong></div>
@@ -310,6 +467,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px; margin-top:8px;">
             <div>Net Worth: <strong style="color:#d0ff00;" class="font-mono">₹ ${formatINR(netWorth)}</strong></div>
             <div>Required FIRE: <strong style="color:#94a3b8;" class="font-mono">₹ ${formatINR(reqCorpus)}</strong></div>
+            <div>Annual Expense: <strong style="color:#f59e0b;" class="font-mono">₹ ${formatINR(parseFloat(res.annual_expense || 0))}</strong></div>
             <div>FIRE Progress: <strong style="color:#10b981;" class="font-mono">${progressPct}%</strong> (${res.years_remaining || 0} yrs left)</div>
             <div>Status: <strong style="color:#06b6d4;">${res.fire_status || "IN_PROGRESS"}</strong> (${res.active_scenario_label || "Base"})</div>
           </div>
@@ -364,6 +522,49 @@ document.addEventListener("DOMContentLoaded", () => {
         window.submitAiPrompt();
       }
     }
+  });
+
+  // Wire Conversational Copilot quick action chips
+  document.querySelectorAll(".cmd-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const prompt = chip.getAttribute("data-prompt");
+      const input = document.getElementById("commandPaletteInput");
+      if (input && prompt) {
+        input.value = prompt;
+        window.submitAiPrompt();
+      }
+    });
+  });
+
+  // Wire command palette quick actions list
+  document.querySelectorAll(".cmd-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      const action = item.getAttribute("data-action");
+      const input = document.getElementById("commandPaletteInput");
+      if (action === "whatif") {
+        if (input) {
+          input.value = "Simulate selling 50 units of Parag Parikh";
+          window.submitAiPrompt();
+        }
+      } else if (action === "schedule-cg") {
+        window.closeCmdPalette();
+        const tabBtn = document.querySelector('.tab-btn[data-tab="tax-lots"]');
+        if (tabBtn) tabBtn.click();
+      } else if (action === "rebalance") {
+        if (input) {
+          input.value = "Explain rebalance triggers";
+          window.submitAiPrompt();
+        }
+      } else if (action === "holdings") {
+        window.closeCmdPalette();
+        const tabBtn = document.querySelector('.tab-btn[data-tab="holdings"]');
+        if (tabBtn) tabBtn.click();
+      } else if (action === "radar") {
+        window.closeCmdPalette();
+        const sentinel = document.getElementById("marketRiskSentinelCard");
+        if (sentinel) sentinel.scrollIntoView({ behavior: "smooth" });
+      }
+    });
   });
 
   const cmdTrigger = document.getElementById("cmdKTriggerBtn");

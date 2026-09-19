@@ -20,6 +20,7 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class SqliteEventStore implements EventStorePort {

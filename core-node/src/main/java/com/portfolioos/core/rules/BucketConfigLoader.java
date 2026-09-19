@@ -94,6 +94,14 @@ public class BucketConfigLoader {
         return false;
     }
 
+    public record LegacyLiquidationCandidate(
+        String isin,
+        String fundName,
+        int priority,
+        boolean autoHarvestEligible,
+        String reason
+    ) {}
+
     public record BucketTargetVersion(
         String versionId,
         String effectiveFrom, // YYYY-MM-DD
@@ -103,10 +111,15 @@ public class BucketConfigLoader {
     public record BucketRulesConfig(
         String configSource,
         String configFilePath,
-        List<BucketTargetVersion> versions
+        List<BucketTargetVersion> versions,
+        List<LegacyLiquidationCandidate> legacyCandidates
     ) {
         public BucketRulesConfig(List<BucketTargetVersion> versions) {
-            this("YAML_FILE", "rules/bucket_targets.yaml", versions);
+            this("YAML_FILE", "rules/bucket_targets.yaml", versions, List.of());
+        }
+
+        public BucketRulesConfig(String configSource, String configFilePath, List<BucketTargetVersion> versions) {
+            this(configSource, configFilePath, versions, List.of());
         }
     }
 
@@ -227,7 +240,28 @@ public class BucketConfigLoader {
                 throw new IllegalStateException("CRITICAL CONFIG ERROR: YAML file at " + ruleFile.getAbsolutePath() + " does not contain 'portfolio' or 'versions' block");
             }
 
-            cachedRules = new BucketRulesConfig("YAML_FILE", ruleFile.getAbsolutePath(), parsedVersions);
+            List<LegacyLiquidationCandidate> legacyCandidates = new ArrayList<>();
+            if (data.containsKey("legacy_liquidation_candidates")) {
+                Object rawLeg = data.get("legacy_liquidation_candidates");
+                if (rawLeg instanceof List<?> legList) {
+                    for (Object item : legList) {
+                        if (item instanceof Map<?, ?> rawMap) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> lMap = (Map<String, Object>) rawMap;
+                            String isin = lMap.get("isin") != null ? lMap.get("isin").toString() : null;
+                            String fName = lMap.get("fund_name") != null ? lMap.get("fund_name").toString() : "";
+                            int prio = lMap.get("priority") instanceof Number n ? n.intValue() : 99;
+                            boolean autoHarvest = lMap.containsKey("auto_harvest_eligible")
+                                ? Boolean.TRUE.equals(lMap.get("auto_harvest_eligible"))
+                                : true;
+                            String reason = lMap.get("reason") != null ? lMap.get("reason").toString() : "";
+                            legacyCandidates.add(new LegacyLiquidationCandidate(isin, fName, prio, autoHarvest, reason));
+                        }
+                    }
+                }
+            }
+
+            cachedRules = new BucketRulesConfig("YAML_FILE", ruleFile.getAbsolutePath(), parsedVersions, legacyCandidates);
             return cachedRules;
         } catch (Exception e) {
             if (e instanceof IllegalStateException ise) {
@@ -235,6 +269,39 @@ public class BucketConfigLoader {
             }
             throw new IllegalStateException("CRITICAL CONFIG ERROR: Failed to load rules/bucket_targets.yaml: " + e.getMessage(), e);
         }
+    }
+
+    public static List<LegacyLiquidationCandidate> getLegacyLiquidationCandidates() {
+        BucketRulesConfig config = loadConfig();
+        return config != null && config.legacyCandidates() != null ? config.legacyCandidates() : List.of();
+    }
+
+    public static boolean isAutoHarvestEligible(String assetId) {
+        if (assetId == null || assetId.isBlank()) return false;
+        String cleanId = assetId.trim();
+
+        // =========================================================================================
+        // DEFENSE-IN-DEPTH HARDCODED INVARIANT
+        // -----------------------------------------------------------------------------------------
+        // Single Source of Truth Alignment:
+        // This hardcoded guard mirrors the configuration in rules/bucket_targets.yaml under:
+        //   legacy_liquidation_candidates -> isin: "INF174KA1TY2" (auto_harvest_eligible: false)
+        // Kotak Nifty 100 Equal Weight Index Fund Direct Growth is designated as the core, protected
+        // ballast holding and must NEVER be liquidated by automated tax-loss or tax-gain harvesting.
+        // NOTE: If this protected core holding is ever migrated or altered in policy, BOTH the YAML
+        // entry in bucket_targets.yaml AND this Java guard MUST be updated in tandem.
+        // =========================================================================================
+        // Hardcoded safety invariant: Match strictly against ISIN (standard in FifoMatcher lots and all production callers)
+        if ("INF174KA1TY2".equalsIgnoreCase(cleanId)) {
+            return false;
+        }
+
+        for (LegacyLiquidationCandidate c : getLegacyLiquidationCandidates()) {
+            if (cleanId.equalsIgnoreCase(c.isin())) {
+                return c.autoHarvestEligible();
+            }
+        }
+        return true;
     }
 
     public static List<BucketEngine.BucketTarget> getActiveBucketTargets(LocalDate date) {

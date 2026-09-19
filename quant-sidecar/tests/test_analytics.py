@@ -41,6 +41,63 @@ class TestAnalyticsEngine(unittest.TestCase):
         self.assertEqual(validated.median_final_ending_corpus, final_traj.p50)
         self.assertEqual(validated.tenth_percentile_final_ending_corpus, final_traj.p10)
 
+    def test_linear_confidence_ramp_boundaries(self):
+        np.random.seed(42)
+        # N = 0
+        res_0 = run_monte_carlo_fire_simulation(daily_returns_list=[], num_simulations=100)
+        self.assertEqual(res_0["data_source"], "SYNTHETIC_MARKET_BENCHMARK")
+        self.assertEqual(res_0["confidence_ramp_weight"], 0.0)
+
+        # N = 375 (exactly 50% ramp weight)
+        rets_375 = list(np.random.normal(0.0005, 0.01, 375))
+        res_375 = run_monte_carlo_fire_simulation(daily_returns_list=rets_375, num_simulations=100)
+        self.assertEqual(res_375["data_source"], "BLENDED_CONFIDENCE_RAMP")
+        self.assertAlmostEqual(res_375["confidence_ramp_weight"], 0.5, places=3)
+        self.assertIn("50.0% Empirical", res_375["data_source_label"])
+
+        # N = 750 (100% ramp weight, boundary)
+        rets_750 = list(np.random.normal(0.0005, 0.01, 750))
+        res_750 = run_monte_carlo_fire_simulation(daily_returns_list=rets_750, num_simulations=100)
+        self.assertEqual(res_750["data_source"], "EMPIRICAL_PORTFOLIO")
+        self.assertEqual(res_750["confidence_ramp_weight"], 1.0)
+
+        # N = 1000 (> 750, capped at 1.0)
+        rets_1000 = list(np.random.normal(0.0005, 0.01, 1000))
+        res_1000 = run_monte_carlo_fire_simulation(daily_returns_list=rets_1000, num_simulations=100)
+        self.assertEqual(res_1000["data_source"], "EMPIRICAL_PORTFOLIO")
+        self.assertEqual(res_1000["confidence_ramp_weight"], 1.0)
+
+    def test_regime_conditional_block_bootstrap(self):
+        # Generate bimodal market regime history (bull blocks + crash blocks)
+        np.random.seed(123)
+        rets = list(np.random.normal(0.0010, 0.008, 400)) + list(np.random.normal(-0.0008, 0.022, 400))
+
+        # Seed same for reproducibility
+        np.random.seed(42)
+        res_risk_off = run_monte_carlo_fire_simulation(
+            daily_returns_list=rets,
+            num_simulations=1000,
+            regime="EXPANSION_RISK_OFF"
+        )
+
+        np.random.seed(42)
+        res_risk_on = run_monte_carlo_fire_simulation(
+            daily_returns_list=rets,
+            num_simulations=1000,
+            regime="ACCUMULATION_RISK_ON"
+        )
+
+        self.assertEqual(res_risk_off["regime_applied"], "EXPANSION_RISK_OFF")
+        self.assertEqual(res_risk_on["regime_applied"], "ACCUMULATION_RISK_ON")
+        self.assertIn("EXPANSION_RISK_OFF", res_risk_off["data_source_label"])
+        self.assertIn("ACCUMULATION_RISK_ON", res_risk_on["data_source_label"])
+
+        # Under risk-off (high valuation/volatility), median ending corpus should reflect conservative drag compared to risk-on recovery
+        self.assertLess(
+            res_risk_off["median_final_ending_corpus"],
+            res_risk_on["median_final_ending_corpus"]
+        )
+
     def test_benchmark_analytics_schema(self):
         np.random.seed(42)
         p_rets = list(np.random.normal(0.0006, 0.012, 252))

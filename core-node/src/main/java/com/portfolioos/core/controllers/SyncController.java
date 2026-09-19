@@ -15,7 +15,7 @@ import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.persistence.DuckDbProjector.NavHistorySeriesEntry;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.reporting.ExemptionTracker;
-import com.portfolioos.core.rpc.FlightRpcClient;
+import com.portfolioos.core.rpc.QuantSidecarClient;
 import com.portfolioos.core.service.LedgerCacheService;
 import com.portfolioos.core.valuation.BucketEngine;
 import com.portfolioos.core.valuation.HarvestAdvisor;
@@ -43,19 +43,19 @@ public class SyncController {
     private final LedgerCacheService cacheService;
     private final com.portfolioos.core.service.PortfolioValuationService valuationService;
     private final DuckDbProjector duckDbProjector;
-    private final FlightRpcClient flightRpcClient;
+    private final QuantSidecarClient quantSidecarClient;
 
     @Autowired
     public SyncController(
         LedgerCacheService cacheService,
         com.portfolioos.core.service.PortfolioValuationService valuationService,
         DuckDbProjector duckDbProjector,
-        FlightRpcClient flightRpcClient
+        QuantSidecarClient quantSidecarClient
     ) {
         this.cacheService = cacheService;
         this.valuationService = valuationService;
         this.duckDbProjector = duckDbProjector;
-        this.flightRpcClient = flightRpcClient;
+        this.quantSidecarClient = quantSidecarClient;
     }
 
     private static String detectFineBucket(String assetName) {
@@ -212,11 +212,11 @@ public class SyncController {
         harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
         radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 
-        // 2. PyArrow Flight RPC Quant Intelligence (from real DuckDB NAV time-series with dates)
+        // 2. Quant Sidecar Intelligence (from real DuckDB NAV time-series with dates)
         try {
             Map<String, NavHistorySeriesEntry> navHistorySeries = duckDbProjector.getNavHistorySeriesWithDates(heldIsins);
             if (!navHistorySeries.isEmpty()) {
-                Map<String, Map<String, Object>> quantMetrics = flightRpcClient.computeQuantMetricsWithDates(navHistorySeries);
+                Map<String, Map<String, Object>> quantMetrics = quantSidecarClient.computeQuantMetricsWithDates(navHistorySeries);
                 Map<String, String> isinToNameMap = holdings.stream().collect(Collectors.toMap(FlatHoldingDto::isin, FlatHoldingDto::fundName, (a, b) -> a));
 
                 for (Map.Entry<String, Map<String, Object>> entry : quantMetrics.entrySet()) {
@@ -334,6 +334,19 @@ public class SyncController {
             ));
         }
 
+        int staleNavCount = valuationService.getPortfolioSummary(fy).staleNavCount();
+        boolean hasStaleNav = staleNavCount > 0;
+        if (hasStaleNav) {
+            radarSignals.add(0, new RadarSignalDto(
+                "STALE_NAV",
+                "AMFI Data Freshness",
+                "STALE NAV DETECTED (" + staleNavCount + " FUNDS)",
+                staleNavCount + " fund(s) have not received an updated NAV for more than 3 business days. Valuations reflect last known closing NAV.",
+                "WARNING",
+                staleNavCount + " Stale"
+            ));
+        }
+
         long now = System.currentTimeMillis();
         SyncInfoDto syncInfo = new SyncInfoDto(
             now / 1000,
@@ -347,7 +360,9 @@ public class SyncController {
             unrealizedGain.doubleValue(),
             currencyFormat.format(totalPortfolioCurrentVal),
             currencyFormat.format(totalPortfolioInvested),
-            (unrealizedGain.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + currencyFormat.format(unrealizedGain)
+            (unrealizedGain.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + currencyFormat.format(unrealizedGain),
+            staleNavCount,
+            hasStaleNav
         );
 
         List<NetWorthPointDto> netWorthHistory = duckDbProjector.getDailyNetWorthTrend().stream()

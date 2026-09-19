@@ -1,6 +1,9 @@
-# Quant-Sidecar Subsystem (Python 3.11 / Arrow Flight RPC / FastAPI)
+# Quant-Sidecar Subsystem (Python 3.11 / FastAPI / Direct IPC)
 
-The `quant-sidecar` is a Python-based quantitative analytics and statement parsing microservice. It provides high-throughput Apache Arrow Flight gRPC RPC endpoints for fund risk metrics and 10,000-iteration Monte Carlo FIRE simulations, alongside statement ingestion parsers for CAMS/KFintech CAS PDFs and Zerodha/Groww CSV broker statements.
+The `quant-sidecar` is a Python-based quantitative analytics and statement parsing microservice. It provides REST HTTP endpoints on port 8000 for fund risk metrics, HRP asset allocation, and 10,000-iteration Monte Carlo FIRE simulations, alongside statement ingestion parsers for CAMS/KFintech CAS PDFs and Zerodha/Groww CSV broker statements.
+
+> [!NOTE]
+> **Architectural Simplification**: The legacy Apache Arrow Flight gRPC server (port 8001) was permanently decommissioned in Phase 1. Inter-process communication between `core-node` and `quant-sidecar` is unified under standard HTTP JSON (port 8000) and direct DuckDB/Parquet batch exchange.
 
 ---
 
@@ -9,16 +12,16 @@ The `quant-sidecar` is a Python-based quantitative analytics and statement parsi
 ```
 quant-sidecar/
 ├── Dockerfile                         # Python 3.11 slim container image
-├── app.py                             # FastAPI HTTP server (Port 8000) & Flight server thread launcher
-├── flight_server.py                   # Apache Arrow Flight RPC server (Port 8001)
-├── requirements.txt                   # PyArrow, Polars, FastAPI, PyMuPDF, Pandas, NumPy, QuantStats
+├── app.py                             # FastAPI HTTP server (Port 8000)
+├── requirements.txt                   # Polars, FastAPI, PyMuPDF, Pandas, NumPy, QuantStats
 ├── parsers/
 │   ├── broker_csv_parser.py           # Zerodha / Groww CSV trade statement parser
 │   ├── cas_parser.py                  # CAMS / KFintech CAS PDF statement parser (pdfplumber/fitz)
 │   ├── models.py                      # Pydantic schemas (TaxEventSchema)
 │   └── sip_detector.py                # 3+ match recurring SIP auto-detection algorithm
 ├── quant/
-│   └── analytics_engine.py            # Monte Carlo FIRE engine & QuantStats risk metrics wrapper
+│   ├── analytics_engine.py            # Monte Carlo FIRE engine & QuantStats risk metrics wrapper
+│   └── hrp_allocator.py               # Hierarchical Risk Parity intra-bucket allocator
 └── tests/
     └── test_parsers.py                # Pytest unit tests for statement parsers
 ```
@@ -27,12 +30,12 @@ quant-sidecar/
 
 ## 2. Data Flow: Monte Carlo FIRE Simulation
 
-The FIRE Monte Carlo simulation can be invoked via HTTP POST `/api/v1/simulate_fire` or via PyArrow Flight RPC `do_action("fire_simulation")`:
+The FIRE Monte Carlo simulation is invoked via HTTP POST `/api/v1/simulate_fire`:
 
 ```
-[Core-Node / FlightRpcClient.java]
+[Core-Node / QuantSidecarClient.java]
        |
-       v  1. gRPC Action Call "fire_simulation" (port 8001)
+       v  1. HTTP POST "/api/v1/simulate_fire" (port 8000)
 [flight_server.py:L18] do_action()
        |
        |  2. Deserializes JSON payload (current_corpus, annual_expense, monthly_contrib, etc.)

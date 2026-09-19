@@ -91,23 +91,31 @@ object SyncApiClient {
         return retrofit.create(SyncApiService::class.java)
     }
 
-    suspend fun fetchSnapshotWithFallback(context: Context): SyncSnapshot {
+    suspend fun fetchSnapshotOnline(context: Context): SyncSnapshot {
         val authToken = SnapshotCacheManager.getAuthToken(context)
         val candidateUrls = getCandidateBaseUrls(context)
 
+        var lastException: Exception? = null
         for (baseUrl in candidateUrls) {
             try {
                 val snapshot = createService(baseUrl).getSnapshot(token = authToken)
                 SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
                 return snapshot
             } catch (e: Exception) {
-                // continue to next candidate
+                lastException = e
             }
         }
 
-        // Offline Fallback: Return cached snapshot if available
-        val cached = SnapshotCacheManager.loadSnapshot(context)
-        return cached ?: throw java.io.IOException("No network connection available to sync snapshot and no local cache present.")
+        throw (lastException ?: java.io.IOException("All backend candidate URLs unreachable"))
+    }
+
+    suspend fun fetchSnapshotWithFallback(context: Context): SyncSnapshot {
+        return try {
+            fetchSnapshotOnline(context)
+        } catch (e: Exception) {
+            val cached = SnapshotCacheManager.loadSnapshot(context)
+            cached ?: throw java.io.IOException("No network connection available to sync snapshot and no local cache present: ${e.message}", e)
+        }
     }
 
     suspend fun simulateTradeWithFallback(context: Context, request: TradeSimulationRequestDto): TradeSimulationResultDto {

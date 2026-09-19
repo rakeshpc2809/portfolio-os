@@ -199,8 +199,19 @@ public class PortfolioQueryTools {
         BigDecimal pricePerUnit,
         String tradeType
     ) {
-        log.info("LLM_TOOL_EXECUTION: tool=simulateTrade params={isin={}, schemeName={}, units={}, pricePerUnit={}, tradeType={}}",
-            isin, schemeName, units, pricePerUnit, tradeType);
+        return simulateTrade(isin, schemeName, units, pricePerUnit, tradeType, "EXPLICIT_PARAMETER");
+    }
+
+    public Map<String, Object> simulateTrade(
+        String isin,
+        String schemeName,
+        BigDecimal units,
+        BigDecimal pricePerUnit,
+        String tradeType,
+        String priceSource
+    ) {
+        log.info("LLM_TOOL_EXECUTION: tool=simulateTrade params={isin={}, schemeName={}, units={}, pricePerUnit={}, tradeType={}, priceSource={}}",
+            isin, schemeName, units, pricePerUnit, tradeType, priceSource);
 
         if (isin == null || isin.isBlank() || schemeName == null || schemeName.isBlank() ||
             units == null || units.compareTo(BigDecimal.ZERO) <= 0 ||
@@ -226,8 +237,15 @@ public class PortfolioQueryTools {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", "SUCCESS");
         result.put("source_tool", "simulateTrade");
+        result.put("price_source", priceSource != null ? priceSource : "EXPLICIT_PARAMETER");
+        result.put("is_price_estimated", "ESTIMATED_FALLBACK".equalsIgnoreCase(priceSource));
         result.put("simulation_result", res);
-        result.put("notice", res.taxSummaryNotice());
+        String baseNotice = res.taxSummaryNotice();
+        if ("ESTIMATED_FALLBACK".equalsIgnoreCase(priceSource)) {
+            result.put("notice", "⚠️ ESTIMATED FALLBACK PRICE (NOT LIVE NAV): " + baseNotice);
+        } else {
+            result.put("notice", baseNotice);
+        }
         return result;
     }
 
@@ -353,6 +371,20 @@ public class PortfolioQueryTools {
                     BigDecimal pricePerUnit = parseBigDecimal(safeArgs.get("pricePerUnit"));
                     String tradeType = safeArgs.get("tradeType") != null ? safeArgs.get("tradeType").toString().trim().toUpperCase() : null;
 
+                    String priceSource = "EXPLICIT_PARAMETER";
+                    if (pricePerUnit == null || pricePerUnit.compareTo(BigDecimal.ZERO) <= 0) {
+                        Map<String, BigDecimal> navMap = cacheService.getCachedState().navMap();
+                        if (isin != null && navMap != null && navMap.containsKey(isin) && navMap.get(isin) != null && navMap.get(isin).compareTo(BigDecimal.ZERO) > 0) {
+                            pricePerUnit = navMap.get(isin);
+                            priceSource = "LIVE_LEDGER_NAV";
+                        } else {
+                            return ToolDtos.ToolExecutionResponse.invalidParam(
+                                toolName,
+                                "Trade simulation requires valid positive pricePerUnit, or an active fund ISIN present in the live ledger NAV cache."
+                            );
+                        }
+                    }
+
                     if (isin == null || isin.isBlank() || schemeName == null || schemeName.isBlank() ||
                         units == null || units.compareTo(BigDecimal.ZERO) <= 0 ||
                         pricePerUnit == null || pricePerUnit.compareTo(BigDecimal.ZERO) <= 0 ||
@@ -363,7 +395,7 @@ public class PortfolioQueryTools {
                         );
                     }
 
-                    Map<String, Object> simRes = simulateTrade(isin, schemeName, units, pricePerUnit, tradeType);
+                    Map<String, Object> simRes = simulateTrade(isin, schemeName, units, pricePerUnit, tradeType, priceSource);
                     if ("INVALID_PARAM".equals(simRes.get("status"))) {
                         return ToolDtos.ToolExecutionResponse.invalidParam(toolName, (String) simRes.get("message"));
                     }

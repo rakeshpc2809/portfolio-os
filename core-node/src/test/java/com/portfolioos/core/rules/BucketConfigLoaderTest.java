@@ -78,4 +78,38 @@ class BucketConfigLoaderTest {
         assertNotNull(activeVer.targets(), "Bucket targets list must not be null");
         assertTrue(activeVer.targets().size() >= 4, "Config targets list must have at least 4 defined bucket targets");
     }
+
+    @Test
+    void testLegacyLiquidationCandidatesParsingAndSafetyInvariants() {
+        BucketConfigLoader.resetCache();
+        List<BucketConfigLoader.LegacyLiquidationCandidate> candidates = BucketConfigLoader.getLegacyLiquidationCandidates();
+        assertNotNull(candidates, "Legacy liquidation candidates must not be null");
+        assertEquals(4, candidates.size(), "Must parse exactly 4 verified legacy candidates");
+
+        // Verify Kotak Equal Weight is strictly false by ISIN
+        assertFalse(BucketConfigLoader.isAutoHarvestEligible("INF174KA1TY2"));
+
+        // Verify other 3 candidates are true
+        assertTrue(BucketConfigLoader.isAutoHarvestEligible("INF247L01916"));
+        assertTrue(BucketConfigLoader.isAutoHarvestEligible("INF247L01BQ9"));
+        assertTrue(BucketConfigLoader.isAutoHarvestEligible("INF769K01ED6"));
+
+        // Verify candidate details
+        var kotak = candidates.stream().filter(c -> c.isin().equals("INF174KA1TY2")).findFirst().orElseThrow();
+        assertEquals(1, kotak.priority());
+        assertFalse(kotak.autoHarvestEligible());
+        assertTrue(kotak.reason().contains("exempt from automated harvest"));
+
+        var midcap = candidates.stream().filter(c -> c.isin().equals("INF247L01916")).findFirst().orElseThrow();
+        assertEquals(2, midcap.priority());
+        assertTrue(midcap.autoHarvestEligible());
+
+        var microcap = candidates.stream().filter(c -> c.isin().equals("INF247L01BQ9")).findFirst().orElseThrow();
+        assertEquals(3, microcap.priority());
+        assertTrue(microcap.autoHarvestEligible());
+
+        var healthcare = candidates.stream().filter(c -> c.isin().equals("INF769K01ED6")).findFirst().orElseThrow();
+        assertEquals(4, healthcare.priority());
+        assertTrue(healthcare.autoHarvestEligible());
+    }
 }

@@ -70,5 +70,52 @@ class TestDailySummaryHelper(unittest.TestCase):
         self.assertIn("46.50%", markup)
         self.assertIn("₹80,000.00", markup)
 
+    def test_build_summary_markup_with_days_to_ltcg(self):
+        mock_snapshot = {
+            "sync_info": {"current_value": 100000.0, "total_invested": 90000.0},
+            "rebalance_plan": {
+                "sell_side": {
+                    "tax_summary": {"total_ltcg_taxable_realized": 0.0, "exemption_headroom_after": 100000.0}
+                }
+            },
+            "tax_lots": [
+                {
+                    "fund_name": "Nippon India Gold ETF",
+                    "tax_term": "STCG",
+                    "holding_days": 400,
+                    "days_to_ltcg": 330,
+                    "is_long_term": False
+                }
+            ]
+        }
+        markup = build_summary_markup(mock_snapshot)
+        self.assertIn("Nippon India Gold ETF", markup)
+        self.assertIn("330 days remaining", markup)
+
+    def test_build_summary_markup_fallback_to_tiers_when_tax_lots_absent(self):
+        mock_snapshot = {
+            "sync_info": {"current_value": 100000.0, "total_invested": 90000.0},
+            "rebalance_plan": {
+                "sell_side": {
+                    "tax_summary": {"total_ltcg_taxable_realized": 0.0, "exemption_headroom_after": 100000.0},
+                    "waterfall": [
+                        {
+                            "tier": "CORE_FUND",
+                            "lots": [
+                                {
+                                    "fundName": "HDFC Balanced Advantage Fund",
+                                    "taxTerm": "STCG",
+                                    "daysToLtcg": 45
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+        markup = build_summary_markup(mock_snapshot)
+        self.assertIn("HDFC Balanced Advantage Fund", markup)
+        self.assertIn("45 days remaining", markup)
+
 if __name__ == "__main__":
     unittest.main()
