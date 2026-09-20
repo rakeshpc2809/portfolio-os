@@ -1,0 +1,21 @@
+[Unit]
+Description=Portfolio OS Core Node (Spring Boot / Java 26)
+After=network.target portfolio-os-quant.service
+Wants=portfolio-os-quant.service
+PartOf=portfolio-os.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/rakeshpc/Projects/portfolio-os/core-node
+EnvironmentFile=/home/rakeshpc/Projects/portfolio-os/.env
+Environment=JAVA_HOME=/usr/lib/jvm/java-26-openjdk
+UnsetEnvironment=_JAVA_OPTIONS
+ExecStart=/usr/lib/jvm/java-26-openjdk/bin/java --add-opens=java.base/java.nio=ALL-UNNAMED --enable-native-access=ALL-UNNAMED -jar target/core-node-3.0.0.jar
+Restart=on-failure
+RestartSec=1s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=portfolio-os-core
+
+[Install]
+WantedBy=default.target

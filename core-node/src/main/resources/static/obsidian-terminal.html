@@ -40,9 +40,9 @@
           Search <kbd>⌘K</kbd>
         </button>
 
-        <button id="terminalExportBtn" class="btn-terminal">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-          Export ITR-2 (.zip)
+        <button id="terminalExportBtn" class="btn-terminal highlight-cyan" title="Open ITR-2 Capital Gains & Tax Filing Screen">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          ITR-2 Filing & Export
         </button>
 
         <div class="status-pill">
@@ -215,6 +215,9 @@
             <button class="btn-terminal" style="font-size: 0.75rem;" onclick="alert('Opening Overlap & Concentration analysis...')">
               🔍 Inspect Overlap Matrix
             </button>
+            <button id="tab2ItrBtn" class="btn-terminal" style="font-size: 0.75rem;">
+              📑 View FY ITR-2 Details
+            </button>
           </div>
         </div>
 
@@ -381,6 +384,262 @@
         </div>
       </div>
     </main>
+
+  <!-- ====================================================================
+       MODAL 1: FIFO TAX LOT INSPECTOR (Per-Holding Deep Dive)
+       ==================================================================== -->
+  <div id="taxLotModalBackdrop" class="terminal-modal-backdrop" style="display: none;"></div>
+  <div id="taxLotInspectorModal" class="terminal-modal-dialog" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="lotModalSchemeName">
+    <div class="modal-header">
+      <div class="modal-title-wrap">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span id="lotModalCategoryBadge" class="scheme-badge equity">EQUITY</span>
+          <h2 id="lotModalSchemeName" class="modal-title">Scheme Name</h2>
+        </div>
+        <div class="modal-meta-strip">
+          <span>ISIN: <strong id="lotModalIsin" style="color: var(--text-main);">--</strong></span>
+          <span>Current NAV: <strong id="lotModalNav" class="lot-val-pnl" style="color: var(--accent-cyan);">--</strong><span class="lot-val-masked" style="color: var(--accent-cyan); font-weight: 700;">₹ •••.••</span></span>
+          <span>TER: <strong id="lotModalTer" style="color: var(--text-main);">--</strong></span>
+        </div>
+      </div>
+      <button id="lotModalCloseBtn" class="btn-close-modal" aria-label="Close modal">✕</button>
+    </div>
+
+    <!-- Summary Metrics Strip with Strict Quiet Mode Masking -->
+    <div class="modal-kpi-grid">
+      <div class="modal-kpi-card">
+        <div class="modal-kpi-label">TOTAL REMAINING UNITS</div>
+        <div class="modal-kpi-val" id="lotModalUnits">--</div>
+      </div>
+      <div class="modal-kpi-card">
+        <div class="modal-kpi-label">COST BASIS (INVESTED)</div>
+        <div class="modal-kpi-val lot-val-pnl" id="lotModalCost">--</div>
+        <div class="modal-kpi-val lot-val-masked">₹ •••,•••</div>
+      </div>
+      <div class="modal-kpi-card">
+        <div class="modal-kpi-label">CURRENT VALUATION</div>
+        <div class="modal-kpi-val lot-val-pnl" id="lotModalVal">--</div>
+        <div class="modal-kpi-val lot-val-masked">₹ •••,•••</div>
+      </div>
+      <div class="modal-kpi-card">
+        <div class="modal-kpi-label">UNREALIZED P&L</div>
+        <div class="modal-kpi-val lot-val-pnl" id="lotModalGain">--</div>
+        <div class="modal-kpi-val lot-val-masked">Gain Suppressed</div>
+      </div>
+      <div class="modal-kpi-card">
+        <div class="modal-kpi-label">ESTIMATED TAX DRAG</div>
+        <div class="modal-kpi-val lot-val-pnl" id="lotModalTaxDrag">--</div>
+        <div class="modal-kpi-val lot-val-masked">₹ •••,•••</div>
+      </div>
+    </div>
+
+    <!-- Filter chips inside modal -->
+    <div class="modal-filter-strip">
+      <div class="filter-chips-wrap">
+        <button class="lot-filter-btn active" data-lot-filter="all">All Lots (<span id="lotCountAll">0</span>)</button>
+        <button class="lot-filter-btn" data-lot-filter="ltcg">LTCG Mature (<span id="lotCountLtcg">0</span>)</button>
+        <button class="lot-filter-btn" data-lot-filter="stcg">STCG Locked (<span id="lotCountStcg">0</span>)</button>
+        <button class="lot-filter-btn" data-lot-filter="harvest">Tax-Loss Candidates (<span id="lotCountHarvest">0</span>)</button>
+      </div>
+      <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">
+        FIFO Order: Oldest lots match first on disposal
+      </div>
+    </div>
+
+    <!-- Scrollable Lots Table Container -->
+    <div class="modal-table-container">
+      <table class="terminal-table">
+        <thead>
+          <tr>
+            <th>FIFO LOT / DATE</th>
+            <th>UNITS</th>
+            <th>BUY NAV</th>
+            <th>COST BASIS</th>
+            <th>CURRENT VALUE</th>
+            <th>UNREALIZED P&L</th>
+            <th>HOLDING PERIOD</th>
+            <th>TAX STATUS</th>
+            <th>EST. TAX DRAG</th>
+          </tr>
+        </thead>
+        <tbody id="lotModalTableBody">
+          <!-- Dynamically injected -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       OVERLAY SCREEN: ITR-2 SCHEDULE CG & CAPITAL GAINS FILING
+       (Dedicated Drill-Down Surface Preserving 3-Tab Invariant)
+       ==================================================================== -->
+  <div id="itrFilingOverlay" class="terminal-overlay-screen" style="display: none;">
+    <div class="overlay-header">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <button id="itrOverlayBackBtn" class="btn-terminal" style="padding: 6px 12px;">
+          ← Back to Terminal
+        </button>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="brand-badge" style="color: var(--accent-cyan); border-color: var(--border-highlight);">ITR-2 COMPLIANCE</span>
+            <h1 class="overlay-title">Schedule CG & 112A Capital Gains Filing</h1>
+          </div>
+          <div class="overlay-sub">
+            Statutory capital gains schedule for Income Tax Return filing under Section 111A & 112A
+          </div>
+        </div>
+      </div>
+
+      <div class="header-status-strip">
+        <div class="period-select-wrap">
+          <span>Fiscal Year:</span>
+          <select id="itrOverlayFySelect" class="terminal-select">
+            <option value="2024-25">FY 2024-25</option>
+            <option value="2025-26">FY 2025-26</option>
+            <option value="2026-27" selected>FY 2026-27</option>
+          </select>
+        </div>
+
+        <button id="itrOverlayDownloadBtn" class="btn-terminal highlight-cyan">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Download ITR-2 Bundle (.zip)
+        </button>
+
+        <button id="itrOverlayCloseBtn" class="btn-close-modal" aria-label="Close ITR screen">✕</button>
+      </div>
+    </div>
+
+    <!-- ITR Summary HUD Cards with Strict Quiet Mode Masking -->
+    <section class="metrics-hud-grid" style="margin-bottom: 20px;">
+      <div class="hud-card">
+        <div>
+          <div class="hud-label">TOTAL SALE CONSIDERATION</div>
+          <div class="hud-value lot-val-pnl" id="itrProceedsVal">₹ 0</div>
+          <div class="hud-value lot-val-masked">₹ •••,•••</div>
+        </div>
+        <div class="hud-subtext" id="itrProceedsSub">Full Value of Consideration</div>
+      </div>
+
+      <div class="hud-card">
+        <div>
+          <div class="hud-label">TOTAL COST OF ACQUISITION</div>
+          <div class="hud-value lot-val-pnl" id="itrCostVal">₹ 0</div>
+          <div class="hud-value lot-val-masked">₹ •••,•••</div>
+        </div>
+        <div class="hud-subtext" id="itrCostSub">Deemed Cost under Sec 55(2)(ac)</div>
+      </div>
+
+      <div class="hud-card">
+        <div>
+          <div class="hud-label">SHORT-TERM GAINS (SEC 111A)</div>
+          <div class="hud-value lot-val-pnl" id="itrStcgVal">₹ 0</div>
+          <div class="hud-value lot-val-masked">₹ •••,•••</div>
+        </div>
+        <div class="hud-subtext highlight-amber" id="itrStcgTaxSub">Taxed at 20% · Flat Rate</div>
+      </div>
+
+      <div class="hud-card">
+        <div>
+          <div class="hud-label">LONG-TERM GAINS (SEC 112A)</div>
+          <div class="hud-value lot-val-pnl" id="itrLtcgVal">₹ 0</div>
+          <div class="hud-value lot-val-masked">₹ •••,•••</div>
+        </div>
+        <div class="hud-subtext highlight-emerald" id="itrLtcgTaxSub">₹ 1.25L Exemption Active</div>
+      </div>
+    </section>
+
+    <!-- Sub-navigation between Schedule 112A, Schedule STCG, and Matched Trades -->
+    <div class="card-panel">
+      <div class="taxlots-filter-bar">
+        <div class="filter-chips-wrap">
+          <button class="filter-chip-btn active" data-itr-tab="s112a">Schedule 112A (LTCG Equities/MFs)</button>
+          <button class="filter-chip-btn" data-itr-tab="stcg">Schedule STCG (Short-Term Capital Gains)</button>
+          <button class="filter-chip-btn" data-itr-tab="matched">Matched Disposals Audit Log (<span id="itrMatchedCountBadge">0</span>)</button>
+        </div>
+        <div id="itrComplianceStatusPill" style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent-emerald);">
+          ● SHA-256 Ledger Verified
+        </div>
+      </div>
+
+      <!-- View 1: Schedule 112A -->
+      <div id="itrTabContent-s112a" class="itr-tab-view active">
+        <div class="table-caption-bar">
+          <span>From Schedule 112A of Form ITR-2: Long term capital gains on sale of equity share or equity oriented mutual fund</span>
+        </div>
+        <div class="modal-table-container">
+          <table class="terminal-table">
+            <thead>
+              <tr>
+                <th>ISIN CODE</th>
+                <th>NAME OF SHARE / UNIT</th>
+                <th>UNITS</th>
+                <th>SALE CONSIDERATION</th>
+                <th>COST BASIS</th>
+                <th>FMV AS ON 31-JAN-2018</th>
+                <th>BALANCE CAPITAL GAIN</th>
+                <th>GRANDFATHERING STATUS</th>
+              </tr>
+            </thead>
+            <tbody id="s112aTableBody">
+              <!-- Dynamically injected -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- View 2: Schedule STCG -->
+      <div id="itrTabContent-stcg" class="itr-tab-view" style="display: none;">
+        <div class="table-caption-bar">
+          <span>From Schedule CG (Part A): Short term capital gains on equity share or equity oriented mutual fund under Section 111A</span>
+        </div>
+        <div class="modal-table-container">
+          <table class="terminal-table">
+            <thead>
+              <tr>
+                <th>ISIN CODE</th>
+                <th>NAME OF SHARE / UNIT</th>
+                <th>UNITS</th>
+                <th>SALE CONSIDERATION</th>
+                <th>COST OF ACQUISITION</th>
+                <th>BALANCE CAPITAL GAIN</th>
+                <th>TAX TREATMENT</th>
+              </tr>
+            </thead>
+            <tbody id="stcgTableBody">
+              <!-- Dynamically injected -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- View 3: Matched Disposals Audit Log -->
+      <div id="itrTabContent-matched" class="itr-tab-view" style="display: none;">
+        <div class="table-caption-bar">
+          <span>Trade-by-trade matched disposals log generated by FIFO matching engine</span>
+        </div>
+        <div class="modal-table-container">
+          <table class="terminal-table">
+            <thead>
+              <tr>
+                <th>DISPOSAL DATE</th>
+                <th>BUY DATE</th>
+                <th>ASSET / SCHEME</th>
+                <th>UNITS</th>
+                <th>HOLDING PERIOD</th>
+                <th>TAX TERM</th>
+                <th>SALE VALUE</th>
+                <th>COST BASIS</th>
+                <th>REALIZED GAIN</th>
+              </tr>
+            </thead>
+            <tbody id="matchedTradesTableBody">
+              <!-- Dynamically injected -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
   </div>
 
   <script src="./src/obsidian-terminal.js"></script>

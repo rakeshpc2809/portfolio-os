@@ -1,6 +1,11 @@
 # Portfolio OS Fast Task Runner
 # Requires 'just' (sudo pacman -S just)
 
+set dotenv-load := true
+
+# Maven binary resolution (fallback to installed wrapper if mvn not in global PATH)
+MVN := if `which mvn 2>/dev/null || true` != "" { "mvn" } else { env_var("HOME") + "/.m2/wrapper/dists/apache-maven-3.9.12/6068d197/bin/mvn" }
+
 # Default: List available commands
 default:
     @just --list
@@ -22,32 +27,32 @@ clean-mobile:
     cd mobile-app && ./gradlew clean
 
 # -------------------------------------------------------------
-# Backend Core Node (Spring Boot / Java 21)
+# Backend Core Node (Spring Boot / Java 26)
 # -------------------------------------------------------------
 
 # Fast multi-threaded compilation across all CPU cores (skipping tests)
 build-core:
-    cd core-node && mvn compile -T 1C
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-26-openjdk}" {{MVN}} compile -T 1C
 
 # Build full executable JAR package (multi-threaded, skip tests for speed)
 package-core:
-    cd core-node && mvn package -T 1C -DskipTests
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-26-openjdk}" {{MVN}} package -T 1C -DskipTests
 
 # Run test suite with multi-threaded executor
 test-core:
-    cd core-node && mvn test -T 1C
+    cd core-node && env -u _JAVA_OPTIONS -u SQLITE_PATH -u DUCKDB_PATH JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-26-openjdk}" {{MVN}} test -T 1C
 
-# Run Spring Boot app locally
+# Run Spring Boot app locally in foreground
 run-core:
-    cd core-node && LEDGER_HMAC_SECRET="$${LEDGER_HMAC_SECRET:-dev_secret_key_123}" QUANT_SIDECAR_HOST="$${QUANT_SIDECAR_HOST:-127.0.0.1}" DUCKDB_PATH="$$(pwd)/../data/tax_ledger.duckdb" SQLITE_PATH="$$(pwd)/../data/tax_ledger.db" mvn spring-boot:run
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-26-openjdk}" {{MVN}} spring-boot:run
 
 # Clean Maven target directory
 clean-core:
-    cd core-node && mvn clean
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-26-openjdk}" {{MVN}} clean
 
 # Query available LLM tool-calling schemas from Core Node
 agent-tools:
-    @curl -s -H "X-Api-Key: ${API_KEY:-dev_secret_key_123}" http://localhost:8080/api/v1/agent/tools | jq .
+    @curl -s -H "X-Api-Key: ${API_AUTH_TOKEN}" http://localhost:8080/api/v1/agent/tools | jq .
 
 # -------------------------------------------------------------
 # Frontend Dashboard (JavaScript / Bun)
@@ -58,16 +63,16 @@ serve-web:
     cd core-node/src/main/resources/static && bun x serve -p 3000 .
 
 # -------------------------------------------------------------
-# Quant Sidecar (Python / FastAPI / Flight RPC)
+# Quant Sidecar (Python / FastAPI / Direct IPC)
 # -------------------------------------------------------------
 
 # Set up isolated virtualenv and install dependencies at ultra-fast speeds using uv
 setup-quant:
     cd quant-sidecar && uv venv && uv pip install -r requirements.txt
 
-# Run Quant Sidecar with uv
+# Run Quant Sidecar with uv in foreground
 run-quant:
-    cd quant-sidecar && uv run uvicorn app:app --host 127.0.0.1 --port 8000 --reload
+    cd quant-sidecar && API_AUTH_TOKEN="${API_AUTH_TOKEN}" uv run uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 
 # Run Quant sidecar unit tests
 test-quant:
@@ -81,7 +86,7 @@ refresh-nav-export:
 alloc-hrp:
     @curl -s -X POST http://127.0.0.1:8000/api/v1/allocator/hrp \
       -H "Content-Type: application/json" \
-      -H "X-Api-Auth-Token: ${API_AUTH_TOKEN:-dev_secret_key_123}" \
+      -H "X-Api-Auth-Token: ${API_AUTH_TOKEN}" \
       -d '{"mode":"INTRA_BUCKET"}' | jq .
 
 # -------------------------------------------------------------
@@ -128,20 +133,42 @@ format:
     ruff check quant-sidecar/ tui/ --fix
 
 # -------------------------------------------------------------
-# Full Stack Docker / Podman Controls
+# Full Stack Systemd Service Controls (systemctl --user)
 # -------------------------------------------------------------
 
-# Start all backend services in detached mode
+# Install systemd user service units into ~/.config/systemd/user/
+install-service:
+    ./scripts/install-systemd-units.sh
+
+# Start all backend services via systemd user manager and wait for readiness
 up:
-    podman-compose up -d --build
+    @if [ ! -f core-node/target/core-node-3.0.0.jar ]; then \
+        echo "[*] core-node-3.0.0.jar not found, packaging now..."; \
+        just package-core; \
+    fi
+    systemctl --user start portfolio-os.target
+    @just wait-ready
 
 # Stop all backend services
 down:
-    podman-compose down
+    systemctl --user stop portfolio-os.target portfolio-os-core.service portfolio-os-quant.service
 
-# Follow backend logs
+# Restart all backend services
+restart:
+    systemctl --user restart portfolio-os.target
+    @just wait-ready
+
+# Check service status and resource consumption
+status:
+    systemctl --user status portfolio-os-core.service portfolio-os-quant.service
+
+# Follow live logs from both services via journald
 logs:
-    podman-compose logs -f
+    journalctl --user -u portfolio-os-core -u portfolio-os-quant -f
+
+# Poll until both Core Node and Quant Sidecar endpoints are healthy
+wait-ready:
+    @./scripts/wait-ready.py
 
 # -------------------------------------------------------------
 # Global Cleanup
@@ -159,5 +186,3 @@ clean: clean-mobile clean-core
 repomix:
     npx repomix
     npx repomix --style markdown -o repomix-minimal.md
-
-

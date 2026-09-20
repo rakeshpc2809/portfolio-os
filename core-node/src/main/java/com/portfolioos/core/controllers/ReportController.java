@@ -79,6 +79,13 @@ public class ReportController {
         return ResponseEntity.ok(taxService.generateItr2Report(fy));
     }
 
+    @GetMapping({"/reports/tax/itr2/details", "/tax/reports/itr2/details"})
+    public ResponseEntity<TaxReportExporter.Itr2DetailsDto> getItr2Details(
+        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+    ) {
+        return ResponseEntity.ok(taxService.getItr2Details(fy));
+    }
+
     @GetMapping({"/reports/tax/harvest", "/tax/harvest-opportunities"})
     public ResponseEntity<List<HarvestOpportunityDto>> getHarvestOpportunities() {
         return ResponseEntity.ok(taxService.getHarvestOpportunities());

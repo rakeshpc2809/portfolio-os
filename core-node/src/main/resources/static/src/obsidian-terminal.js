@@ -45,7 +45,11 @@ const state = {
   chart: null,
   areaSeries: null,
   investedSeries: null,
-  selectedTaxFilter: 'all'
+  selectedTaxFilter: 'all',
+  activeInspectAssetId: null,
+  inspectLotFilter: 'all',
+  activeItrTab: 's112a',
+  itrData: null
 };
 
 // ==========================================================================
@@ -56,6 +60,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupQuietMode();
   setupTimeRangeButtons();
   setupTaxLotFilters();
+  setupTaxLotInspector();
+  setupItrOverlay();
   
   // Begin fetching live data
   await loadLiveDashboard();
@@ -106,13 +112,19 @@ function setupQuietMode() {
     localStorage.setItem('PORTFOLIO_OS_QUIET_MODE', enabled);
     
     if (enabled) {
-      appContainer.classList.add('quiet-mode-active');
-      toggleBtn.classList.add('active');
-      toggleBtn.querySelector('.btn-label').textContent = 'Quiet Mode: ON';
+      if (appContainer) appContainer.classList.add('quiet-mode-active');
+      document.body.classList.add('quiet-mode-active');
+      if (toggleBtn) {
+        toggleBtn.classList.add('active');
+        toggleBtn.querySelector('.btn-label').textContent = 'Quiet Mode: ON';
+      }
     } else {
-      appContainer.classList.remove('quiet-mode-active');
-      toggleBtn.classList.remove('active');
-      toggleBtn.querySelector('.btn-label').textContent = 'Quiet Mode: OFF';
+      if (appContainer) appContainer.classList.remove('quiet-mode-active');
+      document.body.classList.remove('quiet-mode-active');
+      if (toggleBtn) {
+        toggleBtn.classList.remove('active');
+        toggleBtn.querySelector('.btn-label').textContent = 'Quiet Mode: OFF';
+      }
     }
 
     // Chart Quiet Mode: strip rightPriceScale values & crosshair to eliminate valuation leaks
@@ -601,8 +613,8 @@ function renderTaxLots(holdingsData) {
           <span>ISIN: <strong style="color:var(--text-main);">${h.asset_id}</strong></span>
           <span>Units: <strong style="color:var(--text-main);">${totalUnits.toFixed(3)}</strong></span>
           <span>Lots: <strong style="color:var(--accent-cyan);">${ltcgLots} LTCG</strong> / <strong style="color:var(--accent-amber);">${stcgLots} STCG</strong></span>
-          <span>Tax Drag: <strong style="color:var(--accent-rose);">${formatINR(estTaxDrag)}</strong></span>
-          <span style="color:var(--accent-cyan);cursor:pointer;font-weight:600;" onclick="alert('Viewing FIFO tax lot details for ${h.asset_id}')">Inspect Lots ➔</span>
+          <span>Tax Drag: <span class="lot-val-pnl" style="color:var(--accent-rose);font-weight:700;">${formatINR(estTaxDrag)}</span><span class="lot-val-masked" style="color:var(--text-muted);">₹ •••,•••</span></span>
+          <span style="color:var(--accent-cyan);cursor:pointer;font-weight:600;" onclick="openTaxLotInspector('${h.asset_id}')">Inspect Lots ➔</span>
         </div>
       </div>
     `;
@@ -857,4 +869,523 @@ function renderFireSimulation() {
   });
 
   updateSimulation();
+}
+
+// ==========================================================================
+// FIFO TAX LOT INSPECTOR CONTROLLER
+// ==========================================================================
+function setupTaxLotInspector() {
+  const closeBtn = document.getElementById('lotModalCloseBtn');
+  const backdrop = document.getElementById('taxLotModalBackdrop');
+
+  if (closeBtn) closeBtn.addEventListener('click', closeTaxLotInspector);
+  if (backdrop) backdrop.addEventListener('click', closeTaxLotInspector);
+
+  // Inspector filter buttons
+  const lotFilterBtns = document.querySelectorAll('.lot-filter-btn');
+  lotFilterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      lotFilterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.inspectLotFilter = btn.dataset.lotFilter;
+
+      const items = Array.isArray(state.holdings) ? state.holdings : (state.holdings?.holdings || []);
+      const h = items.find(x => (x.asset_id || x.assetId) === state.activeInspectAssetId);
+      if (h) renderModalLotsTable(h.lots || []);
+    });
+  });
+
+  // Global ESC key listener to close active modals/overlays
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const lotModal = document.getElementById('taxLotInspectorModal');
+      const itrOverlay = document.getElementById('itrFilingOverlay');
+      if (lotModal && lotModal.style.display !== 'none') {
+        closeTaxLotInspector();
+      } else if (itrOverlay && itrOverlay.style.display !== 'none') {
+        closeItrOverlay();
+      }
+    }
+  });
+}
+
+window.openTaxLotInspector = openTaxLotInspector;
+window.closeTaxLotInspector = closeTaxLotInspector;
+
+function openTaxLotInspector(assetId) {
+  state.activeInspectAssetId = assetId;
+  state.inspectLotFilter = 'all';
+
+  const items = Array.isArray(state.holdings) ? state.holdings : (state.holdings?.holdings || []);
+  const h = items.find(x => (x.asset_id || x.assetId) === assetId);
+  if (!h) {
+    console.warn('Holding not found for ISIN:', assetId);
+    return;
+  }
+
+  const modal = document.getElementById('taxLotInspectorModal');
+  const backdrop = document.getElementById('taxLotModalBackdrop');
+  if (!modal || !backdrop) return;
+
+  // Header Elements
+  const nameEl = document.getElementById('lotModalSchemeName');
+  const badgeEl = document.getElementById('lotModalCategoryBadge');
+  const isinEl = document.getElementById('lotModalIsin');
+  const navEl = document.getElementById('lotModalNav');
+  const terEl = document.getElementById('lotModalTer');
+
+  const isGold = h.category === 'GOLD_SILVER';
+  if (nameEl) nameEl.textContent = h.asset_name || h.asset_id;
+  if (badgeEl) {
+    badgeEl.textContent = h.category || 'EQUITY';
+    badgeEl.className = `scheme-badge ${isGold ? 'gold' : 'equity'}`;
+  }
+  if (isinEl) isinEl.textContent = h.asset_id;
+  
+  const lots = h.lots || [];
+  const currentNavVal = lots.length > 0 ? parseFloat(lots[0].current_nav || 0) : 0;
+  if (navEl) navEl.textContent = currentNavVal > 0 ? `₹ ${currentNavVal.toFixed(2)}` : '₹ --';
+  if (terEl) terEl.textContent = h.expense_ratio != null ? `${h.expense_ratio}% (${h.ter_status || 'OPTIMAL'})` : '0.20% (OPTIMAL)';
+
+  // Summary KPI Cards
+  const totalUnits = lots.reduce((acc, l) => acc + parseFloat(l.remaining_units || l.units || 0), 0);
+  const investedCost = parseFloat(h.invested_value || 0);
+  const currentVal = parseFloat(h.current_value || 0);
+  const gainVal = parseFloat(h.unrealized_gain || (currentVal - investedCost));
+  const gainPct = investedCost > 0 ? ((gainVal / investedCost) * 100).toFixed(2) : '0.00';
+  const isPos = gainVal >= 0;
+  const estTaxDrag = lots.reduce((acc, l) => acc + parseFloat(l.estimated_tax_drag || 0), 0);
+
+  const unitsEl = document.getElementById('lotModalUnits');
+  const costEl = document.getElementById('lotModalCost');
+  const valEl = document.getElementById('lotModalVal');
+  const gainEl = document.getElementById('lotModalGain');
+  const dragEl = document.getElementById('lotModalTaxDrag');
+
+  if (unitsEl) unitsEl.textContent = totalUnits.toFixed(3);
+  if (costEl) costEl.textContent = formatINR(investedCost);
+  if (valEl) valEl.textContent = formatINR(currentVal);
+  if (gainEl) {
+    gainEl.innerHTML = `<span style="color: ${isPos ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">${isPos ? '+' : ''}${formatINR(gainVal)} (${gainPct}%)</span>`;
+  }
+  if (dragEl) dragEl.textContent = formatINR(estTaxDrag);
+
+  // Filter chips counts
+  const ltcgCount = lots.filter(l => l.is_ltcg).length;
+  const stcgCount = lots.length - ltcgCount;
+  const harvestCount = lots.filter(l => l.is_harvest_candidate).length;
+
+  const countAllEl = document.getElementById('lotCountAll');
+  const countLtcgEl = document.getElementById('lotCountLtcg');
+  const countStcgEl = document.getElementById('lotCountStcg');
+  const countHarvestEl = document.getElementById('lotCountHarvest');
+
+  if (countAllEl) countAllEl.textContent = lots.length;
+  if (countLtcgEl) countLtcgEl.textContent = ltcgCount;
+  if (countStcgEl) countStcgEl.textContent = stcgCount;
+  if (countHarvestEl) countHarvestEl.textContent = harvestCount;
+
+  // Reset filter buttons
+  document.querySelectorAll('.lot-filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.lotFilter === 'all');
+  });
+
+  renderModalLotsTable(lots);
+
+  backdrop.style.display = 'block';
+  modal.style.display = 'flex';
+}
+
+function closeTaxLotInspector() {
+  const modal = document.getElementById('taxLotInspectorModal');
+  const backdrop = document.getElementById('taxLotModalBackdrop');
+  if (modal) modal.style.display = 'none';
+  if (backdrop) backdrop.style.display = 'none';
+  state.activeInspectAssetId = null;
+}
+
+function renderModalLotsTable(lots) {
+  const tbody = document.getElementById('lotModalTableBody');
+  if (!tbody) return;
+
+  const filter = state.inspectLotFilter;
+  const filtered = lots.filter(l => {
+    if (filter === 'all') return true;
+    if (filter === 'ltcg') return l.is_ltcg;
+    if (filter === 'stcg') return !l.is_ltcg;
+    if (filter === 'harvest') return l.is_harvest_candidate;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 24px;">No lots matching selected filter.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map((l, idx) => {
+    const lotUnits = parseFloat(l.remaining_units || 0).toFixed(3);
+    const buyNav = parseFloat(l.cost_per_unit || 0).toFixed(2);
+    const currentNav = parseFloat(l.current_nav || 0).toFixed(2);
+    const costBasis = parseFloat(l.total_cost_basis || 0);
+    const currentVal = parseFloat(l.current_value || 0);
+    const gain = parseFloat(l.unrealized_gain || 0);
+    const gainPct = costBasis > 0 ? ((gain / costBasis) * 100).toFixed(1) : '0.0';
+    const isPos = gain >= 0;
+    const holdingDays = l.holding_days || 0;
+    const isLtcg = l.is_ltcg;
+    const daysToLtcg = l.days_to_ltcg || 0;
+    const taxDrag = parseFloat(l.estimated_tax_drag || 0);
+
+    let statusHtml = '';
+    if (isLtcg) {
+      statusHtml = `<span class="lot-badge ltcg">LTCG (12.5%)</span>`;
+    } else {
+      statusHtml = `<span class="lot-badge stcg">STCG (20%) · ${daysToLtcg}d to LTCG</span>`;
+    }
+    if (l.is_harvest_candidate) {
+      statusHtml += ` <span class="lot-badge loss">⚡ Harvest</span>`;
+    }
+
+    return `
+      <tr>
+        <td>
+          <div style="font-weight: 700; color: var(--text-main);">Lot #${idx + 1}</div>
+          <div style="color: var(--text-muted); font-size: 0.7rem;">${l.acquisition_date || '--'}</div>
+        </td>
+        <td><strong>${lotUnits}</strong></td>
+        <td>
+          <span class="lot-val-pnl">₹ ${buyNav} <span style="color: var(--text-muted); font-size: 0.68rem;">(now ₹ ${currentNav})</span></span>
+          <span class="lot-val-masked">₹ •••.••</span>
+        </td>
+        <td>
+          <span class="lot-val-pnl">${formatINR(costBasis)}</span>
+          <span class="lot-val-masked">₹ •••,•••</span>
+        </td>
+        <td>
+          <span class="lot-val-pnl" style="font-weight: 700; color: #FFFFFF;">${formatINR(currentVal)}</span>
+          <span class="lot-val-masked">₹ •••,•••</span>
+        </td>
+        <td>
+          <span class="lot-val-pnl" style="font-weight: 700; color: ${isPos ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">
+            ${isPos ? '+' : ''}${formatINR(gain)} (${gainPct}%)
+          </span>
+          <span class="lot-val-masked">Gain Suppressed</span>
+        </td>
+        <td>${holdingDays} days</td>
+        <td>${statusHtml}</td>
+        <td>
+          <span class="lot-val-pnl" style="color: var(--accent-rose);">${formatINR(taxDrag)}</span>
+          <span class="lot-val-masked">₹ •••,•••</span>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ==========================================================================
+// ITR-2 FILING & CAPITAL GAINS OVERLAY CONTROLLER (Resolves Tab-Invariant)
+// ==========================================================================
+function setupItrOverlay() {
+  // Top header button to launch ITR overlay
+  const exportBtn = document.getElementById('terminalExportBtn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      openItrOverlay();
+    });
+  }
+
+  // Tab 2 secondary launcher button
+  const tab2ItrBtn = document.getElementById('tab2ItrBtn');
+  if (tab2ItrBtn) {
+    tab2ItrBtn.addEventListener('click', () => {
+      openItrOverlay();
+    });
+  }
+
+  // Close & Back buttons inside overlay
+  const backBtn = document.getElementById('itrOverlayBackBtn');
+  const closeBtn = document.getElementById('itrOverlayCloseBtn');
+  if (backBtn) backBtn.addEventListener('click', closeItrOverlay);
+  if (closeBtn) closeBtn.addEventListener('click', closeItrOverlay);
+
+  // Overlay Download Button
+  const downloadBtn = document.getElementById('itrOverlayDownloadBtn');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', () => {
+      triggerItrZipDownload();
+    });
+  }
+
+  // Overlay FY dropdown synchronization
+  const overlayFySelect = document.getElementById('itrOverlayFySelect');
+  const headerPeriodSelect = document.getElementById('terminalPeriodSelect');
+
+  if (overlayFySelect) {
+    overlayFySelect.addEventListener('change', () => {
+      if (headerPeriodSelect) headerPeriodSelect.value = overlayFySelect.value;
+      loadAndRenderItrDetails(overlayFySelect.value);
+    });
+  }
+
+  if (headerPeriodSelect) {
+    headerPeriodSelect.addEventListener('change', () => {
+      if (overlayFySelect) overlayFySelect.value = headerPeriodSelect.value;
+      const overlay = document.getElementById('itrFilingOverlay');
+      if (overlay && overlay.style.display !== 'none') {
+        loadAndRenderItrDetails(headerPeriodSelect.value);
+      }
+    });
+  }
+
+  // Sub-tabs inside ITR overlay (Schedule 112A, Schedule STCG, Matched Disposals)
+  const itrTabBtns = document.querySelectorAll('[data-itr-tab]');
+  itrTabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      itrTabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const targetTab = btn.dataset.itrTab;
+      state.activeItrTab = targetTab;
+
+      document.querySelectorAll('.itr-tab-view').forEach(view => {
+        view.style.display = 'none';
+        view.classList.remove('active');
+      });
+
+      const activeView = document.getElementById(`itrTabContent-${targetTab}`);
+      if (activeView) {
+        activeView.style.display = 'block';
+        activeView.classList.add('active');
+      }
+    });
+  });
+}
+
+window.openItrOverlay = openItrOverlay;
+window.closeItrOverlay = closeItrOverlay;
+
+async function openItrOverlay() {
+  const overlay = document.getElementById('itrFilingOverlay');
+  if (!overlay) return;
+
+  overlay.style.display = 'flex';
+  
+  // Sync FY dropdowns
+  const headerSelect = document.getElementById('terminalPeriodSelect');
+  const overlaySelect = document.getElementById('itrOverlayFySelect');
+  if (headerSelect && overlaySelect) {
+    overlaySelect.value = headerSelect.value;
+  }
+  const fy = overlaySelect?.value || headerSelect?.value || '2026-27';
+
+  await loadAndRenderItrDetails(fy);
+}
+
+function closeItrOverlay() {
+  const overlay = document.getElementById('itrFilingOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function loadAndRenderItrDetails(fy) {
+  try {
+    const data = await fetchJson(`/tax/reports/itr2/details?fy=${fy}`);
+    state.itrData = data;
+    renderItrDetails(data);
+  } catch (e) {
+    console.warn('Error loading ITR details:', e);
+  }
+}
+
+function renderItrDetails(data) {
+  if (!data) return;
+  const summary = data.summary || {};
+  const s112a = data.schedule112a || [];
+  const stcg = data.schedule_stcg || [];
+  const matched = data.matched_lots || [];
+
+  // 1. Summary HUD Cards with Quiet Mode Masking
+  const proceedsVal = parseFloat(summary.total_sale_proceeds || 0);
+  const costVal = parseFloat(summary.total_cost_basis || 0);
+  const stcgVal = parseFloat(summary.total_realized_stcg || 0);
+  const ltcgVal = parseFloat(summary.total_realized_ltcg || 0);
+
+  const proceedsEl = document.getElementById('itrProceedsVal');
+  const costEl = document.getElementById('itrCostVal');
+  const stcgEl = document.getElementById('itrStcgVal');
+  const ltcgEl = document.getElementById('itrLtcgVal');
+
+  if (proceedsEl) proceedsEl.textContent = formatINR(proceedsVal);
+  if (costEl) costEl.textContent = formatINR(costVal);
+  if (stcgEl) stcgEl.textContent = formatINR(stcgVal);
+  if (ltcgEl) {
+    const isPos = ltcgVal >= 0;
+    ltcgEl.innerHTML = `<span style="color: ${isPos ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">${isPos ? '+' : ''}${formatINR(ltcgVal)}</span>`;
+  }
+
+  const countBadge = document.getElementById('itrMatchedCountBadge');
+  if (countBadge) countBadge.textContent = matched.length;
+
+  // 2. Schedule 112A Table
+  const s112aBody = document.getElementById('s112aTableBody');
+  if (s112aBody) {
+    if (s112a.length === 0) {
+      s112aBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">No Long-Term Capital Gains under Section 112A for FY ${summary.fiscal_year || 'selected'}.</td></tr>`;
+    } else {
+      s112aBody.innerHTML = s112a.map(row => {
+        const gain = parseFloat(row.balance_gain || 0);
+        const isPos = gain >= 0;
+        let gfBadgeClass = 'gf';
+        let gfLabel = row.grandfathering_status || 'POST_2018_ACQUISITION';
+        if (gfLabel === 'VALIDATED_SECTION_55_2_AC') {
+          gfBadgeClass = 'ltcg';
+          gfLabel = 'Sec 55(2)(ac) Validated';
+        } else if (gfLabel === 'POST_2018_ACQUISITION') {
+          gfBadgeClass = 'stcg';
+          gfLabel = 'Post-2018 (No FMV)';
+        } else if (gfLabel === 'SECTION_55_2_AC_ESTIMATED') {
+          gfBadgeClass = 'estimate';
+          gfLabel = 'Sec 55(2)(ac) (Est. FMV)';
+        }
+
+        const isEstimate = row.is_estimate || row.isEstimate || false;
+        const estimateBadge = isEstimate ? `<span class="lot-badge estimate" style="margin-left: 6px;" title="Historical NAV or FMV is provisional/estimated">PROVISIONAL</span>` : '';
+
+        return `
+          <tr>
+            <td><strong style="color: var(--text-main); font-family: var(--font-mono);">${row.isin}</strong></td>
+            <td style="max-width: 320px; white-space: normal; line-height: 1.3;">${row.asset_name}</td>
+            <td>${row.formatted_units || parseFloat(row.units || 0).toFixed(2)}</td>
+            <td>
+              <span class="lot-val-pnl">${formatINR(row.sale_proceeds)}</span>
+              <span class="lot-val-masked">₹ •••,•••</span>
+            </td>
+            <td>
+              <span class="lot-val-pnl">${formatINR(row.cost_basis)}</span>
+              <span class="lot-val-masked">₹ •••,•••</span>
+            </td>
+            <td>
+              <span class="lot-val-pnl">${parseFloat(row.fmv2018 || 0) > 0 ? formatINR(row.fmv2018) : '0.00'}</span>
+              <span class="lot-val-masked">₹ •••,•••</span>
+            </td>
+            <td>
+              <span class="lot-val-pnl" style="font-weight: 700; color: ${isPos ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">
+                ${isPos ? '+' : ''}${formatINR(gain)}
+              </span>
+              <span class="lot-val-masked">Gain Suppressed</span>
+            </td>
+            <td><span class="lot-badge ${gfBadgeClass}">${gfLabel}</span>${estimateBadge}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // 3. Schedule STCG Table
+  const stcgBody = document.getElementById('stcgTableBody');
+  if (stcgBody) {
+    if (stcg.length === 0) {
+      stcgBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">No Short-Term Capital Gains under Section 111A for FY ${summary.fiscal_year || 'selected'}.</td></tr>`;
+    } else {
+      stcgBody.innerHTML = stcg.map(row => {
+        const gain = parseFloat(row.balance_gain || 0);
+        const isPos = gain >= 0;
+        const isEstimate = row.is_estimate || row.isEstimate || false;
+        const estimateBadge = isEstimate ? `<span class="lot-badge estimate" style="margin-left: 6px;" title="Cost basis or purchase price is provisional/estimated">PROVISIONAL</span>` : '';
+
+        return `
+          <tr>
+            <td><strong style="color: var(--text-main); font-family: var(--font-mono);">${row.isin}</strong></td>
+            <td style="max-width: 340px; white-space: normal; line-height: 1.3;">${row.asset_name}</td>
+            <td>${row.formatted_units || parseFloat(row.units || 0).toFixed(2)}</td>
+            <td>
+              <span class="lot-val-pnl">${formatINR(row.sale_proceeds)}</span>
+              <span class="lot-val-masked">₹ •••,•••</span>
+            </td>
+            <td>
+              <span class="lot-val-pnl">${formatINR(row.cost_basis)}</span>
+              <span class="lot-val-masked">₹ •••,•••</span>
+            </td>
+            <td>
+              <span class="lot-val-pnl" style="font-weight: 700; color: ${isPos ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">
+                ${isPos ? '+' : ''}${formatINR(gain)}
+              </span>
+              <span class="lot-val-masked">Gain Suppressed</span>
+            </td>
+            <td><span class="lot-badge stcg">20% Flat Rate (Sec 111A)</span>${estimateBadge}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // 4. Matched Disposals Audit Log Table
+  const matchedBody = document.getElementById('matchedTradesTableBody');
+  if (matchedBody) {
+    if (matched.length === 0) {
+      matchedBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 24px;">No matched disposals recorded in ledger for FY ${summary.fiscal_year || 'selected'}.</td></tr>`;
+    } else {
+      matchedBody.innerHTML = matched.map(m => {
+        const gain = parseFloat(m.realized_gain || 0);
+        const isPos = gain >= 0;
+        const isLt = m.tax_term === 'LONG_TERM';
+        return `
+          <tr>
+            <td><strong>${m.disposal_date}</strong></td>
+            <td style="color: var(--text-muted);">${m.acquisition_date}</td>
+            <td style="max-width: 260px; white-space: normal; line-height: 1.3;">
+              <div style="font-weight: 600; color: var(--text-main);">${m.asset_name}</div>
+              <div style="font-size: 0.68rem; color: var(--text-muted);">${m.asset_id}</div>
+            </td>
+            <td>${m.units_matched}</td>
+            <td>${m.holding_period_days} days</td>
+            <td><span class="lot-badge ${isLt ? 'ltcg' : 'stcg'}">${isLt ? 'LTCG' : 'STCG'}</span></td>
+            <td>
+              <span class="lot-val-pnl">${formatINR(m.sale_proceeds)}</span>
+              <span class="lot-val-masked">₹ •••,•••</span>
+            </td>
+            <td>
+              <span class="lot-val-pnl">${formatINR(m.cost_basis)}</span>
+              <span class="lot-val-masked">₹ •••,•••</span>
+            </td>
+            <td>
+              <span class="lot-val-pnl" style="font-weight: 700; color: ${isPos ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">
+                ${isPos ? '+' : ''}${formatINR(gain)}
+              </span>
+              <span class="lot-val-masked">Gain Suppressed</span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+}
+
+function triggerItrZipDownload(fy) {
+  const selectedFy = fy || document.getElementById('itrOverlayFySelect')?.value || document.getElementById('terminalPeriodSelect')?.value || '2026-27';
+  const url = `${API_BASE}/tax/export/itr2/zip?fy=${selectedFy}`;
+  const token = getAuthToken();
+
+  fetch(url, {
+    headers: {
+      'X-Api-Auth-Token': token
+    }
+  })
+  .then(res => {
+    if (!res.ok) throw new Error(`HTTP ${res.status} downloading ITR ZIP`);
+    return res.blob();
+  })
+  .then(blob => {
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `itr2_schedule_cg_${selectedFy}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  })
+  .catch(err => {
+    console.error('Failed to download ITR-2 ZIP bundle:', err);
+    alert('Failed to download ITR-2 ZIP bundle: ' + err.message);
+  });
 }

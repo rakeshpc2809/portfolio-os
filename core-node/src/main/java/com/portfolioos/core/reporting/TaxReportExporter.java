@@ -11,6 +11,46 @@ import java.util.List;
 
 public class TaxReportExporter {
 
+    public record Schedule112aEntryDto(
+        String isin,
+        String assetName,
+        BigDecimal units,
+        BigDecimal saleProceeds,
+        BigDecimal costBasis,
+        BigDecimal fmv2018,
+        BigDecimal totalDeductions,
+        BigDecimal balanceGain,
+        String grandfatheringStatus,
+        boolean fmvApplicable,
+        boolean isEstimate,
+        String formattedUnits,
+        String formattedSaleProceeds,
+        String formattedCostBasis,
+        String formattedFmv2018,
+        String formattedBalanceGain
+    ) {}
+
+    public record ScheduleStcgEntryDto(
+        String isin,
+        String assetName,
+        BigDecimal units,
+        BigDecimal saleProceeds,
+        BigDecimal costBasis,
+        BigDecimal balanceGain,
+        boolean isEstimate,
+        String formattedUnits,
+        String formattedSaleProceeds,
+        String formattedCostBasis,
+        String formattedBalanceGain
+    ) {}
+
+    public record Itr2DetailsDto(
+        Itr2ScheduleCgReport summary,
+        List<Schedule112aEntryDto> schedule112a,
+        List<ScheduleStcgEntryDto> scheduleStcg,
+        List<com.portfolioos.core.dtos.ReportDtos.RealizedLogDto> matchedLots
+    ) {}
+
     public record Itr2ScheduleCgReport(
         String fiscalYear,
         String totalSaleProceeds,

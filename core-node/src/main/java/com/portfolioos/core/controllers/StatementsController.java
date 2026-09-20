@@ -28,8 +28,11 @@ public class StatementsController {
     public StatementsController(
         StatementIngestionUseCase ingestionUseCase,
         @Value("${quant-sidecar.url:http://quant-sidecar:8000}") String sidecarUrl,
-        @Value("${api.auth.token:dev_secret_key_123}") String authToken
+        @Value("${api.auth.token:${API_AUTH_TOKEN:}}") String authToken
     ) {
+        if (authToken == null || authToken.trim().isEmpty()) {
+            throw new IllegalStateException("SECURITY CRITICAL: API_AUTH_TOKEN environment variable or property is required for StatementsController.");
+        }
         this.ingestionUseCase = ingestionUseCase;
         this.authToken = authToken;
         this.sidecarUrl = sidecarUrl;

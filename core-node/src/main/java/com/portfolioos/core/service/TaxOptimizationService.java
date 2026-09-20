@@ -167,6 +167,28 @@ public class TaxOptimizationService {
         return Itr2CsvExporter.exportItr2ScheduleCg(matchedLots, fy, assetNameMap, fmv2018Map != null ? fmv2018Map : Map.of());
     }
 
+    public TaxReportExporter.Itr2DetailsDto getItr2Details(String fy) {
+        return getItr2Details(fy, Map.of());
+    }
+
+    public TaxReportExporter.Itr2DetailsDto getItr2Details(String fy, Map<String, BigDecimal> fmv2018Map) {
+        List<TaxEvent> allEvents = eventStore.getAllEvents();
+        List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents).matchedLots();
+        Map<String, String> assetNameMap = allEvents.stream()
+            .collect(Collectors.toMap(TaxEvent::assetId, TaxEvent::assetName, (a, b) -> a));
+
+        TaxReportExporter.Itr2ScheduleCgReport summary = TaxReportExporter.generateItr2Report(matchedLots, fy);
+        List<TaxReportExporter.Schedule112aEntryDto> s112a = Itr2CsvExporter.generateSchedule112aEntries(
+            matchedLots, fy, assetNameMap, fmv2018Map != null ? fmv2018Map : Map.of()
+        );
+        List<TaxReportExporter.ScheduleStcgEntryDto> stcg = Itr2CsvExporter.generateScheduleStcgEntries(
+            matchedLots, fy, assetNameMap
+        );
+        List<RealizedLogDto> realizedLog = getRealizedLog(fy);
+
+        return new TaxReportExporter.Itr2DetailsDto(summary, s112a, stcg, realizedLog);
+    }
+
     public RebalancePreviewDto getTaxOptimalLiquidationPlan(BigDecimal targetAmount, String fy) {
         return getTaxOptimalLiquidationPlan(targetAmount, fy, BigDecimal.ZERO);
     }

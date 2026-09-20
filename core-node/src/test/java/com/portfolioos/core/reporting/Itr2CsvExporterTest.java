@@ -167,4 +167,101 @@ class Itr2CsvExporterTest {
         assertFalse(content.contains("fmv2018Map.getOrDefault(isin, actualCost)"),
             "Must not silently default fmv2018Map missing entries to actualCost");
     }
+
+    @Test
+    void testStructuredEntriesPreserveDimensionalIntegrityAndHonesty() {
+        MatchedLot ltcgLot = new MatchedLot(
+            "MATCH_LTCG", "EV_DISP_1", "LOT_1", "INF109KC13X2",
+            LocalDate.of(2024, 1, 1), LocalDate.of(2026, 5, 1),
+            new BigDecimal("50.0"), new BigDecimal("5000.0"), new BigDecimal("7500.0"),
+            new BigDecimal("2500.0"), 850L, TaxTerm.LONG_TERM, AssetCategory.EQUITY
+        );
+
+        MatchedLot stcgLot = new MatchedLot(
+            "MATCH_STCG", "EV_DISP_2", "LOT_2", "INF200K01RA0",
+            LocalDate.of(2026, 1, 1), LocalDate.of(2026, 5, 1),
+            new BigDecimal("20.0"), new BigDecimal("2000.0"), new BigDecimal("2200.0"),
+            new BigDecimal("200.0"), 120L, TaxTerm.SHORT_TERM, AssetCategory.EQUITY
+        );
+
+        List<TaxReportExporter.Schedule112aEntryDto> ltcgEntries = Itr2CsvExporter.generateSchedule112aEntries(
+            List.of(ltcgLot, stcgLot), "2026-27", Map.of("INF109KC13X2", "Fund LTCG"), Map.of()
+        );
+
+        assertEquals(1, ltcgEntries.size());
+        TaxReportExporter.Schedule112aEntryDto e112a = ltcgEntries.get(0);
+        assertEquals("INF109KC13X2", e112a.isin());
+        assertEquals(new BigDecimal("50.0"), e112a.units());
+        assertEquals(new BigDecimal("7500.0"), e112a.saleProceeds());
+        assertEquals(new BigDecimal("5000.0"), e112a.costBasis());
+        assertEquals(new BigDecimal("2500.0"), e112a.balanceGain());
+        assertFalse(e112a.fmvApplicable());
+        assertFalse(e112a.isEstimate());
+        assertEquals("POST_2018_ACQUISITION", e112a.grandfatheringStatus());
+
+        List<TaxReportExporter.ScheduleStcgEntryDto> stcgEntries = Itr2CsvExporter.generateScheduleStcgEntries(
+            List.of(ltcgLot, stcgLot), "2026-27", Map.of("INF200K01RA0", "Fund STCG")
+        );
+
+        assertEquals(1, stcgEntries.size());
+        TaxReportExporter.ScheduleStcgEntryDto eStcg = stcgEntries.get(0);
+        assertEquals("INF200K01RA0", eStcg.isin());
+        assertEquals(new BigDecimal("20.0"), eStcg.units());
+        assertEquals(new BigDecimal("2200.0"), eStcg.saleProceeds());
+        assertEquals(new BigDecimal("2000.0"), eStcg.costBasis());
+        assertEquals(new BigDecimal("200.0"), eStcg.balanceGain());
+        assertFalse(eStcg.isEstimate());
+    }
+
+    @Test
+    void testDirectGenerateSchedule112aEntriesThrowsMissingFmvDataException() {
+        MatchedLot pre2018Lot = new MatchedLot(
+            "MATCH_PRE_FAIL", "EV_DISP_PRE", "LOT_PRE_FAIL", "INF109KC13X2",
+            LocalDate.of(2017, 6, 1), LocalDate.of(2026, 5, 1),
+            new BigDecimal("10.0"), new BigDecimal("1000.0"), new BigDecimal("2500.0"),
+            new BigDecimal("1500.0"), 3200L, TaxTerm.LONG_TERM, AssetCategory.EQUITY
+        );
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> {
+            Itr2CsvExporter.generateSchedule112aEntries(
+                List.of(pre2018Lot), "2026-27", Map.of("INF109KC13X2", "Pre 2018 Fund"), Map.of()
+            );
+        });
+
+        assertTrue(ex.getMessage().contains("MISSING_FMV_DATA"),
+            "Direct call to generateSchedule112aEntries must throw IllegalStateException with MISSING_FMV_DATA error code");
+    }
+
+    @Test
+    void testIsEstimateFlagPropagationOnSchedule112aAndStcg() {
+        MatchedLot ltcgLot = new MatchedLot(
+            "MATCH_LTCG", "EV_DISP_1", "LOT_1", "INF109KC13X2",
+            LocalDate.of(2024, 1, 1), LocalDate.of(2026, 5, 1),
+            new BigDecimal("50.0"), new BigDecimal("5000.0"), new BigDecimal("7500.0"),
+            new BigDecimal("2500.0"), 850L, TaxTerm.LONG_TERM, AssetCategory.EQUITY
+        );
+
+        MatchedLot stcgLot = new MatchedLot(
+            "MATCH_STCG", "EV_DISP_2", "LOT_2", "INF200K01RA0",
+            LocalDate.of(2026, 1, 1), LocalDate.of(2026, 5, 1),
+            new BigDecimal("20.0"), new BigDecimal("2000.0"), new BigDecimal("2200.0"),
+            new BigDecimal("200.0"), 120L, TaxTerm.SHORT_TERM, AssetCategory.EQUITY
+        );
+
+        // Call with estimatedIsins containing both ISINs
+        List<TaxReportExporter.Schedule112aEntryDto> ltcgEntries = Itr2CsvExporter.generateSchedule112aEntries(
+            List.of(ltcgLot), "2026-27", Map.of("INF109KC13X2", "Fund LTCG"), Map.of(),
+            java.util.Set.of("INF109KC13X2")
+        );
+        assertEquals(1, ltcgEntries.size());
+        assertTrue(ltcgEntries.get(0).isEstimate(), "Schedule 112A entry must report isEstimate = true");
+        assertEquals("PROVISIONAL_COST_BASIS", ltcgEntries.get(0).grandfatheringStatus());
+
+        List<TaxReportExporter.ScheduleStcgEntryDto> stcgEntries = Itr2CsvExporter.generateScheduleStcgEntries(
+            List.of(stcgLot), "2026-27", Map.of("INF200K01RA0", "Fund STCG"),
+            java.util.Set.of("INF200K01RA0")
+        );
+        assertEquals(1, stcgEntries.size());
+        assertTrue(stcgEntries.get(0).isEstimate(), "Schedule STCG entry must report isEstimate = true");
+    }
 }

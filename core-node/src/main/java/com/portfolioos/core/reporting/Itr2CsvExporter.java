@@ -7,6 +7,7 @@ import com.portfolioos.core.util.Pair;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,11 +28,21 @@ public class Itr2CsvExporter {
         return map;
     }
 
-    public static String generateSchedule112aCsv(
+    public static List<TaxReportExporter.Schedule112aEntryDto> generateSchedule112aEntries(
         List<MatchedLot> matchedLots,
         String fiscalYear,
         Map<String, String> assetNameMap,
         Map<String, BigDecimal> fmv2018Map
+    ) {
+        return generateSchedule112aEntries(matchedLots, fiscalYear, assetNameMap, fmv2018Map, java.util.Collections.emptySet());
+    }
+
+    public static List<TaxReportExporter.Schedule112aEntryDto> generateSchedule112aEntries(
+        List<MatchedLot> matchedLots,
+        String fiscalYear,
+        Map<String, String> assetNameMap,
+        Map<String, BigDecimal> fmv2018Map,
+        java.util.Set<String> estimatedIsins
     ) {
         Pair<LocalDate, LocalDate> bounds = getFiscalYearBounds(fiscalYear);
         LocalDate startDate = bounds.first();
@@ -43,10 +54,8 @@ public class Itr2CsvExporter {
             !lot.disposalDate().isAfter(endDate)
         ).toList();
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("ISIN Code,Name of Share/Unit,No. of Shares/Units,Full Value of Consideration,Cost of Acquisition,FMV as on 31-Jan-2018,Total Deductions,Balance Capital Gain,Grandfathering Status\n");
-
         Map<String, List<MatchedLot>> grouped = ltcgLots.stream().collect(Collectors.groupingBy(MatchedLot::assetId));
+        List<TaxReportExporter.Schedule112aEntryDto> result = new ArrayList<>();
 
         for (Map.Entry<String, List<MatchedLot>> entry : grouped.entrySet()) {
             String isin = entry.getKey();
@@ -81,8 +90,11 @@ public class Itr2CsvExporter {
                 }
             }
 
+            boolean isEst = estimatedIsins != null && estimatedIsins.contains(isin);
             String statusRemark;
-            if (isPre2018 && hasPost2018) {
+            if (isEst) {
+                statusRemark = isPre2018 ? "SECTION_55_2_AC_ESTIMATED" : "PROVISIONAL_COST_BASIS";
+            } else if (isPre2018 && hasPost2018) {
                 statusRemark = "MIXED_PRE_AND_POST_2018";
             } else if (isPre2018) {
                 statusRemark = "VALIDATED_SECTION_55_2_AC";
@@ -92,22 +104,69 @@ public class Itr2CsvExporter {
 
             BigDecimal gain = proceeds.subtract(deemedCost);
             BigDecimal displayFmv = (isPre2018 && fmvJan2018 != null) ? fmvJan2018 : BigDecimal.ZERO;
+            boolean fmvApp = isPre2018;
 
-            sb.append("\"").append(isin).append("\",\"")
-              .append(name.replace("\"", "\"\"")).append("\",")
-              .append(fmt(totalUnits)).append(",")
-              .append(fmt(proceeds)).append(",")
-              .append(fmt(deemedCost)).append(",")
-              .append(fmt(displayFmv)).append(",")
+            result.add(new TaxReportExporter.Schedule112aEntryDto(
+                isin,
+                name,
+                totalUnits,
+                proceeds,
+                deemedCost,
+                displayFmv,
+                BigDecimal.ZERO,
+                gain,
+                statusRemark,
+                fmvApp,
+                isEst,
+                fmt(totalUnits),
+                fmt(proceeds),
+                fmt(deemedCost),
+                fmt(displayFmv),
+                fmt(gain)
+            ));
+        }
+        return result;
+    }
+
+    public static String generateSchedule112aCsv(
+        List<MatchedLot> matchedLots,
+        String fiscalYear,
+        Map<String, String> assetNameMap,
+        Map<String, BigDecimal> fmv2018Map
+    ) {
+        List<TaxReportExporter.Schedule112aEntryDto> entries = generateSchedule112aEntries(matchedLots, fiscalYear, assetNameMap, fmv2018Map);
+        StringBuilder sb = new StringBuilder();
+        sb.append("ISIN Code,Name of Share/Unit,No. of Shares/Units,Full Value of Consideration,Cost of Acquisition,FMV as on 31-Jan-2018,Total Deductions,Balance Capital Gain,Grandfathering Status\n");
+
+        for (TaxReportExporter.Schedule112aEntryDto e : entries) {
+            sb.append("\"").append(e.isin()).append("\",\"")
+              .append(e.assetName().replace("\"", "\"\"")).append("\",")
+              .append(e.formattedUnits()).append(",")
+              .append(e.formattedSaleProceeds()).append(",")
+              .append(e.formattedCostBasis()).append(",")
+              .append(e.formattedFmv2018()).append(",")
               .append("0.00,")
-              .append(fmt(gain)).append(",")
-              .append("\"").append(statusRemark).append("\"\n");
+              .append(e.formattedBalanceGain()).append(",")
+              .append("\"").append(e.grandfatheringStatus()).append("\"\n");
         }
 
         return sb.toString();
     }
 
-    public static String generateScheduleCgStcgCsv(List<MatchedLot> matchedLots, String fiscalYear, Map<String, String> assetNameMap) {
+    public static List<TaxReportExporter.ScheduleStcgEntryDto> generateScheduleStcgEntries(
+        List<MatchedLot> matchedLots,
+        String fiscalYear,
+        Map<String, String> assetNameMap
+    ) {
+        return generateScheduleStcgEntries(matchedLots, fiscalYear, assetNameMap, java.util.Collections.emptySet());
+    }
+
+    public static List<TaxReportExporter.ScheduleStcgEntryDto> generateScheduleStcgEntries(
+        List<MatchedLot> matchedLots,
+        String fiscalYear,
+        Map<String, String> assetNameMap,
+        java.util.Set<String> estimatedIsins
+    ) {
         Pair<LocalDate, LocalDate> bounds = getFiscalYearBounds(fiscalYear);
         LocalDate startDate = bounds.first();
         LocalDate endDate = bounds.second();
@@ -118,10 +177,8 @@ public class Itr2CsvExporter {
             !lot.disposalDate().isAfter(endDate)
         ).toList();
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("ISIN Code,Name of Share/Unit,No. of Shares/Units,Full Value of Consideration,Cost of Acquisition,Balance Capital Gain\n");
-
         Map<String, List<MatchedLot>> grouped = stcgLots.stream().collect(Collectors.groupingBy(MatchedLot::assetId));
+        List<TaxReportExporter.ScheduleStcgEntryDto> result = new ArrayList<>();
 
         for (Map.Entry<String, List<MatchedLot>> entry : grouped.entrySet()) {
             String isin = entry.getKey();
@@ -139,13 +196,37 @@ public class Itr2CsvExporter {
             }
 
             BigDecimal gain = proceeds.subtract(actualCost);
+            boolean isEst = estimatedIsins != null && estimatedIsins.contains(isin);
 
-            sb.append("\"").append(isin).append("\",\"")
-              .append(name.replace("\"", "\"\"")).append("\",")
-              .append(fmt(totalUnits)).append(",")
-              .append(fmt(proceeds)).append(",")
-              .append(fmt(actualCost)).append(",")
-              .append(fmt(gain)).append("\n");
+            result.add(new TaxReportExporter.ScheduleStcgEntryDto(
+                isin,
+                name,
+                totalUnits,
+                proceeds,
+                actualCost,
+                gain,
+                isEst,
+                fmt(totalUnits),
+                fmt(proceeds),
+                fmt(actualCost),
+                fmt(gain)
+            ));
+        }
+        return result;
+    }
+
+    public static String generateScheduleCgStcgCsv(List<MatchedLot> matchedLots, String fiscalYear, Map<String, String> assetNameMap) {
+        List<TaxReportExporter.ScheduleStcgEntryDto> entries = generateScheduleStcgEntries(matchedLots, fiscalYear, assetNameMap);
+        StringBuilder sb = new StringBuilder();
+        sb.append("ISIN Code,Name of Share/Unit,No. of Shares/Units,Full Value of Consideration,Cost of Acquisition,Balance Capital Gain\n");
+
+        for (TaxReportExporter.ScheduleStcgEntryDto e : entries) {
+            sb.append("\"").append(e.isin()).append("\",\"")
+              .append(e.assetName().replace("\"", "\"\"")).append("\",")
+              .append(e.formattedUnits()).append(",")
+              .append(e.formattedSaleProceeds()).append(",")
+              .append(e.formattedCostBasis()).append(",")
+              .append(e.formattedBalanceGain()).append("\n");
         }
 
         return sb.toString();

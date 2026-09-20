@@ -93,8 +93,10 @@ credentials/
 .env
 .env.*
 *.env
+!.env.example
 
 # Testing databases
 .jqwik-database
+verification-screenshots/
 **/.jqwik-database
 extracted_doc.txt

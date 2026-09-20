@@ -1,0 +1,7 @@
+[Unit]
+Description=Portfolio OS Unified Services Target
+Wants=portfolio-os-quant.service portfolio-os-core.service
+After=portfolio-os-quant.service portfolio-os-core.service
+
+[Install]
+WantedBy=default.target

@@ -14,29 +14,23 @@ public final class DbPathResolver {
     private DbPathResolver() {}
 
     public static String resolveDatabasePath(String configuredPath, String envVarName) {
+        if (configuredPath == null || configuredPath.isBlank()) {
+            return configuredPath;
+        }
+
+        // Ephemeral test databases inside target/test-db or in-memory databases must NEVER be overridden by environment variables!
+        if (":memory:".equals(configuredPath)) {
+            return configuredPath;
+        }
+        if (configuredPath.startsWith("target/") || configuredPath.contains("test-db")) {
+            return new File(configuredPath).toPath().toAbsolutePath().normalize().toString();
+        }
+
         if (envVarName != null && !envVarName.isBlank()) {
             String envVal = System.getenv(envVarName);
             if (envVal != null && !envVal.isBlank()) {
                 return normalizeIfFile(envVal.trim());
             }
-        }
-
-        if (configuredPath == null || configuredPath.isBlank() || ":memory:".equals(configuredPath)) {
-            return configuredPath;
-        }
-
-        if (configuredPath.startsWith("jdbc:")) {
-            return configuredPath;
-        }
-
-        File f = new File(configuredPath);
-        if (f.isAbsolute()) {
-            return f.toPath().normalize().toString();
-        }
-
-        // Ephemeral test databases inside target/test-db stay local to current working directory
-        if (configuredPath.startsWith("target/") || configuredPath.contains("test-db")) {
-            return f.toPath().toAbsolutePath().normalize().toString();
         }
 
         // If running from subproject root (e.g. core-node/), canonical data/ lives at ../data/
@@ -47,6 +41,7 @@ public final class DbPathResolver {
         }
 
         // Check if file exists directly from current working directory
+        File f = new File(configuredPath);
         if (f.exists()) {
             return f.toPath().toAbsolutePath().normalize().toString();
         }
