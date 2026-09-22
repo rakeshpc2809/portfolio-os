@@ -381,8 +381,10 @@ public class SyncController {
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), fy, derivedTriggerType, null
         );
 
+        List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto> bucketAllocation = valuationService.getBucketAllocationStatuses();
+
         return ResponseEntity.ok(new UnidirectionalSyncSnapshot(
-            syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan
+            syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, bucketAllocation
         ));
     }
 

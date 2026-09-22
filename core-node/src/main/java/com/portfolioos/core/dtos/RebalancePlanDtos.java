@@ -188,8 +188,32 @@ public class RebalancePlanDtos {
         BigDecimal totalStcgTaxable,
         BigDecimal totalTaxEstimate,
         BigDecimal exemptionHeadroomBefore,
-        BigDecimal exemptionHeadroomAfter
-    ) {}
+        BigDecimal exemptionHeadroomAfter,
+        BigDecimal statutoryExemptionCap,
+        double exemptionUtilizedPct
+    ) {
+        public TaxSummaryDto(
+            BigDecimal totalRealizedGain,
+            BigDecimal totalLtcgExempt,
+            BigDecimal totalStcgTaxable,
+            BigDecimal totalTaxEstimate,
+            BigDecimal exemptionHeadroomBefore,
+            BigDecimal exemptionHeadroomAfter
+        ) {
+            this(
+                totalRealizedGain,
+                totalLtcgExempt,
+                totalStcgTaxable,
+                totalTaxEstimate,
+                exemptionHeadroomBefore,
+                exemptionHeadroomAfter,
+                BigDecimal.valueOf(125000.00),
+                (exemptionHeadroomBefore != null && exemptionHeadroomBefore.compareTo(BigDecimal.ZERO) > 0 && totalLtcgExempt != null)
+                    ? totalLtcgExempt.divide(BigDecimal.valueOf(125000.00), 4, java.math.RoundingMode.HALF_UP).doubleValue() * 100.0
+                    : 0.0
+            );
+        }
+    }
 
     public record BuySidePlanDto(
         BigDecimal totalToInvest,

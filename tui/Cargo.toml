@@ -1,0 +1,21 @@
+[package]
+name = "portfolio-os-tui"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "portfolio-os-tui"
+path = "src/main.rs"
+
+[dependencies]
+ratatui      = "0.29.0"
+crossterm    = "0.28.1"
+ureq         = { version = "2.10.1", features = ["json"] }
+serde        = { version = "1.0", features = ["derive"] }
+serde_json   = "1.0"
+
+[profile.release]
+strip        = true
+opt-level    = 3
+lto          = true
+codegen-units = 1

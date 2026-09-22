@@ -128,8 +128,20 @@ public class SyncDtos {
         List<FlatTaxLotDto> taxLots,
         List<RadarSignalDto> radarSignals,
         List<NetWorthPointDto> netWorthHistory,
-        RebalancePlanDtos.RebalancePlanDto rebalancePlan
-    ) {}
+        RebalancePlanDtos.RebalancePlanDto rebalancePlan,
+        List<ReportDtos.BucketStatusDto> bucketAllocation
+    ) {
+        public UnidirectionalSyncSnapshot(
+            SyncInfoDto syncInfo,
+            List<FlatHoldingDto> holdings,
+            List<FlatTaxLotDto> taxLots,
+            List<RadarSignalDto> radarSignals,
+            List<NetWorthPointDto> netWorthHistory,
+            RebalancePlanDtos.RebalancePlanDto rebalancePlan
+        ) {
+            this(syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, java.util.Collections.emptyList());
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record PairRequestDto(

@@ -1,12 +1,15 @@
-server:
-  core_node_url: "http://127.0.0.1:8080"
-  quant_sidecar_url: "http://127.0.0.1:8000"
-  api_auth_token: "dev_secret_key_123"
-  poll_interval_seconds: 5
-  timeout_seconds: 2.5
-  fy: "2026-27"
+# Portfolio OS TUI Configuration
+# Consumed by: tui/src/fetch.rs (Rust TUI)
+#
+# SECURITY: Never put a raw API token in this file.
+# The Rust TUI reads the token from the environment variable named by `api_token_env`.
+# Set that env var in your shell profile or systemd unit:
+#   export PORTFOLIO_OS_API_TOKEN="<your-token>"
 
-policy:
-  ltcg_exemption_inr: 125000
-  rebalance_drift_threshold_pct: 5.0
-  default_swr_pct: 3.5
+base_url:        "http://127.0.0.1:8080"
+api_token_env:   "PORTFOLIO_OS_API_TOKEN"
+fiscal_year:     "2026-27"
+poll_interval:   5
+http_timeout:    8
+default_fund_a:  "INF109KC13X2"
+default_fund_b:  "INF109KC12U0"

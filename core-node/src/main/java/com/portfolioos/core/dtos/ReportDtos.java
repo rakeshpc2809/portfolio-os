@@ -142,9 +142,9 @@ public class ReportDtos {
     public record BucketStatusDto(
         String bucket,
         String currentValue,
-        String currentPct,
-        String targetPct,
-        String driftPct,
+        double currentPct,
+        double targetPct,
+        double driftPct,
         boolean isDrifted
     ) {}
 

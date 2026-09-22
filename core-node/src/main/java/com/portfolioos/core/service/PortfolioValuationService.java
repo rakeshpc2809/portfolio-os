@@ -190,9 +190,9 @@ public class PortfolioValuationService {
             .map(s -> new com.portfolioos.core.dtos.ReportDtos.BucketStatusDto(
                 s.bucket().name(),
                 fmt(s.currentValue()),
-                fmt(s.currentPct()),
-                fmt(s.targetPct()),
-                fmt(s.driftPct()),
+                s.currentPct().doubleValue(),
+                s.targetPct().doubleValue(),
+                s.driftPct().doubleValue(),
                 s.isDrifted()
             ))
             .toList();
@@ -578,9 +578,9 @@ public class PortfolioValuationService {
         List<BucketStatusDto> statuses = result.bucketStatuses().stream().map(s -> new BucketStatusDto(
             s.bucket().name(),
             fmt(s.currentValue()),
-            fmt(s.currentPct()),
-            fmt(s.targetPct()),
-            fmt(s.driftPct()),
+            s.currentPct().doubleValue(),
+            s.targetPct().doubleValue(),
+            s.driftPct().doubleValue(),
             s.isDrifted()
         )).toList();
 
@@ -758,6 +758,28 @@ public class PortfolioValuationService {
             || new java.io.File("../data/factsheets/ppfas_flexicap_full.xlsx").exists();
         String coverageType = hasFactsheet ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";
 
+        // Pre-compute overlap_summary so clients don't need to iterate matrix and threshold locally.
+        final double OVERLAP_WARNING_THRESHOLD = 30.0;
+        Map<String, Object> overlapSummary = new HashMap<>();
+        double maxOverlapPct = 0.0;
+        String maxFundAName = "";
+        String maxFundBName = "";
+        for (Map<String, Object> pair : matrix) {
+            Object pctRaw = pair.get("overlap_percentage");
+            if (pctRaw instanceof Number num) {
+                double pct = num.doubleValue();
+                if (pct > maxOverlapPct) {
+                    maxOverlapPct = pct;
+                    maxFundAName = pair.getOrDefault("fund_a_name", "").toString();
+                    maxFundBName = pair.getOrDefault("fund_b_name", "").toString();
+                }
+            }
+        }
+        overlapSummary.put("max_overlap_percentage", maxOverlapPct);
+        overlapSummary.put("fund_a_name", maxFundAName);
+        overlapSummary.put("fund_b_name", maxFundBName);
+        overlapSummary.put("threshold_breached", maxOverlapPct >= OVERLAP_WARNING_THRESHOLD);
+
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
         response.put("holding_coverage_type", coverageType);
@@ -766,6 +788,7 @@ public class PortfolioValuationService {
         response.put("is_live_download", NseIndexConstituentDownloader.IS_LIVE_DOWNLOAD);
         response.put("pairwise_overlap", pairwise);
         response.put("pairwise_matrix", matrix);
+        response.put("overlap_summary", overlapSummary);
         response.put("portfolio_top_stock_concentrations", concResult.get("concentrations"));
         response.put("coverage_telemetry", concResult.get("coverage_telemetry"));
         return response;

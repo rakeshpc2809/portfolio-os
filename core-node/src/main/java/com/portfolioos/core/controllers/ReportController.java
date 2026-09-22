@@ -1,5 +1,6 @@
 package com.portfolioos.core.controllers;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.portfolioos.core.dtos.ReportDtos.*;
 import com.portfolioos.core.reporting.ExemptionTracker;
 import com.portfolioos.core.reporting.TaxReportExporter;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -209,5 +211,29 @@ public class ReportController {
     @GetMapping({"/rules/action-recommendations", "/analytics/rules/actions"})
     public ResponseEntity<List<com.portfolioos.core.rules.FireActionRuleEngine.ActionRecommendationCard>> getActionRecommendations() {
         return ResponseEntity.ok(valuationService.getActionRecommendations());
+    }
+
+    /**
+     * Serves HRP CVaR audit telemetry written by quant-sidecar, over the REST boundary.
+     * Resolves Violation #5: eliminates direct filesystem access from TUI clients.
+     * Returns {"status":"NOT_GENERATED"} if quant-sidecar has not yet produced the file.
+     */
+    @GetMapping("/analytics/hrp-audit")
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<Map<String, Object>> getHrpAudit() {
+        String[] candidates = {"/app/data/hrp_audit.json", "data/hrp_audit.json", "../data/hrp_audit.json"};
+        for (String path : candidates) {
+            File f = new File(path);
+            if (f.exists() && f.isFile()) {
+                try {
+                    Map<String, Object> payload = new ObjectMapper().readValue(f, Map.class);
+                    return ResponseEntity.ok(payload);
+                } catch (IOException e) {
+                    return ResponseEntity.internalServerError()
+                        .body(Map.of("status", "PARSE_ERROR", "message", e.getMessage()));
+                }
+            }
+        }
+        return ResponseEntity.ok(Map.of("status", "NOT_GENERATED"));
     }
 }

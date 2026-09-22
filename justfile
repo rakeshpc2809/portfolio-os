@@ -93,21 +93,17 @@ alloc-hrp:
 # Portfolio OS TUI Terminal Cockpit (Textual)
 # -------------------------------------------------------------
 
-# Launch Portfolio OS Terminal HUD
-tui:
-    cd tui && python3 portfolio_os_tui.py
+# Build Rust TUI release binary (stripped, ~2.9 MB)
+build-tui:
+    cargo build --release --manifest-path tui/Cargo.toml
 
-# Run TUI unit & modal lifecycle tests
+# Launch Portfolio OS Terminal HUD (Rust/Ratatui)
+tui: build-tui
+    ./tui/target/release/portfolio-os-tui
+
+# Run Rust TUI unit tests
 test-tui:
-    cd tui && python3 -m unittest discover -v -s tests
-
-# Launch TUI with hot-reloading DevTools
-tui-dev:
-    cd tui && textual run --dev portfolio_os_tui.py
-
-# Open Textual live inspection console in standalone pane
-tui-console:
-    textual console
+    cargo test --manifest-path tui/Cargo.toml
 
 # Launch full Zellij Cockpit (Backend + Quant + TUI HUD in split panes)
 cockpit:

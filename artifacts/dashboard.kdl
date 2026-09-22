@@ -1,0 +1,36 @@
+layout {
+    default_tab_template {
+        children
+        pane size=1 borderless=true {
+            plugin location="zellij:compact-bar"
+        }
+    }
+
+    // Windows 8 Hero Grid (Single Tab, Asymmetric Live Tiles)
+    tab name="⚡ board" focus=true {
+        pane split_direction="horizontal" {
+            // Main Hero Row (90% Height)
+            pane size="90%" split_direction="vertical" {
+                // Left Column (38%): Hardware Pillar (btop 65% + gputop 35%)
+                pane size="38%" split_direction="horizontal" {
+                    pane size="65%" name="📊 btop" command="/usr/bin/btop"
+                    pane size="35%" name="🎮 gputop" command="/usr/bin/gputop"
+                }
+
+                // Center Column (43%): HERO TILE (portfolio-os-tui, full height, unsplit)
+                pane size="43%" name="💼 portfolio-os" command="/home/rakeshpc/Projects/portfolio-os/tui/target/release/portfolio-os-tui" focus=true
+
+                // Right Column (19%): HUD + Fleet Status Stack
+                pane size="19%" split_direction="horizontal" {
+                    pane size="85%" name="⏱️ hud" command="/usr/bin/python3" {
+                        args "/home/rakeshpc/.config/niri/scripts/noctalia-hud.py"
+                    }
+                    pane size="15%" name="🛡️ fleet" command="/home/rakeshpc/.config/niri/scripts/fleet-strip.sh"
+                }
+            }
+
+            // Bottom Strip (10% Height, Full Width): Audio Visualizer
+            pane size="10%" name="🎵 cava" command="/usr/bin/cava"
+        }
+    }
+}
