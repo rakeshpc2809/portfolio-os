@@ -19,12 +19,12 @@ public final class PortfolioConstants {
     public static final double GOLD_PRICE_EXTENSION_CEILING_PCT = 20.0;
 
     public static final double GOLD_BUY_MULTIPLIER_CHEAP = 1.30;
-    public static final double GOLD_BUY_MULTIPLIER_EXTENDED = 0.40;
+    public static final double GOLD_BUY_MULTIPLIER_EXTENDED = 0.70;
     public static final double GOLD_SELL_MULTIPLIER_CHEAP = 0.60;
     public static final double GOLD_SELL_MULTIPLIER_EXTENDED = 1.40;
 
     public static final double DEFAULT_CORE_DRIFT_THRESHOLD_PCT = 5.0;
-    public static final double DEFAULT_GOLD_DRIFT_THRESHOLD_PCT = 12.0;
+    public static final double DEFAULT_GOLD_DRIFT_THRESHOLD_PCT = 5.0;
 
     public static double calculateDrawdownPct(java.math.BigDecimal currentVal, java.math.BigDecimal rollingHigh) {
         if (rollingHigh == null || rollingHigh.compareTo(java.math.BigDecimal.ZERO) <= 0 || currentVal == null) {

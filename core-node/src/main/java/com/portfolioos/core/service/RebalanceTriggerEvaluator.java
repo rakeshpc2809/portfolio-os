@@ -141,7 +141,7 @@ public class RebalanceTriggerEvaluator {
                     driftedBuckets.add("CORE_AGGREGATE_BREACH");
                 }
                 double largeMidRatio = largeMidVal.doubleValue() / coreTotalVal.doubleValue();
-                if (largeMidRatio > 0.75 || largeMidRatio < 0.45) {
+                if (largeMidRatio > 0.66 || largeMidRatio < 0.54) {
                     driftedBuckets.add("CORE_INTERNAL_CIRCUIT_BREAKER");
                 }
             }
@@ -157,32 +157,13 @@ public class RebalanceTriggerEvaluator {
                     goldTargetWeightPct = tc.targetPct();
                 }
 
-                switch (tc.bucket().toLowerCase()) {
-                    case "satellite_value" -> {
-                        if (currentPct > 13.0 || currentPct < 7.0) driftedBuckets.add(tc.bucket());
-                    }
-                    case "satellite_momentum" -> {
-                        if (currentPct > 12.0 || currentPct < 7.5) driftedBuckets.add(tc.bucket());
-                    }
-                    case "satellite_smallcap" -> {
-                        if (currentPct > 11.5 || currentPct < 7.5) driftedBuckets.add(tc.bucket());
-                    }
-                    case "hedge_commodity" -> {
-                        if (currentPct > 14.0 || currentPct < 8.0) driftedBuckets.add(tc.bucket());
-                    }
-                    case "liquidity_arbitrage" -> {
-                        if (currentPct > 15.0 || currentPct < 8.0) driftedBuckets.add(tc.bucket());
-                    }
-                    default -> {
-                        double driftThreshold = tc.triggerDriftPct() > 0 ? tc.triggerDriftPct() : PortfolioConstants.DEFAULT_CORE_DRIFT_THRESHOLD_PCT;
-                        if (Math.abs(currentPct - tc.targetPct()) >= driftThreshold) {
-                            if (!tc.bucket().equalsIgnoreCase("core") && !tc.bucket().equalsIgnoreCase("EQUITY_CORE")) {
-                                driftedBuckets.add(tc.bucket());
-                            } else if (currentPct > 65.0 || currentPct < 35.0) {
-                                if (!driftedBuckets.contains("CORE_AGGREGATE_BREACH")) {
-                                    driftedBuckets.add("CORE_AGGREGATE_BREACH");
-                                }
-                            }
+                double driftThreshold = tc.triggerDriftPct() > 0 ? tc.triggerDriftPct() : PortfolioConstants.DEFAULT_CORE_DRIFT_THRESHOLD_PCT;
+                if (Math.abs(currentPct - tc.targetPct()) >= driftThreshold) {
+                    if (!tc.bucket().equalsIgnoreCase("core") && !tc.bucket().equalsIgnoreCase("EQUITY_CORE")) {
+                        driftedBuckets.add(tc.bucket());
+                    } else if (currentPct > 65.0 || currentPct < 35.0) {
+                        if (!driftedBuckets.contains("CORE_AGGREGATE_BREACH")) {
+                            driftedBuckets.add("CORE_AGGREGATE_BREACH");
                         }
                     }
                 }

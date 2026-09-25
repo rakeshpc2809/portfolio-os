@@ -40,10 +40,10 @@ public class SyncControllerIntegrationTest extends BaseIntegrationTest {
                 .header("X-Api-Auth-Token", AUTH_TOKEN)
                 .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[?(@.bucket == 'EQUITY_CORE')].target_pct").value(hasItem("50.00")))
-            .andExpect(jsonPath("$[?(@.bucket == 'EQUITY_SATELLITE')].target_pct").value(hasItem("30.00")))
-            .andExpect(jsonPath("$[?(@.bucket == 'GOLD_SILVER')].target_pct").value(hasItem("10.00")))
-            .andExpect(jsonPath("$[?(@.bucket == 'LIQUID_BUFFER')].target_pct").value(hasItem("10.00")));
+            .andExpect(jsonPath("$[?(@.bucket == 'EQUITY_CORE')].target_pct").value(hasItem(50.0)))
+            .andExpect(jsonPath("$[?(@.bucket == 'EQUITY_SATELLITE')].target_pct").value(hasItem(30.0)))
+            .andExpect(jsonPath("$[?(@.bucket == 'GOLD_SILVER')].target_pct").value(hasItem(10.0)))
+            .andExpect(jsonPath("$[?(@.bucket == 'LIQUID_BUFFER')].target_pct").value(hasItem(10.0)));
     }
 
     @Test

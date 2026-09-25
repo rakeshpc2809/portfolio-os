@@ -665,23 +665,23 @@ class RebalancePlanEngineTest {
             "INF247L01BM8", nav  // Gold and Silver (Gold)
         );
 
-        // Case A: 10.0% Gold drift (Gold weight = 20.0% vs 10.0% target on 1,000,000 corpus)
-        // Core: 450,000 (45.0% - LargeMidcap 270k / PPFC 180k = ratio 0.60 within 45-75%, Core total within 35-65%)
-        // Satellite: 270,000 (27.0% - target 30%, drift 3.0% < 5.0% threshold)
-        // Liquid: 80,000 (8.0% - target 10%, drift 2.0% < 5.0% threshold)
-        // Gold: 200,000 (20.0% - target 10%, drift 10.0% < 12.0% threshold)
-        // Total = 450k + 270k + 80k + 200k = 1,000,000.00 (100.0%)
+        // Case A: 4.0% Gold drift (Gold weight = 14.0% vs 10.0% target on 1,000,000 corpus)
+        // Core: 480,000 (48.0% - LargeMidcap 288k / PPFC 192k = ratio 0.60 within 54-66%, Core total within 35-65%)
+        // Satellite: 290,000 (29.0% - target 30%, drift 1.0% < 5.0% threshold)
+        // Liquid: 90,000 (9.0% - target 10%, drift 1.0% < 5.0% threshold)
+        // Gold: 140,000 (14.0% - target 10%, drift 4.0% < 5.0% threshold)
+        // Total = 480k + 290k + 90k + 140k = 1,000,000.00 (100.0%)
         // Each fund has an active SIP within 3 months to confirm non-legacy status
         List<Lot> lotsCaseA = List.of(
-            new Lot("c1-ltcg", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", acqDate, new BigDecimal("2690"), new BigDecimal("2690"), nav, new BigDecimal("269000.00"), false, null),
+            new Lot("c1-ltcg", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", acqDate, new BigDecimal("2870"), new BigDecimal("2870"), nav, new BigDecimal("287000.00"), false, null),
             new Lot("c1-sip", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
-            new Lot("c2-ltcg", "INF879O01027", "Parag Parikh Flexi Cap Fund", acqDate, new BigDecimal("1790"), new BigDecimal("1790"), nav, new BigDecimal("179000.00"), false, null),
+            new Lot("c2-ltcg", "INF879O01027", "Parag Parikh Flexi Cap Fund", acqDate, new BigDecimal("1910"), new BigDecimal("1910"), nav, new BigDecimal("191000.00"), false, null),
             new Lot("c2-sip", "INF879O01027", "Parag Parikh Flexi Cap Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
-            new Lot("s1-ltcg", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", acqDate, new BigDecimal("2690"), new BigDecimal("2690"), nav, new BigDecimal("269000.00"), false, null),
+            new Lot("s1-ltcg", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", acqDate, new BigDecimal("2890"), new BigDecimal("2890"), nav, new BigDecimal("289000.00"), false, null),
             new Lot("s1-sip", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
-            new Lot("l1-ltcg", "INF205K01KR8", "Invesco India Arbitrage Fund", acqDate, new BigDecimal("790"), new BigDecimal("790"), nav, new BigDecimal("79000.00"), false, null),
+            new Lot("l1-ltcg", "INF205K01KR8", "Invesco India Arbitrage Fund", acqDate, new BigDecimal("890"), new BigDecimal("890"), nav, new BigDecimal("89000.00"), false, null),
             new Lot("l1-sip", "INF205K01KR8", "Invesco India Arbitrage Fund", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null),
-            new Lot("g1-ltcg", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", acqDate, new BigDecimal("1990"), new BigDecimal("1990"), nav, new BigDecimal("199000.00"), false, null),
+            new Lot("g1-ltcg", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", acqDate, new BigDecimal("1390"), new BigDecimal("1390"), nav, new BigDecimal("139000.00"), false, null),
             new Lot("g1-sip", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds", sipDate, new BigDecimal("10"), new BigDecimal("10"), nav, new BigDecimal("1000.00"), false, null)
         );
 
@@ -692,9 +692,9 @@ class RebalancePlanEngineTest {
             lotsCaseA, navMap, benchmark, benchmark, null, null, today
         );
 
-        // Assertion 1: At 10% drift, Gold does NOT trigger rebalance because 10.0% < 12.0% threshold
+        // Assertion 1: At 4% drift, Gold does NOT trigger rebalance because 4.0% < 5.0% threshold
         assertEquals("NONE", resA.triggerType(),
-            "Gold at 20% weight (10% drift) must NOT trigger rebalance against 12% trigger_drift_pct threshold");
+            "Gold at 14% weight (4% drift) must NOT trigger rebalance against 5% trigger_drift_pct threshold");
         assertEquals("NO_REBALANCE_REQUIRED", resA.reasonCode());
         assertFalse(resA.hasSellSide());
 
@@ -702,7 +702,7 @@ class RebalancePlanEngineTest {
         // Core: 450,000 (45.0% - ratio 0.60 -> no drift)
         // Satellite: 255,000 (25.5% - target 30%, drift 4.5% < 5.0% threshold -> no drift)
         // Liquid: 60,000 (6.0% - target 10%, drift 4.0% < 5.0% threshold -> no drift)
-        // Gold: 235,000 (23.5% - target 10%, drift 13.5% >= 12.0% threshold -> DRIFT TRIGGERED!)
+        // Gold: 235,000 (23.5% - target 10%, drift 13.5% >= 5.0% threshold -> DRIFT TRIGGERED!)
         // Total = 450k + 255k + 60k + 235k = 1,000,000.00 (100.0%)
         List<Lot> lotsCaseB = List.of(
             new Lot("c1-ltcg", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", acqDate, new BigDecimal("2690"), new BigDecimal("2690"), nav, new BigDecimal("269000.00"), false, null),
@@ -721,9 +721,9 @@ class RebalancePlanEngineTest {
             lotsCaseB, navMap, benchmark, benchmark, null, null, today
         );
 
-        // Assertion 2: At 13.5% drift, Gold crosses the 12% threshold and DOES trigger rebalance
+        // Assertion 2: At 13.5% drift, Gold crosses the 5% threshold and DOES trigger rebalance
         assertEquals("DRIFT", resB.triggerType(),
-            "Gold at 23.5% weight (13.5% drift) must trigger DRIFT because 13.5% >= 12.0% threshold");
+            "Gold at 23.5% weight (13.5% drift) must trigger DRIFT because 13.5% >= 5.0% threshold");
         assertEquals("DRIFT_THRESHOLD_EXCEEDED", resB.reasonCode());
         assertTrue(resB.reasonLabel().contains("GOLD_SILVER"),
             "Reason label must identify GOLD_SILVER as the drifted bucket: " + resB.reasonLabel());

@@ -54,7 +54,7 @@ public class ProductionConfigBootSmokeTest extends BaseIntegrationTest {
         assertNotNull(goldSilver, "GOLD_SILVER bucket must be present");
         assertEquals(10.0, goldSilver.targetPct(), 0.001);
         assertEquals(5.0, goldSilver.bandPct(), 0.001, "GOLD_SILVER band_pct in v2.3 must be 5.0%");
-        assertEquals(12.0, goldSilver.triggerDriftPct(), 0.001, "GOLD_SILVER trigger_drift_pct in v2.3 must be 12.0%");
+        assertEquals(5.0, goldSilver.triggerDriftPct(), 0.001, "GOLD_SILVER trigger_drift_pct in v2.3 must be 5.0%");
 
         // Validate LIQUID_BUFFER
         BucketConfigLoader.BucketTargetConfig liquid = targetMap.get("LIQUID_BUFFER");
