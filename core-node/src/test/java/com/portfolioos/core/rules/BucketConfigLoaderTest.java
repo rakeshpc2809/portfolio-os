@@ -86,30 +86,18 @@ class BucketConfigLoaderTest {
         assertNotNull(candidates, "Legacy liquidation candidates must not be null");
         assertEquals(4, candidates.size(), "Must parse exactly 4 verified legacy candidates");
 
-        // Verify Kotak Equal Weight is strictly false by ISIN
-        assertFalse(BucketConfigLoader.isAutoHarvestEligible("INF174KA1TY2"));
-
-        // Verify other 3 candidates are true
-        assertTrue(BucketConfigLoader.isAutoHarvestEligible("INF247L01916"));
-        assertTrue(BucketConfigLoader.isAutoHarvestEligible("INF247L01BQ9"));
-        assertTrue(BucketConfigLoader.isAutoHarvestEligible("INF769K01ED6"));
-
         // Verify candidate details
         var kotak = candidates.stream().filter(c -> c.isin().equals("INF174KA1TY2")).findFirst().orElseThrow();
-        assertEquals(1, kotak.priority());
-        assertFalse(kotak.autoHarvestEligible());
-        assertTrue(kotak.reason().contains("exempt from automated harvest"));
+        assertEquals("Kotak Nifty 100 Equal Weight Index Fund Direct Growth", kotak.fundName());
+        assertTrue(kotak.reason().contains("systematic tax-free LTCG liquidation"));
 
         var midcap = candidates.stream().filter(c -> c.isin().equals("INF247L01916")).findFirst().orElseThrow();
-        assertEquals(2, midcap.priority());
-        assertTrue(midcap.autoHarvestEligible());
+        assertEquals("Motilal Oswal Nifty Midcap 150 Index Fund Direct Growth", midcap.fundName());
 
         var microcap = candidates.stream().filter(c -> c.isin().equals("INF247L01BQ9")).findFirst().orElseThrow();
-        assertEquals(3, microcap.priority());
-        assertTrue(microcap.autoHarvestEligible());
+        assertEquals("Motilal Oswal Nifty Microcap 250 Index Fund Direct Growth", microcap.fundName());
 
         var healthcare = candidates.stream().filter(c -> c.isin().equals("INF769K01ED6")).findFirst().orElseThrow();
-        assertEquals(4, healthcare.priority());
-        assertTrue(healthcare.autoHarvestEligible());
+        assertEquals("Mirae Asset Healthcare Fund Direct Growth", healthcare.fundName());
     }
 }

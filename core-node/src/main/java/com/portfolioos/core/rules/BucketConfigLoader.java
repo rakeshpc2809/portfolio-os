@@ -97,8 +97,6 @@ public class BucketConfigLoader {
     public record LegacyLiquidationCandidate(
         String isin,
         String fundName,
-        int priority,
-        boolean autoHarvestEligible,
         String reason
     ) {}
 
@@ -250,12 +248,8 @@ public class BucketConfigLoader {
                             Map<String, Object> lMap = (Map<String, Object>) rawMap;
                             String isin = lMap.get("isin") != null ? lMap.get("isin").toString() : null;
                             String fName = lMap.get("fund_name") != null ? lMap.get("fund_name").toString() : "";
-                            int prio = lMap.get("priority") instanceof Number n ? n.intValue() : 99;
-                            boolean autoHarvest = lMap.containsKey("auto_harvest_eligible")
-                                ? Boolean.TRUE.equals(lMap.get("auto_harvest_eligible"))
-                                : true;
                             String reason = lMap.get("reason") != null ? lMap.get("reason").toString() : "";
-                            legacyCandidates.add(new LegacyLiquidationCandidate(isin, fName, prio, autoHarvest, reason));
+                            legacyCandidates.add(new LegacyLiquidationCandidate(isin, fName, reason));
                         }
                     }
                 }
@@ -276,33 +270,6 @@ public class BucketConfigLoader {
         return config != null && config.legacyCandidates() != null ? config.legacyCandidates() : List.of();
     }
 
-    public static boolean isAutoHarvestEligible(String assetId) {
-        if (assetId == null || assetId.isBlank()) return false;
-        String cleanId = assetId.trim();
-
-        // =========================================================================================
-        // DEFENSE-IN-DEPTH HARDCODED INVARIANT
-        // -----------------------------------------------------------------------------------------
-        // Single Source of Truth Alignment:
-        // This hardcoded guard mirrors the configuration in rules/bucket_targets.yaml under:
-        //   legacy_liquidation_candidates -> isin: "INF174KA1TY2" (auto_harvest_eligible: false)
-        // Kotak Nifty 100 Equal Weight Index Fund Direct Growth is designated as the core, protected
-        // ballast holding and must NEVER be liquidated by automated tax-loss or tax-gain harvesting.
-        // NOTE: If this protected core holding is ever migrated or altered in policy, BOTH the YAML
-        // entry in bucket_targets.yaml AND this Java guard MUST be updated in tandem.
-        // =========================================================================================
-        // Hardcoded safety invariant: Match strictly against ISIN (standard in FifoMatcher lots and all production callers)
-        if ("INF174KA1TY2".equalsIgnoreCase(cleanId)) {
-            return false;
-        }
-
-        for (LegacyLiquidationCandidate c : getLegacyLiquidationCandidates()) {
-            if (cleanId.equalsIgnoreCase(c.isin())) {
-                return c.autoHarvestEligible();
-            }
-        }
-        return true;
-    }
 
     public static List<BucketEngine.BucketTarget> getActiveBucketTargets(LocalDate date) {
         BucketRulesConfig config = loadConfig();

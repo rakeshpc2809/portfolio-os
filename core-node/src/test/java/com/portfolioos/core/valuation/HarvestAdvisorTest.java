@@ -50,14 +50,12 @@ public class HarvestAdvisorTest {
     }
 
     @Test
-    @DisplayName("Kotak Nifty 100 Equal Weight is strictly excluded from auto-harvest recommendations")
-    void testKotakEqualWeightExcludedFromAutoHarvest() {
+    @DisplayName("Kotak Nifty 100 Equal Weight and Midcap 150 LTCG lots are eligible for tax harvest recommendations")
+    void testHarvestRecommendationsIncludeEligibleLtcgLots() {
         LocalDate acqDate = LocalDate.now().minusDays(400); // LTCG
-        // Kotak Equal Weight holding (exempt from auto harvest)
         Lot kotakLot = new Lot("L_KOTAK", "INF174KA1TY2", "Kotak Nifty 100 Equal Weight Index Fund Direct Growth", acqDate,
             new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("50"), new BigDecimal("5000"), false, null);
 
-        // Motilal Midcap 150 holding (eligible legacy liquidation candidate)
         Lot midcapLot = new Lot("L_MIDCAP", "INF247L01916", "Motilal Oswal Nifty Midcap 150 Index Fund Direct Growth", acqDate,
             new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("50"), new BigDecimal("5000"), false, null);
 
@@ -71,9 +69,8 @@ public class HarvestAdvisorTest {
         );
 
         assertNotNull(result);
-        assertEquals(1, result.recommendations().size(), "Only eligible midcap lot must be recommended, Kotak must be excluded");
-        assertEquals("INF247L01916", result.recommendations().get(0).assetId());
-        assertFalse(result.recommendations().stream().anyMatch(r -> r.assetId().equals("INF174KA1TY2")),
-            "Kotak Nifty 100 Equal Weight must NEVER appear in automated tax harvest recommendations");
+        assertEquals(2, result.recommendations().size(), "Both eligible LTCG lots should be included in tax harvest recommendations");
+        assertTrue(result.recommendations().stream().anyMatch(r -> r.assetId().equals("INF174KA1TY2")));
+        assertTrue(result.recommendations().stream().anyMatch(r -> r.assetId().equals("INF247L01916")));
     }
 }

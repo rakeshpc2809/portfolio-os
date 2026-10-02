@@ -222,13 +222,13 @@ class RebalanceWaterfallEngineTest {
     }
 
     @Test
-    void testLegacyTierStrategyExcludesKotakEqualWeight() {
+    void testLegacyTierStrategyIncludesKotakEqualWeight() {
         LocalDate today = LocalDate.of(2026, 8, 26);
-        // Kotak Equal Weight: inactive SIP, LTCG, but auto_harvest_eligible: false
+        // Kotak Equal Weight: inactive SIP, LTCG, legacy candidate (no harvest protection)
         Lot kotakLot = new Lot("L_KOTAK", "INF174KA1TY2", "Kotak Nifty 100 Equal Weight Index Fund Direct Growth",
             today.minusYears(2), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("50"), new BigDecimal("5000"), false, BigDecimal.ZERO);
 
-        // Motilal Midcap 150: inactive SIP, LTCG, auto_harvest_eligible: true
+        // Motilal Midcap 150: inactive SIP, LTCG, legacy candidate
         Lot midcapLot = new Lot("L_MIDCAP", "INF247L01916", "Motilal Oswal Nifty Midcap 150 Index Fund Direct Growth",
             today.minusYears(2), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("50"), new BigDecimal("5000"), false, BigDecimal.ZERO);
 
@@ -237,11 +237,11 @@ class RebalanceWaterfallEngineTest {
             "INF247L01916", new BigDecimal("100")
         );
 
-        // Trim 5,000 INR from legacy
+        // Trim 5,000 INR specifically from Kotak legacy lot
         RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
             BucketEngine.Bucket.EQUITY_CORE,
             new BigDecimal("5000"),
-            List.of(kotakLot, midcapLot),
+            List.of(kotakLot),
             navMap,
             new BigDecimal("125000"),
             false,
@@ -250,11 +250,8 @@ class RebalanceWaterfallEngineTest {
         );
 
         assertNotNull(result);
-        assertFalse(result.steps().isEmpty());
-        // All trimmed steps must be for Motilal Midcap, NONE for Kotak
-        for (RebalanceWaterfallEngine.WaterfallStep step : result.steps()) {
-            assertNotEquals("INF174KA1TY2", step.assetId(), "Kotak Equal Weight must NEVER be trimmed by automated waterfall");
-        }
-        assertEquals("INF247L01916", result.steps().get(0).assetId(), "Eligible legacy midcap lot should be trimmed");
+        assertEquals(1, result.steps().size());
+        assertEquals("INF174KA1TY2", result.steps().get(0).assetId(), "Kotak Equal Weight must be trimmed when eligible as legacy lot");
+        assertEquals(0, new BigDecimal("5000.00").compareTo(result.steps().get(0).proceeds()));
     }
 }
