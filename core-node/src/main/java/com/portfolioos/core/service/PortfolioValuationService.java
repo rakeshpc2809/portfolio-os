@@ -186,6 +186,9 @@ public class PortfolioValuationService {
                 activeTargets, currentFy, activeOrPreferredAssetIds
             );
 
+        List<TaxEvent> allEvents = (state != null && state.events() != null) ? state.events() : Collections.emptyList();
+        LocalDate today = LocalDate.now();
+
         return result.bucketStatuses().stream()
             .map(s -> new com.portfolioos.core.dtos.ReportDtos.BucketStatusDto(
                 s.bucket().name(),
@@ -193,7 +196,25 @@ public class PortfolioValuationService {
                 s.currentPct().doubleValue(),
                 s.targetPct().doubleValue(),
                 s.driftPct().doubleValue(),
-                s.isDrifted()
+                s.isDrifted(),
+                (s.funds() != null ? s.funds() : Collections.<BucketEngine.BucketFundConstituent>emptyList()).stream().map(f -> {
+                    double fundXirr = calculateHoldingXirr(f.isin(), allEvents, today, f.currentValue());
+                    return new com.portfolioos.core.dtos.ReportDtos.BucketFundItemDto(
+                        f.isin(),
+                        f.fundName(),
+                        fmt(f.currentValue()),
+                        f.currentValue().doubleValue(),
+                        f.units().doubleValue(),
+                        f.allocationPctInBucket().doubleValue(),
+                        f.allocationPctInPortfolio().doubleValue(),
+                        f.targetWeightInBucket() != null ? f.targetWeightInBucket().doubleValue() : null,
+                        fmt(f.investedValue()),
+                        (f.unrealizedGain().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + fmt(f.unrealizedGain()),
+                        f.gainPct().doubleValue(),
+                        BigDecimal.valueOf(fundXirr).setScale(2, RoundingMode.HALF_UP).doubleValue(),
+                        f.isPreferred()
+                    );
+                }).toList()
             ))
             .toList();
     }

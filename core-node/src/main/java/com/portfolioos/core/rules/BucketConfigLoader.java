@@ -94,6 +94,24 @@ public class BucketConfigLoader {
         return false;
     }
 
+    public static Double getPreferredFundWeight(String assetId) {
+        if (assetId == null) return null;
+        BucketTargetVersion version = getActiveVersion(LocalDate.now());
+        if (version != null && version.targets() != null) {
+            for (BucketTargetConfig target : version.targets()) {
+                if (target.preferredFunds() != null) {
+                    for (PreferredFundConfig fund : target.preferredFunds()) {
+                        if (assetId.equalsIgnoreCase(fund.fundId()) ||
+                            (fund.fundName() != null && assetId.equalsIgnoreCase(fund.fundName()))) {
+                            return fund.allocationWeight();
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
     public record LegacyLiquidationCandidate(
         String isin,
         String fundName,

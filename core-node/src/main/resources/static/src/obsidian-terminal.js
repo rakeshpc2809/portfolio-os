@@ -441,6 +441,63 @@ function setupTimeRangeButtons() {
 // ==========================================================================
 // TAB 1: ALLOCATION MATRIX & RISK SENTINEL (Resolves Finding #1, #2, #16)
 // ==========================================================================
+// Track expanded bucket rows across live refreshes
+window._expandedBuckets = window._expandedBuckets || new Set(['EQUITY_CORE']);
+
+function toggleBucketRow(bucketName) {
+  if (window._expandedBuckets.has(bucketName)) {
+    window._expandedBuckets.delete(bucketName);
+  } else {
+    window._expandedBuckets.add(bucketName);
+  }
+  const isExpanded = window._expandedBuckets.has(bucketName);
+  const row = document.querySelector(`tr[data-bucket="${bucketName}"]`);
+  const containerRow = document.getElementById(`bucket-funds-${bucketName}`);
+  if (row) {
+    row.classList.toggle('bucket-expanded', isExpanded);
+    const chevron = row.querySelector('.bucket-chevron');
+    if (chevron) chevron.textContent = isExpanded ? '▼' : '▶';
+  }
+  if (containerRow) {
+    containerRow.style.display = isExpanded ? 'table-row' : 'none';
+  }
+  updateToggleAllBucketsButton();
+}
+window.toggleBucketRow = toggleBucketRow;
+
+function updateToggleAllBucketsButton() {
+  const btn = document.getElementById('btnToggleAllBuckets');
+  if (!btn) return;
+  const allBucketRows = document.querySelectorAll('tr[data-bucket]');
+  if (allBucketRows.length === 0) return;
+  const isAnyExpanded = window._expandedBuckets.size > 0;
+  btn.textContent = isAnyExpanded ? 'Collapse Funds ▴' : 'Expand Funds ▾';
+}
+window.updateToggleAllBucketsButton = updateToggleAllBucketsButton;
+
+function toggleAllBuckets() {
+  const allBucketRows = document.querySelectorAll('tr[data-bucket]');
+  const allNames = Array.from(allBucketRows).map(r => r.getAttribute('data-bucket')).filter(Boolean);
+  if (window._expandedBuckets.size > 0) {
+    window._expandedBuckets.clear();
+  } else {
+    allNames.forEach(name => window._expandedBuckets.add(name));
+  }
+  allNames.forEach(name => {
+    const isExpanded = window._expandedBuckets.has(name);
+    const row = document.querySelector(`tr[data-bucket="${name}"]`);
+    const containerRow = document.getElementById(`bucket-funds-${name}`);
+    if (row) {
+      row.classList.toggle('bucket-expanded', isExpanded);
+      const chevron = row.querySelector('.bucket-chevron');
+      if (chevron) chevron.textContent = isExpanded ? '▼' : '▶';
+    }
+    if (containerRow) containerRow.style.display = isExpanded ? 'table-row' : 'none';
+  });
+  updateToggleAllBucketsButton();
+}
+window.toggleAllBuckets = toggleAllBuckets;
+
 function renderAllocationMatrix(bucketAllocations) {
   const tbody = document.getElementById('allocTableBody');
   if (!tbody) return;
@@ -460,43 +517,131 @@ function renderAllocationMatrix(bucketAllocations) {
     'EQUITY_CORE': '#10B981',
     'EQUITY_SATELLITE': '#F59E0B',
     'GOLD_SILVER': '#06B6D4',
-    'LIQUID_BUFFER': '#8B5CF6'
+    'LIQUID_BUFFER': '#8B5CF6',
+    'LEGACY_HOLDINGS': '#94A3B8'
   };
 
   const bucketDisplayNames = {
     'EQUITY_CORE': 'Equity Core',
     'EQUITY_SATELLITE': 'Equity Satellite',
     'GOLD_SILVER': 'Gold & Silver',
-    'LIQUID_BUFFER': 'Liquid Buffer'
+    'LIQUID_BUFFER': 'Liquid Buffer',
+    'LEGACY_HOLDINGS': 'Legacy / Phase-out Holdings'
   };
 
-  tbody.innerHTML = bucketAllocations.map(b => {
+  let html = '';
+  bucketAllocations.forEach(b => {
     const rawName = b.bucket || b.bucket_name || '';
-    if (rawName === 'LEGACY_HOLDINGS') return '';
+    const funds = b.funds || [];
+    if (rawName === 'LEGACY_HOLDINGS' && funds.length === 0) return;
+
     const displayName = bucketDisplayNames[rawName] || rawName;
     const color = bucketColors[rawName] || '#94A3B8';
+    const isExpanded = window._expandedBuckets.has(rawName);
 
     const actualPct = parseFloat(String(b.current_pct || b.current_percentage || '0').replace('%', ''));
     const targetPct = parseFloat(String(b.target_pct || b.target_percentage || '0').replace('%', ''));
     const driftPct = parseFloat(String(b.drift_pct || b.drift_percentage || (actualPct - targetPct)).replace('%', ''));
-    const isDrift = b.is_drifted === true || b.drifted === true || Math.abs(driftPct) > 5.0;
+    const isDrift = rawName !== 'LEGACY_HOLDINGS' && (b.is_drifted === true || b.drifted === true || Math.abs(driftPct) > 5.0);
 
-    return `
-      <tr data-bucket="${rawName}">
-        <td style="font-weight:600;color:#FFFFFF;">${displayName}</td>
-        <td style="color:var(--text-muted);">${targetPct.toFixed(1)}%</td>
+    const statusBadge = rawName === 'LEGACY_HOLDINGS'
+      ? `<span style="font-size:0.7rem;color:var(--text-muted);background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:3px;">PHASE-OUT (${b.current_value || '₹0'})</span>`
+      : `<span style="font-size:0.72rem;color:${isDrift ? 'var(--accent-amber)' : 'var(--accent-emerald)'};font-weight:600;">${isDrift ? 'DRIFT' : 'BALANCED'} (${driftPct > 0 ? '+' : ''}${driftPct.toFixed(1)}%)</span>`;
+
+    html += `
+      <tr data-bucket="${rawName}" class="bucket-row-clickable ${isExpanded ? 'bucket-expanded' : ''}" onclick="window.toggleBucketRow && window.toggleBucketRow('${rawName}')" title="Click to expand/collapse fund breakdown">
+        <td>
+          <div style="display:flex;align-items:center;">
+            <span class="bucket-chevron">${isExpanded ? '▼' : '▶'}</span>
+            <span style="font-weight:600;color:#FFFFFF;">${displayName}</span>
+            <span class="bucket-badge-count" style="${funds.length > 0 ? 'background:rgba(255,255,255,0.08);color:' + color + ';' : ''}">
+              ${funds.length} ${funds.length === 1 ? 'Fund' : 'Funds'}
+            </span>
+          </div>
+        </td>
+        <td style="color:var(--text-muted);">${rawName === 'LEGACY_HOLDINGS' ? '0.0%' : targetPct.toFixed(1) + '%'}</td>
         <td style="color:${color};font-weight:700;">${actualPct.toFixed(1)}%</td>
         <td>
           <div class="alloc-bar-track">
-            <div class="alloc-bar-fill" style="width:${Math.min(100, actualPct * 1.5)}%;background:${color};"></div>
+            <div class="alloc-bar-fill" style="width:${Math.min(100, Math.max(0, actualPct * 1.5))}%;background:${color};"></div>
           </div>
         </td>
-        <td style="font-size:0.72rem;color:${isDrift ? 'var(--accent-amber)' : 'var(--accent-emerald)'};">
-          ${isDrift ? 'DRIFT' : 'BALANCED'} (${driftPct > 0 ? '+' : ''}${driftPct.toFixed(1)}%)
+        <td>
+          ${statusBadge}
+        </td>
+      </tr>
+      <tr class="bucket-funds-container-row" id="bucket-funds-${rawName}" style="display:${isExpanded ? 'table-row' : 'none'};">
+        <td colspan="5">
+          <div class="bucket-funds-card">
+            ${funds.length === 0 ? `
+              <div style="font-size:0.72rem;color:var(--text-muted);padding:6px 4px;font-style:italic;">
+                No open holdings currently mapped in this bucket.
+              </div>
+            ` : funds.map(f => {
+              const gainVal = typeof f.gain_pct === 'number' ? f.gain_pct : 0;
+              const gainColor = gainVal >= 0 ? 'var(--accent-emerald)' : 'var(--accent-amber)';
+              const allocBucket = typeof f.allocation_pct_in_bucket === 'number' ? f.allocation_pct_in_bucket : 0;
+              const allocPortfolio = typeof f.allocation_pct_in_portfolio === 'number' ? f.allocation_pct_in_portfolio : 0;
+              const targetWeight = f.target_weight_in_bucket;
+
+              return `
+                <div class="bucket-fund-item" onclick="event.stopPropagation(); if (window.openTaxLotInspector) window.openTaxLotInspector('${f.isin}')" style="cursor:pointer;" title="Click to inspect tax lots for ${f.isin}">
+                  <div class="bucket-fund-left">
+                    <div class="bucket-fund-name-wrap">
+                      <span class="bucket-fund-name" title="${f.fund_name || f.isin}">${f.fund_name || f.isin}</span>
+                      ${f.is_preferred ? `
+                        <span class="scheme-badge" style="font-size:0.6rem;padding:1px 5px;background:rgba(16,185,129,0.15);border-color:var(--accent-emerald);color:var(--accent-emerald);">
+                          PREFERRED ${targetWeight != null ? targetWeight.toFixed(1) + '%' : ''}
+                        </span>
+                      ` : (rawName === 'LEGACY_HOLDINGS' ? `
+                        <span class="scheme-badge" style="font-size:0.6rem;padding:1px 5px;background:rgba(239,68,68,0.15);border-color:rgba(239,68,68,0.4);color:#f87171;">
+                          PHASE-OUT
+                        </span>
+                      ` : '')}
+                    </div>
+                    <div class="bucket-fund-submeta">
+                      <span class="bucket-fund-isin">${f.isin}</span>
+                      <span>•</span>
+                      <span>${f.total_units != null ? f.total_units.toFixed(2) : '0'} units</span>
+                      ${f.xirr != null && f.xirr !== 0 ? `
+                        <span>•</span>
+                        <span style="color:${f.xirr >= 0 ? 'var(--accent-emerald)' : 'var(--accent-amber)'};font-weight:600;">XIRR ${f.xirr > 0 ? '+' : ''}${f.xirr.toFixed(1)}%</span>
+                      ` : ''}
+                    </div>
+                  </div>
+                  <div class="bucket-fund-right">
+                    <div class="bucket-fund-val-block">
+                      <div class="bucket-fund-val">${f.current_value || '₹0.00'}</div>
+                      <div class="bucket-fund-gain" style="color:${gainColor};">
+                        ${f.unrealized_gain || '₹0.00'} (${gainVal > 0 ? '+' : ''}${gainVal.toFixed(1)}%)
+                      </div>
+                    </div>
+                    <div class="bucket-fund-weight-badge">
+                      <span class="bucket-fund-weight-pct" style="color:${color};">${allocBucket.toFixed(1)}%</span>
+                      <span class="bucket-fund-weight-label">of Bucket</span>
+                      <div class="bucket-fund-minibar-track">
+                        <div class="bucket-fund-minibar-fill" style="width:${Math.min(100, Math.max(0, allocBucket))}%;background:${color};"></div>
+                      </div>
+                      <span style="font-size:0.6rem;color:var(--text-muted);margin-top:2px;">${allocPortfolio.toFixed(1)}% Port</span>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
         </td>
       </tr>
     `;
-  }).join('');
+  });
+
+  tbody.innerHTML = html;
+  updateToggleAllBucketsButton();
+
+  const btnToggle = document.getElementById('btnToggleAllBuckets');
+  if (btnToggle && !btnToggle._hasClick) {
+    btnToggle._hasClick = true;
+    btnToggle.addEventListener('click', toggleAllBuckets);
+  }
 }
 
 function renderMarketRiskSentinel(macroRegime) {

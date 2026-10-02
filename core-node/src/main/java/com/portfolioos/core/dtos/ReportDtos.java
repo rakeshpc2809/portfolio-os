@@ -139,14 +139,42 @@ public class ReportDtos {
         long holdingPeriodDays
     ) {}
 
+    public record BucketFundItemDto(
+        String isin,
+        String fundName,
+        String currentValue,
+        double value,
+        double totalUnits,
+        double allocationPctInBucket,
+        double allocationPctInPortfolio,
+        Double targetWeightInBucket,
+        String investedValue,
+        String unrealizedGain,
+        double gainPct,
+        double xirr,
+        boolean isPreferred
+    ) {}
+
     public record BucketStatusDto(
         String bucket,
         String currentValue,
         double currentPct,
         double targetPct,
         double driftPct,
-        boolean isDrifted
-    ) {}
+        boolean isDrifted,
+        List<BucketFundItemDto> funds
+    ) {
+        public BucketStatusDto(
+            String bucket,
+            String currentValue,
+            double currentPct,
+            double targetPct,
+            double driftPct,
+            boolean isDrifted
+        ) {
+            this(bucket, currentValue, currentPct, targetPct, driftPct, isDrifted, List.of());
+        }
+    }
 
     public record RebalanceRecommendationDto(
         String assetId,

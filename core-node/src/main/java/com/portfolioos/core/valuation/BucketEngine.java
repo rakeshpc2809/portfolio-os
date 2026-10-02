@@ -46,14 +46,40 @@ public class BucketEngine {
         BigDecimal bandPct
     ) {}
 
+    public record BucketFundConstituent(
+        String isin,
+        String fundName,
+        BigDecimal currentValue,
+        BigDecimal investedValue,
+        BigDecimal unrealizedGain,
+        BigDecimal gainPct,
+        BigDecimal units,
+        BigDecimal allocationPctInBucket,
+        BigDecimal allocationPctInPortfolio,
+        BigDecimal targetWeightInBucket,
+        boolean isPreferred
+    ) {}
+
     public record BucketStatus(
         Bucket bucket,
         BigDecimal currentValue,
         BigDecimal currentPct,
         BigDecimal targetPct,
         BigDecimal driftPct,
-        boolean isDrifted
-    ) {}
+        boolean isDrifted,
+        List<BucketFundConstituent> funds
+    ) {
+        public BucketStatus(
+            Bucket bucket,
+            BigDecimal currentValue,
+            BigDecimal currentPct,
+            BigDecimal targetPct,
+            BigDecimal driftPct,
+            boolean isDrifted
+        ) {
+            this(bucket, currentValue, currentPct, targetPct, driftPct, isDrifted, List.of());
+        }
+    }
 
     public record RebalanceRecommendation(
         String assetId,
@@ -264,8 +290,46 @@ public class BucketEngine {
                 calendarTriggerFired = true;
             }
 
+            Map<String, List<Lot>> assetMap = bucketAssetLots.get(bucket);
+            List<BucketFundConstituent> fundConstituents = new ArrayList<>();
+            if (assetMap != null) {
+                for (Map.Entry<String, List<Lot>> entry : assetMap.entrySet()) {
+                    String assetId = entry.getKey();
+                    List<Lot> lots = entry.getValue();
+                    if (lots.isEmpty()) continue;
+
+                    String fundName = lots.get(0).assetName();
+                    BigDecimal units = lots.stream().map(Lot::remainingUnits).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    BigDecimal costBasis = lots.stream().map(Lot::totalCostBasis).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    BigDecimal nav = NavResolver.requireValidNav(navMap, lots.get(0), "BucketEngine");
+                    BigDecimal fundVal = units.multiply(nav).setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal unrealizedGain = fundVal.subtract(costBasis);
+                    BigDecimal gainPct = costBasis.compareTo(BigDecimal.ZERO) > 0
+                        ? unrealizedGain.multiply(new BigDecimal("100")).divide(costBasis, 2, RoundingMode.HALF_UP)
+                        : BigDecimal.ZERO;
+                    BigDecimal allocInBucket = curVal.compareTo(BigDecimal.ZERO) > 0
+                        ? fundVal.multiply(new BigDecimal("100")).divide(curVal, 2, RoundingMode.HALF_UP)
+                        : BigDecimal.ZERO;
+                    BigDecimal allocInPortfolio = totalPortfolioValue.compareTo(BigDecimal.ZERO) > 0
+                        ? fundVal.multiply(new BigDecimal("100")).divide(totalPortfolioValue, 2, RoundingMode.HALF_UP)
+                        : BigDecimal.ZERO;
+
+                    Double prefWeight = com.portfolioos.core.rules.BucketConfigLoader.getPreferredFundWeight(assetId);
+                    BigDecimal targetWeightInBucket = prefWeight != null
+                        ? BigDecimal.valueOf(prefWeight * 100.0).setScale(2, RoundingMode.HALF_UP)
+                        : null;
+                    boolean isPreferred = com.portfolioos.core.rules.BucketConfigLoader.isPreferredFund(assetId);
+
+                    fundConstituents.add(new BucketFundConstituent(
+                        assetId, fundName, fundVal, costBasis, unrealizedGain, gainPct, units,
+                        allocInBucket, allocInPortfolio, targetWeightInBucket, isPreferred
+                    ));
+                }
+                fundConstituents.sort((a, b) -> b.currentValue().compareTo(a.currentValue()));
+            }
+
             bucketStatuses.add(new BucketStatus(
-                bucket, curVal, curPct, targetPct, drift, isDrifted
+                bucket, curVal, curPct, targetPct, drift, isDrifted, fundConstituents
             ));
         }
 
