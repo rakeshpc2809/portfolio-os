@@ -165,7 +165,14 @@ public class SqliteEventStore implements EventStorePort {
         if (events.isEmpty()) return List.of();
 
         List<String> hashes = new ArrayList<>();
-        String checkSql = "SELECT event_hash FROM tax_events WHERE asset_id = ? AND event_type = ? AND event_date = ? AND units = ? AND gross_amount = ? LIMIT 1";
+        String checkSql = "SELECT event_hash FROM tax_events " +
+                          "WHERE (asset_id = ? OR (isin IS NOT NULL AND isin != '' AND isin = ?)) " +
+                          "  AND ( " +
+                          "    (event_type IN ('ACQUISITION', 'SIP_INSTALMENT') AND ? IN ('ACQUISITION', 'SIP_INSTALMENT')) " +
+                          "    OR (event_type = ? AND ? NOT IN ('ACQUISITION', 'SIP_INSTALMENT')) " +
+                          "  ) " +
+                          "  AND event_date = ? " +
+                          "  AND abs(cast(units as real) - cast(? as real)) < 0.001 LIMIT 1";
         String insertSql = "INSERT INTO tax_events (id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id, ingested_at, previous_hash, event_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = getConnection()) {
@@ -179,10 +186,12 @@ public class SqliteEventStore implements EventStorePort {
 
                 for (TaxEvent event : events) {
                     checkStmt.setString(1, event.assetId());
-                    checkStmt.setString(2, event.eventType().name());
-                    checkStmt.setString(3, event.eventDate().toString());
-                    checkStmt.setString(4, event.units().toPlainString());
-                    checkStmt.setString(5, event.grossAmount().toPlainString());
+                    checkStmt.setString(2, event.isin() != null ? event.isin() : "");
+                    checkStmt.setString(3, event.eventType().name());
+                    checkStmt.setString(4, event.eventType().name());
+                    checkStmt.setString(5, event.eventType().name());
+                    checkStmt.setString(6, event.eventDate().toString());
+                    checkStmt.setString(7, event.units().toPlainString());
 
                     try (ResultSet rs = checkStmt.executeQuery()) {
                         if (rs.next()) {

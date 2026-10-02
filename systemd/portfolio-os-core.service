@@ -8,9 +8,9 @@ PartOf=portfolio-os.target
 Type=simple
 WorkingDirectory=/home/rakeshpc/Projects/portfolio-os/core-node
 EnvironmentFile=/home/rakeshpc/Projects/portfolio-os/.env
-Environment=JAVA_HOME=/usr/lib/jvm/java-26-openjdk
+Environment=JAVA_HOME=/usr/lib/jvm/java-27-openjdk
 UnsetEnvironment=_JAVA_OPTIONS
-ExecStart=/usr/lib/jvm/java-26-openjdk/bin/java --add-opens=java.base/java.nio=ALL-UNNAMED --enable-native-access=ALL-UNNAMED -jar target/core-node-3.0.0.jar
+ExecStart=/usr/lib/jvm/java-27-openjdk/bin/java --add-opens=java.base/java.nio=ALL-UNNAMED --enable-native-access=ALL-UNNAMED -jar target/core-node-3.0.0.jar
 Restart=on-failure
 RestartSec=1s
 StandardOutput=journal

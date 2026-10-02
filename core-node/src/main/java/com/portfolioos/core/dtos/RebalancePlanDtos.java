@@ -1,7 +1,11 @@
 package com.portfolioos.core.dtos;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class RebalancePlanDtos {
 
@@ -149,8 +153,131 @@ public class RebalancePlanDtos {
     public record SellSidePlanDto(
         BigDecimal totalRequired,
         List<WaterfallTierDto> waterfall,
-        TaxSummaryDto taxSummary
-    ) {}
+        TaxSummaryDto taxSummary,
+        List<ConsolidatedSellOrderDto> orders
+    ) {
+        public SellSidePlanDto(BigDecimal totalRequired, List<WaterfallTierDto> waterfall, TaxSummaryDto taxSummary) {
+            this(totalRequired, waterfall, taxSummary, buildConsolidatedOrders(waterfall));
+        }
+
+        public static List<ConsolidatedSellOrderDto> buildConsolidatedOrders(List<WaterfallTierDto> waterfall) {
+            if (waterfall == null || waterfall.isEmpty()) {
+                return List.of();
+            }
+            Map<String, List<RebalanceLotImpactDto>> grouped = new LinkedHashMap<>();
+            for (WaterfallTierDto tier : waterfall) {
+                if (tier.lots() != null) {
+                    for (RebalanceLotImpactDto lot : tier.lots()) {
+                        String key = lot.fundId() != null && !lot.fundId().isBlank() ? lot.fundId() : lot.fundName();
+                        if (key == null) key = "UNKNOWN_HOLDING";
+                        grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(lot);
+                    }
+                }
+            }
+
+            List<ConsolidatedSellOrderDto> result = new ArrayList<>();
+            for (Map.Entry<String, List<RebalanceLotImpactDto>> entry : grouped.entrySet()) {
+                List<RebalanceLotImpactDto> lotList = entry.getValue();
+                if (lotList.isEmpty()) continue;
+                RebalanceLotImpactDto first = lotList.get(0);
+                String fundId = first.fundId();
+                String fundName = first.fundName();
+
+                BigDecimal totalProceeds = BigDecimal.ZERO;
+                BigDecimal totalUnits = BigDecimal.ZERO;
+                BigDecimal totalRealizedGain = BigDecimal.ZERO;
+                BigDecimal totalExemption = BigDecimal.ZERO;
+                BigDecimal totalTax = BigDecimal.ZERO;
+                boolean allExempt = true;
+
+                for (RebalanceLotImpactDto l : lotList) {
+                    if (l.saleProceeds() != null) totalProceeds = totalProceeds.add(l.saleProceeds());
+                    if (l.unitsSold() != null) totalUnits = totalUnits.add(l.unitsSold());
+                    if (l.realizedGain() != null) totalRealizedGain = totalRealizedGain.add(l.realizedGain());
+                    if (l.taxImpact() != null) {
+                        if (l.taxImpact().exemptionApplied() != null) {
+                            totalExemption = totalExemption.add(l.taxImpact().exemptionApplied());
+                        }
+                        if (l.taxImpact().taxAmount() != null) {
+                            totalTax = totalTax.add(l.taxImpact().taxAmount());
+                        }
+                        if (!"SEC_112A_EXEMPT".equals(l.taxImpact().regime()) && (l.taxImpact().exemptionApplied() == null || l.taxImpact().exemptionApplied().compareTo(BigDecimal.ZERO) <= 0)) {
+                            allExempt = false;
+                        }
+                    } else {
+                        allExempt = false;
+                    }
+                }
+
+                int count = lotList.size();
+                String classification;
+                String summaryLabel;
+                if (totalExemption.compareTo(BigDecimal.ZERO) > 0) {
+                    classification = "SEC_112A_EXEMPT";
+                    BigDecimal taxSaved = totalExemption.multiply(new BigDecimal("0.125")).setScale(0, RoundingMode.HALF_UP);
+                    summaryLabel = count + (count == 1 ? " Lot" : " Lots") + " · LTCG Exempt (Saved ₹ " + String.format("%,d", taxSaved.longValue()) + " Tax)";
+                } else if (allExempt) {
+                    classification = "SEC_112A_EXEMPT";
+                    summaryLabel = count + (count == 1 ? " Lot" : " Lots") + " · Sec 112A Exempt";
+                } else if (totalRealizedGain.compareTo(BigDecimal.ZERO) < 0) {
+                    classification = "LOSS_HARVEST";
+                    summaryLabel = count + (count == 1 ? " Lot" : " Lots") + " · Tax-Loss Harvest";
+                } else {
+                    classification = "TAXABLE_TRIM";
+                    summaryLabel = count + (count == 1 ? " Lot" : " Lots") + " · Taxable Trim";
+                }
+
+                result.add(new ConsolidatedSellOrderDto(
+                    fundId,
+                    fundName,
+                    totalProceeds,
+                    totalUnits,
+                    totalRealizedGain,
+                    totalExemption,
+                    totalTax,
+                    count,
+                    classification,
+                    summaryLabel,
+                    lotList
+                ));
+            }
+            return result;
+        }
+    }
+
+    public record ConsolidatedSellOrderDto(
+        String fundId,
+        String fundName,
+        BigDecimal totalProceeds,
+        BigDecimal totalUnits,
+        BigDecimal totalRealizedGain,
+        BigDecimal totalExemptionApplied,
+        BigDecimal totalTaxAmount,
+        int lotCount,
+        String taxClassification,
+        String summaryLabel,
+        double currentPct,
+        double postPct,
+        BigDecimal preValuation,
+        BigDecimal postValuation,
+        List<RebalanceLotImpactDto> lots
+    ) {
+        public ConsolidatedSellOrderDto(
+            String fundId,
+            String fundName,
+            BigDecimal totalProceeds,
+            BigDecimal totalUnits,
+            BigDecimal totalRealizedGain,
+            BigDecimal totalExemptionApplied,
+            BigDecimal totalTaxAmount,
+            int lotCount,
+            String taxClassification,
+            String summaryLabel,
+            List<RebalanceLotImpactDto> lots
+        ) {
+            this(fundId, fundName, totalProceeds, totalUnits, totalRealizedGain, totalExemptionApplied, totalTaxAmount, lotCount, taxClassification, summaryLabel, 0.0, 0.0, BigDecimal.ZERO, BigDecimal.ZERO, lots);
+        }
+    }
 
     public record WaterfallTierDto(
         String tier,
@@ -233,8 +360,16 @@ public class RebalancePlanDtos {
     public record FundAllocationDto(
         String fundId,
         String fundName,
-        BigDecimal amount
-    ) {}
+        BigDecimal amount,
+        double currentPct,
+        double postPct,
+        BigDecimal preValuation,
+        BigDecimal postValuation
+    ) {
+        public FundAllocationDto(String fundId, String fundName, BigDecimal amount) {
+            this(fundId, fundName, amount, 0.0, 0.0, BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+    }
 
     public record ReasoningNarrativeDto(
         String headline,

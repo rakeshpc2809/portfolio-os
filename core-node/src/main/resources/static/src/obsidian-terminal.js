@@ -62,6 +62,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupTaxLotFilters();
   setupTaxLotInspector();
   setupItrOverlay();
+  setupCasUpload();
+  setupLumpsumSimulator();
   
   // Begin fetching live data
   await loadLiveDashboard();
@@ -632,43 +634,134 @@ function renderRebalancePlan(rebalancePlan) {
   if (marker) marker.style.left = `${Math.min(100, Math.max(0, ddPct * 5))}%`;
   if (ddValText) ddValText.textContent = `${ddPct.toFixed(1)}% (${rebalancePlan?.trigger?.reason_label || 'Nominal'})`;
 
+  // Pre ➔ Post Allocation Delta Progression Strip
+  const deltaStrip = document.getElementById('rebalanceDeltaStrip');
+  if (deltaStrip && rebalancePlan?.buy_side?.buckets) {
+    deltaStrip.innerHTML = rebalancePlan.buy_side.buckets.map(b => {
+      const name = (b.bucket || b.bucket_name || '').replace(/_/g, ' ');
+      const tgt = parseFloat(b.target_pct ?? b.targetPct ?? 0);
+      const cur = parseFloat(b.current_pct ?? b.currentPct ?? 0);
+      const post = parseFloat(b.post_rebalance_pct ?? b.postRebalancePct ?? 0);
+      const diff = post - cur;
+      const diffSign = diff > 0 ? '+' : '';
+      const deltaColor = post >= cur ? 'var(--accent-emerald)' : '#f87171';
+
+      return `
+        <div class="delta-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; color: var(--accent-cyan);">${name}</span>
+            <span style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">Target: ${tgt.toFixed(1)}%</span>
+          </div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between; font-family: var(--font-mono); margin-top: 4px;">
+            <div style="display: flex; align-items: baseline; gap: 6px;">
+              <span style="color: #94a3b8; font-size: 0.85rem;">${cur.toFixed(1)}%</span>
+              <span style="color: var(--text-muted); font-size: 0.72rem;">➔</span>
+              <span style="font-weight: 800; color: ${deltaColor}; font-size: 0.95rem;">${post.toFixed(1)}%</span>
+            </div>
+            <span style="font-size: 0.7rem; font-weight: 700; color: ${deltaColor};">${diffSign}${diff.toFixed(1)}%</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
   // Pool Amount
   const poolAmountEl = document.getElementById('rebalancePoolAmount');
   const poolVal = rebalancePlan?.sell_side?.total_required ?? rebalancePlan?.buy_side?.total_to_invest;
   if (poolAmountEl) poolAmountEl.textContent = poolVal != null ? formatINR(poolVal) : '₹ 0';
 
-  // Sell Side Container (Resolves Finding #3: Dynamic from live plan)
+  // Sell Side Container (Uses first-class backend consolidated orders)
   const sellContainer = document.getElementById('rebalanceSellCol');
   if (sellContainer) {
-    const sellLots = [];
-    if (rebalancePlan?.sell_side?.waterfall) {
+    const orders = rebalancePlan?.sell_side?.orders;
+    let orderItems = [];
+
+    if (Array.isArray(orders) && orders.length > 0) {
+      orderItems = orders;
+    } else if (rebalancePlan?.sell_side?.waterfall) {
+      // Fallback: in-memory aggregation if backend payload lacks orders
+      const grouped = new Map();
       rebalancePlan.sell_side.waterfall.forEach(tier => {
         if (Array.isArray(tier.lots)) {
-          tier.lots.forEach(l => sellLots.push(l));
+          tier.lots.forEach(l => {
+            const fundName = l.fund_name || l.fund_id || 'Holding';
+            const proceeds = parseFloat(l.sale_proceeds || l.amount || 0);
+            const taxImpact = l.tax_impact || {};
+            const exemption = parseFloat(taxImpact.exemption_applied || 0);
+            const isExempt = exemption > 0 || taxImpact.regime === 'SEC_112A_EXEMPT';
+
+            if (!grouped.has(fundName)) {
+              grouped.set(fundName, {
+                fund_name: fundName,
+                total_proceeds: 0,
+                total_exemption_applied: 0,
+                lot_count: 0,
+                summary_label: '',
+                is_exempt: true,
+                lots: []
+              });
+            }
+            const grp = grouped.get(fundName);
+            grp.total_proceeds += proceeds;
+            grp.total_exemption_applied += exemption;
+            grp.lot_count += 1;
+            if (!isExempt) grp.is_exempt = false;
+            grp.lots.push(l);
+          });
         }
       });
+      orderItems = Array.from(grouped.values()).map(g => ({
+        fund_name: g.fund_name,
+        total_proceeds: g.total_proceeds,
+        lot_count: g.lot_count,
+        summary_label: g.total_exemption_applied > 0
+          ? `${g.lot_count} ${g.lot_count === 1 ? 'Lot' : 'Lots'} · LTCG Exempt (Saved ${formatINR(g.total_exemption_applied * 0.125)} Tax)`
+          : (g.is_exempt ? `${g.lot_count} ${g.lot_count === 1 ? 'Lot' : 'Lots'} · Sec 112A Exempt` : `${g.lot_count} ${g.lot_count === 1 ? 'Lot' : 'Lots'} · Taxable Trim`),
+        lots: g.lots
+      }));
     }
 
-    if (sellLots.length > 0) {
-      sellContainer.innerHTML = sellLots.map(l => {
-        const fundName = l.fund_name || l.fund_id || 'Holding';
-        const proceeds = parseFloat(l.sale_proceeds || l.amount || 0);
-        const taxImpact = l.tax_impact || {};
-        const exemption = parseFloat(taxImpact.exemption_applied || 0);
-        const subtext = exemption > 0 
-          ? `LTCG Exempt Lot (Saved ${formatINR(exemption * 0.125)} Tax)` 
-          : (taxImpact.regime === 'SEC_112A_EXEMPT' ? 'Sec 112A Exempt' : 'Taxable Trim');
+    if (orderItems.length > 0) {
+      sellContainer.innerHTML = orderItems.map((ord, idx) => {
+        const name = ord.fund_name || ord.fundName || 'Holding';
+        const proceeds = parseFloat(ord.total_proceeds ?? ord.totalProceeds ?? 0);
+        const subtext = ord.summary_label || ord.summaryLabel || `${ord.lot_count || ord.lotCount || 1} Lots`;
+        const hasLots = Array.isArray(ord.lots) && ord.lots.length > 0;
+        const detailId = `sellOrderDetail_${idx}`;
+
+        const lotsHtml = hasLots ? `
+          <div id="${detailId}" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border-subtle);font-size:0.68rem;font-family:var(--font-mono);color:var(--text-muted);">
+            ${ord.lots.map(l => {
+              const date = l.acquisition_date || l.acquisitionDate || 'N/A';
+              const p = parseFloat(l.sale_proceeds ?? l.amount ?? 0);
+              const g = parseFloat(l.realized_gain ?? l.realizedGain ?? 0);
+              const gSign = g >= 0 ? '+' : '';
+              return `
+                <div style="display:flex;justify-content:space-between;padding:2px 0;">
+                  <span>Acq: ${date} (${(parseFloat(l.units_sold || l.unitsSold || 0)).toFixed(2)} units)</span>
+                  <span>- ${formatINR(p)} <span style="color:${g >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">(${gSign}${formatINR(g)})</span></span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : '';
 
         return `
-          <div class="trade-item sell">
-            <div>
-              <div style="font-weight:700;color:#FFFFFF;">${fundName}</div>
-              <div style="font-size:0.72rem;color:var(--accent-emerald);">${subtext}</div>
+          <div class="trade-item sell" style="cursor:${hasLots ? 'pointer' : 'default'};flex-direction:column;align-items:stretch;" ${hasLots ? `onclick="const el=document.getElementById('${detailId}');if(el)el.style.display=el.style.display==='none'?'block':'none';"` : ''}>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-weight:700;color:#FFFFFF;display:flex;align-items:center;gap:6px;">
+                  ${name}
+                  ${hasLots ? `<span style="font-size:0.65rem;color:var(--text-muted);font-weight:400;">▾</span>` : ''}
+                </div>
+                <div style="font-size:0.72rem;color:var(--accent-emerald);">${subtext}</div>
+              </div>
+              <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-rose);text-align:right;">
+                <span class="lot-val-pnl">- ${formatINR(proceeds)}</span>
+                <span class="lot-val-masked" style="display:none;">- ₹ ••,•••</span>
+              </div>
             </div>
-            <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-rose);">
-              <span class="lot-val-pnl">- ${formatINR(proceeds)}</span>
-              <span class="lot-val-masked" style="display:none;">- ₹ ••,•••</span>
-            </div>
+            ${lotsHtml}
           </div>
         `;
       }).join('');
@@ -692,15 +785,31 @@ function renderRebalancePlan(rebalancePlan) {
           b.fund_breakdown.forEach(f => {
             const amt = parseFloat(f.amount || 0);
             if (amt > 0) {
+              const curF = parseFloat(f.current_pct ?? f.currentPct ?? 0);
+              const postF = parseFloat(f.post_pct ?? f.postPct ?? 0);
+              const hasFundProgression = postF > 0 || curF > 0;
+              const diffF = postF - curF;
+              const diffSign = diffF > 0 ? '+' : '';
+
               buyItems.push(`
-                <div class="trade-item buy">
-                  <div>
-                    <div style="font-weight:700;color:#FFFFFF;">${f.fund_name || f.fund_id}</div>
-                    <div style="font-size:0.72rem;color:var(--accent-cyan);">${rawBucket} Allocation Sizing</div>
-                  </div>
-                  <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-emerald);">
-                    <span class="lot-val-pnl">+ ${formatINR(amt)}</span>
-                    <span class="lot-val-masked" style="display:none;">+ ₹ ••,•••</span>
+                <div class="trade-item buy" style="flex-direction:column;align-items:stretch;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <div style="font-weight:700;color:#FFFFFF;">${f.fund_name || f.fund_id}</div>
+                      <div style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+                        <span style="font-size:0.7rem;color:var(--accent-cyan);font-family:var(--font-mono);">${rawBucket}</span>
+                        ${hasFundProgression ? `
+                          <span style="font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono);">
+                            Weight: <span style="color:#94a3b8;">${curF.toFixed(1)}%</span> ➔ <span style="color:var(--accent-emerald);font-weight:700;">${postF.toFixed(1)}%</span>
+                            <span style="color:var(--accent-emerald);font-weight:600;">(${diffSign}${diffF.toFixed(1)}%)</span>
+                          </span>
+                        ` : ''}
+                      </div>
+                    </div>
+                    <div style="font-family:var(--font-mono);font-weight:700;color:var(--accent-emerald);text-align:right;">
+                      <span class="lot-val-pnl">+ ${formatINR(amt)}</span>
+                      <span class="lot-val-masked" style="display:none;">+ ₹ ••,•••</span>
+                    </div>
                   </div>
                 </div>
               `);
@@ -900,7 +1009,13 @@ function setupTaxLotInspector() {
     if (e.key === 'Escape') {
       const lotModal = document.getElementById('taxLotInspectorModal');
       const itrOverlay = document.getElementById('itrFilingOverlay');
-      if (lotModal && lotModal.style.display !== 'none') {
+      const casModal = document.getElementById('casPasswordModal');
+      const lumpsumModal = document.getElementById('lumpsumModal');
+      if (lumpsumModal && lumpsumModal.style.display !== 'none') {
+        if (window.closeLumpsumModal) window.closeLumpsumModal();
+      } else if (casModal && casModal.style.display !== 'none') {
+        if (window.closeCasPasswordModal) window.closeCasPasswordModal();
+      } else if (lotModal && lotModal.style.display !== 'none') {
         closeTaxLotInspector();
       } else if (itrOverlay && itrOverlay.style.display !== 'none') {
         closeItrOverlay();
@@ -1389,3 +1504,302 @@ function triggerItrZipDownload(fy) {
     alert('Failed to download ITR-2 ZIP bundle: ' + err.message);
   });
 }
+
+// ==========================================================================
+// TOAST NOTIFICATIONS
+// ==========================================================================
+function showToast(message, type = 'info', durationMs = 4000) {
+  const stack = document.getElementById('toastStack');
+  if (!stack) return;
+
+  const toast = document.createElement('div');
+  toast.className = `terminal-toast ${type}`;
+  
+  let icon = 'ℹ️';
+  if (type === 'success') icon = '✅';
+  if (type === 'error') icon = '⚠️';
+
+  toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+  stack.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.transition = 'all 200ms ease';
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(8px) scale(0.96)';
+    setTimeout(() => toast.remove(), 200);
+  }, durationMs);
+}
+
+// ==========================================================================
+// STATEMENT UPLOAD & CAS DECRYPTION CONTROLLER
+// ==========================================================================
+function setupCasUpload() {
+  const uploadBtn = document.getElementById('terminalUploadBtn');
+  const fileInput = document.getElementById('terminalFileInput');
+  const modal = document.getElementById('casPasswordModal');
+  const backdrop = document.getElementById('casPasswordModalBackdrop');
+  const filenameEl = document.getElementById('casModalFilename');
+  const passwordInput = document.getElementById('casPasswordInput');
+  const statusEl = document.getElementById('casUploadStatus');
+  const closeBtn = document.getElementById('casModalCloseBtn');
+  const cancelBtn = document.getElementById('casModalCancelBtn');
+  const submitBtn = document.getElementById('submitCasUploadBtn');
+
+  let activeFile = null;
+
+  function openModal(file) {
+    activeFile = file;
+    if (filenameEl) filenameEl.textContent = file.name;
+    if (passwordInput) passwordInput.value = '';
+    if (statusEl) {
+      statusEl.className = 'cas-status-banner';
+      statusEl.style.display = 'none';
+      statusEl.textContent = '';
+    }
+    if (submitBtn) submitBtn.disabled = false;
+    if (modal) modal.style.display = 'flex';
+    if (backdrop) backdrop.style.display = 'block';
+    if (passwordInput) setTimeout(() => passwordInput.focus(), 80);
+  }
+
+  function closeModal() {
+    if (modal) modal.style.display = 'none';
+    if (backdrop) backdrop.style.display = 'none';
+    if (fileInput) fileInput.value = '';
+    activeFile = null;
+  }
+
+  window.closeCasPasswordModal = closeModal;
+
+  async function executeUpload(file, password) {
+    if (statusEl) {
+      statusEl.className = 'cas-status-banner processing';
+      statusEl.textContent = '⚡ Decrypting and parsing statement transactions...';
+      statusEl.style.display = 'block';
+    }
+    if (submitBtn) submitBtn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    if (password) formData.append('password', password);
+
+    try {
+      const res = await fetch(`${API_BASE}/statements/upload`, {
+        method: 'POST',
+        headers: {
+          'X-Api-Auth-Token': getAuthToken()
+        },
+        body: formData
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => 'Upload failed');
+        throw new Error(errText || `Server returned ${res.status}`);
+      }
+
+      const events = await res.json();
+      const count = Array.isArray(events) ? events.length : (events?.event_count || 0);
+
+      showToast(`Successfully ingested statement (${file.name})! Registered ${count} transaction events.`, 'success', 5000);
+      closeModal();
+
+      // Live refresh all dashboard widgets, holdings, and metrics
+      await loadLiveDashboard();
+    } catch (err) {
+      console.error('CAS Statement upload failed:', err);
+      if (statusEl) {
+        statusEl.className = 'cas-status-banner error';
+        statusEl.textContent = `⚠️ Statement Parsing Failed: ${err.message || 'Incorrect password or unsupported file format'}`;
+        statusEl.style.display = 'block';
+      }
+      if (submitBtn) submitBtn.disabled = false;
+      showToast(`Statement processing failed: ${err.message || 'Check password'}`, 'error', 5000);
+    }
+  }
+
+  if (uploadBtn && fileInput) {
+    uploadBtn.addEventListener('click', () => fileInput.click());
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        openModal(file);
+      } else {
+        executeUpload(file, '');
+      }
+    });
+  }
+
+  if (submitBtn) {
+    submitBtn.addEventListener('click', () => {
+      if (activeFile) {
+        const pwd = passwordInput ? passwordInput.value : '';
+        executeUpload(activeFile, pwd);
+      }
+    });
+  }
+
+  if (passwordInput) {
+    passwordInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (activeFile) {
+          const pwd = passwordInput.value;
+          executeUpload(activeFile, pwd);
+        }
+      }
+    });
+  }
+
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+  if (backdrop) backdrop.addEventListener('click', closeModal);
+}
+
+// ==========================================================================
+// MANUAL LUMP-SUM ALLOCATION SIMULATOR
+// ==========================================================================
+function setupLumpsumSimulator() {
+  const btnOpen = document.getElementById('btnOpenLumpsumModal');
+  const btnReset = document.getElementById('btnResetRebalancePlan');
+  const modal = document.getElementById('lumpsumModal');
+  const backdrop = document.getElementById('lumpsumModalBackdrop');
+  const amountInput = document.getElementById('lumpsumAmountInput');
+  const statusEl = document.getElementById('lumpsumSimStatus');
+  const closeBtn = document.getElementById('lumpsumModalCloseBtn');
+  const cancelBtn = document.getElementById('lumpsumModalCancelBtn');
+  const submitBtn = document.getElementById('submitLumpsumSimBtn');
+  const planTag = document.getElementById('rebalancePlanTag');
+
+  function openModal() {
+    if (statusEl) {
+      statusEl.className = 'cas-status-banner';
+      statusEl.style.display = 'none';
+      statusEl.textContent = '';
+    }
+    if (submitBtn) submitBtn.disabled = false;
+    if (modal) modal.style.display = 'flex';
+    if (backdrop) backdrop.style.display = 'block';
+    if (amountInput) setTimeout(() => amountInput.focus(), 80);
+  }
+
+  function closeModal() {
+    if (modal) modal.style.display = 'none';
+    if (backdrop) backdrop.style.display = 'none';
+  }
+
+  window.openLumpsumModal = openModal;
+  window.closeLumpsumModal = closeModal;
+
+  async function executeSimulation() {
+    const rawVal = amountInput ? amountInput.value : '0';
+    const amount = parseFloat(rawVal);
+    if (isNaN(amount) || amount <= 0) {
+      if (statusEl) {
+        statusEl.className = 'cas-status-banner error';
+        statusEl.textContent = '⚠️ Please enter a valid positive lump-sum amount (e.g. ₹ 100,000).';
+        statusEl.style.display = 'block';
+      }
+      return;
+    }
+
+    const selectedOpt = document.querySelector('input[name="terminalLumpsumOption"]:checked');
+    const includeRebalance = selectedOpt ? selectedOpt.value === 'true' : false;
+
+    if (statusEl) {
+      statusEl.className = 'cas-status-banner processing';
+      statusEl.textContent = '⚡ Simulating multi-bucket capital routing and target convergence...';
+      statusEl.style.display = 'block';
+    }
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const res = await fetch(`${API_BASE}/sync/rebalance/simulate-lumpsum`, {
+        method: 'POST',
+        headers: {
+          'X-Api-Auth-Token': getAuthToken(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: amount,
+          include_rebalance: includeRebalance,
+          includeRebalance: includeRebalance
+        })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => 'Simulation failed');
+        throw new Error(errText || `Server returned ${res.status}`);
+      }
+
+      const simPlan = await res.json();
+      state.rebalancePlan = simPlan;
+      renderRebalancePlan(simPlan);
+      closeModal();
+
+      if (planTag) {
+        planTag.textContent = `LUMP-SUM: ${formatINR(amount)} (${includeRebalance ? '+ Rebalance' : 'Inflow Only'})`;
+        planTag.style.color = 'var(--accent-cyan)';
+        planTag.style.borderColor = 'rgba(6, 182, 212, 0.4)';
+      }
+      if (btnReset) btnReset.style.display = 'inline-flex';
+
+      showToast(`Simulated ${formatINR(amount)} fresh capital deployment! Execution router updated.`, 'success', 5000);
+    } catch (err) {
+      console.error('Lump-sum simulation failed:', err);
+      if (statusEl) {
+        statusEl.className = 'cas-status-banner error';
+        statusEl.textContent = `⚠️ Simulation Failed: ${err.message}`;
+        statusEl.style.display = 'block';
+      }
+      if (submitBtn) submitBtn.disabled = false;
+      showToast(`Simulation failed: ${err.message}`, 'error', 5000);
+    }
+  }
+
+  if (btnOpen) btnOpen.addEventListener('click', openModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+  if (backdrop) backdrop.addEventListener('click', closeModal);
+  if (submitBtn) submitBtn.addEventListener('click', executeSimulation);
+
+  if (amountInput) {
+    amountInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        executeSimulation();
+      }
+    });
+  }
+
+  if (btnReset) {
+    btnReset.addEventListener('click', async () => {
+      try {
+        btnReset.disabled = true;
+        const snap = await fetchJson('/sync/snapshot');
+        if (snap?.rebalance_plan) {
+          state.rebalancePlan = snap.rebalance_plan;
+          renderRebalancePlan(snap.rebalance_plan);
+        }
+        if (planTag) {
+          planTag.textContent = 'SEC 112A TAX OPTIMIZED';
+          planTag.style.color = 'var(--accent-emerald)';
+          planTag.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+        }
+        btnReset.style.display = 'none';
+        btnReset.disabled = false;
+        showToast('Reset trade router to default portfolio rebalance plan.', 'info', 4000);
+      } catch (err) {
+        console.error('Failed to reset rebalance plan:', err);
+        btnReset.disabled = false;
+        showToast('Failed to reset plan: ' + err.message, 'error', 4000);
+      }
+    });
+  }
+}
+
+

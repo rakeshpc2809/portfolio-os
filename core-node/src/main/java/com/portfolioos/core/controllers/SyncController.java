@@ -427,7 +427,8 @@ public class SyncController {
         @RequestBody Map<String, Object> req
     ) {
         BigDecimal amount = req.containsKey("amount") ? new BigDecimal(req.get("amount").toString()) : new BigDecimal("50000.00");
-        boolean includeRebalance = req.containsKey("includeRebalance") && Boolean.parseBoolean(req.get("includeRebalance").toString());
+        boolean includeRebalance = (req.containsKey("includeRebalance") && Boolean.parseBoolean(req.get("includeRebalance").toString()))
+            || (req.containsKey("include_rebalance") && Boolean.parseBoolean(req.get("include_rebalance").toString()));
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
         List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();

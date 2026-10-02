@@ -32,23 +32,23 @@ clean-mobile:
 
 # Fast multi-threaded compilation across all CPU cores (skipping tests)
 build-core:
-    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-26-openjdk}" {{MVN}} compile -T 1C
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-27-openjdk}" {{MVN}} compile -T 1C
 
 # Build full executable JAR package (multi-threaded, skip tests for speed)
 package-core:
-    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-26-openjdk}" {{MVN}} package -T 1C -DskipTests
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-27-openjdk}" {{MVN}} package -T 1C -DskipTests
 
 # Run test suite with multi-threaded executor
 test-core:
-    cd core-node && env -u _JAVA_OPTIONS -u SQLITE_PATH -u DUCKDB_PATH JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-26-openjdk}" {{MVN}} test -T 1C
+    cd core-node && env -u _JAVA_OPTIONS -u SQLITE_PATH -u DUCKDB_PATH JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-27-openjdk}" {{MVN}} test -T 1C
 
 # Run Spring Boot app locally in foreground
 run-core:
-    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-26-openjdk}" {{MVN}} spring-boot:run
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-27-openjdk}" {{MVN}} spring-boot:run
 
 # Clean Maven target directory
 clean-core:
-    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-26-openjdk}" {{MVN}} clean
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-27-openjdk}" {{MVN}} clean
 
 # Query available LLM tool-calling schemas from Core Node
 agent-tools:

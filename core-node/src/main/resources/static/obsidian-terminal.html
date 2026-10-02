@@ -40,6 +40,12 @@
           Search <kbd>⌘K</kbd>
         </button>
 
+        <button id="terminalUploadBtn" class="btn-terminal highlight-emerald" title="Upload and ingest CAMS/KFintech CAS PDF or Broker CSV statements">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Upload CAS Statement
+        </button>
+        <input type="file" id="terminalFileInput" accept=".pdf,.csv" style="display: none;">
+
         <button id="terminalExportBtn" class="btn-terminal highlight-cyan" title="Open ITR-2 Capital Gains & Tax Filing Screen">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
           ITR-2 Filing & Export
@@ -281,7 +287,17 @@
           <div class="card-panel-title">
             <span>⚡</span> Automated Rebalance Execution Router
           </div>
-          <span style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent-emerald);">SEC 112A TAX OPTIMIZED</span>
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button id="btnOpenLumpsumModal" class="btn-terminal highlight-cyan" onclick="window.openLumpsumModal && window.openLumpsumModal()" style="min-height: 32px; padding: 4px 12px; font-size: 0.75rem;" title="Simulate fresh lump-sum capital deployment across deficit buckets">
+              + Simulate Lump-Sum Deployment
+            </button>
+            <button id="btnResetRebalancePlan" class="btn-terminal" style="min-height: 32px; padding: 4px 10px; font-size: 0.75rem; display: none;" title="Reset back to default automated portfolio rebalance plan">
+              ↺ Reset Plan
+            </button>
+            <span id="rebalancePlanTag" class="brand-badge" style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent-emerald); border-color: rgba(16, 185, 129, 0.4);">
+              SEC 112A TAX OPTIMIZED
+            </span>
+          </div>
         </div>
 
         <div class="trade-flow-grid">
@@ -640,7 +656,101 @@
       </div>
     </div>
   </div>
+  <!-- ====================================================================
+       MODAL 2: CAS STATEMENT INGESTION & DECRYPTION MODAL
+       ==================================================================== -->
+  <div id="casPasswordModalBackdrop" class="terminal-modal-backdrop" style="display: none;"></div>
+  <div id="casPasswordModal" class="terminal-modal-dialog modal-compact" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="casModalTitle">
+    <div class="modal-header">
+      <div class="modal-title-wrap">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="scheme-badge equity" style="background: rgba(16, 185, 129, 0.2); border-color: var(--accent-emerald); color: var(--accent-emerald);">STATEMENT INGESTION</span>
+          <h2 id="casModalTitle" class="modal-title" style="font-size: 1.1rem;">Decrypt CAS PDF Statement</h2>
+        </div>
+        <div class="modal-meta-strip">
+          <span>File: <strong id="casModalFilename" style="color: var(--accent-cyan);">--</strong></span>
+        </div>
+      </div>
+      <button id="casModalCloseBtn" class="btn-close-modal" aria-label="Close modal">✕</button>
+    </div>
+
+    <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; margin: 0;">
+      The selected CAS statement PDF is encrypted. Enter your CAS password (typically your <strong>PAN in uppercase</strong> or <strong>PAN + Date of Birth DDMMYYYY</strong>, e.g., <code style="color: var(--accent-cyan); font-family: var(--font-mono);">ABCDE1234F01011990</code>).
+    </p>
+
+    <div class="cas-form-group">
+      <label for="casPasswordInput" class="cas-input-label">CAS Decryption Password / Master PIN</label>
+      <input type="password" id="casPasswordInput" class="cas-text-input" placeholder="Enter CAS password" autocomplete="off">
+    </div>
+
+    <div id="casUploadStatus" class="cas-status-banner"></div>
+
+    <div class="modal-actions-bar">
+      <button type="button" id="casModalCancelBtn" class="btn-terminal" style="min-height: 36px; padding: 6px 14px;">Cancel</button>
+      <button type="button" id="submitCasUploadBtn" class="btn-terminal highlight-emerald" style="min-height: 36px; padding: 6px 16px; font-weight: 700;">
+        ⚡ Decrypt & Ingest Statement
+      </button>
+    </div>
   </div>
+
+  <!-- ====================================================================
+       MODAL 3: MANUAL LUMP-SUM DEPLOYMENT SIMULATOR
+       ==================================================================== -->
+  <div id="lumpsumModalBackdrop" class="terminal-modal-backdrop" style="display: none;"></div>
+  <div id="lumpsumModal" class="terminal-modal-dialog modal-compact" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="lumpsumModalTitle">
+    <div class="modal-header">
+      <div class="modal-title-wrap">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="scheme-badge equity" style="background: rgba(6, 182, 212, 0.2); border-color: var(--accent-cyan); color: var(--accent-cyan);">CAPITAL ALLOCATOR</span>
+          <h2 id="lumpsumModalTitle" class="modal-title" style="font-size: 1.1rem;">Simulate Lump-Sum Deployment</h2>
+        </div>
+        <div class="modal-meta-strip">
+          <span>Target-drift minimizing capital routing</span>
+        </div>
+      </div>
+      <button id="lumpsumModalCloseBtn" class="btn-close-modal" aria-label="Close modal">✕</button>
+    </div>
+
+    <div class="cas-form-group">
+      <label for="lumpsumAmountInput" class="cas-input-label">Fresh Capital Inflow (₹)</label>
+      <input type="number" id="lumpsumAmountInput" class="cas-text-input" value="100000" step="10000" min="1000" placeholder="e.g. 100000">
+    </div>
+
+    <div class="cas-form-group" style="margin-top: 10px;">
+      <label class="cas-input-label">Deployment Strategy</label>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; background: rgba(255, 255, 255, 0.03); padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);">
+          <input type="radio" name="terminalLumpsumOption" value="false" checked style="margin-top: 3px; accent-color: var(--accent-cyan);">
+          <div>
+            <strong style="color: #ffffff; font-size: 0.82rem; font-family: var(--font-mono);">Inflow Only (No Selling)</strong>
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">
+              Directs fresh capital strictly to underweight deficit buckets without selling any holdings (Zero Tax Drag).
+            </div>
+          </div>
+        </label>
+        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; background: rgba(255, 255, 255, 0.03); padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-hairline);">
+          <input type="radio" name="terminalLumpsumOption" value="true" style="margin-top: 3px; accent-color: var(--accent-purple);">
+          <div>
+            <strong style="color: #ffffff; font-size: 0.82rem; font-family: var(--font-mono);">Inflow + Full Portfolio Rebalance</strong>
+            <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">
+              Combines fresh cash with tax-exempt bucket liquidations for 100% target alignment.
+            </div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <div id="lumpsumSimStatus" class="cas-status-banner"></div>
+
+    <div class="modal-actions-bar">
+      <button type="button" id="lumpsumModalCancelBtn" class="btn-terminal" style="min-height: 36px; padding: 6px 14px;">Cancel</button>
+      <button type="button" id="submitLumpsumSimBtn" class="btn-terminal highlight-cyan" style="min-height: 36px; padding: 6px 16px; font-weight: 700;">
+        ⚡ Calculate Trade Flow
+      </button>
+    </div>
+  </div>
+
+  <div class="terminal-toast-stack" id="toastStack" aria-live="polite"></div>
 
   <script src="./src/obsidian-terminal.js"></script>
 </body>

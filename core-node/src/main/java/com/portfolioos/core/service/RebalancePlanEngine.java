@@ -604,7 +604,7 @@ public class RebalancePlanEngine {
             double postPct = (postActiveCorpus.compareTo(BigDecimal.ZERO) > 0) ?
                 Math.round((postVal.doubleValue() / postActiveCorpus.doubleValue()) * 1000.0) / 10.0 : currentPct;
 
-            List<FundAllocationDto> realFunds = resolveRealFundBreakdown(target.bucket(), amountAllocated, activeVersion);
+            List<FundAllocationDto> realFunds = resolveRealFundBreakdown(target.bucket(), amountAllocated, activeVersion, openLots, navMap, liveCorpus, postCorpus);
 
             buyBuckets.add(new RebalanceBucketAllocationDto(
                 bucketName,
@@ -631,7 +631,7 @@ public class RebalancePlanEngine {
                     runningAlloc = runningAlloc.add(normAlloc);
                 }
                 BucketEngine.Bucket bBucket = BucketEngine.Bucket.valueOf(b.bucket());
-                List<FundAllocationDto> realFunds = resolveRealFundBreakdown(bBucket, normAlloc, activeVersion);
+                List<FundAllocationDto> realFunds = resolveRealFundBreakdown(bBucket, normAlloc, activeVersion, openLots, navMap, liveCorpus, postCorpus);
                 BigDecimal curVal = statusMap.containsKey(bBucket) ?
                     statusMap.get(bBucket).currentValue() : BigDecimal.ZERO;
                 BigDecimal soldFromBucket = bucketSoldAmounts.getOrDefault(bBucket, BigDecimal.ZERO);
@@ -732,7 +732,15 @@ public class RebalancePlanEngine {
         );
     }
 
-    private static List<FundAllocationDto> resolveRealFundBreakdown(BucketEngine.Bucket bucket, BigDecimal totalAmount, BucketConfigLoader.BucketTargetVersion activeVersion) {
+    private static List<FundAllocationDto> resolveRealFundBreakdown(
+        BucketEngine.Bucket bucket,
+        BigDecimal totalAmount,
+        BucketConfigLoader.BucketTargetVersion activeVersion,
+        List<Lot> openLots,
+        Map<String, BigDecimal> navMap,
+        BigDecimal preActiveCorpus,
+        BigDecimal postActiveCorpus
+    ) {
         if (totalAmount == null || totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return List.of();
         }
@@ -757,6 +765,24 @@ public class RebalancePlanEngine {
             prefFunds = BucketConfigLoader.getDefaultPreferredFundsForBucket(bucket.name());
         }
 
+        // Map existing fund valuations by assetId and assetName
+        Map<String, BigDecimal> fundValByAssetId = new HashMap<>();
+        Map<String, BigDecimal> fundValByName = new HashMap<>();
+        if (openLots != null) {
+            for (Lot lot : openLots) {
+                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "fundPreVal");
+                BigDecimal val = lot.remainingUnits().multiply(nav);
+                if (lot.assetId() != null) {
+                    String aId = lot.assetId().toLowerCase().trim();
+                    fundValByAssetId.put(aId, fundValByAssetId.getOrDefault(aId, BigDecimal.ZERO).add(val));
+                }
+                if (lot.assetName() != null) {
+                    String aName = lot.assetName().toLowerCase().trim();
+                    fundValByName.put(aName, fundValByName.getOrDefault(aName, BigDecimal.ZERO).add(val));
+                }
+            }
+        }
+
         List<FundAllocationDto> funds = new ArrayList<>();
         BigDecimal remaining = totalAmount;
 
@@ -769,7 +795,23 @@ public class RebalancePlanEngine {
                 alloc = totalAmount.multiply(BigDecimal.valueOf(pf.allocationWeight())).setScale(2, RoundingMode.HALF_UP);
                 remaining = remaining.subtract(alloc);
             }
-            funds.add(new FundAllocationDto(pf.fundId(), pf.fundName(), alloc));
+
+            BigDecimal preVal = BigDecimal.ZERO;
+            if (pf.fundId() != null && fundValByAssetId.containsKey(pf.fundId().toLowerCase().trim())) {
+                preVal = fundValByAssetId.get(pf.fundId().toLowerCase().trim());
+            } else if (pf.fundName() != null && fundValByName.containsKey(pf.fundName().toLowerCase().trim())) {
+                preVal = fundValByName.get(pf.fundName().toLowerCase().trim());
+            }
+
+            BigDecimal postVal = preVal.add(alloc);
+            double currentPct = (preActiveCorpus != null && preActiveCorpus.compareTo(BigDecimal.ZERO) > 0)
+                ? Math.round((preVal.doubleValue() / preActiveCorpus.doubleValue()) * 1000.0) / 10.0
+                : 0.0;
+            double postPct = (postActiveCorpus != null && postActiveCorpus.compareTo(BigDecimal.ZERO) > 0)
+                ? Math.round((postVal.doubleValue() / postActiveCorpus.doubleValue()) * 1000.0) / 10.0
+                : currentPct;
+
+            funds.add(new FundAllocationDto(pf.fundId(), pf.fundName(), alloc, currentPct, postPct, preVal, postVal));
         }
 
         return funds;

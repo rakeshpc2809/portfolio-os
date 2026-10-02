@@ -841,5 +841,40 @@ class RebalancePlanEngineTest {
         double sum = overlayBuffer.targetPct() + overlayCore.targetPct() + overlaySat.targetPct() + overlayGold.targetPct();
         assertEquals(100.00, sum, 0.001);
     }
+
+    @Test
+    @DisplayName("SellSidePlanDto produces structured consolidated orders grouping FIFO lots by fund")
+    void testConsolidatedSellOrdersGroupedByScheme() {
+        RebalancePlanDtos.RebalanceLotImpactDto lot1 = new RebalancePlanDtos.RebalanceLotImpactDto(
+            "lot-1", "INF247L01684", "Motilal Oswal Nifty Microcap 250 Index Fund", "2024-01-01", 400,
+            new BigDecimal("10.0"), new BigDecimal("1000.00"), new BigDecimal("1500.00"), new BigDecimal("500.00"),
+            "LTCG", new RebalancePlanDtos.LotTaxImpactDto("SEC_112A_EXEMPT", new BigDecimal("500.00"), BigDecimal.ZERO, BigDecimal.ZERO)
+        );
+        RebalancePlanDtos.RebalanceLotImpactDto lot2 = new RebalancePlanDtos.RebalanceLotImpactDto(
+            "lot-2", "INF247L01684", "Motilal Oswal Nifty Microcap 250 Index Fund", "2024-02-01", 370,
+            new BigDecimal("20.0"), new BigDecimal("2000.00"), new BigDecimal("3000.00"), new BigDecimal("1000.00"),
+            "LTCG", new RebalancePlanDtos.LotTaxImpactDto("SEC_112A_EXEMPT", new BigDecimal("1000.00"), BigDecimal.ZERO, BigDecimal.ZERO)
+        );
+
+        RebalancePlanDtos.WaterfallTierDto tier = new RebalancePlanDtos.WaterfallTierDto(
+            "LEGACY_FUND", "Legacy Fund Lots", new BigDecimal("4500.00"), new BigDecimal("4500.00"), null,
+            List.of(lot1, lot2)
+        );
+
+        RebalancePlanDtos.SellSidePlanDto sellSide = new RebalancePlanDtos.SellSidePlanDto(
+            new BigDecimal("4500.00"), List.of(tier), null
+        );
+
+        assertNotNull(sellSide.orders());
+        assertEquals(1, sellSide.orders().size(), "2 lots of the same fund must collapse into 1 consolidated sell order");
+        RebalancePlanDtos.ConsolidatedSellOrderDto order = sellSide.orders().get(0);
+        assertEquals("INF247L01684", order.fundId());
+        assertEquals("Motilal Oswal Nifty Microcap 250 Index Fund", order.fundName());
+        assertEquals(new BigDecimal("4500.00"), order.totalProceeds());
+        assertEquals(2, order.lotCount());
+        assertEquals(2, order.lots().size());
+        assertEquals("SEC_112A_EXEMPT", order.taxClassification());
+        assertTrue(order.summaryLabel().contains("2 Lots · LTCG Exempt"));
+    }
 }
 
