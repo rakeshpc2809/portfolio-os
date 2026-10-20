@@ -35,7 +35,7 @@ class FireTrackerTest {
             navMap,
             LocalDate.of(2026, 8, 19),
             profile,
-            new BigDecimal("500000.00"),
+            new BigDecimal("500000.00"), // Bank balance passed should be ignored under Invariant 1
             95.0,
             new BigDecimal("25000000.00"),
             new BigDecimal("18000000.00")
@@ -43,6 +43,9 @@ class FireTrackerTest {
 
         assertNotNull(summary);
         assertEquals("Primary Expense Target", summary.activeScenarioLabel());
+        // Under Invariant 1: totalNetWorth is strictly 1000 * 150 = 150000.00 (bankBalance 500000.00 ignored)
+        assertEquals(new BigDecimal("150000.00"), summary.totalNetWorth());
+        assertEquals(new BigDecimal("0.00"), summary.epfBalance());
         assertTrue(summary.fireInvestableNetWorth().compareTo(BigDecimal.ZERO) >= 0);
         assertNotNull(summary.status());
     }

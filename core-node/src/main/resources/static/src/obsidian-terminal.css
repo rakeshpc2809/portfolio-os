@@ -397,6 +397,11 @@ body {
   display: block;
 }
 
+.lot-val-masked,
+.lot-delta-masked {
+  display: none;
+}
+
 /* Tab 2 & 3 Masking (Resolves Review Finding: Suppress Per-Holding Gains and FIRE projections in Quiet Mode) */
 .quiet-mode-active .lot-val-pnl {
   display: none !important;

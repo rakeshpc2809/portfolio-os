@@ -10,21 +10,33 @@ MVN := if `which mvn 2>/dev/null || true` != "" { "mvn" } else { env_var("HOME")
 default:
     @just --list
 
+# Comprehensive multi-platform test suite (Core Node, Quant Sidecar, TUI, Mobile, Web)
+check:
+    just test-core
+    just test-quant
+    just test-tui
+    just test-mobile
+    just test-web
+
 # -------------------------------------------------------------
 # Mobile App (Android / Kotlin)
 # -------------------------------------------------------------
 
+# Run Android unit test suite
+test-mobile:
+    cd mobile-app && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" ./gradlew testDebugUnitTest
+
 # Build debug APK with parallel execution and build caching
 build-mobile:
-    cd mobile-app && ./gradlew assembleDebug --build-cache --parallel
+    cd mobile-app && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" ./gradlew assembleDebug --build-cache --parallel
 
 # Build and install debug APK onto connected device / emulator
 install-mobile:
-    cd mobile-app && ./gradlew installDebug --build-cache --parallel
+    cd mobile-app && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" ./gradlew installDebug --build-cache --parallel
 
 # Clean Gradle build cache and build directory
 clean-mobile:
-    cd mobile-app && ./gradlew clean
+    cd mobile-app && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" ./gradlew clean
 
 # -------------------------------------------------------------
 # Backend Core Node (Spring Boot / Java 26)
@@ -32,27 +44,24 @@ clean-mobile:
 
 # Fast multi-threaded compilation across all CPU cores (skipping tests)
 build-core:
-    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-27-openjdk}" {{MVN}} compile -T 1C
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" {{MVN}} compile -T 1C
 
 # Build full executable JAR package (multi-threaded, skip tests for speed)
 package-core:
-    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-27-openjdk}" {{MVN}} package -T 1C -DskipTests
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" {{MVN}} package -T 1C -DskipTests
 
 # Run test suite with multi-threaded executor
 test-core:
-    cd core-node && env -u _JAVA_OPTIONS -u SQLITE_PATH -u DUCKDB_PATH JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-27-openjdk}" {{MVN}} test -T 1C
+    cd core-node && env -u _JAVA_OPTIONS -u SQLITE_PATH -u DUCKDB_PATH JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" {{MVN}} test -T 1C
 
 # Run Spring Boot app locally in foreground
 run-core:
-    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-27-openjdk}" {{MVN}} spring-boot:run
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" {{MVN}} spring-boot:run
 
 # Clean Maven target directory
 clean-core:
-    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-27-openjdk}" {{MVN}} clean
+    cd core-node && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" {{MVN}} clean
 
-# Query available LLM tool-calling schemas from Core Node
-agent-tools:
-    @curl -s -H "X-Api-Key: ${API_AUTH_TOKEN}" http://localhost:8080/api/v1/agent/tools | jq .
 
 # -------------------------------------------------------------
 # Frontend Dashboard (JavaScript / Bun)
@@ -61,6 +70,10 @@ agent-tools:
 # Serve static web cockpit locally with Bun
 serve-web:
     cd core-node/src/main/resources/static && bun x serve -p 3000 .
+
+# Validate static web cockpit contract and export integrity
+test-web:
+    node core-node/src/test/resources/static-test.mjs
 
 # -------------------------------------------------------------
 # Quant Sidecar (Python / FastAPI / Direct IPC)
@@ -82,12 +95,6 @@ test-quant:
 refresh-nav-export:
     cd quant-sidecar && uv run python scripts/backfill_nav_history.py
 
-# Query HRP allocator dynamic weights (advisory diagnostic)
-alloc-hrp:
-    @curl -s -X POST http://127.0.0.1:8000/api/v1/allocator/hrp \
-      -H "Content-Type: application/json" \
-      -H "X-Api-Auth-Token: ${API_AUTH_TOKEN}" \
-      -d '{"mode":"INTRA_BUCKET"}' | jq .
 
 # -------------------------------------------------------------
 # Portfolio OS TUI Terminal Cockpit (Textual)
@@ -182,3 +189,9 @@ clean: clean-mobile clean-core
 repomix:
     npx repomix
     npx repomix --style markdown -o repomix-minimal.md
+
+# Atomic local SQLite backup of primary tax ledger
+backup:
+    @mkdir -p data/backups
+    sqlite3 data/tax_ledger.db ".backup 'data/backups/tax_ledger_$$(date +%F).db'"
+

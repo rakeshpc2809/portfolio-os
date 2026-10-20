@@ -37,8 +37,7 @@ public class FireTracker {
         public int currentAge() { return java.time.Period.between(birthDate, LocalDate.now()).getYears(); }
         public int targetRetirementAge() { return targetRetirementAge; }
         public BigDecimal swrPercent() { return swrPercent; }
-        public BigDecimal epfBalance() { return epfBalance; }
-        public int epfUnlockAge() { return epfUnlockAge; }
+        public BigDecimal epfBalance() { return BigDecimal.ZERO; }
         public BigDecimal realReturnRatePct() { return realReturnRatePct; }
         public BigDecimal monthlyContribution() { return monthlyContribution; }
         public LocalDate nextReviewDate() { return nextReviewDate; }
@@ -84,15 +83,15 @@ public class FireTracker {
             }
         }
 
-        BigDecimal totalNetWorth = totalMFValue.add(bankBalance).add(profile.epfBalance());
+        // Strict Mutual Fund Boundary (Invariant 1): Total and investable net worth reflect tracked MF units only
+        BigDecimal totalNetWorth = totalMFValue;
 
         GoalTracker.GoalSummary goalSummary = GoalTracker.calculateGoalSummary(
-            openLots, navMap, GoalTracker.DEFAULT_ALLOCATIONS, bankBalance
+            openLots, navMap, GoalTracker.DEFAULT_ALLOCATIONS, BigDecimal.ZERO
         );
         BigDecimal nonRetirementGoals = goalSummary.allocatedGoalsAmount();
 
-        BigDecimal fireInvestableNetWorth = totalNetWorth.subtract(profile.epfBalance())
-                                                     .subtract(nonRetirementGoals)
+        BigDecimal fireInvestableNetWorth = totalNetWorth.subtract(nonRetirementGoals)
                                                      .max(BigDecimal.ZERO);
 
         FireScenario activeScenario = profile.scenarios().stream()
@@ -137,7 +136,7 @@ public class FireTracker {
             annualExpense,
             requiredCorpus,
             totalNetWorth.setScale(2, RoundingMode.HALF_UP),
-            profile.epfBalance(),
+            BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP),
             nonRetirementGoals,
             fireInvestableNetWorth.setScale(2, RoundingMode.HALF_UP),
             projectedCorpus,

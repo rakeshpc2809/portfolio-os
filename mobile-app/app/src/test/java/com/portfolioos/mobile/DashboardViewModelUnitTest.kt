@@ -154,9 +154,9 @@ class DashboardViewModelUnitTest {
         assertTrue("Masking state flag must evaluate to true", state.isMasked)
 
         // 2. Real Security Assertion: Verify all sensitive financial display figures are masked to bullets
-        assertEquals("Net worth figure must be masked", "••••••", state.displayNetWorth)
-        assertEquals("Unrealized gain figure must be masked", "••••••", state.displayUnrealizedGain)
-        assertEquals("Total invested figure must be masked", "••••••", state.displayTotalInvested)
+        assertEquals("Net worth figure must be masked", "₹ ••••••", state.displayNetWorth)
+        assertEquals("Unrealized gain figure must be masked", "₹ ••••••", state.displayUnrealizedGain)
+        assertEquals("Total invested figure must be masked", "₹ ••••••", state.displayTotalInvested)
     }
 
     @Test
@@ -170,7 +170,7 @@ class DashboardViewModelUnitTest {
         // Lock first
         viewModel.setAppLocked(true)
         assertTrue("Pre-condition: must be masked", viewModel.uiState.value.isMasked)
-        assertEquals("••••••", viewModel.uiState.value.displayNetWorth)
+        assertEquals("₹ ••••••", viewModel.uiState.value.displayNetWorth)
 
         // Simulate successful biometric authentication
         viewModel.setAppLocked(false)
@@ -183,7 +183,7 @@ class DashboardViewModelUnitTest {
         assertEquals("Net worth figure must match formatted INR", formatInr(1751765.0), state.displayNetWorth)
         assertEquals("Unrealized gain figure must match formatted INR", formatInr(112711.0), state.displayUnrealizedGain)
         assertEquals("Total invested figure must match formatted INR", formatInr(1639054.0), state.displayTotalInvested)
-        assertNotEquals("Unmasked net worth must not be bullets", "••••••", state.displayNetWorth)
+        assertNotEquals("Unmasked net worth must not be bullets", "₹ ••••••", state.displayNetWorth)
     }
 
     @Test
@@ -223,9 +223,11 @@ class DashboardViewModelUnitTest {
         val viewModel = DashboardViewModel(mockApplication)
         val sample = createSampleSnapshot()
         SnapshotCacheManager.saveSnapshot(mockContext, sample, isFullLedgerSync = true)
-        viewModel.loadInitialCachedState()
+        val pastLedgerTs = System.currentTimeMillis() - 86400000L
+        fakePrefs.edit().putLong("key_last_full_ledger_ts", pastLedgerTs).commit()
 
-        viewModel.simulateAmfiFallback()
+        SnapshotCacheManager.saveSnapshot(mockContext, sample, isFullLedgerSync = false)
+        viewModel.loadInitialCachedState()
 
         val state = viewModel.uiState.value
         assertTrue("isAmfiFallback should be true after AMFI fallback resolution", state.isAmfiFallback)

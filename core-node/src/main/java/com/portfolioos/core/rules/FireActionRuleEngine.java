@@ -51,7 +51,7 @@ public class FireActionRuleEngine {
     ) {
         return evaluateRules(
             valuationService, isProvisional, avgFailRate, relStdDev, currentSip,
-            pairwiseOverlap, concentrations, openLots, exemptionStatus, null, null, null
+            pairwiseOverlap, concentrations, openLots, exemptionStatus, null, null
         );
     }
 
@@ -66,8 +66,7 @@ public class FireActionRuleEngine {
         List<com.portfolioos.core.model.Lot> openLots,
         ExemptionTracker.ExemptionStatus exemptionStatus,
         com.portfolioos.core.fire.FireTracker.FireSummary fireSummary,
-        BigDecimal totalMFValue,
-        MarketIndicatorsReader.MarketIndicators marketIndicators
+        BigDecimal totalMFValue
     ) {
         List<ActionRecommendationCard> cards = new ArrayList<>();
 
@@ -82,7 +81,7 @@ public class FireActionRuleEngine {
 
         // 4. Guyton-Klinger Decumulation Guardrails & CAPE-Adjusted SWR Trigger
         if (fireSummary != null) {
-            cards.add(evaluateGuytonKlingerCapeRule(fireSummary, totalMFValue, marketIndicators));
+            cards.add(evaluateGuytonKlingerCapeRule(fireSummary, totalMFValue));
         }
 
         return cards;
@@ -90,13 +89,19 @@ public class FireActionRuleEngine {
 
     public ActionRecommendationCard evaluateGuytonKlingerCapeRule(
         com.portfolioos.core.fire.FireTracker.FireSummary fireSummary,
-        BigDecimal totalMFValue,
-        MarketIndicatorsReader.MarketIndicators indicators
+        BigDecimal totalMFValue
     ) {
-        double niftyPe = indicators != null ? indicators.nifty50Pe() : 22.40;
-        double gsecYield = indicators != null ? indicators.gsec10yYieldPct() : 7.10;
-        boolean isFallback = indicators == null || indicators.isFallback();
-        LocalDate asOfDate = indicators != null ? indicators.asOfDate() : LocalDate.now();
+        return evaluateGuytonKlingerCapeRule(fireSummary, totalMFValue, 22.40, 7.10);
+    }
+
+    public ActionRecommendationCard evaluateGuytonKlingerCapeRule(
+        com.portfolioos.core.fire.FireTracker.FireSummary fireSummary,
+        BigDecimal totalMFValue,
+        Double niftyPeParam,
+        Double gsecYieldParam
+    ) {
+        double niftyPe = niftyPeParam != null ? niftyPeParam : 22.40;
+        double gsecYield = gsecYieldParam != null ? gsecYieldParam : 7.10;
 
         // 1. Base SWR (3.00%) & Valuation Adjustments
         // Rationale: Indian decumulation horizon spans 40+ years with ~5-6% long-term inflation.
@@ -142,12 +147,7 @@ public class FireActionRuleEngine {
                 .doubleValue();
         }
 
-        // 4. Macro Regime & Sizing Routing
-        MacroRegime regime = MacroRegimeRouter.classifyRegime(indicators);
-        double repoRate = indicators != null ? indicators.repoRatePct() : 5.25;
-        double slope = indicators != null ? indicators.yieldCurveSlopePct() : (gsecYield - repoRate);
-
-        // 5. Metrics Payload (Dual-Mode: Mode A live stress-test + Mode B target envelope)
+        // 4. Metrics Payload (Dual-Mode: Mode A live stress-test + Mode B target envelope)
         Map<String, Object> metrics = new LinkedHashMap<>();
         metrics.put("base_swr_pct", baseSwr);
         metrics.put("cape_adjusted_swr_pct", Math.round(capeAdjustedSwr * 100.0) / 100.0);
@@ -157,12 +157,6 @@ public class FireActionRuleEngine {
         metrics.put("nifty50_pe", niftyPe);
         metrics.put("pe_valuation_zone", peZone);
         metrics.put("gsec_10y_yield_pct", gsecYield);
-        metrics.put("repo_rate_pct", repoRate);
-        metrics.put("yield_curve_slope_pct", Math.round(slope * 100.0) / 100.0);
-        metrics.put("macro_regime", regime.name());
-        metrics.put("macro_regime_display", regime.displayName());
-        metrics.put("recommended_cash_runway_months", regime.recommendedRunwayMonths());
-        metrics.put("recommended_liquid_buffer_pct", regime.targetLiquidBufferPct().setScale(2, RoundingMode.HALF_UP).doubleValue());
         metrics.put("nifty50_earnings_yield_pct", Math.round(earningsYield * 100.0) / 100.0);
         metrics.put("equity_risk_premium_pct", Math.round(equityRiskPremium * 100.0) / 100.0);
         metrics.put("investable_net_worth", investableNetWorth.setScale(2, RoundingMode.HALF_UP).doubleValue());
@@ -178,46 +172,12 @@ public class FireActionRuleEngine {
             ? fireSummary.requiredCorpus().setScale(2, RoundingMode.HALF_UP).doubleValue()
             : 0.0);
         metrics.put("target_on_track_status", fireSummary.status() != null ? fireSummary.status() : "UNKNOWN");
-        metrics.put("is_market_indicator_fallback", isFallback);
+        metrics.put("is_market_indicator_fallback", true);
 
-        String footer = String.format("Valuation As Of: %s | Nifty PE: %.1f | 10Y G-Sec: %.2f%% | Repo: %.2f%% (Slope: +%.2f%%) | Regime: %s | %s",
-            asOfDate, niftyPe, gsecYield, repoRate, slope, regime.name(), isFallback ? "Statutory Fallback Cache" : "Live CCIL/NSE Feed");
+        String footer = String.format("Valuation: Nifty PE: %.1f | 10Y G-Sec: %.2f%% | Standard Guyton-Klinger Guardrails",
+            niftyPe, gsecYield);
 
-        // 6. Evaluate Bank Balance Gating & Corridor Breaches
-        // If bank balance is unpopulated / zero while non-retirement goals are subtracted,
-        // the denominator is missing the liquid cash runway (~21.8% of real net worth).
-        // Gate to GATED_PROVISIONAL to prevent false-alarm HIGH-severity panic cards.
-        BigDecimal inferredBankBalance = fireSummary.totalNetWorth() != null
-            ? fireSummary.totalNetWorth().subtract(mfValue).subtract(fireSummary.epfBalance() != null ? fireSummary.epfBalance() : BigDecimal.ZERO)
-            : BigDecimal.ZERO;
-        boolean isBankBalanceUnpopulated = inferredBankBalance.compareTo(BigDecimal.ZERO) <= 0;
-
-        if (isBankBalanceUnpopulated && currentWithdrawalRate > upperGuardrail) {
-            String summary = String.format("Mode A Decumulation Gated: Bank balance unpopulated (Mode A withdrawal rate %.2f%% provisional).",
-                currentWithdrawalRate);
-            String rationale = String.format(
-                "Mode A Stress-Test: Withdrawal rate calculation evaluates to %.2f%% against currently tracked mutual fund assets (₹%,.0f net of ₹%,.0f goal deductions). "
-                + "However, liquid bank savings balance (~21.8%% of total net worth) is currently unpopulated in this session feed. "
-                + "Rule evaluation is gated to GATED_PROVISIONAL to prevent premature capital preservation alarms until full multi-account cash balances are synced. "
-                + "Mode B Target: Planned retirement at age 45 remains %s with target projected corpus of ₹%,.0f vs required ₹%,.0f.",
-                currentWithdrawalRate, investableNetWorth.doubleValue(),
-                fireSummary.nonRetirementGoalAllocations() != null ? fireSummary.nonRetirementGoalAllocations().doubleValue() : 0.0,
-                fireSummary.status(),
-                fireSummary.projectedCorpusAtTargetAge() != null ? fireSummary.projectedCorpusAtTargetAge().doubleValue() : 0.0,
-                fireSummary.requiredCorpus() != null ? fireSummary.requiredCorpus().doubleValue() : 0.0
-            );
-            return new ActionRecommendationCard(
-                "CARD_DECUMULATION_GUARDRAIL",
-                "DECUMULATION_GUARDRAIL",
-                "Guyton-Klinger Decumulation Guardrail: Gated",
-                "GATED_PROVISIONAL",
-                "INFO",
-                summary,
-                rationale,
-                metrics,
-                footer + " | Bank Cash Buffer: UNPOPULATED"
-            );
-        }
+        // 6. Evaluate Corridor Breaches (Guyton-Klinger Guardrails)
 
         if (currentWithdrawalRate > upperGuardrail) {
             String summary = String.format("Current withdrawal rate (%.2f%%) exceeds GK upper guardrail (%.2f%%).",

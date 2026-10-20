@@ -18,6 +18,7 @@ use ratatui::{
 };
 
 use app::{AppMsg, AppState, ModalView};
+use ui::MUTED;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- Terminal setup ---
@@ -63,7 +64,18 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> Result
         // Process all pending messages from the polling thread
         while let Ok(msg) = rx.try_recv() {
             match msg {
-                AppMsg::SnapshotUpdated(snap) => state.snapshot = Some(*snap),
+                AppMsg::SnapshotUpdated(snap) => {
+                    state.snapshot = Some(*snap);
+                    state.is_offline_cache = false;
+                    state.cache_date = None;
+                }
+                AppMsg::OfflineSnapshotLoaded(snap, date) => {
+                    if state.snapshot.is_none() {
+                        state.snapshot = Some(*snap);
+                        state.is_offline_cache = true;
+                        state.cache_date = Some(date);
+                    }
+                }
                 AppMsg::OverlapUpdated(ov)    => state.overlap_summary = Some(*ov),
                 AppMsg::HrpUpdated(hrp)       => state.hrp_audit = Some(*hrp),
                 AppMsg::FetchError(e)         => state.last_error = Some(e),
@@ -74,7 +86,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> Result
         if state.quit { break; }
 
         // --- Draw ---
-        terminal.draw(|f| draw(f, &state))?;
+        terminal.draw(|f| draw(f, &mut state))?;
 
         // --- Input (non-blocking, 50ms timeout) ---
         if event::poll(Duration::from_millis(50))? {
@@ -91,13 +103,49 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> Result
                     continue;
                 }
 
+                // Global Quiet Mode toggle
+                if key.code == KeyCode::Char('m') && key.modifiers == KeyModifiers::NONE {
+                    state.quiet_mode = !state.quiet_mode;
+                    continue;
+                }
+
+                if let Some(ModalView::TaxLots) = state.modal {
+                    match key.code {
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            let count = state.snapshot.as_ref().map(|s| s.tax_lots.len()).unwrap_or(0);
+                            if count > 0 {
+                                let i = match state.table_state.selected() {
+                                    Some(curr) => if curr + 1 >= count { 0 } else { curr + 1 },
+                                    None => 0,
+                                };
+                                state.table_state.select(Some(i));
+                            }
+                            continue;
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            let count = state.snapshot.as_ref().map(|s| s.tax_lots.len()).unwrap_or(0);
+                            if count > 0 {
+                                let i = match state.table_state.selected() {
+                                    Some(curr) => if curr == 0 { count - 1 } else { curr - 1 },
+                                    None => 0,
+                                };
+                                state.table_state.select(Some(i));
+                            }
+                            continue;
+                        }
+                        _ => {}
+                    }
+                }
+
                 if state.modal.is_none() {
                     match key.code {
-                        KeyCode::Char('t') => state.modal = Some(ModalView::TaxLots),
+                        KeyCode::Char('t') => {
+                            state.modal = Some(ModalView::TaxLots);
+                            state.table_state.select(Some(0));
+                        }
                         KeyCode::Char('p') => state.modal = Some(ModalView::RebalancePlan),
                         KeyCode::Char('d') => state.modal = Some(ModalView::DailySummary),
                         KeyCode::Char('r') => {
-                            // Manual refresh: send a fresh fetch on a background thread
                             let tx2 = tx.clone();
                             std::thread::spawn(move || fetch::fetch_all_once(&tx2));
                         }
@@ -110,8 +158,8 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> Result
     Ok(())
 }
 
-/// Pure render function — reads immutable AppState, produces one frame.
-fn draw(f: &mut ratatui::Frame, state: &AppState) {
+/// Pure render function — reads AppState and stateful widget handles, produces one frame.
+fn draw(f: &mut ratatui::Frame, state: &mut AppState) {
     let area = f.area();
 
     // Main layout: hero (top) | middle row (allocation | tax) | status bar (bottom)
@@ -140,7 +188,7 @@ fn draw(f: &mut ratatui::Frame, state: &AppState) {
     let status_text = build_status_bar(state);
     f.render_widget(
         ratatui::widgets::Paragraph::new(status_text)
-            .style(ratatui::style::Style::default().fg(ratatui::style::Color::DarkGray)),
+            .style(ratatui::style::Style::default().fg(MUTED)),
         rows[2],
     );
 
@@ -157,8 +205,10 @@ fn build_status_bar(state: &AppState) -> String {
         .map(|e| format!("  ⚠ {}", &e[..e.len().min(60)]))
         .unwrap_or_default();
 
+    let quiet_indicator = if state.quiet_mode { " [m] quiet:ON " } else { " [m] quiet:OFF " };
+
     format!(
-        "{} [d] brief  [t] lots  [p] plan  [r] refresh  [q] quit{}",
-        fy, error_part
+        "{}{}[d] brief  [t] lots  [p] plan  [r] refresh  [q] quit{}",
+        fy, quiet_indicator, error_part
     )
 }

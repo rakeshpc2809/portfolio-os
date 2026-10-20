@@ -1,7 +1,7 @@
 use crate::api::{HrpAudit, OverlapSummary, Snapshot};
+use ratatui::widgets::TableState;
 
-/// Central, read-only application state.
-/// Updated atomically from the polling thread via `mpsc`.
+/// Central application state.
 #[derive(Debug, Default)]
 pub struct AppState {
     /// Latest deserialized snapshot from `/api/v1/sync/snapshot`.
@@ -16,6 +16,14 @@ pub struct AppState {
     pub modal: Option<ModalView>,
     /// Whether the app is shutting down.
     pub quit: bool,
+    /// Quiet mode privacy masking
+    pub quiet_mode: bool,
+    /// Whether data is served from offline cache
+    pub is_offline_cache: bool,
+    /// Date of offline cache if applicable
+    pub cache_date: Option<String>,
+    /// Table selection state for scrolling lists
+    pub table_state: TableState,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,7 +37,9 @@ pub enum ModalView {
 #[derive(Debug)]
 pub enum AppMsg {
     SnapshotUpdated(Box<Snapshot>),
+    OfflineSnapshotLoaded(Box<Snapshot>, String),
     OverlapUpdated(Box<OverlapSummary>),
+    #[allow(dead_code)]
     HrpUpdated(Box<HrpAudit>),
     FetchError(String),
     Tick,

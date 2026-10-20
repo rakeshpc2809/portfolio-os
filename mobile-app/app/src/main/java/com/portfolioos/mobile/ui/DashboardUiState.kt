@@ -24,25 +24,25 @@ data class DashboardUiState(
     val overlapData: OverlapReportDto? = null
 ) {
     val isMasked: Boolean
-        get() = isAppLocked && isBiometricLockEnabled
+        get() = (isAppLocked && isBiometricLockEnabled) || isQuietModeEnabled
 
     val displayNetWorth: String
         get() {
-            if (isMasked) return "••••••"
+            if (isMasked) return "₹ ••••••"
             val valNum = snapshot?.syncInfo?.currentValue ?: return "₹ --"
             return formatInr(valNum)
         }
 
     val displayUnrealizedGain: String
         get() {
-            if (isMasked) return "••••••"
+            if (isMasked) return "₹ ••••••"
             val gain = snapshot?.syncInfo?.unrealizedGain ?: return "₹ --"
             return formatInr(gain)
         }
 
     val displayTotalInvested: String
         get() {
-            if (isMasked) return "••••••"
+            if (isMasked) return "₹ ••••••"
             val inv = snapshot?.syncInfo?.totalInvested ?: return "₹ --"
             return formatInr(inv)
         }

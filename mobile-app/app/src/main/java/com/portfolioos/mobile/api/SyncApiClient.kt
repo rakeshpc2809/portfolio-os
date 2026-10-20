@@ -21,7 +21,7 @@ interface SyncApiService {
     @GET("api/v1/sync/snapshot")
     suspend fun getSnapshot(
         @Header("X-Api-Auth-Token") token: String,
-        @Query("fy") fiscalYear: String = "2026-27"
+        @Query("fy") fiscalYear: String? = null
     ): SyncSnapshot
 
     @POST("api/v1/simulate/trade")
@@ -49,15 +49,12 @@ interface SyncApiService {
 }
 
 object SyncApiClient {
-    const val USB_BASE_URL = "http://127.0.0.1:8080/"
     const val EMULATOR_BASE_URL = "http://10.0.2.2:8080/"
-    const val WIFI_BASE_URL = "http://192.168.1.10:8080/"
-    val WIFI_CANDIDATE_URLS = listOf(
-        "http://192.168.1.10:8080/",
-        "http://192.168.1.13:8080/",
-        "http://192.168.0.10:8080/",
-        "http://192.168.1.2:8080/"
-    )
+    const val USB_BASE_URL = "http://127.0.0.1:8080/"
+    const val DEFAULT_BASE_URL = EMULATOR_BASE_URL
+
+    @Volatile
+    var lastWorkingBaseUrl: String? = null
 
     fun getCandidateBaseUrls(context: Context): List<String> {
         val urls = mutableListOf<String>()
@@ -65,13 +62,13 @@ object SyncApiClient {
         if (!customUrl.isNullOrBlank()) {
             urls.add(if (customUrl.endsWith("/")) customUrl else "$customUrl/")
         }
-        urls.add(USB_BASE_URL)
+        lastWorkingBaseUrl?.let { urls.add(it) }
         urls.add(EMULATOR_BASE_URL)
-        urls.addAll(WIFI_CANDIDATE_URLS)
+        urls.add(USB_BASE_URL)
         return urls.distinct()
     }
 
-    fun createService(baseUrl: String = USB_BASE_URL): SyncApiService {
+    fun createService(baseUrl: String = DEFAULT_BASE_URL): SyncApiService {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
         }
@@ -99,6 +96,7 @@ object SyncApiClient {
         for (baseUrl in candidateUrls) {
             try {
                 val snapshot = createService(baseUrl).getSnapshot(token = authToken)
+                lastWorkingBaseUrl = baseUrl
                 SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
                 return snapshot
             } catch (e: Exception) {
@@ -125,7 +123,9 @@ object SyncApiClient {
         var lastException: Exception? = null
         for (baseUrl in candidateUrls) {
             try {
-                return createService(baseUrl).simulateTrade(token = authToken, request = request)
+                val result = createService(baseUrl).simulateTrade(token = authToken, request = request)
+                lastWorkingBaseUrl = baseUrl
+                return result
             } catch (e: Exception) {
                 lastException = e
             }

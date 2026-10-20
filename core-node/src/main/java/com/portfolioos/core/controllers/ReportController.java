@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -35,11 +36,15 @@ public class ReportController {
         this.cacheService = cacheService;
     }
 
+    private String resolveFy(String fy) {
+        return (fy != null && !fy.isBlank()) ? fy : com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
+    }
+
     @GetMapping({"/reports/summary", "/portfolio/summary"})
     public ResponseEntity<PortfolioSummaryResponse> getSummary(
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+        @RequestParam(value = "fy", required = false) String fy
     ) {
-        return ResponseEntity.ok(valuationService.getPortfolioSummary(fy));
+        return ResponseEntity.ok(valuationService.getPortfolioSummary(resolveFy(fy)));
     }
 
     @GetMapping({"/reports/trend", "/portfolio/net-worth-trend"})
@@ -69,23 +74,23 @@ public class ReportController {
 
     @GetMapping({"/reports/tax/exemption", "/tax/exemption-status"})
     public ResponseEntity<ExemptionTracker.ExemptionStatus> getExemptionStatus(
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+        @RequestParam(value = "fy", required = false) String fy
     ) {
-        return ResponseEntity.ok(taxService.getExemptionStatus(fy));
+        return ResponseEntity.ok(taxService.getExemptionStatus(resolveFy(fy)));
     }
 
     @GetMapping({"/reports/tax/itr2", "/tax/reports/itr2"})
     public ResponseEntity<TaxReportExporter.Itr2ScheduleCgReport> getItr2Report(
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+        @RequestParam(value = "fy", required = false) String fy
     ) {
-        return ResponseEntity.ok(taxService.generateItr2Report(fy));
+        return ResponseEntity.ok(taxService.generateItr2Report(resolveFy(fy)));
     }
 
     @GetMapping({"/reports/tax/itr2/details", "/tax/reports/itr2/details"})
     public ResponseEntity<TaxReportExporter.Itr2DetailsDto> getItr2Details(
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+        @RequestParam(value = "fy", required = false) String fy
     ) {
-        return ResponseEntity.ok(taxService.getItr2Details(fy));
+        return ResponseEntity.ok(taxService.getItr2Details(resolveFy(fy)));
     }
 
     @GetMapping({"/reports/tax/harvest", "/tax/harvest-opportunities"})
@@ -100,37 +105,33 @@ public class ReportController {
 
     @GetMapping({"/reports/tax/realized", "/tax/realized-log"})
     public ResponseEntity<List<RealizedLogDto>> getRealizedLog(
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+        @RequestParam(value = "fy", required = false) String fy
     ) {
-        return ResponseEntity.ok(taxService.getRealizedLog(fy));
+        return ResponseEntity.ok(taxService.getRealizedLog(resolveFy(fy)));
     }
 
     @GetMapping({"/reports/tax/liquidation-plan", "/tax/liquidation-plan"})
     public ResponseEntity<RebalancePreviewDto> getTaxOptimalLiquidationPlan(
         @RequestParam(value = "amount", defaultValue = "100000") BigDecimal amount,
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+        @RequestParam(value = "fy", required = false) String fy
     ) {
-        return ResponseEntity.ok(taxService.getTaxOptimalLiquidationPlan(amount, fy));
+        return ResponseEntity.ok(taxService.getTaxOptimalLiquidationPlan(amount, resolveFy(fy)));
     }
 
     @GetMapping({"/reports/tax/combined-plan", "/tax/combined-plan"})
     public ResponseEntity<TaxOptimizationService.CombinedHarvestAndLiquidationPlanDto> getCombinedHarvestAndLiquidationPlan(
         @RequestParam(value = "amount", defaultValue = "100000") BigDecimal amount,
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+        @RequestParam(value = "fy", required = false) String fy
     ) {
-        return ResponseEntity.ok(taxService.getCombinedHarvestAndLiquidationPlan(amount, fy));
-    }
-
-    @GetMapping({"/reports/macro-regime/buffer-status", "/macro-regime/buffer-status"})
-    public ResponseEntity<MacroRegimeDto> getMacroRegimeBufferStatus() {
-        return ResponseEntity.ok(valuationService.getMacroRegimeBufferStatus());
+        return ResponseEntity.ok(taxService.getCombinedHarvestAndLiquidationPlan(amount, resolveFy(fy)));
     }
 
     @GetMapping({"/reports/tax/itr2/csv", "/tax/export/itr2/zip"})
     public ResponseEntity<byte[]> downloadItr2Csv(
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+        @RequestParam(value = "fy", required = false) String fy
     ) throws IOException {
-        Map<String, String> files = taxService.downloadItr2Files(fy);
+        String resolvedFy = resolveFy(fy);
+        Map<String, String> files = taxService.downloadItr2Files(resolvedFy);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ZipOutputStream zos = new ZipOutputStream(baos)) {
@@ -145,7 +146,7 @@ public class ReportController {
         byte[] zipBytes = baos.toByteArray();
 
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"itr2_schedule_cg_" + fy + ".zip\"")
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"itr2_schedule_cg_" + resolvedFy + ".zip\"")
             .contentType(MediaType.parseMediaType("application/zip"))
             .contentLength(zipBytes.length)
             .body(zipBytes);
@@ -153,17 +154,18 @@ public class ReportController {
 
     @GetMapping("/tax/schedule-cg/export")
     public ResponseEntity<String> downloadScheduleCgCsv(
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy
+        @RequestParam(value = "fy", required = false) String fy
     ) {
+        String resolvedFy = resolveFy(fy);
         String csv = com.portfolioos.core.reporting.Itr2CsvExporter.generateSchedule112aCsv(
             cacheService.getCachedState().fifoResult().matchedLots(),
-            fy,
+            resolvedFy,
             java.util.Collections.emptyMap(),
             java.util.Collections.emptyMap()
         );
 
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Schedule-CG-FY" + fy + ".csv\"")
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Schedule-CG-FY" + resolvedFy + ".csv\"")
             .contentType(MediaType.parseMediaType("text/csv"))
             .body(csv);
     }
@@ -213,27 +215,4 @@ public class ReportController {
         return ResponseEntity.ok(valuationService.getActionRecommendations());
     }
 
-    /**
-     * Serves HRP CVaR audit telemetry written by quant-sidecar, over the REST boundary.
-     * Resolves Violation #5: eliminates direct filesystem access from TUI clients.
-     * Returns {"status":"NOT_GENERATED"} if quant-sidecar has not yet produced the file.
-     */
-    @GetMapping("/analytics/hrp-audit")
-    @SuppressWarnings("unchecked")
-    public ResponseEntity<Map<String, Object>> getHrpAudit() {
-        String[] candidates = {"/app/data/hrp_audit.json", "data/hrp_audit.json", "../data/hrp_audit.json"};
-        for (String path : candidates) {
-            File f = new File(path);
-            if (f.exists() && f.isFile()) {
-                try {
-                    Map<String, Object> payload = new ObjectMapper().readValue(f, Map.class);
-                    return ResponseEntity.ok(payload);
-                } catch (IOException e) {
-                    return ResponseEntity.internalServerError()
-                        .body(Map.of("status", "PARSE_ERROR", "message", e.getMessage()));
-                }
-            }
-        }
-        return ResponseEntity.ok(Map.of("status", "NOT_GENERATED"));
-    }
 }

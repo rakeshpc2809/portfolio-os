@@ -31,7 +31,7 @@ class TestAsyncConcurrency(unittest.TestCase):
 
         headers = {
             "Content-Type": "application/json",
-            "X-Api-Auth-Token": "dev_secret_key_123"
+            "X-Api-Auth-Token": os.getenv("API_AUTH_TOKEN", "test_auth_token_secret")
         }
 
         health_latencies = []

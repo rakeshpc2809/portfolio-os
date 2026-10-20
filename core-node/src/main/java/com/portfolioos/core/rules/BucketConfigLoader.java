@@ -417,7 +417,12 @@ public class BucketConfigLoader {
         String newVersionId = "v" + (versions.size() + 1) + ".0";
         versions.add(new BucketTargetVersion(newVersionId, effDate, newTargets));
 
-        BucketRulesConfig updatedConfig = new BucketRulesConfig(versions);
+        BucketRulesConfig updatedConfig = new BucketRulesConfig(
+            currentConfig.configSource(),
+            currentConfig.configFilePath(),
+            versions,
+            currentConfig.legacyCandidates() != null ? currentConfig.legacyCandidates() : List.of()
+        );
         cachedRules = updatedConfig;
         saveConfigToDisk(updatedConfig);
     }
@@ -585,6 +590,19 @@ public class BucketConfigLoader {
             }
 
             root.put("versions", verList);
+
+            if (config.legacyCandidates() != null && !config.legacyCandidates().isEmpty()) {
+                List<Map<String, Object>> legList = new ArrayList<>();
+                for (LegacyLiquidationCandidate c : config.legacyCandidates()) {
+                    Map<String, Object> cMap = new LinkedHashMap<>();
+                    cMap.put("isin", c.isin());
+                    cMap.put("fund_name", c.fundName());
+                    cMap.put("reason", c.reason());
+                    legList.add(cMap);
+                }
+                root.put("legacy_liquidation_candidates", legList);
+            }
+
             mapper.writeValue(targetFile, root);
         } catch (Exception e) {
             System.err.println("Failed to write bucket_targets.yaml: " + e.getMessage());

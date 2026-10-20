@@ -108,6 +108,9 @@ public class TaxReportExporter {
     }
 
     public static Pair<LocalDate, LocalDate> getFiscalYearBounds(String fiscalYear) {
+        if (fiscalYear == null || fiscalYear.isBlank()) {
+            fiscalYear = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
+        }
         String[] parts = fiscalYear.split("-");
         int startYear = 2026;
         try {

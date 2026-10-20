@@ -84,11 +84,6 @@ class MainActivity : FragmentActivity() {
                         onRefresh = { viewModel.fetchSyncSnapshot(isManualRefresh = true) },
                         onUpdateCustomUrl = { newUrl -> viewModel.updateCustomUrl(newUrl) },
                         onFetchOverlap = { incUnverified -> viewModel.fetchOverlapAnalytics(incUnverified) },
-                        onSimulateFullSync = { viewModel.simulateFullSync() },
-                        onSimulateAmfiFallback = { viewModel.simulateAmfiFallback() },
-                        onSimulateFullyOffline = { viewModel.simulateFullyOffline() },
-                        onSimulateAgedOffline = { viewModel.simulateAgedOffline() },
-                        onSimulateRefreshing = { viewModel.simulateRefreshing() },
                         onSimulateSyncFailure = {
                             scope.launch {
                                 snackbarHostState.showSnackbar(

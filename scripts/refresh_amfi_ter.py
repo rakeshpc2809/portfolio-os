@@ -1,26 +1,24 @@
 #!/usr/bin/env python3
 """
 scripts/refresh_amfi_ter.py
-Fetches live AMFI Total Expense Ratio (TER) disclosures.
-If live fetch succeeds, parses and updates data/amfi_ter_cache.json with the disclosure date.
-If live fetch fails, cleanly preserves the existing cache date and marks is_fallback=True.
+Statutory Total Expense Ratio (TER) benchmark declarations.
+AMFI publishes daily NAVs in NAVAll.txt, but monthly TER disclosures are published
+in separate periodic reports. This script manages canonical statutory TER benchmarks
+with honest provenance tracking (no fake live AMFI fetch claims from NAVAll.txt).
 """
 
 import json
 import os
-import urllib.request
-import urllib.error
-import re
 from datetime import datetime
 
 CACHE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "amfi_ter_cache.json")
 
-# Statutory benchmark values for graceful fallback when offline / unroutable
+# Statutory benchmark values based on latest AMFI scheme-wise monthly disclosures
 STATUTORY_TER_DATA = {
     "as_of_date": "Aug 2026",
     "updated_at": "2026-08-31 00:00:00",
     "is_fallback": True,
-    "source_status": "STATUTORY_BENCHMARK_FALLBACK",
+    "source_status": "STATUTORY_BENCHMARK_DECLARATION",
     "schemes": {
         "INF879O01027": {"name": "Parag Parikh Flexi Cap Fund - Direct Plan Growth", "ter": 0.65, "status": "OPTIMAL", "category_median": 0.75},
         "INF109KC12U0": {"name": "ICICI Prudential Nifty LargeMidcap 250 Index Fund - Direct", "ter": 0.15, "status": "OPTIMAL", "category_median": 0.20},
@@ -46,27 +44,6 @@ STATUTORY_TER_DATA = {
     }
 }
 
-def fetch_live_amfi_ter():
-    """Attempts to fetch monthly TER disclosure data from AMFI portal."""
-    url = "https://portal.amfiindia.com/spages/NAVAll.txt"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            content = resp.read(2048).decode('utf-8', errors='ignore')
-            # Extract publication date from AMFI feed header line e.g. "31-Aug-2026"
-            date_match = re.search(r'(\d{1,2}-[A-Za-z]{3}-\d{4})', content)
-            if date_match:
-                d_str = date_match.group(1)
-                dt = datetime.strptime(d_str, "%d-%b-%Y")
-                return dt.strftime("%b %Y")
-    except Exception:
-        pass
-    return None
-
 def main():
     os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
     
@@ -78,33 +55,21 @@ def main():
         except Exception:
             existing = {}
 
-    print("[INFO] Attempting live network fetch for AMFI TER disclosures...")
-    live_month = fetch_live_amfi_ter()
-    
     schemes = existing.get("schemes", STATUTORY_TER_DATA["schemes"])
-    
-    if live_month:
-        payload = {
-            "as_of_date": live_month,
-            "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "is_fallback": False,
-            "source_status": "LIVE_AMFI_FETCH",
-            "schemes": schemes
-        }
-        print(f"[SUCCESS] AMFI feed verified: {len(schemes)} schemes updated (As of: {live_month})")
-    else:
-        preserved_date = existing.get("as_of_date", STATUTORY_TER_DATA["as_of_date"])
-        payload = {
-            "as_of_date": preserved_date,
-            "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "is_fallback": True,
-            "source_status": "FALLBACK_CACHED",
-            "schemes": schemes
-        }
-        print(f"[WARN] AMFI network fetch unavailable. Preserved existing cached date ({preserved_date}) with is_fallback=True: {len(schemes)} schemes")
+    as_of = existing.get("as_of_date", STATUTORY_TER_DATA["as_of_date"])
+
+    payload = {
+        "as_of_date": as_of,
+        "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "is_fallback": True,
+        "source_status": "STATUTORY_BENCHMARK_DECLARATION",
+        "schemes": schemes
+    }
 
     with open(CACHE_PATH, "w") as f:
         json.dump(payload, f, indent=2)
+
+    print(f"[SUCCESS] Statutory TER declarations saved honest provenance: {len(schemes)} schemes (As of: {as_of})")
 
 if __name__ == "__main__":
     main()

@@ -76,9 +76,10 @@ public class SyncController {
 
     @GetMapping("/snapshot")
     public ResponseEntity<UnidirectionalSyncSnapshot> getSnapshot(
-        @RequestParam(value = "fy", defaultValue = "2026-27") String fy,
+        @RequestParam(value = "fy", required = false) String fy,
         @RequestParam(value = "trigger", required = false) String requestedTrigger
     ) {
+        String resolvedFy = (fy != null && !fy.isBlank()) ? fy : com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<TaxEvent> allEvents = state.events();
         List<Lot> openLots = state.fifoResult().openLots();
@@ -95,7 +96,7 @@ public class SyncController {
         duckDbProjector.saveNavHistoryBatchForHeldAssets(navMap, heldIsins, today);
 
         // Calculate overall XIRR & Totals via canonical PortfolioValuationService
-        com.portfolioos.core.service.PortfolioValuationService.PortfolioValuationMetrics valMetrics = valuationService.computeValuationMetrics(fy);
+        com.portfolioos.core.service.PortfolioValuationService.PortfolioValuationMetrics valMetrics = valuationService.computeValuationMetrics(resolvedFy);
         BigDecimal totalPortfolioInvested = valMetrics.totalInvested();
         BigDecimal totalPortfolioCurrentVal = valMetrics.totalCurrentValue();
         BigDecimal unrealizedGain = valMetrics.totalGain();
@@ -147,10 +148,10 @@ public class SyncController {
             AssetCategory category = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
             boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
             long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
-            com.portfolioos.core.model.TaxTerm taxTerm = TaxClassifier.classifyTaxTerm(category, holdingDays, fy, isListed);
+            com.portfolioos.core.model.TaxTerm taxTerm = TaxClassifier.classifyTaxTerm(category, holdingDays, resolvedFy, isListed);
             boolean isLongTerm = taxTerm == com.portfolioos.core.model.TaxTerm.LONG_TERM;
 
-            com.portfolioos.core.rules.TaxRulesConfig taxRules = com.portfolioos.core.rules.TaxRulesLoader.loadRules(fy);
+            com.portfolioos.core.rules.TaxRulesConfig taxRules = com.portfolioos.core.rules.TaxRulesLoader.loadRules(resolvedFy);
             long thresholdDays = category == AssetCategory.EQUITY ? taxRules.equityLtcgThresholdDays() : (isListed ? taxRules.equityLtcgThresholdDays() : taxRules.goldInternationalThresholdDays());
             long daysToLtcg = isLongTerm ? 0L : Math.max(0L, thresholdDays - holdingDays);
 
@@ -181,9 +182,9 @@ public class SyncController {
         List<RadarSignalDto> radarSignals = new ArrayList<>();
 
         // 1. Priority Tax Loss Harvesting Signals
-        ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
+        ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, resolvedFy);
         HarvestAdvisor.TaxHarvestResult harvestPlan = HarvestAdvisor.generateHarvestPlan(
-            openLots, navMap, new BigDecimal(exStatus.exemptionUsed()), fy
+            openLots, navMap, new BigDecimal(exStatus.exemptionUsed()), resolvedFy
         );
 
         Map<String, List<HarvestAdvisor.TaxHarvestRecommendation>> harvestByScheme = harvestPlan.recommendations().stream()
@@ -236,17 +237,6 @@ public class SyncController {
 
                     String bucket = detectFineBucket(schemeName);
 
-                    if (sharpeObj instanceof Number sharpe && sharpe.doubleValue() >= 1.2) {
-                        radarSignals.add(new RadarSignalDto(
-                            "QUANT_ANALYTICS",
-                            schemeName,
-                            "QUANT STATS: HIGH SHARPE (" + String.format("%.2f", sharpe.doubleValue()) + ")",
-                            "[" + bucket + "] " + schemeName + " displays a risk-adjusted Sharpe ratio of " + String.format("%.2f", sharpe.doubleValue()) + " over tracked NAV history.",
-                            "INFO",
-                            "Sharpe " + String.format("%.2f", sharpe.doubleValue())
-                        ));
-                    }
-
                     double ddThreshold = switch (bucket) {
                         case "Debt & Liquid" -> PortfolioConstants.DRAWDOWN_TIER_1_PCT / 100.0;
                         case "Core Equity", "Flexi Cap", "Large & Midcap", "Equal Weight Index", "Gold & Commodities" -> PortfolioConstants.DRAWDOWN_TIER_2_PCT / 100.0;
@@ -269,24 +259,6 @@ public class SyncController {
             }
         } catch (Throwable ex) {
             System.err.println("Non-critical Quant Flight RPC signal extraction warning: " + ex.getMessage());
-        }
-
-        // 2.5 Automated SIP Cashflow Signal
-        long sipCount = allEvents.stream()
-            .filter(e -> e.eventType() == EventType.SIP_INSTALMENT)
-            .map(TaxEvent::assetId)
-            .distinct()
-            .count();
-
-        if (sipCount > 0) {
-            radarSignals.add(0, new RadarSignalDto(
-                "SIP_DETECTION",
-                "Automated SIP Tracker",
-                "RECURRING SIP DISCIPLINE",
-                String.format("Auto-detected %d active monthly SIPs across portfolio. Disciplined recurring cashflow active.", sipCount),
-                "INFO",
-                sipCount + " Active SIPs"
-            ));
         }
 
         // 3. LTCG Maturation Ladder Signal
@@ -315,7 +287,7 @@ public class SyncController {
 
         // 4. Asset Allocation Drift Signal
         BucketEngine.RebalanceEngineResult bucketStatus = BucketEngine.evaluateRebalance(
-            openLots, state.fifoResult().matchedLots(), navMap, today, null, null, com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(today), fy
+            openLots, state.fifoResult().matchedLots(), navMap, today, null, null, com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(today), resolvedFy
         );
 
         BucketEngine.BucketStatus driftedBucket = bucketStatus.bucketStatuses().stream()
@@ -334,7 +306,7 @@ public class SyncController {
             ));
         }
 
-        int staleNavCount = valuationService.getPortfolioSummary(fy).staleNavCount();
+        int staleNavCount = valuationService.getPortfolioSummary(resolvedFy).staleNavCount();
         boolean hasStaleNav = staleNavCount > 0;
         if (hasStaleNav) {
             radarSignals.add(0, new RadarSignalDto(
@@ -352,7 +324,7 @@ public class SyncController {
             now / 1000,
             ledgerHash,
             LocalDate.now().atStartOfDay().toString(),
-            fy,
+            resolvedFy,
             BigDecimal.valueOf(overallXirr).setScale(2, RoundingMode.HALF_UP).doubleValue(),
             String.format("%.2f%%", overallXirr),
             totalPortfolioInvested.doubleValue(),
@@ -376,27 +348,23 @@ public class SyncController {
             derivedTriggerType = "DRIFT";
         }
 
+        DuckDbProjector.BenchmarkLevelMetrics benchMetrics = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
+        BigDecimal benchCurrent = benchMetrics != null && benchMetrics.currentLevel() != null ? BigDecimal.valueOf(benchMetrics.currentLevel()) : null;
+        BigDecimal benchHigh = benchMetrics != null && benchMetrics.rollingHigh() != null ? BigDecimal.valueOf(benchMetrics.rollingHigh()) : null;
+
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto rebalancePlan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
-            openLots, matchedLots, navMap, LocalDate.now(), null, null,
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), fy, derivedTriggerType, null
+            openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), resolvedFy, derivedTriggerType, null
         );
 
         List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto> bucketAllocation = valuationService.getBucketAllocationStatuses();
 
-        return ResponseEntity.ok(new UnidirectionalSyncSnapshot(
-            syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, bucketAllocation
-        ));
-    }
+        List<RadarSignalDto> filteredSignals = radarSignals.stream()
+            .filter(s -> "WARNING".equalsIgnoreCase(s.severity()) || "CRITICAL".equalsIgnoreCase(s.severity()))
+            .toList();
 
-    @PostMapping("/pair")
-    public ResponseEntity<PairResponseDto> pairDevice(
-        @RequestBody PairRequestDto req
-    ) {
-        String token = "fintracker_jwt_" + req.deviceId() + "_" + System.currentTimeMillis();
-        return ResponseEntity.ok(new PairResponseDto(
-            "SUCCESS",
-            token,
-            "my-fintracker-core"
+        return ResponseEntity.ok(new UnidirectionalSyncSnapshot(
+            syncInfo, holdings, taxLots, filteredSignals, netWorthHistory, rebalancePlan, bucketAllocation
         ));
     }
 
@@ -410,8 +378,12 @@ public class SyncController {
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
+        DuckDbProjector.BenchmarkLevelMetrics bench = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
+        BigDecimal benchCurrent = bench != null && bench.currentLevel() != null ? BigDecimal.valueOf(bench.currentLevel()) : null;
+        BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
+
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
-            openLots, matchedLots, navMap, LocalDate.now(), null, null,
+            openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
         );
         return ResponseEntity.ok(plan);
@@ -420,6 +392,28 @@ public class SyncController {
     @GetMapping("/portfolio/bucket-allocation")
     public ResponseEntity<List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto>> getBucketAllocation() {
         return ResponseEntity.ok(valuationService.getBucketAllocationStatuses());
+    }
+
+    @PostMapping("/rebalance/confirm-execution")
+    public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> confirmRebalanceExecution(
+        @RequestBody(required = false) Map<String, Object> req
+    ) {
+        String triggerType = req != null && req.containsKey("trigger") ? req.get("trigger").toString() : "SCHEDULED";
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
+        List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
+        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
+
+        String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
+        DuckDbProjector.BenchmarkLevelMetrics bench = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
+        BigDecimal benchCurrent = bench != null && bench.currentLevel() != null ? BigDecimal.valueOf(bench.currentLevel()) : null;
+        BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
+
+        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
+            openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
+        );
+        return ResponseEntity.ok(plan);
     }
 
     @PostMapping("/rebalance/simulate-lumpsum")
@@ -435,9 +429,12 @@ public class SyncController {
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
+        DuckDbProjector.BenchmarkLevelMetrics bench = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
+        BigDecimal benchCurrent = bench != null && bench.currentLevel() != null ? BigDecimal.valueOf(bench.currentLevel()) : null;
+        BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
 
-        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
-            openLots, matchedLots, navMap, LocalDate.now(), null, null,
+        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
+            openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, "MANUAL_LUMPSUM", amount, includeRebalance
         );
         return ResponseEntity.ok(plan);

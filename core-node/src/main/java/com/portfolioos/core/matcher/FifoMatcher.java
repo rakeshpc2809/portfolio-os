@@ -20,9 +20,15 @@ import java.util.UUID;
 @Component
 public class FifoMatcher {
 
+    private static final java.time.LocalDate GRANDFATHER_CUTOFF = java.time.LocalDate.of(2018, 1, 31);
+
     public record FifoResult(List<Lot> openLots, List<MatchedLot> matchedLots) {}
 
     public FifoResult processEvents(List<TaxEvent> events) {
+        return processEvents(events, java.util.Map.of());
+    }
+
+    public FifoResult processEvents(List<TaxEvent> events, java.util.Map<String, BigDecimal> fmv2018Map) {
         List<TaxEvent> sortedEvents = new ArrayList<>(events);
         sortedEvents.sort(Comparator.comparing(TaxEvent::eventDate).thenComparing(TaxEvent::ingestedAt));
 
@@ -32,6 +38,11 @@ public class FifoMatcher {
         for (TaxEvent event : sortedEvents) {
             switch (event.eventType()) {
                 case ACQUISITION, SIP_INSTALMENT, DIVIDEND_REINVEST -> {
+                    boolean isPre2018 = !event.eventDate().isAfter(GRANDFATHER_CUTOFF);
+                    AssetCategory category = TaxClassifier.detectCategory(event.assetId(), event.assetName());
+                    boolean isGrandfathered = isPre2018 && (category == AssetCategory.EQUITY);
+                    BigDecimal fmv = (isGrandfathered && fmv2018Map != null) ? fmv2018Map.getOrDefault(event.assetId(), BigDecimal.ZERO) : BigDecimal.ZERO;
+
                     openLotsQueue.add(new Lot(
                         UUID.randomUUID().toString(),
                         event.assetId(),
@@ -41,11 +52,16 @@ public class FifoMatcher {
                         event.units(),
                         event.pricePerUnit(),
                         event.grossAmount(),
-                        false, // isGrandfathered - can be set based on date in a later step
-                        BigDecimal.ZERO
+                        isGrandfathered,
+                        fmv
                     ));
                 }
                 case BONUS -> {
+                    boolean isPre2018 = !event.eventDate().isAfter(GRANDFATHER_CUTOFF);
+                    AssetCategory category = TaxClassifier.detectCategory(event.assetId(), event.assetName());
+                    boolean isGrandfathered = isPre2018 && (category == AssetCategory.EQUITY);
+                    BigDecimal fmv = (isGrandfathered && fmv2018Map != null) ? fmv2018Map.getOrDefault(event.assetId(), BigDecimal.ZERO) : BigDecimal.ZERO;
+
                     openLotsQueue.add(new Lot(
                         UUID.randomUUID().toString(),
                         event.assetId(),
@@ -55,8 +71,8 @@ public class FifoMatcher {
                         event.units(),
                         BigDecimal.ZERO,
                         BigDecimal.ZERO,
-                        false,
-                        BigDecimal.ZERO
+                        isGrandfathered,
+                        fmv
                     ));
                 }
                 case SPLIT -> {
@@ -71,8 +87,16 @@ public class FifoMatcher {
                                 if (newRemaining.compareTo(BigDecimal.ZERO) > 0) {
                                     newCostPerUnit = current.totalCostBasis().divide(newRemaining, 4, RoundingMode.HALF_UP);
                                 }
-                                openLotsQueue.set(i, current.withRemainingUnitsAndCost(newRemaining, newCostPerUnit, current.totalCostBasis())
-                                    .withAssetDetails(current.assetId(), current.assetName(), newOriginal, newRemaining, newCostPerUnit));
+                                BigDecimal newFmv = current.fmv20180131();
+                                if (newFmv != null && newFmv.compareTo(BigDecimal.ZERO) > 0) {
+                                    newFmv = newFmv.divide(splitRatio, 4, RoundingMode.HALF_UP);
+                                }
+                                openLotsQueue.set(i, new Lot(
+                                    current.lotId(), current.assetId(), current.assetName(),
+                                    current.acquisitionDate(), newOriginal, newRemaining,
+                                    newCostPerUnit, current.totalCostBasis(),
+                                    current.isGrandfathered(), newFmv
+                                ));
                             }
                         }
                     }
@@ -92,7 +116,14 @@ public class FifoMatcher {
                         BigDecimal matchedUnits = unitsToMatch.min(currentLot.remainingUnits());
                         BigDecimal costBasisSlice = matchedUnits.multiply(currentLot.costPerUnit());
                         BigDecimal saleProceedsSlice = matchedUnits.multiply(event.pricePerUnit());
-                        BigDecimal realizedGain = saleProceedsSlice.subtract(costBasisSlice);
+                        
+                        BigDecimal effectiveCostBasis = costBasisSlice;
+                        if (currentLot.isGrandfathered() && currentLot.fmv20180131() != null && currentLot.fmv20180131().compareTo(BigDecimal.ZERO) > 0) {
+                            BigDecimal lotFmv = matchedUnits.multiply(currentLot.fmv20180131());
+                            BigDecimal lotLowerBound = lotFmv.min(saleProceedsSlice);
+                            effectiveCostBasis = costBasisSlice.max(lotLowerBound);
+                        }
+                        BigDecimal realizedGain = saleProceedsSlice.subtract(effectiveCostBasis);
                         
                         long holdingDays = ChronoUnit.DAYS.between(currentLot.acquisitionDate(), event.eventDate());
                         AssetCategory category = TaxClassifier.detectCategory(event.assetId(), event.assetName());
@@ -109,7 +140,7 @@ public class FifoMatcher {
                             currentLot.acquisitionDate(),
                             event.eventDate(),
                             matchedUnits,
-                            costBasisSlice,
+                            effectiveCostBasis,
                             saleProceedsSlice,
                             realizedGain,
                             holdingDays,

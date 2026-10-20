@@ -22,26 +22,7 @@ public class SyncDtos {
         String formattedUnrealizedGain,
         int staleNavCount,
         boolean hasStaleNav
-    ) {
-        public SyncInfoDto(
-            long timestamp,
-            String ledgerHash,
-            String generatedAt,
-            String fiscalYear,
-            double portfolioXirr,
-            String xirrPercentage,
-            double totalInvested,
-            double currentValue,
-            double unrealizedGain,
-            String formattedCurrentValue,
-            String formattedTotalInvested,
-            String formattedUnrealizedGain
-        ) {
-            this(timestamp, ledgerHash, generatedAt, fiscalYear, portfolioXirr, xirrPercentage,
-                 totalInvested, currentValue, unrealizedGain, formattedCurrentValue, formattedTotalInvested,
-                 formattedUnrealizedGain, 0, false);
-        }
-    }
+    ) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record FlatHoldingDto(
@@ -142,17 +123,4 @@ public class SyncDtos {
             this(syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, java.util.Collections.emptyList());
         }
     }
-
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record PairRequestDto(
-        String deviceId,
-        String deviceName
-    ) {}
-
-    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record PairResponseDto(
-        String status,
-        String token,
-        String serverName
-    ) {}
 }

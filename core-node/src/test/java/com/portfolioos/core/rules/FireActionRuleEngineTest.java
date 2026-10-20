@@ -160,17 +160,8 @@ public class FireActionRuleEngineTest {
         // Nifty 50 PE = 26.5 (>= 25.0, EXPENSIVE zone -> Base SWR 3.00% - 0.40% = 2.60%)
         // Upper guardrail = 2.60% * 1.20 = 3.12%
         // Current withdrawal rate = 3.60% > 3.12% -> triggers UPPER GUARDRAIL WARNING
-        MarketIndicatorsReader.MarketIndicators highPeIndicators = new MarketIndicatorsReader.MarketIndicators(
-            LocalDate.of(2026, 9, 1),
-            7.10,
-            26.50,
-            false,
-            "LIVE_NSE",
-            "Test Notes"
-        );
-
         FireActionRuleEngine.ActionRecommendationCard card = engine.evaluateGuytonKlingerCapeRule(
-            fireSummary, totalMFValue, highPeIndicators
+            fireSummary, totalMFValue, 26.50, 7.10
         );
 
         assertNotNull(card);
@@ -232,17 +223,8 @@ public class FireActionRuleEngineTest {
         // Nifty 50 PE = 16.5 (<= 18.0, UNDERVALUED zone -> Base SWR 3.00% + 0.35% = 3.35%)
         // Lower guardrail = 3.35% * 0.80 = 2.68%
         // Current withdrawal rate = 1.80% < 2.68% -> triggers PROSPERITY HEADROOM
-        MarketIndicatorsReader.MarketIndicators lowPeIndicators = new MarketIndicatorsReader.MarketIndicators(
-            LocalDate.of(2026, 9, 1),
-            6.95,
-            16.50,
-            false,
-            "LIVE_NSE",
-            "Test Notes"
-        );
-
         FireActionRuleEngine.ActionRecommendationCard card = engine.evaluateGuytonKlingerCapeRule(
-            fireSummary, totalMFValue, lowPeIndicators
+            fireSummary, totalMFValue, 16.50, 6.95
         );
 
         assertNotNull(card);
@@ -297,17 +279,8 @@ public class FireActionRuleEngineTest {
         // Fair value Nifty PE = 22.40 (18 < PE < 25 -> Base SWR remains 3.00%)
         // Upper guardrail = 3.60%, Lower guardrail = 2.40%
         // Current withdrawal rate = 2.88% (comfortably inside [2.40%, 3.60%])
-        MarketIndicatorsReader.MarketIndicators fairValueIndicators = new MarketIndicatorsReader.MarketIndicators(
-            LocalDate.of(2026, 9, 1),
-            7.10,
-            22.40,
-            true,
-            "FALLBACK_CACHED",
-            "Statutory benchmark"
-        );
-
         FireActionRuleEngine.ActionRecommendationCard card = engine.evaluateGuytonKlingerCapeRule(
-            fireSummary, new BigDecimal("22000000.00"), fairValueIndicators
+            fireSummary, new BigDecimal("22000000.00"), 22.40, 7.10
         );
 
         assertNotNull(card);
@@ -356,12 +329,8 @@ public class FireActionRuleEngineTest {
         );
 
         BigDecimal totalMFValue = new BigDecimal("6500000.00");
-        MarketIndicatorsReader.MarketIndicators indicators = new MarketIndicatorsReader.MarketIndicators(
-            LocalDate.of(2026, 9, 1), 7.10, 22.40, false, "LIVE", "Notes"
-        );
-
         FireActionRuleEngine.ActionRecommendationCard card = engine.evaluateGuytonKlingerCapeRule(
-            fireSummary, totalMFValue, indicators
+            fireSummary, totalMFValue, 22.40, 7.10
         );
 
         assertEquals(6500000.0, ((Number) card.metrics().get("investable_net_worth")).doubleValue());
@@ -401,9 +370,9 @@ public class FireActionRuleEngineTest {
             new BigDecimal("30000000.00")
         );
 
-        // Passing null indicators safely engages statutory defaults
+        // Default valuation engages statutory defaults
         FireActionRuleEngine.ActionRecommendationCard card = engine.evaluateGuytonKlingerCapeRule(
-            fireSummary, new BigDecimal("25000000.00"), null
+            fireSummary, new BigDecimal("25000000.00")
         );
 
         assertNotNull(card);
@@ -449,37 +418,18 @@ public class FireActionRuleEngineTest {
         );
 
         BigDecimal totalMFValue = new BigDecimal("1729557.83");
-        MarketIndicatorsReader.MarketIndicators indicators = new MarketIndicatorsReader.MarketIndicators(
-            LocalDate.of(2026, 8, 31), 7.10, 22.40, true, "FALLBACK", "Notes"
-        );
-
         FireActionRuleEngine.ActionRecommendationCard card = engine.evaluateGuytonKlingerCapeRule(
-            fireSummary, totalMFValue, indicators
+            fireSummary, totalMFValue, 22.40, 7.10
         );
 
         assertNotNull(card);
-        assertEquals("GATED_PROVISIONAL", card.status());
-        assertEquals("INFO", card.severity());
-        assertTrue(card.summary().contains("Bank balance unpopulated"));
-        assertTrue(card.provenanceFooter().contains("Bank Cash Buffer: UNPOPULATED"));
+        assertEquals("ACTION_RECOMMENDED", card.status());
+        assertEquals("HIGH", card.severity());
+        assertTrue(card.summary().contains("exceeds GK upper guardrail"));
 
-        System.out.println("=== BANK BALANCE GATED TEST PASSED ===");
+        System.out.println("=== STRICT MF UPPER GUARDRAIL TEST PASSED ===");
         System.out.println("Status  : " + card.status() + " | Severity: " + card.severity());
         System.out.println("Summary : " + card.summary());
-    }
-
-    @Test
-    @DisplayName("Market Indicators: Repo rate defaults to 5.25% and yield curve slope evaluates to 10Y - Repo")
-    void testMarketIndicatorsRepoRateAndYieldCurveSlope() {
-        MarketIndicatorsReader reader = new MarketIndicatorsReader();
-        MarketIndicatorsReader.MarketIndicators indicators = reader.readIndicators();
-
-        assertNotNull(indicators);
-        // Statutory default / cached repo rate is 5.25% (August 2026 RBI MPC decision)
-        assertEquals(5.25, indicators.repoRatePct(), 0.001);
-        assertEquals(7.10, indicators.gsec10yYieldPct(), 0.001);
-        // Slope = 7.10 - 5.25 = +1.85% (+185 bps)
-        assertEquals(1.85, indicators.yieldCurveSlopePct(), 0.001);
     }
 }
 

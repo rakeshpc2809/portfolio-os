@@ -7,10 +7,12 @@ import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.persistence.SqliteEventStore;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -19,18 +21,15 @@ public class StatementIngestionUseCase {
     private final com.portfolioos.core.ports.EventStorePort eventStore;
     private final DuckDbProjector duckDbProjector;
     private final LedgerCacheService cacheService;
-    private final com.portfolioos.core.backup.GoogleSheetsBackupService sheetsBackupService;
 
     public StatementIngestionUseCase(
         com.portfolioos.core.ports.EventStorePort eventStore,
         DuckDbProjector duckDbProjector,
-        LedgerCacheService cacheService,
-        com.portfolioos.core.backup.GoogleSheetsBackupService sheetsBackupService
+        LedgerCacheService cacheService
     ) {
         this.eventStore = eventStore;
         this.duckDbProjector = duckDbProjector;
         this.cacheService = cacheService;
-        this.sheetsBackupService = sheetsBackupService;
     }
 
     private final Object ingestionLock = new Object();
@@ -42,6 +41,22 @@ public class StatementIngestionUseCase {
 
         List<TaxEvent> taxEvents = new ArrayList<>();
         for (ParsedEventDto dto : dtoList) {
+            if (dto.units() == null || dto.units().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Corrupted transaction row: units must be positive. Found: " + dto.units());
+            }
+            if (dto.pricePerUnit() == null || dto.pricePerUnit().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Corrupted transaction row: pricePerUnit must be positive. Found: " + dto.pricePerUnit());
+            }
+            if (dto.grossAmount() == null || dto.grossAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Corrupted transaction row: grossAmount must be positive. Found: " + dto.grossAmount());
+            }
+            BigDecimal expectedGross = dto.units().multiply(dto.pricePerUnit());
+            BigDecimal grossDelta = expectedGross.subtract(dto.grossAmount()).abs();
+            BigDecimal maxAllowedDelta = expectedGross.multiply(new BigDecimal("0.02")).max(new BigDecimal("10.00"));
+            if (grossDelta.compareTo(maxAllowedDelta) > 0) {
+                throw new IllegalArgumentException("Corrupted transaction row: units (" + dto.units() + ") * price (" + dto.pricePerUnit() + ") = " + expectedGross + " diverges from declared grossAmount (" + dto.grossAmount() + ") by " + grossDelta);
+            }
+
             TaxEvent te = new TaxEvent(
                 dto.id() != null ? dto.id() : UUID.randomUUID().toString(),
                 dto.assetId(),
@@ -58,7 +73,26 @@ public class StatementIngestionUseCase {
             taxEvents.add(te);
         }
 
+        Map<String, BigDecimal> declaredBalances = new java.util.HashMap<>();
+        for (ParsedEventDto dto : dtoList) {
+            if (dto.declaredClosingUnits() != null && dto.assetId() != null) {
+                declaredBalances.put(dto.assetId(), dto.declaredClosingUnits());
+            }
+        }
+
         synchronized (ingestionLock) {
+            if (!declaredBalances.isEmpty()) {
+                List<TaxEvent> combined = new ArrayList<>(eventStore.getAllEvents());
+                combined.addAll(taxEvents);
+                com.portfolioos.core.matcher.FifoMatcher fifoMatcher = new com.portfolioos.core.matcher.FifoMatcher();
+                com.portfolioos.core.matcher.FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(combined);
+                com.portfolioos.core.reconciliation.ReconciliationGate.MultiAssetReconciliationResult recon =
+                    com.portfolioos.core.reconciliation.ReconciliationGate.validateStatementPerAsset(fifoResult, declaredBalances);
+                if (!recon.allMatched()) {
+                    throw new com.portfolioos.core.reconciliation.ReconciliationGateFailureException(recon);
+                }
+            }
+
             // Dual-write step 1: Write to primary SQLite Ledger
             eventStore.appendEvents(taxEvents);
 
@@ -74,11 +108,6 @@ public class StatementIngestionUseCase {
 
             // Evict/Invalidate central ledger cache
             cacheService.invalidateCache();
-
-            // Non-blocking asynchronous backup sync to Google Sheets (failures never block or fail ledger commit)
-            if (sheetsBackupService != null) {
-                sheetsBackupService.triggerAsyncIncrementalBackup();
-            }
 
             return taxEvents;
         }

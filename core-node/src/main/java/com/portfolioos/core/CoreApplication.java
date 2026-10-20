@@ -24,7 +24,11 @@ public class CoreApplication {
     @Bean
     public CommandLineRunner startupRunner(EventStorePort eventStore, DuckDbProjector duckDbProjector) {
         return args -> {
-            System.out.println("Initializing DuckDB Projection from SQLite ledger...");
+            System.out.println("Verifying SQLite HMAC ledger integrity...");
+            if (!eventStore.verifyLedgerIntegrity()) {
+                throw new IllegalStateException("CRITICAL: SQLite HMAC ledger chain integrity check failed! Potential tampering or corruption.");
+            }
+            System.out.println("Ledger integrity verified successfully. Initializing DuckDB Projection...");
             try {
                 duckDbProjector.projectEvents(eventStore.getAllEvents());
                 System.out.println("DuckDB projection loaded successfully.");

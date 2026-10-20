@@ -73,7 +73,7 @@ class SyncControllerTest {
         };
         com.portfolioos.core.rpc.QuantSidecarClient mockQuantSidecar = new com.portfolioos.core.rpc.QuantSidecarClient("localhost", 9999);
         com.portfolioos.core.service.PortfolioValuationService valuationService = 
-            new com.portfolioos.core.service.PortfolioValuationService(mockCacheService, mockDuckDb, mockQuantSidecar, null);
+            new com.portfolioos.core.service.PortfolioValuationService(mockCacheService, mockDuckDb, mockQuantSidecar);
 
         syncController = new SyncController(mockCacheService, valuationService, mockDuckDb, mockQuantSidecar);
     }

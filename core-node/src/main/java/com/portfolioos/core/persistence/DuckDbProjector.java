@@ -142,8 +142,67 @@ public class DuckDbProjector implements AutoCloseable {
                 stmt.execute("ALTER TABLE fund_holdings ADD COLUMN IF NOT EXISTS market VARCHAR DEFAULT 'IN'");
                 stmt.execute("ALTER TABLE fund_holdings ADD COLUMN IF NOT EXISTS source_type VARCHAR DEFAULT 'NSE_INDEX_CONSTITUENTS'");
             } catch (SQLException ignored) {}
+            seedStandardConstituents();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize DuckDB schema", e);
+        }
+    }
+
+    public void seedStandardConstituents() {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM fund_holdings")) {
+            if (rs.next() && rs.getInt(1) > 0) {
+                return; // Already populated
+            }
+        } catch (Exception ignored) {}
+
+        try (java.io.InputStream is = getClass().getResourceAsStream("/data/fund_constituents.json")) {
+            if (is == null) {
+                java.io.File fallbackFile = new java.io.File("src/main/resources/data/fund_constituents.json");
+                if (!fallbackFile.exists()) {
+                    fallbackFile = new java.io.File("core-node/src/main/resources/data/fund_constituents.json");
+                }
+                if (!fallbackFile.exists()) {
+                    return;
+                }
+                try (java.io.InputStream fis = new java.io.FileInputStream(fallbackFile)) {
+                    loadAndInsertConstituents(fis);
+                }
+            } else {
+                loadAndInsertConstituents(is);
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to seed fund constituents from JSON: " + e.getMessage());
+        }
+    }
+
+    private void loadAndInsertConstituents(java.io.InputStream is) throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        List<Map<String, Object>> rows = mapper.readValue(is, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+        if (rows == null || rows.isEmpty()) return;
+
+        String sql = "INSERT OR REPLACE INTO fund_holdings (fund_id, stock_symbol, stock_isin, weight_pct, disclosure_date, market, source_type) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            int batchSize = 0;
+            for (Map<String, Object> row : rows) {
+                pstmt.setString(1, (String) row.get("fund_id"));
+                pstmt.setString(2, (String) row.get("stock_symbol"));
+                pstmt.setString(3, (String) row.get("stock_isin"));
+                Object w = row.get("weight_pct");
+                double weight = w instanceof Number num ? num.doubleValue() : Double.parseDouble(String.valueOf(w));
+                pstmt.setDouble(4, weight);
+                pstmt.setString(5, (String) row.get("disclosure_date"));
+                pstmt.setString(6, (String) row.getOrDefault("market", "IN"));
+                pstmt.setString(7, (String) row.getOrDefault("source_type", "NSE_INDEX_CONSTITUENTS"));
+                pstmt.addBatch();
+                batchSize++;
+                if (batchSize % 100 == 0) {
+                    pstmt.executeBatch();
+                }
+            }
+            pstmt.executeBatch();
         }
     }
 
@@ -268,6 +327,64 @@ public class DuckDbProjector implements AutoCloseable {
         res.put("portfolio_returns", portfolioReturns);
         res.put("benchmark_returns", benchmarkReturns);
         return res;
+    }
+
+    public record BenchmarkLevelMetrics(Double currentLevel, Double rollingHigh) {}
+
+    public BenchmarkLevelMetrics getBenchmarkLevelMetrics(String benchmarkId) {
+        String targetBenchmark = (benchmarkId != null && !benchmarkId.isBlank()) ? benchmarkId : "NIFTY_500_TRI";
+        String sql = "WITH recent_bench AS (" +
+                     "  SELECT nav_date, level " +
+                     "  FROM benchmark_history " +
+                     "  WHERE benchmark_id = ? AND level > 0 " +
+                     "  ORDER BY nav_date DESC LIMIT 252" +
+                     ") " +
+                     "SELECT " +
+                     "  (SELECT level FROM recent_bench ORDER BY nav_date DESC LIMIT 1) AS current_level, " +
+                     "  MAX(level) AS rolling_high " +
+                     "FROM recent_bench";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, targetBenchmark);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    double cur = rs.getDouble("current_level");
+                    double high = rs.getDouble("rolling_high");
+                    if (cur > 0 && high > 0) {
+                        return new BenchmarkLevelMetrics(cur, high);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to fetch benchmark level metrics for " + targetBenchmark + ": " + e.getMessage());
+        }
+
+        // Fallback: Check core index fund (ICICI LargeMidcap 250 Index Fund) in nav_history for 252-day history
+        String proxySql = "WITH recent_nav AS (" +
+                          "  SELECT nav_date, nav " +
+                          "  FROM nav_history " +
+                          "  WHERE asset_id = 'INF109KC12U0' AND nav > 0 " +
+                          "  ORDER BY nav_date DESC LIMIT 252" +
+                          ") " +
+                          "SELECT " +
+                          "  (SELECT nav FROM recent_nav ORDER BY nav_date DESC LIMIT 1) AS current_level, " +
+                          "  MAX(nav) AS rolling_high " +
+                          "FROM recent_nav";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(proxySql);
+             ResultSet rs = pstmt.executeQuery()) {
+            if (rs.next()) {
+                double cur = rs.getDouble("current_level");
+                double high = rs.getDouble("rolling_high");
+                if (cur > 0 && high > 0) {
+                    return new BenchmarkLevelMetrics(cur, high);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to fetch proxy benchmark level metrics: " + e.getMessage());
+        }
+
+        return null;
     }
 
     public void checkpoint() {
@@ -414,6 +531,108 @@ public class DuckDbProjector implements AutoCloseable {
             }
         } catch (SQLException e) {
             System.err.println("Failed to fetch NAV history series with dates from DuckDB: " + e.getMessage());
+        }
+        return result;
+    }
+
+    public void saveLatestNavEntries(List<com.portfolioos.core.nav.AmfiNavSync.NavEntry> entries) {
+        if (entries == null || entries.isEmpty() || dataSource == null) return;
+        try (Connection conn = getConnection()) {
+            boolean wasAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try {
+                String sql = "INSERT INTO nav_history (asset_id, nav_date, nav) VALUES (?, ?, ?) ON CONFLICT (asset_id, nav_date) DO UPDATE SET nav = EXCLUDED.nav";
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    for (var entry : entries) {
+                        if (entry.nav() == null || entry.date() == null) continue;
+                        String dateStr = entry.date().toString();
+                        double navVal = entry.nav().doubleValue();
+                        if (entry.isin() != null && !entry.isin().isEmpty() && !"-".equals(entry.isin())) {
+                            stmt.setString(1, entry.isin());
+                            stmt.setString(2, dateStr);
+                            stmt.setDouble(3, navVal);
+                            stmt.addBatch();
+                        }
+                        if (entry.schemeCode() != null && !entry.schemeCode().isEmpty()) {
+                            stmt.setString(1, entry.schemeCode());
+                            stmt.setString(2, dateStr);
+                            stmt.setDouble(3, navVal);
+                            stmt.addBatch();
+                        }
+                    }
+                    stmt.executeBatch();
+                }
+                conn.commit();
+            } catch (Exception e) {
+                conn.rollback();
+            } finally {
+                conn.setAutoCommit(wasAutoCommit);
+            }
+        } catch (SQLException e) {
+            System.err.println("DuckDB saveLatestNavEntries failure: " + e.getMessage());
+        }
+    }
+
+    public List<com.portfolioos.core.nav.AmfiNavSync.NavEntry> getLatestNavEntries() {
+        List<com.portfolioos.core.nav.AmfiNavSync.NavEntry> result = new ArrayList<>();
+        if (dataSource == null) return result;
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT asset_id, nav_date, nav FROM (" +
+                         "  SELECT asset_id, nav_date, nav, " +
+                         "         ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY nav_date DESC) as rn " +
+                         "  FROM nav_history " +
+                         "  WHERE nav > 0" +
+                         ") sub WHERE rn = 1";
+            try (PreparedStatement stmt = conn.prepareStatement(sql);
+                 ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String assetId = rs.getString("asset_id");
+                    String navDateStr = rs.getString("nav_date");
+                    double nav = rs.getDouble("nav");
+                    LocalDate navDate = null;
+                    if (navDateStr != null) {
+                        try {
+                            navDate = LocalDate.parse(navDateStr);
+                        } catch (Exception ignored) {}
+                    }
+                    boolean isIsin = assetId != null && assetId.startsWith("INF");
+                    result.add(new com.portfolioos.core.nav.AmfiNavSync.NavEntry(
+                        isIsin ? null : assetId,
+                        isIsin ? assetId : null,
+                        assetId,
+                        BigDecimal.valueOf(nav),
+                        navDate
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("DuckDB getLatestNavEntries failure: " + e.getMessage());
+        }
+        return result;
+    }
+
+    public Map<String, BigDecimal> getJan2018FmvMap() {
+        Map<String, BigDecimal> result = new HashMap<>();
+        if (dataSource == null) return result;
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT asset_id, nav FROM (" +
+                         "  SELECT asset_id, nav, " +
+                         "         ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY nav_date DESC) as rn " +
+                         "  FROM nav_history " +
+                         "  WHERE nav_date <= '2018-01-31' AND nav > 0" +
+                         ") sub WHERE rn = 1";
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                while (rs.next()) {
+                    String assetId = rs.getString("asset_id");
+                    double nav = rs.getDouble("nav");
+                    if (assetId != null && !assetId.isBlank()) {
+                        result.put(assetId, BigDecimal.valueOf(nav));
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to fetch Jan 31 2018 FMV map from DuckDB: " + e.getMessage());
         }
         return result;
     }

@@ -19,10 +19,6 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
-        val defaultAuthToken = System.getenv("API_AUTH_TOKEN")
-            ?: (project.findProperty("API_AUTH_TOKEN") as? String)
-            ?: ""
-        buildConfigField("String", "DEFAULT_AUTH_TOKEN", "\"$defaultAuthToken\"")
     }
 
     buildTypes {

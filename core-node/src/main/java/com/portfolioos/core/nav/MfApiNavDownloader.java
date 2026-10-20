@@ -44,7 +44,7 @@ public class MfApiNavDownloader {
         isinToSchemeCodeMap.put("INF109K018M4", 120658L); // ICICI Infrastructure
         isinToSchemeCodeMap.put("INF204K01G52", 118728L); // Nippon Consumption
         isinToSchemeCodeMap.put("INF200K01UJ5", 148906L); // SBI Large & Midcap
-        isinToSchemeCodeMap.put("INF204K01K15", 118778L); // Nippon Small Cap
+        isinToSchemeCodeMap.put("INF204K01K15", 118777L); // Nippon Small Cap Direct Plan Growth
         isinToSchemeCodeMap.put("INF205K01KR8", 120401L); // Invesco Arbitrage
         isinToSchemeCodeMap.put("INF769K01ED6", 143783L); // Mirae Healthcare
         isinToSchemeCodeMap.put("INF247L01BM8", 150642L); // Motilal Gold and Silver

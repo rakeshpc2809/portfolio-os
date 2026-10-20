@@ -45,6 +45,10 @@ object SnapshotCacheManager {
         return getPrefs(context).getBoolean(KEY_IS_AMFI_FALLBACK, false)
     }
 
+    fun setAmfiFallback(context: Context, isFallback: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_IS_AMFI_FALLBACK, isFallback).apply()
+    }
+
     fun isFullyOffline(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_IS_FULLY_OFFLINE, false)
     }
@@ -62,7 +66,7 @@ object SnapshotCacheManager {
     }
 
     fun getAuthToken(context: Context): String {
-        return getPrefs(context).getString(KEY_AUTH_TOKEN, com.portfolioos.mobile.BuildConfig.DEFAULT_AUTH_TOKEN) ?: com.portfolioos.mobile.BuildConfig.DEFAULT_AUTH_TOKEN
+        return getPrefs(context).getString(KEY_AUTH_TOKEN, "") ?: ""
     }
 
     fun setAuthToken(context: Context, token: String) {
@@ -131,6 +135,8 @@ object SnapshotCacheManager {
             editor.putLong(KEY_LAST_FULL_LEDGER_TS, now)
             editor.putBoolean(KEY_IS_AMFI_FALLBACK, false)
             editor.putBoolean(KEY_IS_FULLY_OFFLINE, false)
+        } else {
+            editor.putBoolean(KEY_IS_AMFI_FALLBACK, true)
         }
         editor.apply()
     }

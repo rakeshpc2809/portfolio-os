@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use crate::app::AppState;
+use crate::ui::MUTED;
 
 /// Renders 5 bucket status badges driven by `snapshot.bucket_allocation[].is_drifted`.
 /// No threshold computation here — is_drifted comes from the API.
@@ -24,7 +25,7 @@ pub fn render_allocation(f: &mut Frame, area: ratatui::layout::Rect, state: &App
     let inner = block.inner(area);
     if buckets.is_empty() {
         let msg = Paragraph::new("  Awaiting allocation data…")
-            .style(Style::default().fg(Color::DarkGray));
+            .style(Style::default().fg(MUTED));
         f.render_widget(msg, inner);
         return;
     }
@@ -53,7 +54,7 @@ pub fn render_allocation(f: &mut Frame, area: ratatui::layout::Rect, state: &App
             Span::styled(
                 format!("{:5.1}%  target {:.1}%  drift {}{:.1}%",
                     bucket.current_pct, bucket.target_pct, drift_sign, bucket.drift_pct),
-                Style::default().fg(if bucket.is_drifted { Color::Yellow } else { Color::DarkGray }),
+                Style::default().fg(if bucket.is_drifted { Color::Yellow } else { MUTED }),
             ),
         ]);
         f.render_widget(Paragraph::new(label_line), rows[i]);

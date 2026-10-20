@@ -87,6 +87,9 @@ public class TaxClassifier {
                 }
             }
             case EQUITY -> {
+                if (acquisitionDate != null && disposalDate != null) {
+                    yield !disposalDate.isBefore(acquisitionDate.plusMonths(12)) ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                }
                 if (holdingDays >= rules.equityLtcgThresholdDays()) {
                     yield TaxTerm.LONG_TERM;
                 } else {
@@ -95,6 +98,10 @@ public class TaxClassifier {
             }
             case GOLD_SILVER, INTERNATIONAL -> {
                 // Per Finance Act 2024: Listed ETFs get 12-month (365d) threshold; unlisted FoFs get 24-month (730d)
+                int months = isListed ? 12 : 24;
+                if (acquisitionDate != null && disposalDate != null) {
+                    yield !disposalDate.isBefore(acquisitionDate.plusMonths(months)) ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                }
                 long threshold = isListed ? rules.equityLtcgThresholdDays() : rules.goldInternationalThresholdDays();
                 if (holdingDays >= threshold) {
                     yield TaxTerm.LONG_TERM;

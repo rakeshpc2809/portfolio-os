@@ -11,16 +11,17 @@ import java.util.Map;
 
 public class TaxRulesLoader {
 
-    private static TaxRulesConfig cachedConfig = null;
+    private static final java.util.concurrent.ConcurrentHashMap<String, TaxRulesConfig> CACHED_CONFIGS = new java.util.concurrent.ConcurrentHashMap<>();
 
     @SuppressWarnings("unchecked")
-    public static synchronized TaxRulesConfig loadRules(String fiscalYear) {
+    public static TaxRulesConfig loadRules(String fiscalYear) {
         if (fiscalYear == null || fiscalYear.isBlank()) {
             fiscalYear = "2026-27";
         }
 
-        if (cachedConfig != null && fiscalYear.equals(cachedConfig.fiscalYear())) {
-            return cachedConfig;
+        TaxRulesConfig existing = CACHED_CONFIGS.get(fiscalYear);
+        if (existing != null) {
+            return existing;
         }
 
         String rulesDirEnv = System.getenv("RULES_DIR");
@@ -46,11 +47,12 @@ public class TaxRulesLoader {
 
         if (ruleFile == null) {
             System.err.println("Tax rules YAML missing for FY " + fiscalYear + ", using default Finance Act 2024 rules.");
-            cachedConfig = new TaxRulesConfig(
+            TaxRulesConfig fallback = new TaxRulesConfig(
                 fiscalYear, 365L, new BigDecimal("0.125"), new BigDecimal("0.20"),
                 new BigDecimal("125000"), 730L, new BigDecimal("0.125"), true
             );
-            return cachedConfig;
+            CACHED_CONFIGS.put(fiscalYear, fallback);
+            return fallback;
         }
 
         try {
@@ -101,7 +103,7 @@ public class TaxRulesLoader {
                 debtShortTerm
             );
 
-            cachedConfig = config;
+            CACHED_CONFIGS.put(fiscalYear, config);
             return config;
         } catch (Exception e) {
             String errorMsg = "CRITICAL TAX CALCULATION ERROR: Failed to parse tax rules YAML from " + ruleFile.getAbsolutePath() + ": " + e.getMessage();

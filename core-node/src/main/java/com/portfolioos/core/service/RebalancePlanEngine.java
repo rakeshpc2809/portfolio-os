@@ -29,6 +29,16 @@ public class RebalancePlanEngine {
         }
     }
 
+    public static com.portfolioos.core.valuation.ConsolidationRebalanceEngine.ConsolidationPreviewResult calculateConsolidation(
+        List<Lot> openLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate asOfDate,
+        BigDecimal remainingExemption,
+        String fiscalYear
+    ) {
+        return com.portfolioos.core.valuation.ConsolidationRebalanceEngine.calculateConsolidation(openLots, navMap, asOfDate, remainingExemption, fiscalYear);
+    }
+
     public static RebalancePlanDto buildPlan(
         List<Lot> openLots,
         List<MatchedLot> matchedLots,
@@ -82,7 +92,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPlanInternal(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, true, false
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, true
         );
     }
 
@@ -101,7 +111,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPlanInternal(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, triggerEvaluator, true, false
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, triggerEvaluator, true
         );
     }
 
@@ -134,11 +144,30 @@ public class RebalancePlanEngine {
         String fiscalYear,
         String requestedTriggerType,
         BigDecimal manualLumpsumAmount,
+        boolean includeRebalance
+    ) {
+        return buildPreviewPlan(
+            openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, defaultEvaluator
+        );
+    }
+
+    public static RebalancePlanDto buildPreviewPlan(
+        List<Lot> openLots,
+        List<MatchedLot> matchedLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate currentDate,
+        BigDecimal benchmarkCurrent,
+        BigDecimal benchmarkRollingHigh,
+        List<BucketEngine.BucketTarget> customTargets,
+        String fiscalYear,
+        String requestedTriggerType,
+        BigDecimal manualLumpsumAmount,
         RebalanceTriggerEvaluator triggerEvaluator
     ) {
         return buildPlanInternal(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, triggerEvaluator, false, false
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, triggerEvaluator, false
         );
     }
 
@@ -158,28 +187,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPlanInternal(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, false, false
-        );
-    }
-
-    public static RebalancePlanDto buildPreviewPlan(
-        List<Lot> openLots,
-        List<MatchedLot> matchedLots,
-        Map<String, BigDecimal> navMap,
-        LocalDate currentDate,
-        BigDecimal benchmarkCurrent,
-        BigDecimal benchmarkRollingHigh,
-        List<BucketEngine.BucketTarget> customTargets,
-        String fiscalYear,
-        String requestedTriggerType,
-        BigDecimal manualLumpsumAmount,
-        boolean includeRebalance,
-        RebalanceTriggerEvaluator triggerEvaluator,
-        boolean useMacroRegimeOverlay
-    ) {
-        return buildPlanInternal(
-            openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, false, useMacroRegimeOverlay
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, triggerEvaluator, false
         );
     }
 
@@ -196,8 +204,7 @@ public class RebalancePlanEngine {
         BigDecimal manualLumpsumAmount,
         boolean includeRebalance,
         RebalanceTriggerEvaluator triggerEvaluator,
-        boolean recordExecution,
-        boolean useMacroRegimeOverlay
+        boolean recordExecution
     ) {
         String planId = UUID.randomUUID().toString();
         LocalDate today = currentDate != null ? currentDate : LocalDate.now();
@@ -206,12 +213,6 @@ public class RebalancePlanEngine {
         // 1. Point-in-Time Bucket Targets
         List<BucketEngine.BucketTarget> activeTargets = (customTargets != null && !customTargets.isEmpty())
             ? customTargets : BucketConfigLoader.getActiveBucketTargets(today);
-        if (useMacroRegimeOverlay) {
-            com.portfolioos.core.rules.MarketIndicatorsReader.MarketIndicators indicators = 
-                new com.portfolioos.core.rules.MarketIndicatorsReader().readIndicators();
-            com.portfolioos.core.rules.MacroRegime regime = com.portfolioos.core.rules.MacroRegimeRouter.classifyRegime(indicators);
-            activeTargets = com.portfolioos.core.rules.MacroRegimeRouter.adjustBucketTargets(activeTargets, regime);
-        }
         BucketConfigLoader.BucketTargetVersion activeVersion = BucketConfigLoader.getActiveVersion(today);
 
         // 2. Portfolio Valuation
@@ -273,6 +274,9 @@ public class RebalancePlanEngine {
             }
         }
 
+        boolean hasSellSide = resolution.hasSellSide() ||
+            (requestedTriggerType != null && ("DRIFT".equalsIgnoreCase(requestedTriggerType) || "SCHEDULED".equalsIgnoreCase(requestedTriggerType) || "DRAWDOWN".equalsIgnoreCase(requestedTriggerType)));
+
         if (isLumpsum && !includeRebalance) {
             totalPool = manualLumpsumAmount;
             sellSide = new SellSidePlanDto(
@@ -284,7 +288,7 @@ public class RebalancePlanEngine {
                 ),
                 new TaxSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, headroomBefore, headroomBefore)
             );
-        } else if (!isLumpsum && !resolution.hasSellSide()) {
+        } else if (!isLumpsum && !hasSellSide) {
             if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
                 // Gold Floor Backstop top-up sizing (buy-only)
                 double goldTargetPct = 15.0;
@@ -325,6 +329,8 @@ public class RebalancePlanEngine {
             // Calculate true excess drift across over-allocated buckets
             BigDecimal poolNeeded = BigDecimal.ZERO;
             Map<BucketEngine.Bucket, BigDecimal> bucketTrims = new java.util.LinkedHashMap<>();
+            BigDecimal totalDeficit = BigDecimal.ZERO;
+
             if (activeTargets != null) {
                 for (BucketEngine.BucketTarget target : activeTargets) {
                     BigDecimal targetPct = target.targetPct();
@@ -348,14 +354,33 @@ public class RebalancePlanEngine {
                             bucketTrims.put(target.bucket(), dampenedTrim);
                             poolNeeded = poolNeeded.add(dampenedTrim);
                         }
+                    } else if (curVal.compareTo(targetVal) < 0) {
+                        totalDeficit = totalDeficit.add(targetVal.subtract(curVal));
                     }
                 }
             }
 
-            if (poolNeeded.compareTo(BigDecimal.ZERO) == 0 && !isLumpsum) {
-                BigDecimal targetMonthlyExpense = FireTracker.calculateFireSummary(openLots, navMap, today).monthlyExpenseToday();
-                poolNeeded = targetMonthlyExpense;
-                bucketTrims.put(BucketEngine.Bucket.EQUITY_CORE, poolNeeded);
+            // Legacy holdings liquidation: target allocation for legacy holdings is 0%.
+            // Liquidate legacy holdings up to the deficit required to fund under-allocated target buckets.
+            BigDecimal totalLegacyValue = BigDecimal.ZERO;
+            if (openLots != null) {
+                for (Lot lot : openLots) {
+                    BucketEngine.Bucket b = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
+                    if (b == BucketEngine.Bucket.LEGACY_HOLDINGS) {
+                        BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.legacyVal");
+                        totalLegacyValue = totalLegacyValue.add(lot.remainingUnits().multiply(nav));
+                    }
+                }
+            }
+            if (poolNeeded.compareTo(BigDecimal.ZERO) == 0 && totalLegacyValue.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal remainingDeficit = totalDeficit.subtract(poolNeeded).max(BigDecimal.ZERO);
+                BigDecimal legacyTrim = totalDeficit.compareTo(BigDecimal.ZERO) > 0
+                    ? totalLegacyValue.min(remainingDeficit)
+                    : totalLegacyValue;
+                if (legacyTrim.compareTo(BigDecimal.ZERO) > 0) {
+                    bucketTrims.put(BucketEngine.Bucket.LEGACY_HOLDINGS, legacyTrim);
+                    poolNeeded = poolNeeded.add(legacyTrim);
+                }
             }
 
             if (isLumpsum) {
@@ -450,8 +475,10 @@ public class RebalancePlanEngine {
                         }
                     }
 
-                    long holdingDays = (origLot != null && origLot.acquisitionDate() != null) ?
-                        ChronoUnit.DAYS.between(origLot.acquisitionDate(), today) : 400L;
+                    if (origLot == null || origLot.acquisitionDate() == null) {
+                        throw new IllegalStateException("CRITICAL REBALANCE AUDIT FAILURE: Lot " + step.lotId() + " (" + step.assetId() + ") missing original lot metadata or acquisition date in open lots pool");
+                    }
+                    long holdingDays = ChronoUnit.DAYS.between(origLot.acquisitionDate(), today);
 
                     BigDecimal costBasis = step.proceeds().subtract(step.realizedGain()).max(BigDecimal.ZERO);
                     boolean isLongTerm = "LONG_TERM".equals(step.taxTerm());
@@ -535,7 +562,14 @@ public class RebalancePlanEngine {
                 headroomBefore.subtract(totalLtcgExempt).max(BigDecimal.ZERO)
             );
 
-            sellSide = new SellSidePlanDto(poolNeeded, waterfallTiers, taxSummary);
+            BigDecimal actualSoldAmount = soldLegacyAmount.add(soldCoreAmount);
+            if (!isLumpsum) {
+                totalPool = actualSoldAmount;
+            } else {
+                totalPool = actualSoldAmount.add(manualLumpsumAmount != null ? manualLumpsumAmount : BigDecimal.ZERO);
+            }
+
+            sellSide = new SellSidePlanDto(actualSoldAmount, waterfallTiers, taxSummary);
         }
 
         // 4. Dynamic Buy Side Allocations Resolving to REAL Portfolio Fund ISINs
@@ -716,7 +750,7 @@ public class RebalancePlanEngine {
 
         var goldSilverCtx = com.portfolioos.core.valuation.GoldSilverRatioCalculator.calculateRatio(navMap);
         var reconCtx = com.portfolioos.core.valuation.ReconstitutionCalendar.calculateReconstitutionStatus(today);
-        var beerSpreadCtx = com.portfolioos.core.valuation.BeerSpreadCalculator.calculateCurrentSpread();
+        BeerSpreadContextDto beerSpreadCtx = null;
 
         return new RebalancePlanDto(
             planId,

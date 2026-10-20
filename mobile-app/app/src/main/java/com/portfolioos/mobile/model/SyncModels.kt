@@ -307,10 +307,11 @@ data class FireSummaryResponseDto(
 
 @Immutable
 data class BenchmarkAnalyticsDto(
-    @SerializedName("alpha") val alpha: Double = 0.0,
+    @SerializedName("alpha_pct", alternate = ["alpha"]) val alpha: Double = 0.0,
     @SerializedName("beta") val beta: Double = 0.0,
     @SerializedName("sharpe_ratio") val sharpeRatio: Double = 0.0,
-    @SerializedName("tracking_error") val trackingError: Double = 0.0,
+    @SerializedName("tracking_error_pct", alternate = ["tracking_error"]) val trackingError: Double = 0.0,
+    @SerializedName("portfolio_cagr_pct", alternate = ["portfolio_cagr"]) val portfolioCagr: Double = 0.0,
     @SerializedName("r_squared") val rSquared: Double = 0.0,
     @SerializedName("benchmark_name") val benchmarkName: String = "NIFTY_50_TRI"
 )

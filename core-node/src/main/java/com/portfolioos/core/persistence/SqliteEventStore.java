@@ -97,14 +97,6 @@ public class SqliteEventStore implements EventStorePort {
                 "  event_hash TEXT NOT NULL" +
                 ")"
             );
-            stmt.execute(
-                "CREATE TABLE IF NOT EXISTS backup_sync_state (" +
-                "  sync_target TEXT PRIMARY KEY," +
-                "  last_synced_event_id TEXT," +
-                "  last_synced_at TEXT NOT NULL," +
-                "  rows_synced_total INTEGER DEFAULT 0" +
-                ")"
-            );
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize SQLite schema", e);
         }
@@ -112,7 +104,7 @@ public class SqliteEventStore implements EventStorePort {
 
     @Override
     public String getLatestEventHash() {
-        String sql = "SELECT event_hash FROM tax_events ORDER BY ingested_at DESC, id DESC LIMIT 1";
+        String sql = "SELECT event_hash FROM tax_events ORDER BY rowid DESC LIMIT 1";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
@@ -271,7 +263,7 @@ public class SqliteEventStore implements EventStorePort {
 
     @Override
     public boolean verifyLedgerIntegrity() {
-        String sql = "SELECT previous_hash, event_hash, id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id FROM tax_events ORDER BY ingested_at ASC, id ASC";
+        String sql = "SELECT previous_hash, event_hash, id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id FROM tax_events ORDER BY rowid ASC";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
@@ -390,63 +382,7 @@ public class SqliteEventStore implements EventStorePort {
         }
     }
 
-    public String getBackupSyncCheckpoint(String syncTarget) {
-        String sql = "SELECT last_synced_event_id FROM backup_sync_state WHERE sync_target = ?";
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, syncTarget);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getString("last_synced_event_id");
-                }
-            }
-            return null;
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to get backup sync checkpoint for " + syncTarget, e);
-        }
-    }
 
-    public void updateBackupSyncCheckpoint(String syncTarget, String lastSyncedEventId, int newRowsAdded) {
-        String sql = "INSERT INTO backup_sync_state (sync_target, last_synced_event_id, last_synced_at, rows_synced_total) " +
-                     "VALUES (?, ?, ?, ?) " +
-                     "ON CONFLICT(sync_target) DO UPDATE SET " +
-                     "  last_synced_event_id = excluded.last_synced_event_id, " +
-                     "  last_synced_at = excluded.last_synced_at, " +
-                     "  rows_synced_total = backup_sync_state.rows_synced_total + excluded.rows_synced_total";
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, syncTarget);
-            stmt.setString(2, lastSyncedEventId);
-            stmt.setString(3, Instant.now().toString());
-            stmt.setInt(4, newRowsAdded);
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to update backup sync checkpoint for " + syncTarget, e);
-        }
-    }
-
-    public List<TaxEvent> getEventsAfter(String lastEventId) {
-        if (lastEventId == null || lastEventId.isBlank()) {
-            return getAllEvents();
-        }
-
-        String sql = "SELECT * FROM tax_events " +
-                     "WHERE rowid > COALESCE((SELECT rowid FROM tax_events WHERE id = ?), 0) " +
-                     "ORDER BY rowid ASC";
-        List<TaxEvent> events = new ArrayList<>();
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, lastEventId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    events.add(mapResultSetToTaxEvent(rs));
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch events after checkpoint " + lastEventId, e);
-        }
-        return events;
-    }
 
     private TaxEvent mapResultSetToTaxEvent(ResultSet rs) throws SQLException {
         return new TaxEvent(

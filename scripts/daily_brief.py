@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 CORE_NODE_URL = os.getenv("CORE_NODE_URL", "http://127.0.0.1:8080")
-AUTH_TOKEN = os.getenv("API_AUTH_TOKEN", "dev_secret_key_123")
+AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 MODEL_NAME = os.getenv("BRIEF_MODEL", "phi4-mini")
 
 
@@ -50,16 +50,6 @@ def pct_format(val: float, include_sign: bool = False) -> str:
 def generate_mock_or_offline_snapshot() -> Dict[str, Any]:
     """Generates snapshot payload with dual value/display fields for grounding and verification."""
     today = datetime.now().strftime("%Y-%m-%d")
-
-    # Read HRP audit cache if present
-    hrp_audit = None
-    hrp_path = Path(__file__).resolve().parent.parent / "data" / "hrp_audit.json"
-    if hrp_path.exists():
-        try:
-            with open(hrp_path, "r") as f:
-                hrp_audit = json.load(f)
-        except Exception:
-            pass
 
     net_worth = 4875200.0
     invested = 3650000.0
@@ -134,19 +124,14 @@ def generate_mock_or_offline_snapshot() -> Dict[str, Any]:
         },
     }
 
-    if hrp_audit:
-        snapshot["hrp_audit_summary"] = {
-            "last_audit_date": hrp_audit.get("audit_as_of", "N/A"),
-            "trading_days": hrp_audit.get("trading_days", 0),
-            "core_hrp_pct": hrp_audit.get("bucket_summary", {}).get("CORE", {}).get("hrp_pct", 7.5),
-            "arbitrage_hrp_pct": hrp_audit.get("bucket_summary", {}).get("LIQUID_BUFFER", {}).get("hrp_pct", 82.0),
-        }
-
     return snapshot
 
 
 def fetch_live_snapshot() -> Optional[Dict[str, Any]]:
     """Attempts to pull live snapshot from running core-node."""
+    if not AUTH_TOKEN:
+        print("[-] API_AUTH_TOKEN environment variable not set. Live snapshot fetch disabled.")
+        return None
     url = f"{CORE_NODE_URL}/api/v1/sync/snapshot?fy=2026-27"
     req = urllib.request.Request(url, headers={"X-Api-Auth-Token": AUTH_TOKEN})
     try:
@@ -440,9 +425,13 @@ def main():
     snapshot = None if "--offline" in sys.argv else fetch_live_snapshot()
     if snapshot:
         print("[+] Sourced live telemetry from Core-Node.")
-    else:
-        print("[*] Sourced from offline ledger state & snapshot.")
+    elif "--mock" in sys.argv:
+        print("[*] Sourced from explicit --mock test generator.")
         snapshot = generate_mock_or_offline_snapshot()
+    else:
+        print("[-] FATAL: Could not fetch live snapshot from Core-Node (live server unreachable or missing API_AUTH_TOKEN).")
+        print("    To fabricate a local testing snapshot, pass explicit '--mock' CLI flag.")
+        sys.exit(1)
 
     expected_registry = extract_expected_numbers(snapshot)
 

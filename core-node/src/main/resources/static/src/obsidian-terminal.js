@@ -1314,7 +1314,7 @@ function renderModalLotsTable(lots) {
         </td>
         <td><strong>${lotUnits}</strong></td>
         <td>
-          <span class="lot-val-pnl">₹ ${buyNav} <span style="color: var(--text-muted); font-size: 0.68rem;">(now ₹ ${currentNav})</span></span>
+          <span class="lot-val-pnl">₹ ${buyNav}</span>
           <span class="lot-val-masked">₹ •••.••</span>
         </td>
         <td>

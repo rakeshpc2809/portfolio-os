@@ -17,7 +17,6 @@ import com.portfolioos.core.valuation.ConsolidationRebalanceEngine;
 import com.portfolioos.core.valuation.RebalanceEngine;
 import com.portfolioos.core.xirr.CashFlow;
 import com.portfolioos.core.xirr.XirrEngine;
-import com.portfolioos.core.nav.NseIndexConstituentDownloader;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -40,19 +39,15 @@ public class PortfolioValuationService {
     private final XirrEngine xirrEngine = new XirrEngine();
     private final QuantSidecarClient quantSidecarClient;
     private final DuckDbProjector duckDbProjector;
-    private final com.portfolioos.core.rules.MarketIndicatorsReader marketIndicatorsReader;
-
     @Autowired
     public PortfolioValuationService(
         LedgerCacheService cacheService,
         DuckDbProjector duckDbProjector,
-        QuantSidecarClient quantSidecarClient,
-        com.portfolioos.core.rules.MarketIndicatorsReader marketIndicatorsReader
+        QuantSidecarClient quantSidecarClient
     ) {
         this.cacheService = cacheService;
         this.duckDbProjector = duckDbProjector;
         this.quantSidecarClient = quantSidecarClient;
-        this.marketIndicatorsReader = marketIndicatorsReader != null ? marketIndicatorsReader : new com.portfolioos.core.rules.MarketIndicatorsReader();
     }
 
     private String fmt(BigDecimal val) {
@@ -85,6 +80,10 @@ public class PortfolioValuationService {
         // If more than 3 business days elapsed without an updated NAV, or more than 7 calendar days total, flag as stale
         long calendarDays = ChronoUnit.DAYS.between(navDate, asOfDate);
         return businessDays > 3 || calendarDays > 7;
+    }
+
+    public DuckDbProjector.BenchmarkLevelMetrics getLatestBenchmarkMetrics(String benchmarkSymbol) {
+        return duckDbProjector.getBenchmarkLevelMetrics(benchmarkSymbol);
     }
 
     public record PortfolioValuationMetrics(
@@ -640,9 +639,8 @@ public class PortfolioValuationService {
         ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
         BigDecimal remExemption = new BigDecimal(status.exemptionRemaining());
 
-        ConsolidationRebalanceEngine.ConsolidationPreviewResult result = ConsolidationRebalanceEngine.calculateConsolidation(
-            openLots, navMap, LocalDate.now(), remExemption, fy
-        );
+        com.portfolioos.core.valuation.ConsolidationRebalanceEngine.ConsolidationPreviewResult result = 
+            RebalancePlanEngine.calculateConsolidation(openLots, navMap, LocalDate.now(), remExemption, fy);
 
         List<PhasedOutAssetSummaryDto> phaseOutDtos = result.phasedOutAssets().stream().map(p -> new PhasedOutAssetSummaryDto(
             p.assetId(),
@@ -728,9 +726,11 @@ public class PortfolioValuationService {
         return getPortfolioOverlapAnalytics(fundA, fundB, false);
     }
 
-    public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB, boolean includeUnverified) {
-        new com.portfolioos.core.nav.NseIndexConstituentDownloader().seedStandardIndexConstituents(duckDbProjector);
+    public static final String CONSTITUENT_SOURCE = "STATIC_DISCLOSURE_SEED";
+    public static final String DISCLOSURE_DATE = "2026-03-31";
+    public static final boolean IS_LIVE_DOWNLOAD = false;
 
+    public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB, boolean includeUnverified) {
         String idA = (fundA != null && !fundA.isBlank()) ? fundA : "INF109KC13X2";
         String idB = (fundB != null && !fundB.isBlank()) ? fundB : "INF109KC12U0";
 
@@ -774,10 +774,7 @@ public class PortfolioValuationService {
             }
         }
 
-        boolean hasFactsheet = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists() 
-            || new java.io.File("data/factsheets/ppfas_flexicap_full.xlsx").exists()
-            || new java.io.File("../data/factsheets/ppfas_flexicap_full.xlsx").exists();
-        String coverageType = hasFactsheet ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";
+        String coverageType = "FULL_PORTFOLIO";
 
         // Pre-compute overlap_summary so clients don't need to iterate matrix and threshold locally.
         final double OVERLAP_WARNING_THRESHOLD = 30.0;
@@ -804,9 +801,9 @@ public class PortfolioValuationService {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
         response.put("holding_coverage_type", coverageType);
-        response.put("constituent_source", NseIndexConstituentDownloader.CONSTITUENT_SOURCE);
-        response.put("disclosure_date", NseIndexConstituentDownloader.DISCLOSURE_DATE);
-        response.put("is_live_download", NseIndexConstituentDownloader.IS_LIVE_DOWNLOAD);
+        response.put("constituent_source", CONSTITUENT_SOURCE);
+        response.put("disclosure_date", DISCLOSURE_DATE);
+        response.put("is_live_download", IS_LIVE_DOWNLOAD);
         response.put("pairwise_overlap", pairwise);
         response.put("pairwise_matrix", matrix);
         response.put("overlap_summary", overlapSummary);
@@ -816,23 +813,17 @@ public class PortfolioValuationService {
     }
 
     public Map<String, Object> getMultiFundUpSetAnalytics() {
-        new NseIndexConstituentDownloader().seedStandardIndexConstituents(duckDbProjector);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> regFunds = (List<Map<String, Object>>) getFundRegistry().getOrDefault("funds", Collections.emptyList());
         List<String> evalFundIds = regFunds.stream().map(f -> (String) f.get("isin")).filter(Objects::nonNull).collect(Collectors.toList());
         List<Map<String, Object>> upset = duckDbProjector.getMultiFundIntersectionAnalytics(evalFundIds);
 
-        boolean hasFactsheet = new java.io.File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists() 
-            || new java.io.File("data/factsheets/ppfas_flexicap_full.xlsx").exists()
-            || new java.io.File("../data/factsheets/ppfas_flexicap_full.xlsx").exists();
-        String coverageType = hasFactsheet ? "FULL_PORTFOLIO" : "TOP_10_CORE_SAMPLE";
-
         Map<String, Object> response = new HashMap<>();
         response.put("status", "OK");
-        response.put("holding_coverage_type", coverageType);
-        response.put("constituent_source", NseIndexConstituentDownloader.CONSTITUENT_SOURCE);
-        response.put("disclosure_date", NseIndexConstituentDownloader.DISCLOSURE_DATE);
-        response.put("is_live_download", NseIndexConstituentDownloader.IS_LIVE_DOWNLOAD);
+        response.put("holding_coverage_type", "FULL_PORTFOLIO");
+        response.put("constituent_source", CONSTITUENT_SOURCE);
+        response.put("disclosure_date", DISCLOSURE_DATE);
+        response.put("is_live_download", IS_LIVE_DOWNLOAD);
         response.put("upset_combinations", upset);
         response.put("evaluated_funds", evalFundIds);
         return response;
@@ -917,12 +908,9 @@ public class PortfolioValuationService {
             }
         }
 
-        com.portfolioos.core.rules.MarketIndicatorsReader.MarketIndicators indicators = 
-            marketIndicatorsReader != null ? marketIndicatorsReader.readIndicators() : new com.portfolioos.core.rules.MarketIndicatorsReader().readIndicators();
-
         return engine.evaluateRules(
             this, isProvisional, avgFailRate, relStdDev, currentSip,
-            pairwise, concentrations, openLots, exStatus, fire, totalMFValue, indicators
+            pairwise, concentrations, openLots, exStatus, fire, totalMFValue
         );
     }
 
@@ -994,40 +982,5 @@ public class PortfolioValuationService {
 
     public DuckDbProjector getDuckDbProjector() {
         return this.duckDbProjector;
-    }
-
-    public com.portfolioos.core.dtos.ReportDtos.MacroRegimeDto getMacroRegimeBufferStatus() {
-        com.portfolioos.core.rules.MarketIndicatorsReader.MarketIndicators indicators = 
-            marketIndicatorsReader != null ? marketIndicatorsReader.readIndicators() : new com.portfolioos.core.rules.MarketIndicatorsReader().readIndicators();
-
-        List<com.portfolioos.core.valuation.BucketEngine.BucketTarget> baseTargets = 
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now());
-
-        com.portfolioos.core.rules.MacroRegimeRouter.RegimeEvaluationResult eval = 
-            com.portfolioos.core.rules.MacroRegimeRouter.evaluate(indicators, baseTargets);
-
-        List<com.portfolioos.core.dtos.ReportDtos.BucketTargetDto> targetDtos = eval.adjustedBucketTargets().stream().map(bt -> new com.portfolioos.core.dtos.ReportDtos.BucketTargetDto(
-            bt.bucket().name(),
-            bt.targetPct().setScale(2, RoundingMode.HALF_UP).toPlainString(),
-            bt.bandPct().setScale(2, RoundingMode.HALF_UP).toPlainString()
-        )).toList();
-
-        return new com.portfolioos.core.dtos.ReportDtos.MacroRegimeDto(
-            eval.regime().name(),
-            eval.regime().displayName(),
-            eval.niftyPe(),
-            eval.gsec10yYieldPct(),
-            eval.repoRatePct(),
-            eval.yieldCurveSlopePct(),
-            eval.beerSpreadPct(),
-            eval.liquidBufferTargetPct().setScale(2, RoundingMode.HALF_UP).toPlainString(),
-            eval.recommendedRunwayMonths(),
-            eval.rationale(),
-            targetDtos,
-            "Advisory preview overlay only. Live rebalance drift thresholds and trade executions remain strictly pinned to baseline bucket_targets.yaml.",
-            indicators.isFallback(),
-            indicators.sourceStatus(),
-            indicators.asOfDate() != null ? indicators.asOfDate().toString() : null
-        );
     }
 }

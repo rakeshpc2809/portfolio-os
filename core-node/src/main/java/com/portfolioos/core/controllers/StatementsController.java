@@ -100,6 +100,17 @@ public class StatementsController {
             ingestionUseCase.ingestParsedEvents(dtoList);
 
             return ResponseEntity.ok(dtoList);
+        } catch (com.portfolioos.core.reconciliation.ReconciliationGateFailureException e) {
+            return ResponseEntity.status(422).body(Map.of(
+                "error", "RECONCILIATION_GATE_FAILURE",
+                "message", e.getMessage(),
+                "assetResults", e.getReconciliationResult().assetResults()
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(422).body(Map.of(
+                "error", "TRANSACTION_ROW_CORRUPTED",
+                "message", e.getMessage()
+            ));
         } catch (IOException e) {
             return ResponseEntity.internalServerError().body(Map.of(
                 "error", "FILE_READ_FAILED",

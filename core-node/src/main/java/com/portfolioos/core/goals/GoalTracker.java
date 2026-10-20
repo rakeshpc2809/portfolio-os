@@ -35,11 +35,15 @@ public class GoalTracker {
         List<GoalAllocation> goalAllocations
     ) {}
 
-    public static final List<GoalAllocation> DEFAULT_ALLOCATIONS = List.of(
-        new GoalAllocation("BANK_IDLE", "Bank Savings & Liquid Buffer", GoalTag.EMERGENCY, new BigDecimal("150000.00")),
-        new GoalAllocation("BANK_IDLE", "Bank Savings & Liquid Buffer", GoalTag.BIKE, new BigDecimal("100000.00")),
-        new GoalAllocation("BANK_IDLE", "Bank Savings & Liquid Buffer", GoalTag.WEDDING, new BigDecimal("100000.00"))
-    );
+    public static final List<GoalAllocation> DEFAULT_ALLOCATIONS = List.of();
+
+    public static GoalSummary calculateGoalSummary(
+        List<Lot> openLots,
+        Map<String, BigDecimal> navMap,
+        List<GoalAllocation> customAllocations
+    ) {
+        return calculateGoalSummary(openLots, navMap, customAllocations, BigDecimal.ZERO);
+    }
 
     public static GoalSummary calculateGoalSummary(
         List<Lot> openLots,
@@ -55,7 +59,8 @@ public class GoalTracker {
                 totalLiquidMF = totalLiquidMF.add(lot.remainingUnits().multiply(nav));
             }
         }
-        BigDecimal totalLiquidHoldings = totalLiquidMF.add(bankBalance);
+        // Invariant 1: Strict Mutual Fund Boundary. Liquid holdings reflect purely tracked mutual fund buffer assets.
+        BigDecimal totalLiquidHoldings = totalLiquidMF;
 
         Map<GoalTag, BigDecimal> allocatedMap = new HashMap<>();
         for (GoalTag tag : GoalTag.values()) {

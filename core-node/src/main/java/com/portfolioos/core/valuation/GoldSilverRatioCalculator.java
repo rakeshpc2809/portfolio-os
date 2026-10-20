@@ -27,7 +27,7 @@ public class GoldSilverRatioCalculator {
                 String key = entry.getKey().toUpperCase();
 
                 // Check Gold ETF (filter out FoF / combined funds)
-                if (key.equals("GOLDBEES") || key.equals("INF204KB17I5") || key.equals("INF204KB14I2") || key.equals("INF204K01H36") 
+                if (key.equals("GOLDBEES") || key.equals("INF204KB17I5") || key.equals("INF204KB14I2") 
                         || key.equals("INF179KC1981") || key.equals("INF109KC1NT3") || (key.contains("GOLD") && key.contains("ETF") && !key.contains("FOF") && !key.contains("FUND OF FUND"))) {
                     if (goldNav == 0.0) {
                         goldNav = entry.getValue().doubleValue();

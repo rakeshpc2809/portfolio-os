@@ -108,17 +108,28 @@ public class RebalanceTriggerEvaluator {
         long monthsSinceLastGoldBuy = lastGoldBuyOpt.map(dt -> ChronoUnit.MONTHS.between(dt.toLocalDate(), today)).orElse(9999L);
         boolean goldIdleActive = monthsSinceLastGoldBuy >= PortfolioConstants.GOLD_FLOOR_IDLE_MONTHS;
 
-        // 4. Bucket Drift Evaluation (Core aggregate & ratio circuit breaker + Satellite hard bands)
-        BucketConfigLoader.BucketTargetVersion ver = (activeVersion != null)
-            ? activeVersion : BucketConfigLoader.getActiveVersion(today);
-        List<BucketConfigLoader.BucketTargetConfig> targetConfigs = (ver != null && ver.targets() != null)
-            ? ver.targets() : List.of();
-
+        // 4. Canonical Bucket Drift Evaluation (matches Web App and BucketEngine)
         List<String> driftedBuckets = new ArrayList<>();
         double goldCurrentWeightPct = 0.0;
         double goldTargetWeightPct = 10.0;
 
         if (liveCorpus.compareTo(BigDecimal.ZERO) > 0) {
+            List<BucketEngine.BucketTarget> engineTargets = (customTargets != null && !customTargets.isEmpty())
+                ? customTargets
+                : BucketConfigLoader.getActiveBucketTargets(today);
+
+            String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(today);
+            BucketEngine.RebalanceEngineResult engineResult = BucketEngine.evaluateRebalance(
+                openLots,
+                navMap,
+                today,
+                benchmarkCurrent,
+                benchmarkRollingHigh,
+                engineTargets,
+                currentFy
+            );
+
+            // Compute core aggregate values
             BigDecimal largeMidVal = BigDecimal.ZERO;
             BigDecimal ppfcVal = BigDecimal.ZERO;
             if (openLots != null) {
@@ -135,10 +146,12 @@ public class RebalanceTriggerEvaluator {
             }
 
             BigDecimal coreTotalVal = largeMidVal.add(ppfcVal);
+            boolean coreAggregateBreached = false;
             if (coreTotalVal.compareTo(BigDecimal.ZERO) > 0) {
                 double coreWeightPct = (coreTotalVal.doubleValue() / liveCorpus.doubleValue()) * 100.0;
                 if (coreWeightPct > 65.0 || coreWeightPct < 35.0) {
                     driftedBuckets.add("CORE_AGGREGATE_BREACH");
+                    coreAggregateBreached = true;
                 }
                 double largeMidRatio = largeMidVal.doubleValue() / coreTotalVal.doubleValue();
                 if (largeMidRatio > 0.66 || largeMidRatio < 0.54) {
@@ -146,24 +159,21 @@ public class RebalanceTriggerEvaluator {
                 }
             }
 
-            for (BucketConfigLoader.BucketTargetConfig tc : targetConfigs) {
-                if (tc.targetPct() <= 0.0) continue;
-
-                BigDecimal bucketVal = bucketValuations.getOrDefault(tc.bucket(), BigDecimal.ZERO);
-                double currentPct = (bucketVal.doubleValue() / liveCorpus.doubleValue()) * 100.0;
-
-                if ("GOLD_SILVER".equalsIgnoreCase(tc.bucket()) || "hedge_commodity".equalsIgnoreCase(tc.bucket())) {
-                    goldCurrentWeightPct = currentPct;
-                    goldTargetWeightPct = tc.targetPct();
-                }
-
-                double driftThreshold = tc.triggerDriftPct() > 0 ? tc.triggerDriftPct() : PortfolioConstants.DEFAULT_CORE_DRIFT_THRESHOLD_PCT;
-                if (Math.abs(currentPct - tc.targetPct()) >= driftThreshold) {
-                    if (!tc.bucket().equalsIgnoreCase("core") && !tc.bucket().equalsIgnoreCase("EQUITY_CORE")) {
-                        driftedBuckets.add(tc.bucket());
-                    } else if (currentPct > 65.0 || currentPct < 35.0) {
-                        if (!driftedBuckets.contains("CORE_AGGREGATE_BREACH")) {
-                            driftedBuckets.add("CORE_AGGREGATE_BREACH");
+            if (engineResult != null && engineResult.bucketStatuses() != null) {
+                for (BucketEngine.BucketStatus bs : engineResult.bucketStatuses()) {
+                    if (bs.bucket() == BucketEngine.Bucket.GOLD_SILVER || bs.bucket() == BucketEngine.Bucket.HEDGE_COMMODITY) {
+                        goldCurrentWeightPct = bs.currentPct().doubleValue();
+                        goldTargetWeightPct = bs.targetPct().doubleValue();
+                    }
+                    if (bs.isDrifted() && bs.bucket() != BucketEngine.Bucket.LEGACY_HOLDINGS) {
+                        if (bs.bucket() == BucketEngine.Bucket.EQUITY_CORE) {
+                            if (!coreAggregateBreached && !driftedBuckets.contains("EQUITY_CORE")) {
+                                driftedBuckets.add("EQUITY_CORE");
+                            }
+                        } else {
+                            if (!driftedBuckets.contains(bs.bucket().name())) {
+                                driftedBuckets.add(bs.bucket().name());
+                            }
                         }
                     }
                 }

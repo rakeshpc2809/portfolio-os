@@ -99,6 +99,9 @@ public class ExemptionTracker {
     }
 
     public static Pair<LocalDate, LocalDate> getFiscalYearBounds(String fiscalYear) {
+        if (fiscalYear == null || fiscalYear.isBlank()) {
+            fiscalYear = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
+        }
         String[] parts = fiscalYear.split("-");
         LocalDate now = LocalDate.now();
         int defaultStartYear = now.getMonthValue() >= 4 ? now.getYear() : now.getYear() - 1;

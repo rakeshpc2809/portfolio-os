@@ -27,6 +27,7 @@ class TaxEventSchema(BaseModel):
     gross_amount: Decimal = Field(..., alias="grossAmount")
     source_document_id: str = Field(..., alias="sourceDocumentId")
     ingested_at: datetime = Field(default_factory=datetime.utcnow, alias="ingestedAt")
+    declared_closing_units: Optional[Decimal] = Field(default=None, alias="declaredClosingUnits")
 
     class Config:
         populate_by_name = True

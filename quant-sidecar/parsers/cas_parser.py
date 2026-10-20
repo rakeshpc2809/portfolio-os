@@ -29,6 +29,17 @@ class CasPdfParser:
                     isin = scheme.isin
                     scheme_name = scheme.scheme
                     asset_id = isin or scheme_name.replace(" ", "_").upper()[:20]
+                    closing_units = None
+                    if hasattr(scheme, "close") and scheme.close is not None:
+                        try:
+                            closing_units = Decimal(str(scheme.close))
+                        except Exception:
+                            closing_units = None
+                    elif hasattr(scheme, "valuation") and hasattr(scheme.valuation, "units") and scheme.valuation.units is not None:
+                        try:
+                            closing_units = Decimal(str(scheme.valuation.units))
+                        except Exception:
+                            closing_units = None
 
                     for txn in scheme.transactions:
                         txn_type_str = str(txn.type).upper()
@@ -64,7 +75,8 @@ class CasPdfParser:
                                     pricePerUnit=price,
                                     grossAmount=amount,
                                     sourceDocumentId=self.pdf_path,
-                                    ingestedAt=datetime.now()
+                                    ingestedAt=datetime.now(),
+                                    declaredClosingUnits=closing_units
                                 )
                             )
             if events:

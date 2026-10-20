@@ -8,6 +8,7 @@ use ratatui::{
 
 use crate::app::AppState;
 use crate::ui::sparkline::render_braille_sparkline;
+use crate::ui::MUTED;
 
 /// Top hero panel: net worth, unrealised P&L, XIRR, Braille sparkline.
 /// Pure display — all values read directly from `AppState.snapshot`.
@@ -17,7 +18,7 @@ pub fn render_hero(f: &mut Frame, area: ratatui::layout::Rect, state: &AppState)
         None => {
             let loading = Paragraph::new("⟳  Fetching portfolio data…")
                 .block(Block::default().borders(Borders::ALL).title(" Portfolio OS "))
-                .style(Style::default().fg(Color::DarkGray));
+                .style(Style::default().fg(MUTED));
             f.render_widget(loading, area);
             return;
         }
@@ -43,26 +44,40 @@ pub fn render_hero(f: &mut Frame, area: ratatui::layout::Rect, state: &AppState)
         String::new()
     };
 
+    let offline_badge = if state.is_offline_cache {
+        format!("  [OFFLINE CACHE • {}]", state.cache_date.as_deref().unwrap_or("CACHED"))
+    } else {
+        String::new()
+    };
+
+    // Quiet mode masking
+    let display_current = if state.quiet_mode { "₹ ••••••" } else { &info.formatted_current_value };
+    let display_invested = if state.quiet_mode { "₹ ••••••" } else { &info.formatted_total_invested };
+    let display_gain = if state.quiet_mode { "₹ ••••••" } else { &info.formatted_unrealized_gain };
+
+    let date_str = info.generated_at.get(..10).unwrap_or(&info.generated_at);
+
     let lines = vec![
         Line::from(vec![
-            Span::styled("  NET WORTH  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(&info.formatted_current_value, Style::default()
+            Span::styled("  NET WORTH  ", Style::default().fg(MUTED)),
+            Span::styled(display_current, Style::default()
                 .fg(Color::White)
                 .add_modifier(Modifier::BOLD)),
             Span::styled(&stale_badge, Style::default().fg(Color::Yellow)),
+            Span::styled(&offline_badge, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  INVESTED   ", Style::default().fg(Color::DarkGray)),
-            Span::styled(&info.formatted_total_invested, Style::default().fg(Color::Cyan)),
+            Span::styled("  INVESTED   ", Style::default().fg(MUTED)),
+            Span::styled(display_invested, Style::default().fg(Color::Cyan)),
         ]),
         Line::from(vec![
-            Span::styled("  GAIN       ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  GAIN       ", Style::default().fg(MUTED)),
             Span::styled(gain_prefix, Style::default().fg(gain_color)),
-            Span::styled(&info.formatted_unrealized_gain, Style::default().fg(gain_color)),
+            Span::styled(display_gain, Style::default().fg(gain_color)),
         ]),
         Line::from(vec![
-            Span::styled("  XIRR       ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  XIRR       ", Style::default().fg(MUTED)),
             Span::styled(&info.xirr_percentage, Style::default()
                 .fg(xirr_color)
                 .add_modifier(Modifier::BOLD)),
@@ -70,8 +85,8 @@ pub fn render_hero(f: &mut Frame, area: ratatui::layout::Rect, state: &AppState)
         Line::from(""),
         Line::from(vec![
             Span::styled(
-                format!("  FY {}  •  {}", info.fiscal_year, &info.generated_at[..10]),
-                Style::default().fg(Color::DarkGray),
+                format!("  FY {}  •  {}", info.fiscal_year, date_str),
+                Style::default().fg(MUTED),
             ),
         ]),
     ];
@@ -93,7 +108,7 @@ pub fn render_hero(f: &mut Frame, area: ratatui::layout::Rect, state: &AppState)
     );
     let spark_block = Block::default()
         .borders(Borders::ALL)
-        .title(Span::styled(spark_title, Style::default().fg(Color::DarkGray)));
+        .title(Span::styled(spark_title, Style::default().fg(MUTED)));
 
-    render_braille_sparkline(f, cols[1], &snap.net_worth_history, spark_block);
+    render_braille_sparkline(f, cols[1], &snap.net_worth_history, spark_block, state.quiet_mode);
 }

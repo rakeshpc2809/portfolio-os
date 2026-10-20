@@ -23,7 +23,7 @@ class PortfolioOverlapAuditTest {
     void setUp(@TempDir Path tempDir) {
         File dbFile = tempDir.resolve("test_overlap.duckdb").toFile();
         projector = new DuckDbProjector(dbFile.getAbsolutePath());
-        new NseIndexConstituentDownloader().seedStandardIndexConstituents(projector);
+        projector.seedStandardConstituents();
     }
 
     @Test
@@ -68,21 +68,12 @@ class PortfolioOverlapAuditTest {
     @DisplayName("Deterministic Point Assertions: Verified pairwise overlap percentages match mathematical expectations")
     void testPairwiseOverlapExactMathematicalValues() {
         // 1. PPFAS (INF879O01027) vs Nifty 200 Value 30 (INF109KC13X2)
-        // If full factsheet parsed: HDFCBANK (7.82) + ICICIBANK (5.92) + POWERGRID (4.12) + COALINDIA (3.75) + NTPC (1.95) = 23.56% (5 stocks)
-        // If fallback sample: HDFCBANK (7.45) + ICICIBANK (5.40) + COALINDIA (3.50) = 16.35% (3 stocks)
+        // Verified static dataset: HDFCBANK (7.82) + ICICIBANK (5.92) + POWERGRID (4.12) + COALINDIA (3.75) + NTPC (1.95) = 23.56% (5 stocks)
         Map<String, Object> ppfasVal30 = projector.getPairwiseFundOverlap("INF879O01027", "INF109KC13X2");
         double ppfasVal30Overlap = ((Number) ppfasVal30.get("overlap_percentage")).doubleValue();
         int ppfasVal30Count = ((Number) ppfasVal30.get("common_stock_count")).intValue();
-        boolean hasPpfasFactsheet = new File("/app/data/factsheets/ppfas_flexicap_full.xlsx").exists()
-            || new File("data/factsheets/ppfas_flexicap_full.xlsx").exists()
-            || new File("../data/factsheets/ppfas_flexicap_full.xlsx").exists();
-        if (hasPpfasFactsheet) {
-            assertEquals(23.56, ppfasVal30Overlap, 0.01, "PPFAS vs Value 30 overlap with full factsheet must equal 23.56%");
-            assertEquals(5, ppfasVal30Count, "PPFAS vs Value 30 with full factsheet must share 5 common stocks");
-        } else {
-            assertEquals(16.35, ppfasVal30Overlap, 0.01, "PPFAS vs Value 30 overlap with sample must equal 16.35%");
-            assertEquals(3, ppfasVal30Count, "PPFAS vs Value 30 with sample must share 3 common stocks");
-        }
+        assertEquals(23.56, ppfasVal30Overlap, 0.01, "PPFAS vs Value 30 overlap with full factsheet must equal 23.56%");
+        assertEquals(5, ppfasVal30Count, "PPFAS vs Value 30 with full factsheet must share 5 common stocks");
 
         // 2. LargeMidcap 250 (INF109KC12U0) vs Nifty 200 Value 30 (INF109KC13X2)
         // Common: RELIANCE (6.85), HDFCBANK (6.42), ICICIBANK (5.10) = 18.37%

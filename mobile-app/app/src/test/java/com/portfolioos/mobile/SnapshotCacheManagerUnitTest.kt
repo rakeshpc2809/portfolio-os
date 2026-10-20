@@ -153,9 +153,8 @@ class SnapshotCacheManagerUnitTest {
     fun candidateBaseUrls_withoutCustomUrl_returnsLocalFallbacksInOrder() {
         val candidates = com.portfolioos.mobile.api.SyncApiClient.getCandidateBaseUrls(mockContext)
         assertFalse("Candidates list must not be empty", candidates.isEmpty())
-        assertEquals("First candidate must be USB loopback", com.portfolioos.mobile.api.SyncApiClient.USB_BASE_URL, candidates[0])
-        assertEquals("Second candidate must be Emulator loopback", com.portfolioos.mobile.api.SyncApiClient.EMULATOR_BASE_URL, candidates[1])
-        assertTrue("Must contain WiFi candidates", candidates.containsAll(com.portfolioos.mobile.api.SyncApiClient.WIFI_CANDIDATE_URLS))
+        assertEquals("First candidate must be Emulator loopback", com.portfolioos.mobile.api.SyncApiClient.EMULATOR_BASE_URL, candidates[0])
+        assertEquals("Second candidate must be USB loopback", com.portfolioos.mobile.api.SyncApiClient.USB_BASE_URL, candidates[1])
     }
 
     @Test
@@ -165,8 +164,8 @@ class SnapshotCacheManagerUnitTest {
 
         val candidates = com.portfolioos.mobile.api.SyncApiClient.getCandidateBaseUrls(mockContext)
         assertEquals("Custom URL with trailing slash must be candidate index 0", "$customRemote/", candidates[0])
-        assertEquals("USB loopback must follow custom URL at index 1", com.portfolioos.mobile.api.SyncApiClient.USB_BASE_URL, candidates[1])
-        assertEquals("Emulator loopback must follow at index 2", com.portfolioos.mobile.api.SyncApiClient.EMULATOR_BASE_URL, candidates[2])
+        assertEquals("Emulator loopback must follow custom URL at index 1", com.portfolioos.mobile.api.SyncApiClient.EMULATOR_BASE_URL, candidates[1])
+        assertEquals("USB loopback must follow at index 2", com.portfolioos.mobile.api.SyncApiClient.USB_BASE_URL, candidates[2])
     }
 
     @Test

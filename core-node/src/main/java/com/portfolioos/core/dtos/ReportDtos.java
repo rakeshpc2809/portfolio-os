@@ -365,22 +365,4 @@ public class ReportDtos {
         String targetPct,
         String bandPct
     ) {}
-
-    public record MacroRegimeDto(
-        String regime,
-        String displayName,
-        double niftyPe,
-        double gsec10yYieldPct,
-        double repoRatePct,
-        double yieldCurveSlopePct,
-        double beerSpreadPct,
-        String liquidBufferTargetPct,
-        int recommendedRunwayMonths,
-        String rationale,
-        List<BucketTargetDto> adjustedBucketTargets,
-        String scopeCaveat,
-        boolean isFallback,
-        String sourceStatus,
-        String asOfDate
-    ) {}
 }

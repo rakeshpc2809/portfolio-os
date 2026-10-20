@@ -7,11 +7,12 @@ use ratatui::{
 };
 
 use crate::app::{AppState, ModalView};
+use crate::ui::{format_inr_compact, MUTED};
 
 /// Renders the active modal if one is open, clearing behind it.
-pub fn render_modal(f: &mut Frame, state: &AppState) {
+pub fn render_modal(f: &mut Frame, state: &mut AppState) {
     let active = match &state.modal {
-        Some(m) => m,
+        Some(m) => m.clone(),
         None => return,
     };
 
@@ -28,7 +29,7 @@ pub fn render_modal(f: &mut Frame, state: &AppState) {
 // ---------------------------------------------------------------------------
 // [t] — Tax lots modal
 // ---------------------------------------------------------------------------
-fn render_tax_lots_modal(f: &mut Frame, area: Rect, state: &AppState) {
+fn render_tax_lots_modal(f: &mut Frame, area: Rect, state: &mut AppState) {
     let lots = state.snapshot.as_ref()
         .map(|s| s.tax_lots.as_slice())
         .unwrap_or(&[]);
@@ -36,18 +37,18 @@ fn render_tax_lots_modal(f: &mut Frame, area: Rect, state: &AppState) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title(Span::styled(
-            " [t] Tax Lots  •  ESC / q to close ",
+            " [t] Tax Lots  •  ↑/↓/j/k to scroll  •  ESC / q to close ",
             Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         ));
 
     let header = Row::new(vec![
-        Cell::from("Date").style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Cell::from("ISIN").style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Cell::from("Units").style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Cell::from("Days").style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Cell::from("→LTCG").style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Cell::from("Type").style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
-        Cell::from("Harvest").style(Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD)),
+        Cell::from("Date").style(Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("ISIN").style(Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("Units").style(Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("Days").style(Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("→LTCG").style(Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("Type").style(Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("Harvest").style(Style::default().fg(MUTED).add_modifier(Modifier::BOLD)),
     ]);
 
     let rows: Vec<Row> = lots.iter().map(|lot| {
@@ -78,9 +79,9 @@ fn render_tax_lots_modal(f: &mut Frame, area: Rect, state: &AppState) {
     )
     .header(header)
     .block(block)
-    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+    .row_highlight_style(Style::default().bg(Color::Rgb(30, 41, 59)).add_modifier(Modifier::BOLD));
 
-    f.render_widget(table, area);
+    f.render_stateful_widget(table, area, &mut state.table_state);
 }
 
 // ---------------------------------------------------------------------------
@@ -103,9 +104,9 @@ fn render_rebalance_modal(f: &mut Frame, area: Rect, state: &AppState) {
         // Trigger
         if let Some(trig) = &p.trigger {
             lines.push(Line::from(vec![
-                Span::styled("  Trigger: ", Style::default().fg(Color::DarkGray)),
+                Span::styled("  Trigger: ", Style::default().fg(MUTED)),
                 Span::styled(trig.reason_label.clone(), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("  ({})", trig.trigger_type), Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("  ({})", trig.trigger_type), Style::default().fg(MUTED)),
             ]));
             lines.push(Line::from(""));
         }
@@ -113,19 +114,24 @@ fn render_rebalance_modal(f: &mut Frame, area: Rect, state: &AppState) {
         // Sell side
         if let Some(ss) = &p.sell_side {
             if let Some(total) = ss.total_required {
+                let disp_total = if state.quiet_mode { "₹ ••••••".to_string() } else { format_inr_compact(total) };
                 lines.push(Line::from(vec![
-                    Span::styled("  Sell Required: ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(format!("₹{:.0}", total), Style::default().fg(Color::Red)),
+                    Span::styled("  Sell Required: ", Style::default().fg(MUTED)),
+                    Span::styled(disp_total, Style::default().fg(Color::Red)),
                 ]));
             }
             if let Some(ts) = &ss.tax_summary {
                 let pct = ts.exemption_utilized_pct.unwrap_or(0.0);
-                let cap = ts.statutory_exemption_cap.unwrap_or(125_000.0);
-                let used = ts.total_ltcg_exempt.unwrap_or(0.0);
+                let disp_exempt = if state.quiet_mode {
+                    format!("₹ •••••• exempt / ₹ •••••• cap  ({:.1}% used)", pct)
+                } else {
+                    let cap = ts.statutory_exemption_cap.unwrap_or(125_000.0);
+                    let used = ts.total_ltcg_exempt.unwrap_or(0.0);
+                    format!("₹{:.0} exempt / ₹{:.0} cap  ({:.1}% used)", used, cap, pct)
+                };
                 lines.push(Line::from(vec![
-                    Span::styled("  Sec 112A:  ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(format!("₹{:.0} exempt / ₹{:.0} cap  ({:.1}% used)",
-                        used, cap, pct), Style::default().fg(Color::Green)),
+                    Span::styled("  Sec 112A:  ", Style::default().fg(MUTED)),
+                    Span::styled(disp_exempt, Style::default().fg(Color::Green)),
                 ]));
             }
             lines.push(Line::from(""));
@@ -133,26 +139,37 @@ fn render_rebalance_modal(f: &mut Frame, area: Rect, state: &AppState) {
 
         // Buy side breakdown
         if let Some(bs) = &p.buy_side {
+            let total_invest = if state.quiet_mode {
+                "₹ ••••••".to_string()
+            } else {
+                format_inr_compact(bs.total_to_invest.unwrap_or(0.0))
+            };
             lines.push(Line::from(Span::styled(
-                format!("  ─── Buy Side: ₹{:.0} ───", bs.total_to_invest.unwrap_or(0.0)),
+                format!("  ─── Buy Side: {} ───", total_invest),
                 Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
             )));
             for bucket in &bs.buckets {
+                let disp_alloc = if state.quiet_mode {
+                    format!("{:.1}% → {:.1}%   ₹ ••••••", bucket.current_pct, bucket.post_rebalance_pct)
+                } else {
+                    format!("{:.1}% → {:.1}%   {}",
+                        bucket.current_pct, bucket.post_rebalance_pct,
+                        format_inr_compact(bucket.amount_allocated.unwrap_or(0.0)))
+                };
                 lines.push(Line::from(vec![
                     Span::styled(format!("  {:18}", bucket.bucket), Style::default().fg(Color::White)),
-                    Span::styled(
-                        format!("{:.1}% → {:.1}%   ₹{:.0}",
-                            bucket.current_pct, bucket.post_rebalance_pct,
-                            bucket.amount_allocated.unwrap_or(0.0)),
-                        Style::default().fg(Color::Cyan),
-                    ),
+                    Span::styled(disp_alloc, Style::default().fg(Color::Cyan)),
                 ]));
                 for fund in &bucket.fund_breakdown {
+                    let disp_fund_amt = if state.quiet_mode {
+                        "₹ ••••••".to_string()
+                    } else {
+                        format_inr_compact(fund.amount.unwrap_or(0.0))
+                    };
                     lines.push(Line::from(vec![
                         Span::styled(format!("      {:<30}", shorten_fund(&fund.fund_name, 30)),
-                            Style::default().fg(Color::DarkGray)),
-                        Span::styled(format!("₹{:.0}", fund.amount.unwrap_or(0.0)),
-                            Style::default().fg(Color::White)),
+                            Style::default().fg(MUTED)),
+                        Span::styled(disp_fund_amt, Style::default().fg(Color::White)),
                     ]));
                 }
             }
@@ -169,7 +186,7 @@ fn render_rebalance_modal(f: &mut Frame, area: Rect, state: &AppState) {
     } else {
         lines.push(Line::from(Span::styled(
             "  No rebalance plan in current snapshot.",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(MUTED),
         )));
     }
 
@@ -194,13 +211,13 @@ fn render_daily_summary_modal(f: &mut Frame, area: Rect, state: &AppState) {
     if let Some(hrp) = &state.hrp_audit {
         let status_color = if hrp.status == "SUCCESS" { Color::Green } else { Color::Yellow };
         lines.push(Line::from(vec![
-            Span::styled("  HRP CVaR Audit: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  HRP CVaR Audit: ", Style::default().fg(MUTED)),
             Span::styled(&hrp.status, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
         ]));
         if let (Some(days), Some(start), Some(end)) = (&hrp.trading_days, &hrp.start_date, &hrp.end_date) {
             lines.push(Line::from(Span::styled(
                 format!("  {} trading days  ({} → {})", days, start, end),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(MUTED),
             )));
         }
         lines.push(Line::from(""));
@@ -208,16 +225,16 @@ fn render_daily_summary_modal(f: &mut Frame, area: Rect, state: &AppState) {
         if let Some(allocs) = &hrp.allocations {
             lines.push(Line::from(Span::styled(
                 "  Fund            Bucket        Target   HRP      Drift",
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                Style::default().fg(MUTED).add_modifier(Modifier::BOLD),
             )));
             for a in allocs {
-                let drift_color = if a.drift_pct.abs() > 5.0 { Color::Yellow } else { Color::DarkGray };
+                let drift_color = if a.drift_pct.abs() > 5.0 { Color::Yellow } else { MUTED };
                 let sign = if a.drift_pct >= 0.0 { "+" } else { "" };
                 lines.push(Line::from(vec![
                     Span::styled(format!("  {:<18}", shorten_fund(&a.name, 18)),
                         Style::default().fg(Color::White)),
                     Span::styled(format!("{:<14}", a.bucket),
-                        Style::default().fg(Color::DarkGray)),
+                        Style::default().fg(MUTED)),
                     Span::styled(format!("{:6.1}%  {:6.1}%  ", a.target_pct, a.hrp_pct),
                         Style::default().fg(Color::Cyan)),
                     Span::styled(format!("{}{:.1}%", sign, a.drift_pct),
@@ -229,7 +246,7 @@ fn render_daily_summary_modal(f: &mut Frame, area: Rect, state: &AppState) {
     } else {
         lines.push(Line::from(Span::styled(
             "  HRP audit not yet generated by quant-sidecar.",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(MUTED),
         )));
         lines.push(Line::from(""));
     }
@@ -244,12 +261,13 @@ fn render_daily_summary_modal(f: &mut Frame, area: Rect, state: &AppState) {
         sorted.sort_by(|a, b| b.current_value.partial_cmp(&a.current_value).unwrap_or(std::cmp::Ordering::Equal));
         for h in sorted.iter().take(8) {
             let xirr_color = if h.xirr >= 0.0 { Color::Green } else { Color::Red };
+            let disp_val = if state.quiet_mode { "₹ ••••••".to_string() } else { h.formatted_current_value.clone() };
             lines.push(Line::from(vec![
                 Span::styled(format!("  {:<28}", shorten_fund(&h.fund_name, 28)),
                     Style::default().fg(Color::White)),
-                Span::styled(format!("{:>14}", h.formatted_current_value),
+                Span::styled(format!("{:>14}", disp_val),
                     Style::default().fg(Color::Cyan)),
-                Span::styled(format!("  XIRR {:+.1}%", h.xirr * 100.0),
+                Span::styled(format!("  XIRR {:+.1}%", h.xirr), // Fixed 100x bug
                     Style::default().fg(xirr_color)),
             ]));
         }
