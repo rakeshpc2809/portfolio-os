@@ -28,6 +28,8 @@ class TaxEventSchema(BaseModel):
     source_document_id: str = Field(..., alias="sourceDocumentId")
     ingested_at: datetime = Field(default_factory=datetime.utcnow, alias="ingestedAt")
     declared_closing_units: Optional[Decimal] = Field(default=None, alias="declaredClosingUnits")
+    folio_no: Optional[str] = Field(default=None, alias="folioNo")
+    tx_fingerprint: Optional[str] = Field(default=None, alias="txFingerprint")
 
     class Config:
         populate_by_name = True

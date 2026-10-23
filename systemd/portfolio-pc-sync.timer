@@ -1,0 +1,11 @@
+[Unit]
+Description=Portfolio OS PC-to-Sheets Split-Clock Sync Timer
+PartOf=portfolio-os.target
+
+[Timer]
+OnActiveSec=2min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

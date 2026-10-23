@@ -1,6 +1,7 @@
 package com.portfolioos.core.controllers;
 
 import com.portfolioos.core.dtos.ParsedEventDto;
+import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.service.StatementIngestionUseCase;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
@@ -97,9 +98,15 @@ public class StatementsController {
                 return ResponseEntity.ok(List.of());
             }
 
-            ingestionUseCase.ingestParsedEvents(dtoList);
+            List<TaxEvent> insertedEvents = ingestionUseCase.ingestParsedEvents(dtoList);
 
-            return ResponseEntity.ok(dtoList);
+            Map<String, Object> result = new java.util.LinkedHashMap<>();
+            result.put("status", "SUCCESS");
+            result.put("parsed", dtoList.length);
+            result.put("inserted", insertedEvents.size());
+            result.put("reconciliation_status", "MATCHED");
+            result.put("events", insertedEvents);
+            return ResponseEntity.ok(result);
         } catch (com.portfolioos.core.reconciliation.ReconciliationGateFailureException e) {
             return ResponseEntity.status(422).body(Map.of(
                 "error", "RECONCILIATION_GATE_FAILURE",

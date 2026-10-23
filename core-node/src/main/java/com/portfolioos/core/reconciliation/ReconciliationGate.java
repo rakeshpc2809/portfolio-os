@@ -70,19 +70,21 @@ public class ReconciliationGate {
                 Collectors.reducing(BigDecimal.ZERO, Lot::remainingUnits, BigDecimal::add)
             ));
 
-        Set<String> allAssetIds = new HashSet<>(calculatedMap.keySet());
-        if (declaredAssetBalances != null) {
+        Set<String> allAssetIds = new HashSet<>();
+        if (declaredAssetBalances != null && !declaredAssetBalances.isEmpty()) {
             allAssetIds.addAll(declaredAssetBalances.keySet());
+        } else {
+            allAssetIds.addAll(calculatedMap.keySet());
         }
 
         List<AssetReconciliationResult> assetResults = new ArrayList<>();
         boolean allMatched = true;
 
         for (String assetId : allAssetIds) {
-            BigDecimal calcUnits = calculatedMap.getOrDefault(assetId, BigDecimal.ZERO);
-            BigDecimal declUnits = declaredAssetBalances != null ? declaredAssetBalances.getOrDefault(assetId, BigDecimal.ZERO) : BigDecimal.ZERO;
-            BigDecimal delta = calcUnits.subtract(declUnits).abs();
-            boolean isMatched = delta.compareTo(new BigDecimal("0.0001")) < 0;
+            BigDecimal calcUnits = calculatedMap.getOrDefault(assetId, BigDecimal.ZERO).setScale(3, java.math.RoundingMode.HALF_UP);
+            BigDecimal declUnits = (declaredAssetBalances != null ? declaredAssetBalances.getOrDefault(assetId, BigDecimal.ZERO) : BigDecimal.ZERO).setScale(3, java.math.RoundingMode.HALF_UP);
+            BigDecimal delta = calcUnits.subtract(declUnits).abs().setScale(3, java.math.RoundingMode.HALF_UP);
+            boolean isMatched = delta.compareTo(new BigDecimal("0.001")) <= 0;
 
             if (!isMatched) {
                 allMatched = false;

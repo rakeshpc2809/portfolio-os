@@ -1,0 +1,15 @@
+[Unit]
+Description=Portfolio OS PC-to-Sheets Split-Clock Sync Service
+After=network.target portfolio-os-core.service
+Wants=portfolio-os-core.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rakeshpc/Projects/portfolio-os
+EnvironmentFile=-/home/rakeshpc/Projects/portfolio-os/.env
+Environment=PYTHONPATH=/home/rakeshpc/Projects/portfolio-os/quant-sidecar
+ExecStart=-/home/rakeshpc/Projects/portfolio-os/quant-sidecar/.venv/bin/python quant-sidecar/scripts/gmail_cas_poller.py
+ExecStart=/home/rakeshpc/Projects/portfolio-os/quant-sidecar/.venv/bin/python quant-sidecar/scripts/sheets_snapshot_publisher.py
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=portfolio-pc-sync

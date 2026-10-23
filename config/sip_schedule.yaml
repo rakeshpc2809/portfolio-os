@@ -1,0 +1,33 @@
+# Portfolio OS — Recurring SIP Schedule Configuration
+# Specifies active systematic investment plans, monthly execution day, and expected amount.
+sips:
+  - isin: "INF109KC12U0"
+    amfi_code: "145552"
+    scheme_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund Direct Growth"
+    sip_day_of_month: 10
+    amount_inr: 10000.00
+    rta: "CAMS"
+  - isin: "INF879O01027"
+    amfi_code: "122639"
+    scheme_name: "Parag Parikh Flexi Cap Fund Direct Growth"
+    sip_day_of_month: 15
+    amount_inr: 10000.00
+    rta: "CAMS"
+  - isin: "INF109KC13X2"
+    amfi_code: "145553"
+    scheme_name: "ICICI Prudential Nifty200 Value 30 Index Fund Direct Growth"
+    sip_day_of_month: 10
+    amount_inr: 5000.00
+    rta: "CAMS"
+  - isin: "INF754K01TN5"
+    amfi_code: "147585"
+    scheme_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund Direct Growth"
+    sip_day_of_month: 15
+    amount_inr: 5000.00
+    rta: "KFINTECH"
+  - isin: "INF204K01K15"
+    amfi_code: "120503"
+    scheme_name: "Nippon India Small Cap Fund Direct Growth"
+    sip_day_of_month: 20
+    amount_inr: 5000.00
+    rta: "KFINTECH"

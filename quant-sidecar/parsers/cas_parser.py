@@ -8,6 +8,8 @@ from .models import TaxEventSchema, EventType
 DATE_REGEX = re.compile(r"^(\d{2}-[A-Za-z]{3}-\d{4})\s+(.+)$")
 # Added support for both CAMS and KFintech PAN formats in CAS
 ISIN_REGEX = re.compile(r"ISIN:\s*([A-Z0-9]{12})", re.IGNORECASE)
+FOLIO_REGEX = re.compile(r"Folio(?:\s+No)?[:\s]+([0-9a-zA-Z\/\-]+)", re.IGNORECASE)
+CLOSING_BAL_REGEX = re.compile(r"Closing(?:\s+Unit)?\s+Balance[:\s]+([0-9,]+(?:\.[0-9]+)?)", re.IGNORECASE)
 TOKEN_REGEX = re.compile(r"\((?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\)|\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b|\b\d+\.\d+\b")
 
 class CasPdfParser:
@@ -25,6 +27,7 @@ class CasPdfParser:
             import casparser
             data = casparser.read_cas_pdf(self.pdf_path, self.password or "")
             for folio in data.folios:
+                folio_no = str(folio.folio).strip() if (hasattr(folio, "folio") and folio.folio) else None
                 for scheme in folio.schemes:
                     isin = scheme.isin
                     scheme_name = scheme.scheme
@@ -69,6 +72,7 @@ class CasPdfParser:
                                     assetId=asset_id,
                                     assetName=scheme_name,
                                     isin=isin,
+                                    folioNo=folio_no,
                                     eventType=event_type,
                                     eventDate=txn_date,
                                     units=units,
@@ -92,6 +96,8 @@ class CasPdfParser:
 
             current_scheme = "Mutual Fund Scheme"
             current_isin: Optional[str] = None
+            current_folio: Optional[str] = None
+            current_closing_units: Optional[Decimal] = None
 
             with pdfplumber.open(self.pdf_path, password=self.password or "") as pdf:
                 for page in pdf.pages:
@@ -101,12 +107,30 @@ class CasPdfParser:
                         if not line_str:
                             continue
 
+                        folio_match = FOLIO_REGEX.search(line_str)
+                        if folio_match:
+                            current_folio = folio_match.group(1).strip()
+
                         isin_match = ISIN_REGEX.search(line_str)
                         if isin_match:
                             current_isin = isin_match.group(1)
 
                         if "ISIN:" in line_str or ("Fund" in line_str and "Registrar" in line_str):
                             current_scheme = line_str.split(" - ISIN:")[0].split("(Advisor")[0].strip()
+
+                        close_match = CLOSING_BAL_REGEX.search(line_str)
+                        if close_match:
+                            try:
+                                current_closing_units = Decimal(close_match.group(1).replace(",", "").strip())
+                                for ev in reversed(events):
+                                    if ev.isin == current_isin or ev.asset_name == current_scheme:
+                                        if ev.declared_closing_units is None:
+                                            ev.declared_closing_units = current_closing_units
+                                    else:
+                                        break
+                            except Exception:
+                                pass
+                            continue
 
                         if any(
                             x in line_str
@@ -118,7 +142,6 @@ class CasPdfParser:
                                 "Opening Unit Balance",
                                 "CAMSCASWS",
                                 "Consolidated Account Statement",
-                                "Closing Unit Balance",
                                 "NAV on",
                             ]
                         ):
@@ -167,13 +190,15 @@ class CasPdfParser:
                                         assetId=current_isin or current_scheme.replace(" ", "_").upper()[:20],
                                         assetName=current_scheme,
                                         isin=current_isin,
+                                        folioNo=current_folio,
                                         eventType=event_type,
                                         eventDate=event_date,
                                         units=units,
                                         pricePerUnit=price,
                                         grossAmount=amount,
                                         sourceDocumentId=self.pdf_path,
-                                        ingestedAt=datetime.now()
+                                        ingestedAt=datetime.now(),
+                                        declaredClosingUnits=current_closing_units
                                     )
                                 )
         except Exception as err:

@@ -94,6 +94,7 @@ public class SyncController {
         // Collect held ISINs and persist daily NAV history strictly for held assets
         Set<String> heldIsins = openLots.stream().map(Lot::assetId).collect(Collectors.toSet());
         duckDbProjector.saveNavHistoryBatchForHeldAssets(navMap, heldIsins, today);
+        Map<String, BigDecimal> peakNavMap = duckDbProjector.get52WeekPeakNavs(heldIsins);
 
         // Calculate overall XIRR & Totals via canonical PortfolioValuationService
         com.portfolioos.core.service.PortfolioValuationService.PortfolioValuationMetrics valMetrics = valuationService.computeValuationMetrics(resolvedFy);
@@ -125,6 +126,14 @@ public class SyncController {
             AssetCategory catEnum = TaxClassifier.detectCategory(assetId, assetName);
             var terMeta = com.portfolioos.core.nav.AmfiTerFetcher.resolveTer(assetId, assetName, catEnum);
 
+            BigDecimal peakNav = peakNavMap.getOrDefault(assetId, nav).max(nav);
+            double drawdownPct = peakNav.compareTo(BigDecimal.ZERO) > 0
+                ? nav.subtract(peakNav).divide(peakNav, 4, RoundingMode.HALF_UP).doubleValue() * 100.0
+                : 0.0;
+
+            com.portfolioos.core.valuation.ExitLoadCalculator.ExitLoadSummary exitSummary =
+                com.portfolioos.core.valuation.ExitLoadCalculator.calculateForAsset(assetId, assetName, lots, nav, today);
+
             holdings.add(new FlatHoldingDto(
                 assetId,
                 assetName,
@@ -138,7 +147,13 @@ public class SyncController {
                 currencyFormat.format(totalCost),
                 terMeta.expenseRatio(),
                 terMeta.terStatus(),
-                terMeta.terAsOfDate()
+                terMeta.terAsOfDate(),
+                exitSummary.exitLoadFreeUnits().doubleValue(),
+                exitSummary.exitLoadFreeValue().doubleValue(),
+                exitSummary.lockedUnits().doubleValue(),
+                peakNav.doubleValue(),
+                nav.doubleValue(),
+                drawdownPct
             ));
         }
 

@@ -535,6 +535,30 @@ public class DuckDbProjector implements AutoCloseable {
         return result;
     }
 
+    public Map<String, BigDecimal> get52WeekPeakNavs(Set<String> assetIds) {
+        Map<String, BigDecimal> result = new HashMap<>();
+        if (assetIds == null || assetIds.isEmpty() || dataSource == null) return result;
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT asset_id, MAX(nav) AS peak_nav FROM nav_history WHERE asset_id = ? GROUP BY asset_id";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                for (String assetId : assetIds) {
+                    stmt.setString(1, assetId);
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        if (rs.next()) {
+                            double peak = rs.getDouble("peak_nav");
+                            if (peak > 0) {
+                                result.put(assetId, BigDecimal.valueOf(peak));
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to fetch 52-week peak NAVs from DuckDB: " + e.getMessage());
+        }
+        return result;
+    }
+
     public void saveLatestNavEntries(List<com.portfolioos.core.nav.AmfiNavSync.NavEntry> entries) {
         if (entries == null || entries.isEmpty() || dataSource == null) return;
         try (Connection conn = getConnection()) {

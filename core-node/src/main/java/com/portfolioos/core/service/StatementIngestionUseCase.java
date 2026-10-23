@@ -39,7 +39,10 @@ public class StatementIngestionUseCase {
             return List.of();
         }
 
-        List<TaxEvent> taxEvents = new ArrayList<>();
+        java.util.Map<String, Integer> dayOccurrences = new java.util.HashMap<>();
+        List<TaxEvent> incomingEvents = new java.util.ArrayList<>();
+        java.util.Set<String> incomingFingerprints = new java.util.HashSet<>();
+
         for (ParsedEventDto dto : dtoList) {
             if (dto.units() == null || dto.units().compareTo(BigDecimal.ZERO) <= 0) {
                 throw new IllegalArgumentException("Corrupted transaction row: units must be positive. Found: " + dto.units());
@@ -57,59 +60,102 @@ public class StatementIngestionUseCase {
                 throw new IllegalArgumentException("Corrupted transaction row: units (" + dto.units() + ") * price (" + dto.pricePerUnit() + ") = " + expectedGross + " diverges from declared grossAmount (" + dto.grossAmount() + ") by " + grossDelta);
             }
 
+            LocalDate eventDate = LocalDate.parse(dto.eventDate());
+            EventType eventType = EventType.valueOf(dto.eventType());
+            String folio = dto.folioNo();
+            String isin = dto.isin();
+            String occKey = (folio != null ? folio : "") + "|" + (isin != null ? isin : "") + "|" + eventDate + "|" + eventType.name() + "|" + dto.grossAmount().toPlainString() + "|" + dto.units().toPlainString();
+            int occurrenceIdx = dayOccurrences.getOrDefault(occKey, 0);
+            dayOccurrences.put(occKey, occurrenceIdx + 1);
+
+            String fingerprint = dto.txFingerprint();
+            if (fingerprint == null || fingerprint.isBlank()) {
+                fingerprint = SqliteEventStore.computeTxFingerprint(folio, isin, eventDate, eventType, dto.grossAmount(), dto.units(), occurrenceIdx);
+            }
+            incomingFingerprints.add(fingerprint);
+
             TaxEvent te = new TaxEvent(
                 dto.id() != null ? dto.id() : UUID.randomUUID().toString(),
                 dto.assetId(),
                 dto.assetName(),
                 dto.isin(),
-                EventType.valueOf(dto.eventType()),
-                LocalDate.parse(dto.eventDate()),
+                folio,
+                eventType,
+                eventDate,
                 dto.units(),
                 dto.pricePerUnit(),
                 dto.grossAmount(),
                 dto.sourceDocumentId(),
-                Instant.now()
+                Instant.now(),
+                fingerprint
             );
-            taxEvents.add(te);
+            incomingEvents.add(te);
         }
 
         Map<String, BigDecimal> declaredBalances = new java.util.HashMap<>();
+        Map<String, String> assetToFolio = new java.util.HashMap<>();
         for (ParsedEventDto dto : dtoList) {
             if (dto.declaredClosingUnits() != null && dto.assetId() != null) {
                 declaredBalances.put(dto.assetId(), dto.declaredClosingUnits());
+                if (dto.folioNo() != null && !dto.folioNo().isBlank()) {
+                    assetToFolio.put(dto.assetId(), dto.folioNo());
+                }
             }
         }
 
         synchronized (ingestionLock) {
+            java.util.Set<String> existingFps = eventStore.getExistingFingerprints(incomingFingerprints);
+            List<TaxEvent> newTaxEvents = incomingEvents.stream()
+                .filter(e -> !existingFps.contains(e.txFingerprint()))
+                .toList();
+
             if (!declaredBalances.isEmpty()) {
+                // Combine existing ledger events with ONLY new non-duplicate events
                 List<TaxEvent> combined = new ArrayList<>(eventStore.getAllEvents());
-                combined.addAll(taxEvents);
+                combined.addAll(newTaxEvents);
                 com.portfolioos.core.matcher.FifoMatcher fifoMatcher = new com.portfolioos.core.matcher.FifoMatcher();
                 com.portfolioos.core.matcher.FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(combined);
                 com.portfolioos.core.reconciliation.ReconciliationGate.MultiAssetReconciliationResult recon =
                     com.portfolioos.core.reconciliation.ReconciliationGate.validateStatementPerAsset(fifoResult, declaredBalances);
+
+                // Build and persist reconciliation_log entries immediately (Fix #2: do not lose MISMATCH on rollback)
+                Instant now = Instant.now();
+                List<com.portfolioos.core.ports.EventStorePort.ReconciliationRecord> records = new ArrayList<>();
+                for (com.portfolioos.core.reconciliation.ReconciliationGate.AssetReconciliationResult ar : recon.assetResults()) {
+                    String isin = ar.assetId();
+                    String folio = assetToFolio.getOrDefault(isin, "");
+                    BigDecimal casUnits = ar.declaredUnits().setScale(3, java.math.RoundingMode.HALF_UP);
+                    BigDecimal ledgerUnits = ar.calculatedUnits().setScale(3, java.math.RoundingMode.HALF_UP);
+                    BigDecimal delta = ar.delta().setScale(3, java.math.RoundingMode.HALF_UP);
+                    String status = ar.isMatched() ? "MATCHED" : "MISMATCH";
+                    records.add(new com.portfolioos.core.ports.EventStorePort.ReconciliationRecord(now, isin, folio, casUnits, ledgerUnits, delta, status));
+                }
+
+                eventStore.recordReconciliationLog(records);
+
                 if (!recon.allMatched()) {
                     throw new com.portfolioos.core.reconciliation.ReconciliationGateFailureException(recon);
                 }
             }
 
-            // Dual-write step 1: Write to primary SQLite Ledger
-            eventStore.appendEvents(taxEvents);
+            if (!newTaxEvents.isEmpty()) {
+                // Dual-write step 1: Write to primary SQLite Ledger (Fix #1: sequential hash chain for new events)
+                eventStore.appendEvents(newTaxEvents);
 
-            try {
-                // Dual-write step 2: Re-project events in DuckDB analytical database
-                List<TaxEvent> allEvents = eventStore.getAllEvents();
-                duckDbProjector.projectEvents(allEvents);
-            } catch (Exception e) {
-                // SQLite ledger commit is immutable. Never delete events from the HMAC chain.
-                System.err.println("ALERT: Analytical DuckDB projection failed post-ledger commit. Ledger remains intact: " + e.getMessage());
-                throw new RuntimeException("Dual-write failure: Analytical DuckDB projection failed (ledger committed intact): " + e.getMessage(), e);
+                try {
+                    // Dual-write step 2: Re-project events in DuckDB analytical database
+                    List<TaxEvent> allEvents = eventStore.getAllEvents();
+                    duckDbProjector.projectEvents(allEvents);
+                } catch (Exception e) {
+                    System.err.println("ALERT: Analytical DuckDB projection failed post-ledger commit. Ledger remains intact: " + e.getMessage());
+                    throw new RuntimeException("Dual-write failure: Analytical DuckDB projection failed (ledger committed intact): " + e.getMessage(), e);
+                }
+
+                // Evict/Invalidate central ledger cache
+                cacheService.invalidateCache();
             }
 
-            // Evict/Invalidate central ledger cache
-            cacheService.invalidateCache();
-
-            return taxEvents;
+            return newTaxEvents;
         }
     }
 }

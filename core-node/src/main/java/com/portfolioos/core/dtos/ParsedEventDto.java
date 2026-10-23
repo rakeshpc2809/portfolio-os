@@ -7,14 +7,32 @@ public record ParsedEventDto(
     String assetId,
     String assetName,
     String isin,
+    String folioNo,
     String eventType,
     String eventDate,
     BigDecimal units,
     BigDecimal pricePerUnit,
     BigDecimal grossAmount,
     String sourceDocumentId,
-    BigDecimal declaredClosingUnits
+    BigDecimal declaredClosingUnits,
+    String txFingerprint
 ) {
+    public ParsedEventDto(
+        String id,
+        String assetId,
+        String assetName,
+        String isin,
+        String eventType,
+        String eventDate,
+        BigDecimal units,
+        BigDecimal pricePerUnit,
+        BigDecimal grossAmount,
+        String sourceDocumentId,
+        BigDecimal declaredClosingUnits
+    ) {
+        this(id, assetId, assetName, isin, null, eventType, eventDate, units, pricePerUnit, grossAmount, sourceDocumentId, declaredClosingUnits, null);
+    }
+
     public ParsedEventDto(
         String id,
         String assetId,
@@ -27,6 +45,6 @@ public record ParsedEventDto(
         BigDecimal grossAmount,
         String sourceDocumentId
     ) {
-        this(id, assetId, assetName, isin, eventType, eventDate, units, pricePerUnit, grossAmount, sourceDocumentId, null);
+        this(id, assetId, assetName, isin, null, eventType, eventDate, units, pricePerUnit, grossAmount, sourceDocumentId, null, null);
     }
 }

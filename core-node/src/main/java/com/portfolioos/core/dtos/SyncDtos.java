@@ -38,8 +38,52 @@ public class SyncDtos {
         String formattedInvestedValue,
         Double expenseRatio,
         String terStatus,
-        String terAsOfDate
+        String terAsOfDate,
+        double exitLoadFreeUnits,
+        double exitLoadFreeValue,
+        double lockedUnits,
+        double peak52wNav,
+        double currentNav,
+        double drawdownFromPeakPct
     ) {
+        public FlatHoldingDto(
+            String isin,
+            String fundName,
+            double totalUnits,
+            double avgCost,
+            double xirr,
+            String assetBucket,
+            double currentValue,
+            double investedValue,
+            String formattedCurrentValue,
+            String formattedInvestedValue,
+            Double expenseRatio,
+            String terStatus,
+            String terAsOfDate
+        ) {
+            this(
+                isin,
+                fundName,
+                totalUnits,
+                avgCost,
+                xirr,
+                assetBucket,
+                currentValue,
+                investedValue,
+                formattedCurrentValue,
+                formattedInvestedValue,
+                expenseRatio,
+                terStatus,
+                terAsOfDate,
+                totalUnits,
+                currentValue,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            );
+        }
+
         public FlatHoldingDto(
             String isin,
             String fundName,

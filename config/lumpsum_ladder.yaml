@@ -1,0 +1,37 @@
+# Portfolio OS — Lumpsum Deployment Ladder Configuration
+# Defines rules for opportunistic capital deployment from Arbitrage into Equity
+# based on Nifty 500 peak drawdown tiers.
+
+arbitrage_bucket:
+  bucket_name: "LIQUID_BUFFER"
+  strategy: "ARBITRAGE"
+  schemes:
+    - isin: "INF205K01KR8"
+      name: "Invesco India Arbitrage Fund - Direct Plan Growth (Non Demat)"
+      exit_load_days: 15
+      exit_load_rate_pct: 0.25
+
+benchmark:
+  symbol: "NSE:NIFTY_500"
+  proxy_amfi_code: "147625" # Motilal Oswal Nifty 500 Index Fund Direct Growth proxy
+
+ladder_rules:
+  reset_threshold_pct: -5.0 # When Nifty 500 drawdown recovers above -5.0%, reset ladder rungs
+  rungs:
+    - rung: 1
+      drawdown_trigger_pct: -10.0
+      deploy_arbitrage_pct: 33.33
+      action: "RUNG_1_DEPLOY"
+      rule: "Drawdown <= -10%: Deploy 1/3 (~33.33%) of exit-load-free Arbitrage capital into underweight equity buckets."
+
+    - rung: 2
+      drawdown_trigger_pct: -20.0
+      deploy_arbitrage_pct: 33.33
+      action: "RUNG_2_DEPLOY"
+      rule: "Drawdown <= -20%: Deploy second 1/3 (~33.33%) of exit-load-free Arbitrage capital into equity."
+
+    - rung: 3
+      drawdown_trigger_pct: -30.0
+      deploy_arbitrage_pct: 33.34
+      action: "RUNG_3_DEPLOY"
+      rule: "Drawdown <= -30%: Deploy final 1/3 (~33.34%) of exit-load-free Arbitrage capital into core index buckets."
