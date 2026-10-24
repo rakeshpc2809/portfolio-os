@@ -33,6 +33,7 @@
     "mobile-app/app/src/main/java/com/portfolioos/mobile/ui/DashboardViewModel.kt",
     "mobile-app/app/src/main/java/com/portfolioos/mobile/ui/DashboardUiState.kt",
     "mobile-app/app/build.gradle.kts",
+    "core-node/src/main/resources/static/**",
     "docker-compose.yml",
     "justfile"
   ],
@@ -68,7 +69,7 @@
       "**/*.lock",
       "data/**",
       "tmp/**",
-      "core-node/src/main/resources/static/**",
+      "core-node/src/main/resources/static/src/vendor/**",
       "repomix*",
       ".aider*",
       "*.log",
