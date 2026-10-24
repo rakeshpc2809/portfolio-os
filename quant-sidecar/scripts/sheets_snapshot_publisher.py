@@ -22,6 +22,37 @@ logger = logging.getLogger("sheets-snapshot-publisher")
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_DB_PATH = REPO_ROOT / "data" / "tax_ledger.db"
 
+
+def load_env_file(filepath: Path = REPO_ROOT / ".env"):
+    """Loads environment variables from .env if not already present."""
+    if not filepath.exists():
+        return
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                if k and k not in os.environ:
+                    os.environ[k] = v
+    except Exception as e:
+        logger.warning(f"Failed to parse .env file at {filepath}: {e}")
+
+
+def extract_sheet_id(sheet_id_or_url: str) -> str:
+    """Extracts the Google Spreadsheet ID from a sheet ID or full URL."""
+    if not sheet_id_or_url:
+        return ""
+    sheet_id = sheet_id_or_url.strip().strip('"').strip("'")
+    if "/d/" in sheet_id:
+        parts = sheet_id.split("/d/", 1)[1]
+        sheet_id = parts.split("/", 1)[0]
+    return sheet_id
+
+
 # Strict PII Detection Regexes (Fix #4)
 # Explicitly avoids \b\d{9,18}\b which false-positives on timestamps and high-precision decimal units
 PAN_PATTERN = re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b")
@@ -244,6 +275,91 @@ def build_system_state(db_path: Path, sync_info: Dict[str, Any]) -> Dict[str, An
     }
 
 
+def publish_to_google_sheets_api(payload: Dict[str, Any], creds_path: str, sheet_id: str):
+    """Pushes holdings_snapshot and system_state directly to Google Sheets via Google Sheets API."""
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+
+    clean_sheet_id = extract_sheet_id(sheet_id)
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = service_account.Credentials.from_service_account_file(creds_path, scopes=scopes)
+    service = build("sheets", "v4", credentials=creds)
+
+    meta = service.spreadsheets().get(spreadsheetId=clean_sheet_id).execute()
+    existing_sheets = [s["properties"]["title"] for s in meta.get("sheets", [])]
+
+    requests_body = []
+    for needed in ["holdings_snapshot", "system_state"]:
+        if needed not in existing_sheets:
+            requests_body.append({"addSheet": {"properties": {"title": needed}}})
+    if requests_body:
+        service.spreadsheets().batchUpdate(spreadsheetId=clean_sheet_id, body={"requests": requests_body}).execute()
+
+    holdings = payload.get("holdings_snapshot", [])
+    system_state = payload.get("system_state", {})
+
+    holdings_headers = [
+        "ISIN",
+        "AMFI_Code",
+        "Scheme_Name",
+        "Bucket",
+        "Total_Units",
+        "Exit_Load_Free_Units",
+        "Peak_52W_NAV",
+        "Current_NAV",
+        "Current_Value",
+        "Drawdown_Pct",
+        "As_Of_Date"
+    ]
+    holdings_rows = [holdings_headers]
+    for h in holdings:
+        holdings_rows.append([
+            h.get("ISIN", ""),
+            str(h.get("AMFI_Code", "")),
+            h.get("Scheme_Name", ""),
+            h.get("Bucket", ""),
+            h.get("Total_Units", 0.0),
+            h.get("Exit_Load_Free_Units", 0.0),
+            h.get("Peak_52W_NAV", 0.0),
+            h.get("current_nav", 0.0),
+            h.get("current_value", 0.0),
+            h.get("drawdown_from_peak_pct", 0.0),
+            h.get("as_of_date", "")
+        ])
+
+    system_state_rows = [["System State Key", "Value"]]
+    for k, v in system_state.items():
+        system_state_rows.append([str(k), str(v)])
+
+    # Clear and update holdings_snapshot
+    service.spreadsheets().values().clear(spreadsheetId=clean_sheet_id, range="holdings_snapshot!A1:Z100").execute()
+    service.spreadsheets().values().update(
+        spreadsheetId=clean_sheet_id,
+        range="holdings_snapshot!A1",
+        valueInputOption="USER_ENTERED",
+        body={"values": holdings_rows}
+    ).execute()
+
+    # Write system state metadata table to columns M1:N on holdings_snapshot
+    service.spreadsheets().values().update(
+        spreadsheetId=clean_sheet_id,
+        range="holdings_snapshot!M1",
+        valueInputOption="USER_ENTERED",
+        body={"values": system_state_rows}
+    ).execute()
+
+    # Clear and update system_state tab
+    service.spreadsheets().values().clear(spreadsheetId=clean_sheet_id, range="system_state!A1:Z100").execute()
+    service.spreadsheets().values().update(
+        spreadsheetId=clean_sheet_id,
+        range="system_state!A1",
+        valueInputOption="USER_ENTERED",
+        body={"values": system_state_rows}
+    ).execute()
+
+    logger.info(f"Successfully published {len(holdings)} holdings and system_state metadata to Google Sheets (ID: {clean_sheet_id}).")
+
+
 def fetch_and_publish_snapshot(
     core_node_url: str = "http://127.0.0.1:8080",
     auth_token: Optional[str] = None,
@@ -252,6 +368,7 @@ def fetch_and_publish_snapshot(
     dry_run: bool = False
 ) -> Dict[str, Any]:
     """Fetches snapshot from Core Node, sanitizes PII, verifies safety, and pushes to Google Sheets."""
+    load_env_file()
     token = auth_token or os.getenv("API_AUTH_TOKEN", "dev_secret_key_123")
     url = f"{core_node_url.rstrip('/')}/api/v1/sync/snapshot"
     headers = {"X-Api-Auth-Token": token}
@@ -283,7 +400,13 @@ def fetch_and_publish_snapshot(
     logger.info(f"✓ PII Scan Passed: 0 violations detected across {len(sanitized_holdings)} holdings.")
 
     target_webhook = webhook_url or os.getenv("GOOGLE_SHEET_WEBHOOK_URL", "")
-    if target_webhook and not dry_run:
+    sheet_id = os.getenv("PORTFOLIO_SHEET_ID", "")
+    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+
+    if not dry_run and creds_path and os.path.exists(creds_path) and sheet_id:
+        logger.info("Publishing snapshot to Google Sheets via Google Sheets API (Service Account)...")
+        publish_to_google_sheets_api(payload, creds_path, sheet_id)
+    elif target_webhook and not dry_run:
         logger.info(f"Publishing snapshot to Google Sheets via Apps Script Webhook...")
         wh_resp = requests.post(target_webhook, json=payload, timeout=30)
         wh_resp.raise_for_status()
@@ -297,10 +420,15 @@ def fetch_and_publish_snapshot(
 
 
 if __name__ == "__main__":
-    dry_run_flag = "--dry-run" in sys.argv or not os.getenv("GOOGLE_SHEET_WEBHOOK_URL")
+    load_env_file()
+    dry_run_flag = "--dry-run" in sys.argv
     try:
         res = fetch_and_publish_snapshot(dry_run=dry_run_flag)
-        print(f"SUCCESS: Prepared and verified {len(res['holdings_snapshot'])} holdings for Google Sheets.")
+        num_holdings = len(res['holdings_snapshot'])
+        print(f"\n========================================================")
+        print(f"CONFIRMATION: {num_holdings} holdings and the system_state metadata table")
+        print(f"were written to your holdings_snapshot tab and system_state tab.")
+        print(f"========================================================\n")
     except Exception as err:
         logger.error(f"Publishing failed: {err}")
         sys.exit(1)
