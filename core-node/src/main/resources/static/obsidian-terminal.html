@@ -267,22 +267,22 @@
           </div>
         </div>
 
-        <div class="telemetry-card">
+        <div class="telemetry-card" id="goldSilverCard">
           <div class="hud-label" style="color: var(--accent-amber); margin: 0;">Gold-Silver Ratio Split</div>
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px;">
-            <div style="font-family: var(--font-mono); font-size: 1.25rem; font-weight: 800; color: #FFFFFF;">104.3x</div>
-            <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent-amber);">40% Gold / 60% Silver</div>
+            <div id="goldSilverRatioVal" style="font-family: var(--font-mono); font-size: 1.25rem; font-weight: 800; color: #FFFFFF;">--</div>
+            <div id="goldSilverTargetSplitText" style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent-amber);">--% Gold / --% Silver</div>
           </div>
-          <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">Silver Undervalued · Sizing Target Active</div>
+          <div id="goldSilverSignalBadge" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">Evaluating spot ratio...</div>
         </div>
 
-        <div class="telemetry-card">
+        <div class="telemetry-card" id="reconstitutionCard">
           <div class="hud-label" style="color: var(--accent-cyan); margin: 0;">NSE Reconstitution Window</div>
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px;">
-            <div style="font-family: var(--font-mono); font-size: 1.25rem; font-weight: 800; color: #FFFFFF;">11 Days</div>
-            <div style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent-emerald);">2026-09-30</div>
+            <div id="reconstitutionDaysVal" style="font-family: var(--font-mono); font-size: 1.25rem; font-weight: 800; color: #FFFFFF;">--</div>
+            <div id="reconstitutionDateVal" style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent-emerald);">--</div>
           </div>
-          <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">Normal Execution · Semi-Annual Reconstitution</div>
+          <div id="reconstitutionWindowBadge" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">Normal Execution · Semi-Annual Reconstitution</div>
         </div>
       </div>
 

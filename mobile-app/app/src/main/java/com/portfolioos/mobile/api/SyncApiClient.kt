@@ -98,6 +98,7 @@ object SyncApiClient {
                 val snapshot = createService(baseUrl).getSnapshot(token = authToken)
                 lastWorkingBaseUrl = baseUrl
                 SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
+                SnapshotCacheManager.setFullyOffline(context, false)
                 return snapshot
             } catch (e: Exception) {
                 lastException = e
@@ -111,6 +112,7 @@ object SyncApiClient {
         return try {
             fetchSnapshotOnline(context)
         } catch (e: Exception) {
+            SnapshotCacheManager.setFullyOffline(context, true)
             val cached = SnapshotCacheManager.loadSnapshot(context)
             cached ?: throw java.io.IOException("No network connection available to sync snapshot and no local cache present: ${e.message}", e)
         }

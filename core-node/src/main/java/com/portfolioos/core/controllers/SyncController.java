@@ -91,9 +91,8 @@ public class SyncController {
         Locale inLocale = new Locale("en", "IN");
         NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(inLocale);
 
-        // Collect held ISINs and persist daily NAV history strictly for held assets
+        // Collect held ISINs
         Set<String> heldIsins = openLots.stream().map(Lot::assetId).collect(Collectors.toSet());
-        duckDbProjector.saveNavHistoryBatchForHeldAssets(navMap, heldIsins, today);
         Map<String, BigDecimal> peakNavMap = duckDbProjector.get52WeekPeakNavs(heldIsins);
 
         // Calculate overall XIRR & Totals via canonical PortfolioValuationService

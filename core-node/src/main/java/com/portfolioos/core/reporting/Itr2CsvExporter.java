@@ -1,5 +1,6 @@
 package com.portfolioos.core.reporting;
 
+import com.portfolioos.core.model.AssetCategory;
 import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.model.TaxTerm;
 import com.portfolioos.core.util.Pair;
@@ -50,6 +51,7 @@ public class Itr2CsvExporter {
 
         List<MatchedLot> ltcgLots = matchedLots.stream().filter(lot ->
             lot.taxTerm() == TaxTerm.LONG_TERM &&
+            lot.assetCategory() == AssetCategory.EQUITY &&
             !lot.disposalDate().isBefore(startDate) &&
             !lot.disposalDate().isAfter(endDate)
         ).toList();

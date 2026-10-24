@@ -65,8 +65,6 @@ class SyncControllerTest {
 
         com.portfolioos.core.persistence.DuckDbProjector mockDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
             @Override
-            public void saveNavHistoryBatchForHeldAssets(Map<String, BigDecimal> navMap, java.util.Set<String> heldIsins, LocalDate asOfDate) {}
-            @Override
             public Map<String, NavHistorySeriesEntry> getNavHistorySeriesWithDates(java.util.Set<String> heldIsins) {
                 return java.util.Collections.emptyMap();
             }

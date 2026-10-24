@@ -33,9 +33,16 @@ class DuckDbProjectorNetWorthAccountingTest {
         Map<String, BigDecimal> navJun1 = Map.of("asset_1", new BigDecimal("12.0"));
         Map<String, BigDecimal> navJun2 = Map.of("asset_1", new BigDecimal("12.0"), "asset_2", new BigDecimal("15.0"));
 
-        projector.saveNavHistoryBatchForHeldAssets(navJan1, Set.of("asset_1"), LocalDate.parse("2026-01-01"));
-        projector.saveNavHistoryBatchForHeldAssets(navJun1, Set.of("asset_1"), LocalDate.parse("2026-06-01"));
-        projector.saveNavHistoryBatchForHeldAssets(navJun2, Set.of("asset_1", "asset_2"), LocalDate.parse("2026-06-02"));
+        projector.saveLatestNavEntries(List.of(
+            new com.portfolioos.core.nav.AmfiNavSync.NavEntry(null, "asset_1", "Legacy Fund", new BigDecimal("10.0"), LocalDate.parse("2026-01-01"))
+        ));
+        projector.saveLatestNavEntries(List.of(
+            new com.portfolioos.core.nav.AmfiNavSync.NavEntry(null, "asset_1", "Legacy Fund", new BigDecimal("12.0"), LocalDate.parse("2026-06-01"))
+        ));
+        projector.saveLatestNavEntries(List.of(
+            new com.portfolioos.core.nav.AmfiNavSync.NavEntry(null, "asset_1", "Legacy Fund", new BigDecimal("12.0"), LocalDate.parse("2026-06-02")),
+            new com.portfolioos.core.nav.AmfiNavSync.NavEntry(null, "asset_2", "New Fund", new BigDecimal("15.0"), LocalDate.parse("2026-06-02"))
+        ));
 
         // 2. Initial ACQUISITION on 2026-01-01 (Rs 1,00,000 invested, 10,000 units @ Rs 10.0)
         TaxEvent e1 = new TaxEvent(

@@ -18,7 +18,7 @@ SCHEMES = {
     "INF109KC12U0": (152482, "ICICI LargeMidcap 250"),
     "INF109KC13X2": (152936, "ICICI Value 30"),
     "INF754K01TN5": (153096, "Edelweiss Multicap Momentum 50"),
-    "INF204K01K15": (118778, "Nippon Small Cap"),
+    "INF204K01K15": (118777, "Nippon Small Cap"),
     "INF247L01BM8": (150642, "Motilal Gold and Silver FoF"),
     "INF205K01KR8": (120401, "Invesco Arbitrage"),
 }

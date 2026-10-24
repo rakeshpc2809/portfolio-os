@@ -54,7 +54,7 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
         val snapshot = SnapshotCacheManager.loadSnapshot(context)
         val info = snapshot?.syncInfo
         val holdings = snapshot?.holdings ?: emptyList()
-        val isMasked = SnapshotCacheManager.isValuationMasked(context)
+        val isMasked = SnapshotCacheManager.isQuietModeEnabled(context) || SnapshotCacheManager.isValuationMasked(context)
         val statusOverride = SnapshotCacheManager.getWidgetStatusOverride(context)
 
         val lastSync = SnapshotCacheManager.getLastSyncTimestamp(context)
@@ -312,7 +312,9 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
 
 class ToggleMaskActionCallback : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        SnapshotCacheManager.toggleValuationMask(context)
+        if (!SnapshotCacheManager.isQuietModeEnabled(context)) {
+            SnapshotCacheManager.toggleValuationMask(context)
+        }
         PortfolioGlanceWidget().update(context, glanceId)
     }
 }

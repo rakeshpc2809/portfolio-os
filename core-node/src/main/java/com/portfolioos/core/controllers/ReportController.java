@@ -157,12 +157,8 @@ public class ReportController {
         @RequestParam(value = "fy", required = false) String fy
     ) {
         String resolvedFy = resolveFy(fy);
-        String csv = com.portfolioos.core.reporting.Itr2CsvExporter.generateSchedule112aCsv(
-            cacheService.getCachedState().fifoResult().matchedLots(),
-            resolvedFy,
-            java.util.Collections.emptyMap(),
-            java.util.Collections.emptyMap()
-        );
+        Map<String, String> files = taxService.downloadItr2Files(resolvedFy);
+        String csv = files.getOrDefault("Schedule_112A.csv", "");
 
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Schedule-CG-FY" + resolvedFy + ".csv\"")

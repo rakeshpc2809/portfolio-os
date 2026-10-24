@@ -51,14 +51,10 @@ public class DuckDbProjectorIntegrationTest extends BaseIntegrationTest {
         duckDbProjector.projectEvents(List.of(acq1, acq2));
 
         // Save NAV points
-        duckDbProjector.saveNavHistoryBatchForHeldAssets(
-            Map.of(
-                ISIN_CORE_PPFAS, new BigDecimal("55.0"),
-                ISIN_LIQUID_ARBITRAGE, new BigDecimal("26.0")
-            ),
-            Set.of(ISIN_CORE_PPFAS, ISIN_LIQUID_ARBITRAGE),
-            LocalDate.of(2024, 1, 20)
-        );
+        duckDbProjector.saveLatestNavEntries(List.of(
+            new com.portfolioos.core.nav.AmfiNavSync.NavEntry(null, ISIN_CORE_PPFAS, "PPFAS", new BigDecimal("55.0"), LocalDate.of(2024, 1, 20)),
+            new com.portfolioos.core.nav.AmfiNavSync.NavEntry(null, ISIN_LIQUID_ARBITRAGE, "Arbitrage", new BigDecimal("26.0"), LocalDate.of(2024, 1, 20))
+        ));
 
         List<DuckDbProjector.NetWorthPoint> trend = duckDbProjector.getDailyNetWorthTrend();
         assertNotNull(trend, "Daily net worth trend list must not be null");
