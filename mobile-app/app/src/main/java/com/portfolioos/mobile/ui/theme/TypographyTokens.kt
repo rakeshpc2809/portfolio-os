@@ -52,14 +52,16 @@ object TypographyTokens {
         fontFamily = JetBrainsMonoFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 24.sp,
-        color = ColorTokens.TextMain
+        color = ColorTokens.TextMain,
+        fontFeatureSettings = "tnum"
     )
 
     val FinancialValue = TextStyle(
         fontFamily = JetBrainsMonoFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp,
-        color = ColorTokens.TextMain
+        color = ColorTokens.TextMain,
+        fontFeatureSettings = "tnum"
     )
 
     val MetricLabel = TextStyle(

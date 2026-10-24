@@ -145,7 +145,7 @@ class PortfolioGlanceWidget : GlanceAppWidget() {
                         Text(
                             text = "PORTFOLIO OS",
                             style = TextStyle(
-                                color = ColorProvider(Color(0xFFD0FF00)),
+                                color = ColorProvider(Color(0xFF06B6D4)),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )

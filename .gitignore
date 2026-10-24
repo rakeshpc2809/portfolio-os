@@ -50,6 +50,7 @@ dist/
 core-node/data/
 quant-sidecar/data/
 core-node/src/main/resources/data/
+home/
 *.db
 *.duckdb
 jdbc:duckdb*

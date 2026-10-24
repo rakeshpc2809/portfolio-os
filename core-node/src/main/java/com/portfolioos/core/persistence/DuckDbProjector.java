@@ -74,8 +74,11 @@ public class DuckDbProjector implements AutoCloseable {
         config.setMaximumPoolSize(2);
         config.setMinimumIdle(1);
         config.setIdleTimeout(30000);
-        config.setPoolName("DuckDbProjectorPool");
-        config.setConnectionInitSql("SET memory_limit = '64MB'; SET threads = 2;");
+        String memLimit = System.getenv("DUCKDB_MEMORY_LIMIT");
+        if (memLimit == null || memLimit.isBlank()) {
+            memLimit = "256MB";
+        }
+        config.setConnectionInitSql("SET memory_limit = '" + memLimit.trim() + "'; SET threads = 2;");
 
         this.dataSource = new HikariDataSource(config);
         initReadSchema(duckDbThreads);
@@ -647,8 +650,11 @@ public class DuckDbProjector implements AutoCloseable {
         List<NetWorthPoint> trend = new ArrayList<>();
         try (Connection conn = getConnection()) {
             String sql = """
-                WITH daily_dates AS (
-                    SELECT DISTINCT nav_date FROM nav_history
+                WITH min_event AS (
+                    SELECT COALESCE(MIN(event_date), '2000-01-01') AS min_d FROM projected_events
+                ),
+                daily_dates AS (
+                    SELECT DISTINCT nav_date FROM nav_history WHERE nav_date >= (SELECT min_d FROM min_event)
                     UNION
                     SELECT DISTINCT event_date AS nav_date FROM projected_events
                 ),

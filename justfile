@@ -67,12 +67,16 @@ clean-core:
 # Frontend Dashboard (JavaScript / Bun)
 # -------------------------------------------------------------
 
+# Build modern Svelte 5 Web Cockpit with Vite
+build-web:
+    cd web && npm run build
+
 # Serve static web cockpit locally with Bun
 serve-web:
     cd core-node/src/main/resources/static && bun x serve -p 3000 .
 
 # Validate static web cockpit contract and export integrity
-test-web:
+test-web: build-web
     node core-node/src/test/resources/static-test.mjs
 
 # -------------------------------------------------------------
