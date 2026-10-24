@@ -33,8 +33,11 @@ DEFAULT_SIP_SCHEDULE = REPO_ROOT / "config" / "sip_schedule.yaml"
 DEFAULT_NSE_HOLIDAYS = REPO_ROOT / "config" / "nse_holidays_2026_2027.yaml"
 
 
-def load_env_file(filepath: Path = REPO_ROOT / ".env"):
-    """Loads environment variables from .env if not already present."""
+def load_env_file(filepath: Optional[Path] = None):
+    """Loads environment variables from ~/.config/portfolio-os/secrets.env or .env if not already present."""
+    if filepath is None:
+        cfg_secrets = Path.home() / ".config" / "portfolio-os" / "secrets.env"
+        filepath = cfg_secrets if cfg_secrets.exists() else (REPO_ROOT / ".env")
     if not filepath.exists():
         return
     try:
@@ -49,7 +52,7 @@ def load_env_file(filepath: Path = REPO_ROOT / ".env"):
                 if k and k not in os.environ:
                     os.environ[k] = v
     except Exception as e:
-        logger.warning(f"Failed to parse .env file at {filepath}: {e}")
+        logger.warning(f"Failed to parse env file at {filepath}: {e}")
 
 
 def load_yaml(filepath: Path) -> Dict[str, Any]:
@@ -380,9 +383,9 @@ def poll_gmail_via_imap(
                                 continue
 
                             tmp_target = f"/tmp/cas_ingest_{uuid.uuid4().hex}.pdf"
-                            with open(tmp_target, "wb") as pf:
+                            fd = os.open(tmp_target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                            with os.fdopen(fd, "wb") as pf:
                                 pf.write(pdf_bytes)
-                            os.chmod(tmp_target, 0o600)
 
                             received_iso = datetime.now(timezone.utc).isoformat()
                             if date_str:
@@ -475,7 +478,9 @@ def run_poller_mock_or_live(
     5. Computes units validity & settlement lockout window based on last CAS date and RTA headers.
     """
     load_env_file()
-    token = auth_token or os.getenv("API_AUTH_TOKEN", "")
+    token = (auth_token or os.getenv("API_AUTH_TOKEN", "")).strip()
+    if not token:
+        raise RuntimeError("SECURITY CRITICAL: API_AUTH_TOKEN environment variable is required.")
     pwd = cas_password or os.getenv("CAS_PDF_PASSWORD", "")
     user = gmail_user or os.getenv("GMAIL_USER", "")
     g_pass = gmail_app_password or os.getenv("GMAIL_APP_PASSWORD", "")
@@ -489,7 +494,9 @@ def run_poller_mock_or_live(
     if incoming_test_pdf and os.path.exists(incoming_test_pdf):
         msg_id = f"test_msg_{uuid.uuid4().hex[:8]}"
         tmp_target = f"/tmp/cas_ingest_{uuid.uuid4().hex}.pdf"
-        shutil.copyfile(incoming_test_pdf, tmp_target)
+        fd = os.open(tmp_target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as pf, open(incoming_test_pdf, "rb") as src_f:
+            shutil.copyfileobj(src_f, pf)
 
         try:
             logger.info(f"Uploading statement from {tmp_target} to core-node...")

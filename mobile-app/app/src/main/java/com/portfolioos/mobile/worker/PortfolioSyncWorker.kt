@@ -41,9 +41,8 @@ class PortfolioSyncWorker(
                 Log.d(TAG, "Glance update on start skipped: ${e.message}")
             }
 
-            // Perform actual online network sync
-            val snapshot = SyncApiClient.fetchSnapshotOnline(applicationContext)
-            Log.i(TAG, "Successfully synced portfolio snapshot. Total invested: ${snapshot.syncInfo?.totalInvested}")
+            SyncApiClient.fetchSnapshotOnline(applicationContext)
+            Log.i(TAG, "Successfully synced portfolio snapshot.")
 
             // Reset any status override and mark online
             SnapshotCacheManager.setWidgetStatusOverride(applicationContext, null)

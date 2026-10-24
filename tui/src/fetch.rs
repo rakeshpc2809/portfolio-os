@@ -47,8 +47,14 @@ impl Config {
         let token_env_var = get("api_token_env").unwrap_or_else(|| "PORTFOLIO_OS_API_TOKEN".to_string());
         let api_token = std::env::var(&token_env_var)
             .or_else(|_| std::env::var("PORTFOLIO_OS_API_TOKEN"))
+            .or_else(|_| std::env::var("API_AUTH_TOKEN"))
             .or_else(|_| std::env::var("API_TOKEN"))
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if api_token.is_empty() {
+            panic!("SECURITY CRITICAL: Set PORTFOLIO_OS_API_TOKEN or API_AUTH_TOKEN before launching TUI.");
+        }
 
         Config {
             base_url:       get("base_url").unwrap_or_else(|| "http://127.0.0.1:8080".to_string()),
@@ -60,9 +66,17 @@ impl Config {
     }
 
     fn defaults() -> Self {
+        let api_token = std::env::var("PORTFOLIO_OS_API_TOKEN")
+            .or_else(|_| std::env::var("API_AUTH_TOKEN"))
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if api_token.is_empty() {
+            panic!("SECURITY CRITICAL: Set PORTFOLIO_OS_API_TOKEN or API_AUTH_TOKEN before launching TUI.");
+        }
         Config {
             base_url:       "http://127.0.0.1:8080".to_string(),
-            api_token:      std::env::var("PORTFOLIO_OS_API_TOKEN").unwrap_or_default(),
+            api_token,
             fiscal_year:    Self::detect_fiscal_year(),
             default_fund_a: "INF109KC13X2".to_string(),
             default_fund_b: "INF109KC12U0".to_string(),
@@ -106,7 +120,13 @@ pub fn save_to_cache(text: &str) {
         if let Some(parent) = p.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let _ = std::fs::write(&p, text);
+        if std::fs::write(&p, text).is_ok() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600));
+            }
+        }
     }
 }
 

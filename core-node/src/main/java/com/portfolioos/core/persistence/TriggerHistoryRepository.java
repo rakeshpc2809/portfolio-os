@@ -46,8 +46,9 @@ public class TriggerHistoryRepository {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(jdbcUrl);
         config.setDriverClassName("org.sqlite.JDBC");
-        config.setMaximumPoolSize(5);
+        config.setMaximumPoolSize(1);
         config.setMinimumIdle(1);
+        config.setConnectionInitSql("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;");
         config.setPoolName("TriggerHistoryPool");
 
         this.dataSource = new HikariDataSource(config);

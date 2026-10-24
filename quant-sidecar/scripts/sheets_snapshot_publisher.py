@@ -23,8 +23,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_DB_PATH = REPO_ROOT / "data" / "tax_ledger.db"
 
 
-def load_env_file(filepath: Path = REPO_ROOT / ".env"):
-    """Loads environment variables from .env if not already present."""
+def load_env_file(filepath: Optional[Path] = None):
+    """Loads environment variables from ~/.config/portfolio-os/secrets.env or .env if not already present."""
+    if filepath is None:
+        cfg_secrets = Path.home() / ".config" / "portfolio-os" / "secrets.env"
+        filepath = cfg_secrets if cfg_secrets.exists() else (REPO_ROOT / ".env")
     if not filepath.exists():
         return
     try:
@@ -39,7 +42,7 @@ def load_env_file(filepath: Path = REPO_ROOT / ".env"):
                 if k and k not in os.environ:
                     os.environ[k] = v
     except Exception as e:
-        logger.warning(f"Failed to parse .env file at {filepath}: {e}")
+        logger.warning(f"Failed to parse env file at {filepath}: {e}")
 
 
 def extract_sheet_id(sheet_id_or_url: str) -> str:
@@ -369,7 +372,9 @@ def fetch_and_publish_snapshot(
 ) -> Dict[str, Any]:
     """Fetches snapshot from Core Node, sanitizes PII, verifies safety, and pushes to Google Sheets."""
     load_env_file()
-    token = auth_token or os.getenv("API_AUTH_TOKEN", "dev_secret_key_123")
+    token = (auth_token or os.getenv("API_AUTH_TOKEN", "")).strip()
+    if not token:
+        raise RuntimeError("SECURITY CRITICAL: API_AUTH_TOKEN environment variable is required.")
     url = f"{core_node_url.rstrip('/')}/api/v1/sync/snapshot"
     headers = {"X-Api-Auth-Token": token}
 
@@ -413,7 +418,8 @@ def fetch_and_publish_snapshot(
         logger.info(f"Successfully published snapshot to Google Sheets: {wh_resp.status_code}")
     else:
         logger.info(f"Dry-run/Local mode: Saving snapshot payload to /tmp/holdings_snapshot_dryrun.json")
-        with open("/tmp/holdings_snapshot_dryrun.json", "w", encoding="utf-8") as f:
+        fd = os.open("/tmp/holdings_snapshot_dryrun.json", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(serialized_payload)
 
     return payload

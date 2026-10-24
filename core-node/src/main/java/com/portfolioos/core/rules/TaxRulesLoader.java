@@ -125,4 +125,28 @@ public class TaxRulesLoader {
             return String.format("%d-%02d", year - 1, currYearShort);
         }
     }
+
+    public static com.portfolioos.core.util.Pair<java.time.LocalDate, java.time.LocalDate> getFiscalYearBounds(String fiscalYear) {
+        if (fiscalYear == null || fiscalYear.isBlank()) {
+            fiscalYear = detectFiscalYear(java.time.LocalDate.now());
+        }
+        String[] parts = fiscalYear.split("-");
+        java.time.LocalDate now = java.time.LocalDate.now();
+        int defaultStartYear = now.getMonthValue() >= 4 ? now.getYear() : now.getYear() - 1;
+        int startYear = defaultStartYear;
+        try {
+            startYear = Integer.parseInt(parts[0].trim());
+        } catch (Exception e) {
+            // ignore
+        }
+        int endYear = startYear + 1;
+        if (parts.length > 1 && parts[1].trim().length() == 2) {
+            try {
+                endYear = (startYear / 100) * 100 + Integer.parseInt(parts[1].trim());
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        return new com.portfolioos.core.util.Pair<>(java.time.LocalDate.of(startYear, 4, 1), java.time.LocalDate.of(endYear, 3, 31));
+    }
 }

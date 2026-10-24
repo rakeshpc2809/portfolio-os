@@ -1,0 +1,15 @@
+birth_date: "1994-09-28"
+target_retirement_age: 45
+swr_percent: 3.0
+real_return_rate_pct: 6.0
+monthly_contribution: 75000.00
+next_review_date: "2027-03-31"
+scenarios:
+  - id: "scen_1"
+    label: "Primary Expense Target"
+    monthly_expense_today: 60000.00
+    active: true
+  - id: "scen_2"
+    label: "Expanded Expense Target"
+    monthly_expense_today: 90000.00
+    active: false

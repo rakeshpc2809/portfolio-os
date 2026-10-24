@@ -121,12 +121,12 @@ public class StatementsController {
         } catch (IOException e) {
             return ResponseEntity.internalServerError().body(Map.of(
                 "error", "FILE_READ_FAILED",
-                "message", e.getMessage() != null ? e.getMessage() : "File reading failed"
+                "message", "File reading failed"
             ));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of(
                 "error", "UPLOAD_FAILED",
-                "message", e.getMessage() != null ? e.getMessage() : "Upload and parsing failed"
+                "message", "Statement ingestion failed due to an internal processing error."
             ));
         }
     }

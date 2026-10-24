@@ -96,5 +96,35 @@ class TestCasPdfParser(unittest.TestCase):
                 raise ValueError(f"CRITICAL: Failed to parse date string '{date_str}' in CAS fallback parser. Raw line: {line_str}") from e
         self.assertIn("CRITICAL: Failed to parse date string '99-XYZ-2024' in CAS fallback parser", str(ctx.exception))
 
+
+class TestParseEndpointSanitization(unittest.IsolatedAsyncioTestCase):
+
+    async def test_unsupported_format_does_not_leak_tmp_path(self):
+        import io
+        from fastapi import UploadFile, HTTPException
+        from app import parse_statement
+
+        f = UploadFile(filename="test_upload.xyz", file=io.BytesIO(b"content"))
+        with self.assertRaises(HTTPException) as ctx:
+            await parse_statement(file=f)
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.assertNotIn("/tmp/", str(ctx.exception.detail))
+
+    async def test_internal_error_sanitizes_500_response(self):
+        import io
+        from fastapi import UploadFile, HTTPException
+        from unittest.mock import patch
+        from app import parse_statement
+
+        f = UploadFile(filename="statement.pdf", file=io.BytesIO(b"%PDF-1.4"))
+        with patch("parsers.cas_parser.CasPdfParser", side_effect=Exception("Disk error on /tmp/cas_secret/xyz.pdf")):
+            with self.assertRaises(HTTPException) as ctx:
+                await parse_statement(file=f)
+            self.assertEqual(ctx.exception.status_code, 500)
+            self.assertEqual(ctx.exception.detail, "Internal statement parser error.")
+            self.assertNotIn("/tmp/", str(ctx.exception.detail))
+
+
 if __name__ == "__main__":
     unittest.main()
+

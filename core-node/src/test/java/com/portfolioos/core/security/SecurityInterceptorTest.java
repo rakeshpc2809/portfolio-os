@@ -8,9 +8,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SecurityInterceptorTest {
 
+    private static final String TEST_TOKEN = "test_valid_auth_token_xyz";
+
     @Test
     void testPreHandleOptionsRequestReturnsTrue() throws Exception {
-        SecurityInterceptor interceptor = new SecurityInterceptor();
+        SecurityInterceptor interceptor = new SecurityInterceptor(TEST_TOKEN);
         MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/api/v1/sync/snapshot");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -20,10 +22,9 @@ class SecurityInterceptorTest {
 
     @Test
     void testPreHandleValidConfiguredToken() throws Exception {
-        SecurityInterceptor interceptor = new SecurityInterceptor();
+        SecurityInterceptor interceptor = new SecurityInterceptor(TEST_TOKEN);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
-        String expectedToken = System.getenv("API_AUTH_TOKEN") != null ? System.getenv("API_AUTH_TOKEN") : "dev_secret_key_123";
-        request.addHeader("X-Api-Auth-Token", expectedToken);
+        request.addHeader("X-Api-Auth-Token", TEST_TOKEN);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         boolean result = interceptor.preHandle(request, response, new Object());
@@ -32,7 +33,7 @@ class SecurityInterceptorTest {
 
     @Test
     void testPreHandleInvalidTokenReturns401() throws Exception {
-        SecurityInterceptor interceptor = new SecurityInterceptor();
+        SecurityInterceptor interceptor = new SecurityInterceptor(TEST_TOKEN);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/sync/snapshot");
         request.addHeader("X-Api-Auth-Token", "invalid_token_999");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -44,7 +45,7 @@ class SecurityInterceptorTest {
 
     @Test
     void testPreHandleBackupSheetsEndpointsRequireAuth() throws Exception {
-        SecurityInterceptor interceptor = new SecurityInterceptor();
+        SecurityInterceptor interceptor = new SecurityInterceptor(TEST_TOKEN);
         MockHttpServletRequest unauthRequest = new MockHttpServletRequest("POST", "/api/v1/backup/sheets/sync");
         MockHttpServletResponse unauthResponse = new MockHttpServletResponse();
 
@@ -53,11 +54,17 @@ class SecurityInterceptorTest {
         assertEquals(401, unauthResponse.getStatus());
 
         MockHttpServletRequest authRequest = new MockHttpServletRequest("POST", "/api/v1/backup/sheets/sync");
-        String expectedToken = System.getenv("API_AUTH_TOKEN") != null ? System.getenv("API_AUTH_TOKEN") : "dev_secret_key_123";
-        authRequest.addHeader("X-Api-Auth-Token", expectedToken);
+        authRequest.addHeader("X-Api-Auth-Token", TEST_TOKEN);
         MockHttpServletResponse authResponse = new MockHttpServletResponse();
 
         boolean authResult = interceptor.preHandle(authRequest, authResponse, new Object());
         assertTrue(authResult, "Authenticated calls with valid token must pass to backup sheets endpoints");
+    }
+
+    @Test
+    void testMissingTokenThrowsIllegalStateExceptionAtStartup() {
+        assertThrows(IllegalStateException.class, () -> new SecurityInterceptor(null, null));
+        assertThrows(IllegalStateException.class, () -> new SecurityInterceptor("", ""));
+        assertThrows(IllegalStateException.class, () -> new SecurityInterceptor("   ", "   "));
     }
 }

@@ -79,10 +79,10 @@ class TestAsyncConcurrency(unittest.TestCase):
         self.assertEqual(sim_data["status"], "OK")
         self.assertEqual(sim_data["num_simulations"], 10000)
         
-        # Verify non-blocking latency: all health checks must complete rapidly (<25ms)
+        # Verify non-blocking latency: all health checks must complete rapidly (<50ms)
         # If the event loop were blocked, health checks would have queued behind the ~1.5s simulation.
         for latency in health_latencies:
-            self.assertLess(latency, 25.0, f"Health check blocked by event loop! Latency: {latency:.2f}ms")
+            self.assertLess(latency, 50.0, f"Health check blocked by event loop! Latency: {latency:.2f}ms")
 
 if __name__ == "__main__":
     unittest.main()

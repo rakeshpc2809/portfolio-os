@@ -4,13 +4,14 @@
 // ==========================================================================
 
 const API_BASE = '/api/v1';
-const DEFAULT_AUTH_TOKEN = 'dev_secret_key_123';
 
 function getAuthToken() {
   let token = localStorage.getItem('API_AUTH_TOKEN');
   if (!token || token === 'undefined' || token === 'null') {
-    token = DEFAULT_AUTH_TOKEN;
-    localStorage.setItem('API_AUTH_TOKEN', DEFAULT_AUTH_TOKEN);
+    token = (typeof window !== 'undefined' && window.prompt)
+      ? (window.prompt('Enter Portfolio OS API_AUTH_TOKEN:') || '').trim()
+      : '';
+    if (token) localStorage.setItem('API_AUTH_TOKEN', token);
   }
   return token;
 }
@@ -23,6 +24,9 @@ async function fetchJson(endpoint) {
       'Content-Type': 'application/json'
     }
   });
+  if (res.status === 401) {
+    localStorage.removeItem('API_AUTH_TOKEN');
+  }
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} fetching ${endpoint}`);
   }
@@ -64,6 +68,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupItrOverlay();
   setupCasUpload();
   setupLumpsumSimulator();
+  setupOverlapModal();
   
   // Begin fetching live data
   await loadLiveDashboard();
@@ -76,8 +81,12 @@ function setupNavigation() {
   const triggers = document.querySelectorAll('.tab-trigger');
   triggers.forEach(btn => {
     btn.addEventListener('click', () => {
-      triggers.forEach(b => b.classList.remove('active'));
+      triggers.forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
       btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
       
       const tabKey = btn.dataset.tab;
       state.activeTab = tabKey;
@@ -548,7 +557,7 @@ function renderAllocationMatrix(bucketAllocations) {
       : `<span style="font-size:0.72rem;color:${isDrift ? 'var(--accent-amber)' : 'var(--accent-emerald)'};font-weight:600;">${isDrift ? 'DRIFT' : 'BALANCED'} (${driftPct > 0 ? '+' : ''}${driftPct.toFixed(1)}%)</span>`;
 
     html += `
-      <tr data-bucket="${rawName}" class="bucket-row-clickable ${isExpanded ? 'bucket-expanded' : ''}" onclick="window.toggleBucketRow && window.toggleBucketRow('${rawName}')" title="Click to expand/collapse fund breakdown">
+      <tr data-bucket="${rawName}" class="bucket-row-clickable ${isExpanded ? 'bucket-expanded' : ''}" tabindex="0" role="button" aria-expanded="${isExpanded}" onclick="window.toggleBucketRow && window.toggleBucketRow('${rawName}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.toggleBucketRow && window.toggleBucketRow('${rawName}');}" title="Click to expand/collapse fund breakdown">
         <td>
           <div style="display:flex;align-items:center;">
             <span class="bucket-chevron">${isExpanded ? '▼' : '▶'}</span>
@@ -1207,14 +1216,23 @@ function setupTaxLotInspector() {
     });
   });
 
-  // Global ESC key listener to close active modals/overlays
+  // Global key listener for shortcuts & modal escapes
   document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      if (window.openOverlapModal) window.openOverlapModal();
+      return;
+    }
+
     if (e.key === 'Escape') {
       const lotModal = document.getElementById('taxLotInspectorModal');
       const itrOverlay = document.getElementById('itrFilingOverlay');
       const casModal = document.getElementById('casPasswordModal');
       const lumpsumModal = document.getElementById('lumpsumModal');
-      if (lumpsumModal && lumpsumModal.style.display !== 'none') {
+      const overlapModal = document.getElementById('overlapMatrixModal');
+      if (overlapModal && overlapModal.style.display !== 'none') {
+        if (window.closeOverlapModal) window.closeOverlapModal();
+      } else if (lumpsumModal && lumpsumModal.style.display !== 'none') {
         if (window.closeLumpsumModal) window.closeLumpsumModal();
       } else if (casModal && casModal.style.display !== 'none') {
         if (window.closeCasPasswordModal) window.closeCasPasswordModal();
@@ -2002,6 +2020,188 @@ function setupLumpsumSimulator() {
         showToast('Failed to reset plan: ' + err.message, 'error', 4000);
       }
     });
+  }
+}
+
+// ==========================================================================
+// OVERLAP & CONCENTRATION MODAL (Resolves D-2, D-4)
+// ==========================================================================
+function setupOverlapModal() {
+  const modal = document.getElementById('overlapMatrixModal');
+  const backdrop = document.getElementById('overlapModalBackdrop');
+  const closeBtn = document.getElementById('overlapModalCloseBtn');
+  const bodyEl = document.getElementById('overlapModalBody');
+  const cmdKBtn = document.getElementById('terminalCmdKBtn');
+
+  function openModal() {
+    if (modal) modal.style.display = 'flex';
+    if (backdrop) backdrop.style.display = 'block';
+    loadOverlapData();
+  }
+
+  function closeModal() {
+    if (modal) modal.style.display = 'none';
+    if (backdrop) backdrop.style.display = 'none';
+  }
+
+  window.openOverlapModal = openModal;
+  window.closeOverlapModal = closeModal;
+
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (backdrop) backdrop.addEventListener('click', closeModal);
+  if (cmdKBtn) cmdKBtn.addEventListener('click', openModal);
+
+  async function loadOverlapData() {
+    if (!bodyEl) return;
+    bodyEl.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;padding:30px;color:var(--text-muted);font-family:var(--font-mono);">
+        <span class="status-dot evaluating" style="margin-right:8px;"></span> Computing pairwise overlap and stock concentration...
+      </div>
+    `;
+    try {
+      const data = await fetchJson('/analytics/overlap');
+      if (!data) throw new Error('No analytics data received');
+      renderOverlapContent(data);
+    } catch (err) {
+      console.error('Failed to load overlap analytics:', err);
+      bodyEl.innerHTML = `
+        <div class="cas-status-banner error" style="display:block;">
+          ⚠️ Failed to load overlap analytics: ${escapeHtml(err.message)}
+        </div>
+      `;
+    }
+  }
+
+  function renderOverlapContent(data) {
+    const summary = data.overlap_summary || {};
+    const pairwise = data.pairwise_overlap || [];
+    const concentrations = data.portfolio_top_stock_concentrations || [];
+
+    let html = '';
+
+    // Summary alert card
+    if (summary.max_overlap_percentage !== undefined) {
+      const isBreached = summary.threshold_breached || summary.max_overlap_percentage > 30.0;
+      html += `
+        <div style="background:rgba(255,255,255,0.02);border:1px solid ${isBreached ? 'rgba(239,68,68,0.4)' : 'var(--border-hairline)'};border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <div style="font-size:0.75rem;font-family:var(--font-mono);color:var(--text-muted);">MAXIMUM PAIRWISE OVERLAP</div>
+              <div style="font-size:1.1rem;font-weight:700;color:${isBreached ? 'var(--accent-red)' : 'var(--accent-emerald)'};font-family:var(--font-mono);margin-top:2px;">
+                ${summary.max_overlap_percentage.toFixed(1)}%
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <span class="scheme-badge ${isBreached ? 'stcg-locked' : 'ltcg-mature'}" style="font-size:0.75rem;">
+                ${isBreached ? '⚠️ THRESHOLD BREACHED (>30%)' : '✅ OPTIMAL DIVERSIFICATION'}
+              </span>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">
+                ${escapeHtml(summary.fund_a_name || '')} ↔ ${escapeHtml(summary.fund_b_name || '')}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Top Stock Concentrations
+    html += `
+      <div style="margin-bottom:20px;">
+        <h3 style="font-size:0.85rem;font-family:var(--font-mono);color:var(--accent-cyan);margin-bottom:8px;text-transform:uppercase;">
+          Single Stock Concentrations (Direct + Lookthrough)
+        </h3>
+        <table class="terminal-table" style="width:100%;font-size:0.78rem;">
+          <thead>
+            <tr>
+              <th style="text-align:left;">Stock Symbol</th>
+              <th style="text-align:right;">Portfolio %</th>
+              <th style="text-align:right;">Rupee Exposure</th>
+              <th style="text-align:center;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    if (concentrations.length === 0) {
+      html += `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:12px;">No stock concentration data available</td></tr>`;
+    } else {
+      concentrations.slice(0, 8).forEach(c => {
+        const isHigh = c.portfolio_percentage > 10.0;
+        html += `
+          <tr>
+            <td style="font-family:var(--font-mono);font-weight:600;color:#ffffff;">${escapeHtml(c.stock_symbol)}</td>
+            <td style="text-align:right;font-family:var(--font-mono);color:${isHigh ? 'var(--accent-amber)' : 'var(--text-main)'};">
+              ${c.portfolio_percentage ? c.portfolio_percentage.toFixed(2) + '%' : '--'}
+            </td>
+            <td style="text-align:right;font-family:var(--font-mono);color:var(--text-muted);">
+              ${c.rupee_exposure ? formatINR(c.rupee_exposure) : '--'}
+            </td>
+            <td style="text-align:center;">
+              <span class="status-dot ${isHigh ? 'stale' : 'fresh'}" style="display:inline-block;"></span>
+              <span style="font-size:0.7rem;color:var(--text-muted);">${isHigh ? 'HIGH' : 'NORMAL'}</span>
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    // Pairwise Overlap Table
+    html += `
+      <div>
+        <h3 style="font-size:0.85rem;font-family:var(--font-mono);color:var(--accent-cyan);margin-bottom:8px;text-transform:uppercase;">
+          Top Pairwise Overlaps
+        </h3>
+        <table class="terminal-table" style="width:100%;font-size:0.78rem;">
+          <thead>
+            <tr>
+              <th style="text-align:left;">Scheme A</th>
+              <th style="text-align:left;">Scheme B</th>
+              <th style="text-align:right;">Overlap %</th>
+              <th style="text-align:center;">Common Stocks</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    const sortedPairwise = [...pairwise].sort((a, b) => (b.overlap_percentage || 0) - (a.overlap_percentage || 0));
+    if (sortedPairwise.length === 0) {
+      html += `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:12px;">No pairwise overlaps found</td></tr>`;
+    } else {
+      sortedPairwise.slice(0, 10).forEach(p => {
+        const pct = p.overlap_percentage || 0;
+        const isBreached = pct > 30.0;
+        html += `
+          <tr>
+            <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ffffff;" title="${escapeHtml(p.fund_a_name || p.fund_a || '')}">
+              ${escapeHtml(p.fund_a_name || p.fund_a || '')}
+            </td>
+            <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ffffff;" title="${escapeHtml(p.fund_b_name || p.fund_b || '')}">
+              ${escapeHtml(p.fund_b_name || p.fund_b || '')}
+            </td>
+            <td style="text-align:right;font-family:var(--font-mono);font-weight:700;color:${isBreached ? 'var(--accent-red)' : 'var(--text-main)'};">
+              ${pct.toFixed(1)}%
+            </td>
+            <td style="text-align:center;font-family:var(--font-mono);color:var(--text-muted);">
+              ${p.common_stock_count !== undefined ? p.common_stock_count : (p.common_stocks ? p.common_stocks.length : 0)}
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    bodyEl.innerHTML = html;
   }
 }
 

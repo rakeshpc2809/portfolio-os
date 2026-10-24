@@ -33,21 +33,41 @@ public class TaxOptimizationService {
 
     private final EventStorePort eventStore;
     private final com.portfolioos.core.persistence.DuckDbProjector duckDbProjector;
+    private final LedgerCacheService cacheService;
     private final AmfiNavSync amfiSync;
     private final FifoMatcher fifoMatcher = new FifoMatcher();
 
     public TaxOptimizationService(EventStorePort eventStore) {
-        this(eventStore, null);
+        this(eventStore, null, null);
+    }
+
+    public TaxOptimizationService(EventStorePort eventStore, com.portfolioos.core.persistence.DuckDbProjector duckDbProjector) {
+        this(eventStore, duckDbProjector, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public TaxOptimizationService(
         EventStorePort eventStore,
-        @org.springframework.beans.factory.annotation.Autowired(required = false) com.portfolioos.core.persistence.DuckDbProjector duckDbProjector
+        @org.springframework.beans.factory.annotation.Autowired(required = false) com.portfolioos.core.persistence.DuckDbProjector duckDbProjector,
+        @org.springframework.beans.factory.annotation.Autowired(required = false) LedgerCacheService cacheService
     ) {
         this.eventStore = eventStore;
         this.duckDbProjector = duckDbProjector;
+        this.cacheService = cacheService;
         this.amfiSync = new AmfiNavSync(duckDbProjector);
+    }
+
+    private LedgerCacheService.CachedLedgerState resolveState() {
+        if (cacheService != null) {
+            return cacheService.getCachedState();
+        }
+        List<TaxEvent> allEvents = eventStore.getAllEvents();
+        FifoMatcher.FifoResult res = fifoMatcher.processEvents(allEvents, getJan2018FmvMap());
+        Map<String, BigDecimal> navs = amfiSync.getNavMap();
+        return new LedgerCacheService.CachedLedgerState(
+            allEvents, res, navs, eventStore.getLatestEventHash(),
+            System.currentTimeMillis(), "HEALTHY", amfiSync.getNavDateMap()
+        );
     }
 
     public Map<String, BigDecimal> getJan2018FmvMap() {
@@ -62,23 +82,23 @@ public class TaxOptimizationService {
     }
 
     public ExemptionTracker.ExemptionStatus getExemptionStatus(String fy) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents, getJan2018FmvMap()).matchedLots();
+        LedgerCacheService.CachedLedgerState state = resolveState();
+        List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
         String currentFy = (fy != null && !fy.isBlank()) ? fy : TaxRulesLoader.detectFiscalYear(LocalDate.now());
         return ExemptionTracker.calculateExemptionStatus(matchedLots, currentFy);
     }
 
     public TaxReportExporter.Itr2ScheduleCgReport generateItr2Report(String fy) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents, getJan2018FmvMap()).matchedLots();
+        LedgerCacheService.CachedLedgerState state = resolveState();
+        List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
         String currentFy = (fy != null && !fy.isBlank()) ? fy : TaxRulesLoader.detectFiscalYear(LocalDate.now());
         return TaxReportExporter.generateItr2Report(matchedLots, currentFy);
     }
 
     public List<HarvestOpportunityDto> getHarvestOpportunities() {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        List<Lot> openLots = fifoMatcher.processEvents(allEvents, getJan2018FmvMap()).openLots();
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        LedgerCacheService.CachedLedgerState state = resolveState();
+        List<Lot> openLots = state.fifoResult().openLots();
+        Map<String, BigDecimal> navMap = state.navMap();
         String currentFy = TaxRulesLoader.detectFiscalYear(LocalDate.now());
 
         ExemptionTracker.ExemptionStatus status = getExemptionStatus(currentFy);
@@ -98,9 +118,9 @@ public class TaxOptimizationService {
     }
 
     public List<MaturationLadderDto> getMaturationLadder() {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        List<Lot> openLots = fifoMatcher.processEvents(allEvents, getJan2018FmvMap()).openLots();
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        LedgerCacheService.CachedLedgerState state = resolveState();
+        List<Lot> openLots = state.fifoResult().openLots();
+        Map<String, BigDecimal> navMap = state.navMap();
         LocalDate today = LocalDate.now();
         String currentFy = TaxRulesLoader.detectFiscalYear(today);
         TaxRulesConfig rules = TaxRulesLoader.loadRules(currentFy);
@@ -143,10 +163,10 @@ public class TaxOptimizationService {
     }
 
     public List<RealizedLogDto> getRealizedLog(String fy) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents, getJan2018FmvMap()).matchedLots();
+        LedgerCacheService.CachedLedgerState state = resolveState();
+        List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
 
-        ExemptionTracker.Pair<LocalDate, LocalDate> bounds = ExemptionTracker.getFiscalYearBounds(fy);
+        com.portfolioos.core.util.Pair<LocalDate, LocalDate> bounds = TaxRulesLoader.getFiscalYearBounds(fy);
         LocalDate startDate = bounds.first();
         LocalDate endDate = bounds.second();
 
@@ -154,7 +174,7 @@ public class TaxOptimizationService {
             !lot.disposalDate().isBefore(startDate) && !lot.disposalDate().isAfter(endDate)
         ).toList();
 
-        Map<String, String> assetNameMap = allEvents.stream()
+        Map<String, String> assetNameMap = state.events().stream()
             .collect(Collectors.toMap(TaxEvent::assetId, TaxEvent::assetName, (a, b) -> a));
 
         return fyLots.stream().map(m -> new RealizedLogDto(
@@ -177,10 +197,15 @@ public class TaxOptimizationService {
     }
 
     public Map<String, String> downloadItr2Files(String fy, Map<String, BigDecimal> fmv2018Map) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
+        LedgerCacheService.CachedLedgerState state = resolveState();
         Map<String, BigDecimal> effectiveFmvMap = (fmv2018Map != null && !fmv2018Map.isEmpty()) ? fmv2018Map : getJan2018FmvMap();
-        List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents, effectiveFmvMap).matchedLots();
-        Map<String, String> assetNameMap = allEvents.stream()
+        List<MatchedLot> matchedLots;
+        if (effectiveFmvMap.equals(getJan2018FmvMap())) {
+            matchedLots = state.fifoResult().matchedLots();
+        } else {
+            matchedLots = fifoMatcher.processEvents(state.events(), effectiveFmvMap).matchedLots();
+        }
+        Map<String, String> assetNameMap = state.events().stream()
             .collect(Collectors.toMap(TaxEvent::assetId, TaxEvent::assetName, (a, b) -> a));
 
         return Itr2CsvExporter.exportItr2ScheduleCg(matchedLots, fy, assetNameMap, effectiveFmvMap);
@@ -191,10 +216,15 @@ public class TaxOptimizationService {
     }
 
     public TaxReportExporter.Itr2DetailsDto getItr2Details(String fy, Map<String, BigDecimal> fmv2018Map) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
+        LedgerCacheService.CachedLedgerState state = resolveState();
         Map<String, BigDecimal> effectiveFmvMap = (fmv2018Map != null && !fmv2018Map.isEmpty()) ? fmv2018Map : getJan2018FmvMap();
-        List<MatchedLot> matchedLots = fifoMatcher.processEvents(allEvents, effectiveFmvMap).matchedLots();
-        Map<String, String> assetNameMap = allEvents.stream()
+        List<MatchedLot> matchedLots;
+        if (effectiveFmvMap.equals(getJan2018FmvMap())) {
+            matchedLots = state.fifoResult().matchedLots();
+        } else {
+            matchedLots = fifoMatcher.processEvents(state.events(), effectiveFmvMap).matchedLots();
+        }
+        Map<String, String> assetNameMap = state.events().stream()
             .collect(Collectors.toMap(TaxEvent::assetId, TaxEvent::assetName, (a, b) -> a));
 
         TaxReportExporter.Itr2ScheduleCgReport summary = TaxReportExporter.generateItr2Report(matchedLots, fy);
@@ -214,11 +244,11 @@ public class TaxOptimizationService {
     }
 
     public RebalancePreviewDto getTaxOptimalLiquidationPlan(BigDecimal targetAmount, String fy, BigDecimal reservedExemption) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(allEvents, getJan2018FmvMap());
+        LedgerCacheService.CachedLedgerState state = resolveState();
+        FifoMatcher.FifoResult fifoResult = state.fifoResult();
         List<Lot> openLots = fifoResult.openLots();
         List<MatchedLot> matchedLots = fifoResult.matchedLots();
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        Map<String, BigDecimal> navMap = state.navMap();
         String currentFy = (fy != null && !fy.isBlank()) ? fy : TaxRulesLoader.detectFiscalYear(LocalDate.now());
 
         ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, currentFy);
@@ -257,11 +287,11 @@ public class TaxOptimizationService {
     ) {}
 
     public CombinedHarvestAndLiquidationPlanDto getCombinedHarvestAndLiquidationPlan(BigDecimal targetAmount, String fy) {
-        List<TaxEvent> allEvents = eventStore.getAllEvents();
-        FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(allEvents, getJan2018FmvMap());
+        LedgerCacheService.CachedLedgerState state = resolveState();
+        FifoMatcher.FifoResult fifoResult = state.fifoResult();
         List<Lot> openLots = fifoResult.openLots();
         List<MatchedLot> matchedLots = fifoResult.matchedLots();
-        Map<String, BigDecimal> navMap = amfiSync.getNavMap();
+        Map<String, BigDecimal> navMap = state.navMap();
         String currentFy = (fy != null && !fy.isBlank()) ? fy : TaxRulesLoader.detectFiscalYear(LocalDate.now());
 
         ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, currentFy);

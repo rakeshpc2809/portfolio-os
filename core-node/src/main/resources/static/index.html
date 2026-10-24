@@ -111,14 +111,14 @@
     </section>
 
     <!-- Tab Navigation Bar (Preserving 3-Tab Declutter Mandate) -->
-    <nav class="terminal-nav">
-      <button class="tab-trigger active" data-tab="overview">
+    <nav class="terminal-nav" role="tablist" aria-label="Terminal Navigation">
+      <button class="tab-trigger active" data-tab="overview" role="tab" id="tab-btn-overview" aria-selected="true" aria-controls="tab-overview">
         <span>📊</span> 1: Executive Overview
       </button>
-      <button class="tab-trigger" data-tab="taxlots">
+      <button class="tab-trigger" data-tab="taxlots" role="tab" id="tab-btn-taxlots" aria-selected="false" aria-controls="tab-taxlots">
         <span>📋</span> 2: Scheme Tax Lots
       </button>
-      <button class="tab-trigger" data-tab="fire">
+      <button class="tab-trigger" data-tab="fire" role="tab" id="tab-btn-fire" aria-selected="false" aria-controls="tab-fire">
         <span>🎯</span> 3: Unified Rebalance & FIRE
       </button>
     </nav>
@@ -126,7 +126,7 @@
     <!-- ====================================================================
          TAB 1: EXECUTIVE OVERVIEW (Resolves Finding #7 2-Column Split HUD)
          ==================================================================== -->
-    <main class="tab-content active" id="tab-overview">
+    <main class="tab-content active" id="tab-overview" role="tabpanel" aria-labelledby="tab-btn-overview">
       <div class="tab1-split-grid">
         <!-- Left Column: TradingView Lightweight Charts Timeline -->
         <div class="card-panel">
@@ -213,7 +213,7 @@
     <!-- ====================================================================
          TAB 2: SCHEME TAX LOTS (Resolves Finding #5 Accessible Tap Targets)
          ==================================================================== -->
-    <main class="tab-content" id="tab-taxlots">
+    <main class="tab-content" id="tab-taxlots" role="tabpanel" aria-labelledby="tab-btn-taxlots">
       <div class="card-panel">
         <div class="taxlots-filter-bar">
           <div class="filter-chips-wrap">
@@ -223,7 +223,7 @@
             <button class="filter-chip-btn" data-filter="harvest">Loss-Harvest Candidates</button>
           </div>
           <div style="display: flex; align-items: center; gap: 10px;">
-            <button class="btn-terminal" style="font-size: 0.75rem;" onclick="alert('Opening Overlap & Concentration analysis...')">
+            <button class="btn-terminal" style="font-size: 0.75rem;" onclick="window.openOverlapModal && window.openOverlapModal()">
               🔍 Inspect Overlap Matrix
             </button>
             <button id="tab2ItrBtn" class="btn-terminal" style="font-size: 0.75rem;">
@@ -241,7 +241,7 @@
     <!-- ====================================================================
          TAB 3: UNIFIED REBALANCE & FIRE (Resolves Findings #6 & #7)
          ==================================================================== -->
-    <main class="tab-content" id="tab-fire">
+    <main class="tab-content" id="tab-fire" role="tabpanel" aria-labelledby="tab-btn-fire">
       <!-- Top Telemetry Banner -->
       <div class="rebalance-telemetry-banner">
         <div class="telemetry-card">
@@ -757,6 +757,33 @@
       <button type="button" id="submitLumpsumSimBtn" class="btn-terminal highlight-cyan" style="min-height: 36px; padding: 6px 16px; font-weight: 700;">
         ⚡ Calculate Trade Flow
       </button>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL 4: OVERLAP & CONCENTRATION ANALYSIS (D-2)
+       ==================================================================== -->
+  <div id="overlapModalBackdrop" class="terminal-modal-backdrop" style="display: none;" onclick="window.closeOverlapModal && window.closeOverlapModal()"></div>
+  <div id="overlapMatrixModal" class="terminal-modal-dialog" style="display: none; max-width: 900px;" role="dialog" aria-modal="true" aria-labelledby="overlapModalTitle">
+    <div class="modal-header">
+      <div class="modal-title-wrap">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="scheme-badge equity" style="background: rgba(16, 185, 129, 0.2); border-color: var(--accent-emerald); color: var(--accent-emerald);">PORTFOLIO ANALYTICS</span>
+          <h2 id="overlapModalTitle" class="modal-title" style="font-size: 1.1rem;">Pairwise Overlap & Stock Concentration</h2>
+        </div>
+        <div class="modal-meta-strip">
+          <span>ISIN portfolio correlation & single-stock exposure thresholds</span>
+        </div>
+      </div>
+      <button id="overlapModalCloseBtn" class="btn-close-modal" aria-label="Close modal" onclick="window.closeOverlapModal && window.closeOverlapModal()">✕</button>
+    </div>
+
+    <div id="overlapModalBody" style="padding: 16px; max-height: 70vh; overflow-y: auto;">
+      <div style="text-align: center; color: var(--text-muted); padding: 24px;">Loading overlap analytics...</div>
+    </div>
+
+    <div class="modal-actions-bar">
+      <button type="button" class="btn-terminal" style="min-height: 36px; padding: 6px 14px;" onclick="window.closeOverlapModal && window.closeOverlapModal()">Close</button>
     </div>
   </div>
 

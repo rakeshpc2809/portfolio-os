@@ -20,24 +20,96 @@ public class FireTracker {
     ) {}
 
     public static class FireProfile {
-        private final LocalDate birthDate = LocalDate.of(1994, 8, 28);
-        private final int targetRetirementAge = 45;
-        private final BigDecimal swrPercent = new BigDecimal("3.0");
-        private final BigDecimal epfBalance = BigDecimal.ZERO;
-        private final int epfUnlockAge = 58;
-        private final BigDecimal realReturnRatePct = new BigDecimal("6.0");
-        private final BigDecimal monthlyContribution = new BigDecimal("75000.00");
-        private final LocalDate nextReviewDate = LocalDate.parse("2027-03-31");
-        private final List<FireScenario> scenarios = List.of(
-            new FireScenario("scen_1", "Primary Expense Target", new BigDecimal("60000.00"), true),
-            new FireScenario("scen_2", "Expanded Expense Target", new BigDecimal("90000.00"), false)
-        );
+        private final LocalDate birthDate;
+        private final int targetRetirementAge;
+        private final BigDecimal swrPercent;
+        private final BigDecimal epfBalance;
+        private final int epfUnlockAge;
+        private final BigDecimal realReturnRatePct;
+        private final BigDecimal monthlyContribution;
+        private final LocalDate nextReviewDate;
+        private final List<FireScenario> scenarios;
+
+        public FireProfile() {
+            LocalDate defBirth = LocalDate.of(1994, 9, 28);
+            int defAge = 45;
+            BigDecimal defSwr = new BigDecimal("3.0");
+            BigDecimal defEpf = BigDecimal.ZERO;
+            int defEpfUnlock = 58;
+            BigDecimal defReturn = new BigDecimal("6.0");
+            BigDecimal defContrib = new BigDecimal("75000.00");
+            LocalDate defReview = LocalDate.parse("2027-03-31");
+            List<FireScenario> defScenarios = List.of(
+                new FireScenario("scen_1", "Primary Expense Target", new BigDecimal("60000.00"), true),
+                new FireScenario("scen_2", "Expanded Expense Target", new BigDecimal("90000.00"), false)
+            );
+
+            java.io.File profileFile = null;
+            String rulesDirEnv = System.getenv("RULES_DIR");
+            List<java.io.File> fileLocations = new ArrayList<>();
+            if (rulesDirEnv != null && !rulesDirEnv.isBlank()) {
+                fileLocations.add(new java.io.File(rulesDirEnv, "fire_profile.yaml"));
+            }
+            fileLocations.add(new java.io.File("rules/fire_profile.yaml"));
+            fileLocations.add(new java.io.File("../rules/fire_profile.yaml"));
+            fileLocations.add(new java.io.File("../../rules/fire_profile.yaml"));
+            fileLocations.add(new java.io.File("/app/rules/fire_profile.yaml"));
+
+            for (java.io.File f : fileLocations) {
+                if (f.exists()) {
+                    profileFile = f;
+                    break;
+                }
+            }
+
+            if (profileFile != null) {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper(new com.fasterxml.jackson.dataformat.yaml.YAMLFactory());
+                    Map<?, ?> data = mapper.readValue(profileFile, Map.class);
+                    if (data != null) {
+                        if (data.get("birth_date") != null) defBirth = LocalDate.parse(data.get("birth_date").toString());
+                        if (data.get("target_retirement_age") != null) defAge = Integer.parseInt(data.get("target_retirement_age").toString());
+                        if (data.get("swr_percent") != null) defSwr = new BigDecimal(data.get("swr_percent").toString());
+                        if (data.get("real_return_rate_pct") != null) defReturn = new BigDecimal(data.get("real_return_rate_pct").toString());
+                        if (data.get("monthly_contribution") != null) defContrib = new BigDecimal(data.get("monthly_contribution").toString());
+                        if (data.get("next_review_date") != null) defReview = LocalDate.parse(data.get("next_review_date").toString());
+                        if (data.get("scenarios") instanceof List<?> list && !list.isEmpty()) {
+                            List<FireScenario> loadedScenarios = new ArrayList<>();
+                            for (Object item : list) {
+                                if (item instanceof Map<?, ?> m) {
+                                    String id = String.valueOf(m.get("id"));
+                                    String label = String.valueOf(m.get("label"));
+                                    BigDecimal exp = new BigDecimal(String.valueOf(m.get("monthly_expense_today")));
+                                    boolean active = Boolean.parseBoolean(String.valueOf(m.get("active")));
+                                    loadedScenarios.add(new FireScenario(id, label, exp, active));
+                                }
+                            }
+                            if (!loadedScenarios.isEmpty()) {
+                                defScenarios = loadedScenarios;
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Warning: failed to load rules/fire_profile.yaml: " + e.getMessage() + ", using defaults.");
+                }
+            }
+
+            this.birthDate = defBirth;
+            this.targetRetirementAge = defAge;
+            this.swrPercent = defSwr;
+            this.epfBalance = defEpf;
+            this.epfUnlockAge = defEpfUnlock;
+            this.realReturnRatePct = defReturn;
+            this.monthlyContribution = defContrib;
+            this.nextReviewDate = defReview;
+            this.scenarios = defScenarios;
+        }
 
         public LocalDate birthDate() { return birthDate; }
         public int currentAge() { return java.time.Period.between(birthDate, LocalDate.now()).getYears(); }
         public int targetRetirementAge() { return targetRetirementAge; }
         public BigDecimal swrPercent() { return swrPercent; }
-        public BigDecimal epfBalance() { return BigDecimal.ZERO; }
+        public BigDecimal epfBalance() { return epfBalance; }
         public BigDecimal realReturnRatePct() { return realReturnRatePct; }
         public BigDecimal monthlyContribution() { return monthlyContribution; }
         public LocalDate nextReviewDate() { return nextReviewDate; }

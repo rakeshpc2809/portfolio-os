@@ -18,9 +18,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalStateException(IllegalStateException ex) {
         log.error("CRITICAL_VALUATION_ERROR: {}", ex.getMessage(), ex);
+        String rawMsg = ex.getMessage() != null ? ex.getMessage() : "";
+        String safeMsg = (rawMsg.contains("CRITICAL VALUATION ERROR") || rawMsg.contains("MISSING_FMV_DATA"))
+            ? rawMsg
+            : "Internal valuation or configuration error. Check server logs.";
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
             "status", "CRITICAL_VALUATION_ERROR",
-            "message", ex.getMessage() != null ? ex.getMessage() : "Internal valuation error",
+            "message", safeMsg,
             "timestamp", LocalDateTime.now().toString()
         ));
     }

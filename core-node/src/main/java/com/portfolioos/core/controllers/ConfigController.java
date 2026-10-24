@@ -53,7 +53,7 @@ public class ConfigController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to update bucket targets: " + e.getMessage()));
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to update bucket targets."));
         }
     }
 

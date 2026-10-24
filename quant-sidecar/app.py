@@ -50,50 +50,73 @@ app = FastAPI(title="Portfolio OS Quant & Parser Sidecar", version="3.0.0", life
 def health_check():
     return {"status": "UP", "engine": "Polars + FastAPI + Direct IPC", "version": "3.0.0"}
 
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
+
+def _secure_remove(path: str) -> None:
+    try:
+        if os.path.exists(path):
+            size = os.path.getsize(path)
+            if size > 0:
+                with open(path, "ba+", buffering=0) as f:
+                    f.seek(0)
+                    f.write(os.urandom(min(size, 4 * 1024 * 1024)))
+                    f.flush()
+            os.remove(path)
+    except Exception:
+        if os.path.exists(path):
+            os.remove(path)
+
 @app.post("/api/v1/parse", response_model=List[TaxEventSchema], dependencies=[Depends(verify_auth_token)])
 async def parse_statement(
     file: UploadFile = File(...),
     password: Optional[str] = Form(None)
 ):
-    filename = file.filename or "statement"
+    filename = os.path.basename(file.filename or "statement")
     ext = os.path.splitext(filename)[1].lower()
-    logger.info(f"Received statement upload: {filename} with extension {ext}")
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-        content = await file.read()
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Uploaded file exceeds 25 MB limit.")
+    logger.info(f"Received statement upload: {filename} ({len(content)} bytes) with extension {ext}")
+    fd, tmp_path = tempfile.mkstemp(suffix=ext)
+    os.chmod(tmp_path, 0o600)
+    with os.fdopen(fd, "wb") as tmp:
         tmp.write(content)
-        tmp_path = tmp.name
-
-    def _do_parse(path: str, file_ext: str, pwd: Optional[str]) -> List[TaxEventSchema]:
-        if file_ext == ".pdf":
-            parser = CasPdfParser(path, password=pwd)
-            raw_events = parser.parse_events()
-        elif file_ext == ".csv":
-            parser = BrokerCsvParser(path)
-            raw_events = parser.parse()
-        else:
-            raise ValueError("Unsupported file format. Please upload PDF or CSV.")
-
-        tagged_events = detect_and_tag_sips(raw_events)
-        if tagged_events:
-            df = pl.DataFrame([e.model_dump(by_alias=True) for e in tagged_events])
-            required_cols = ["id", "assetId", "assetName", "eventType", "eventDate", "units", "grossAmount"]
-            for col in required_cols:
-                if col not in df.columns:
-                    raise ValueError(f"Missing column in parsed dataframe: {col}")
-        return tagged_events
-
     try:
-        events = await asyncio.to_thread(_do_parse, tmp_path, ext, password)
+        def _do_parse():
+            if ext == ".pdf":
+                from parsers.cas_parser import CasPdfParser
+                parser = CasPdfParser(tmp_path, password=password)
+                raw_events = parser.parse_events() if hasattr(parser, 'parse_events') else parser.parse()
+            elif ext == ".csv":
+                from parsers.broker_csv_parser import BrokerCsvParser
+                parser = BrokerCsvParser(tmp_path)
+                raw_events = parser.parse()
+            else:
+                raise ValueError(f"Unsupported file format: {ext}. Expected .pdf or .csv")
+
+            tagged_events = detect_and_tag_sips(raw_events)
+            if tagged_events:
+                df = pl.DataFrame([e.model_dump(by_alias=True) for e in tagged_events])
+                required_cols = ["id", "assetId", "assetName", "eventType", "eventDate", "units", "grossAmount"]
+                for col in required_cols:
+                    if col not in df.columns:
+                        raise ValueError(f"Missing column in parsed dataframe: {col}")
+            return tagged_events
+
+        events = await asyncio.to_thread(_do_parse)
         logger.info(f"Successfully parsed {len(events)} events from statement")
         return events
+    except HTTPException:
+        raise
     except Exception as err:
-        logger.error(f"Error parsing statement: {err}", exc_info=True)
-        status_code = 400 if isinstance(err, ValueError) else 500
-        raise HTTPException(status_code=status_code, detail=str(err))
+        err_msg = str(err)
+        logger.error(f"Error parsing statement: {err_msg}", exc_info=True)
+        is_client_error = "CRITICAL:" in err_msg or "Unsupported" in err_msg or "password" in err_msg.lower() or isinstance(err, ValueError)
+        status_code = 422 if is_client_error else 500
+        safe_detail = err_msg.replace(tmp_path, "<redacted_path>") if is_client_error else "Internal statement parser error."
+        raise HTTPException(status_code=status_code, detail=safe_detail)
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        _secure_remove(tmp_path)
 
 class FireSimulationRequest(BaseModel):
     daily_returns: List[float] = []
@@ -143,7 +166,7 @@ class FundMetricsBatchRequest(BaseModel):
     funds: List[FundSeriesItem]
 
 @app.post("/api/v1/analytics/fund_metrics", dependencies=[Depends(verify_auth_token)])
-async def compute_batch_fund_metrics(req: FundMetricsBatchRequest):
+def compute_batch_fund_metrics(req: FundMetricsBatchRequest):
     results = {}
     for item in req.funds:
         analytics = compute_fund_analytics(item.nav_values, dates=item.nav_dates)

@@ -22,7 +22,21 @@ object SnapshotCacheManager {
     private const val KEY_DISCONNECT_NOTIFIED_FOR_EPISODE = "key_disconnect_notified_for_episode"
 
     private fun getPrefs(context: Context): SharedPreferences {
-        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        return try {
+            val masterKey = androidx.security.crypto.MasterKey.Builder(context)
+                .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            androidx.security.crypto.EncryptedSharedPreferences.create(
+                context,
+                "portfolio_os_encrypted_cache",
+                masterKey,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            // Fallback strictly for JVM unit tests where AndroidKeyStore provider is absent
+            context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        }
     }
 
     fun isBiometricLockEnabled(context: Context): Boolean {

@@ -8,6 +8,8 @@ import com.portfolioos.mobile.api.SyncApiClient
 import com.portfolioos.mobile.data.SnapshotCacheManager
 import com.portfolioos.mobile.model.SyncSnapshot
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -91,17 +93,28 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             for (baseUrl in urls) {
                 try {
                     val service = SyncApiClient.createService(baseUrl)
-                    val bench = service.getBenchmarkAnalytics(token)
-                    val fire = service.getFireSummary(token)
-                    val overlap = service.getOverlapAnalytics(token)
-                    _uiState.update { current ->
-                        current.copy(
-                            benchmarkData = bench,
-                            fireSummaryData = fire,
-                            overlapData = overlap
-                        )
+                    coroutineScope {
+                        val benchDeferred = async { runCatching { service.getBenchmarkAnalytics(token) }.getOrNull() }
+                        val fireDeferred = async { runCatching { service.getFireSummary(token) }.getOrNull() }
+                        val overlapDeferred = async { runCatching { service.getOverlapAnalytics(token) }.getOrNull() }
+
+                        val bench = benchDeferred.await()
+                        val fire = fireDeferred.await()
+                        val overlap = overlapDeferred.await()
+                        if (bench != null || fire != null || overlap != null) {
+                            _uiState.update { state ->
+                                state.copy(
+                                    benchmarkData = bench ?: state.benchmarkData,
+                                    fireSummaryData = fire ?: state.fireSummaryData,
+                                    overlapData = overlap ?: state.overlapData
+                                )
+                            }
+                            return@coroutineScope true
+                        }
+                        false
+                    }.let { anySucceeded ->
+                        if (anySucceeded) return@launch
                     }
-                    break
                 } catch (e: Exception) {
                     Log.d(TAG, "Rest analytics fetch failed on $baseUrl: ${e.message}")
                 }

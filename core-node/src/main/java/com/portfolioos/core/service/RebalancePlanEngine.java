@@ -750,7 +750,7 @@ public class RebalancePlanEngine {
 
         var goldSilverCtx = com.portfolioos.core.valuation.GoldSilverRatioCalculator.calculateRatio(navMap);
         var reconCtx = com.portfolioos.core.valuation.ReconstitutionCalendar.calculateReconstitutionStatus(today);
-        BeerSpreadContextDto beerSpreadCtx = null;
+        BeerSpreadContextDto beerSpreadCtx = loadMarketIndicators();
 
         return new RebalancePlanDto(
             planId,
@@ -764,6 +764,36 @@ public class RebalancePlanEngine {
             reconCtx,
             beerSpreadCtx
         );
+    }
+
+    @SuppressWarnings("unchecked")
+    public static BeerSpreadContextDto loadMarketIndicators() {
+        List<java.io.File> candidates = List.of(
+            new java.io.File("data/market_indicators.json"),
+            new java.io.File("../data/market_indicators.json"),
+            new java.io.File("../../data/market_indicators.json"),
+            new java.io.File("/app/data/market_indicators.json")
+        );
+        for (java.io.File f : candidates) {
+            if (f.exists()) {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    Map<String, Object> map = mapper.readValue(f, Map.class);
+                    double gsec = map.get("gsec_10y_yield_pct") != null ? Double.parseDouble(map.get("gsec_10y_yield_pct").toString()) : 7.10;
+                    double pe = map.get("nifty50_pe") != null ? Double.parseDouble(map.get("nifty50_pe").toString()) : 22.40;
+                    double ey = pe > 0 ? (100.0 / pe) : 0.0;
+                    double beer = gsec - ey;
+                    String asOf = String.valueOf(map.getOrDefault("as_of_date", LocalDate.now().toString()));
+                    boolean isFb = Boolean.parseBoolean(String.valueOf(map.getOrDefault("is_fallback", "true")));
+                    String src = String.valueOf(map.getOrDefault("source_status", "FALLBACK_CACHED"));
+                    String zone = beer > 2.5 ? "OVERVALUED" : (beer < 1.0 ? "UNDERVALUED" : "FAIR");
+                    return new BeerSpreadContextDto(gsec, pe, ey, beer, zone, asOf, isFb, src);
+                } catch (Exception e) {
+                    // fallback below
+                }
+            }
+        }
+        return new BeerSpreadContextDto(7.10, 22.40, 100.0 / 22.40, 7.10 - (100.0 / 22.40), "FAIR", LocalDate.now().toString(), true, "FALLBACK");
     }
 
     private static List<FundAllocationDto> resolveRealFundBreakdown(

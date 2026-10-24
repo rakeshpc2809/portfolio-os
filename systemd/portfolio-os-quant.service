@@ -1,18 +1,18 @@
 [Unit]
-Description=Portfolio OS Quant Sidecar (FastAPI / Polars Analytics)
+Description=Portfolio OS Quant Sidecar (Python / FastAPI)
 After=network.target
 PartOf=portfolio-os.target
 
 [Service]
 Type=simple
 WorkingDirectory=/home/rakeshpc/Projects/portfolio-os/quant-sidecar
-EnvironmentFile=/home/rakeshpc/Projects/portfolio-os/.env
+EnvironmentFile=%h/.config/portfolio-os/secrets.env
 ExecStart=/usr/bin/uv run python app.py
 Restart=on-failure
-RestartSec=1s
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=portfolio-os-quant
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
 
 [Install]
-WantedBy=default.target
+WantedBy=portfolio-os.target

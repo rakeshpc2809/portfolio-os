@@ -235,11 +235,7 @@ public class Itr2CsvExporter {
     }
 
     private static Pair<LocalDate, LocalDate> getFiscalYearBounds(String fy) {
-        String[] parts = fy.split("-");
-        int startYear = Integer.parseInt(parts[0]);
-        LocalDate start = LocalDate.of(startYear, 4, 1);
-        LocalDate end = LocalDate.of(startYear + 1, 3, 31);
-        return new Pair<>(start, end);
+        return com.portfolioos.core.rules.TaxRulesLoader.getFiscalYearBounds(fy);
     }
 
     private static String fmt(BigDecimal val) {

@@ -46,9 +46,10 @@ dist/
 .vite/
 
 # Databases & local data files
-data/
+/data/
 core-node/data/
 quant-sidecar/data/
+core-node/src/main/resources/data/
 *.db
 *.duckdb
 jdbc:duckdb*

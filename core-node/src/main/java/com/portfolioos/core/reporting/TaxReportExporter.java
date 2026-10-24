@@ -108,24 +108,6 @@ public class TaxReportExporter {
     }
 
     public static Pair<LocalDate, LocalDate> getFiscalYearBounds(String fiscalYear) {
-        if (fiscalYear == null || fiscalYear.isBlank()) {
-            fiscalYear = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
-        }
-        String[] parts = fiscalYear.split("-");
-        int startYear = 2026;
-        try {
-            startYear = Integer.parseInt(parts[0].trim());
-        } catch (Exception e) {
-            // ignore
-        }
-        int endYear = startYear + 1;
-        if (parts.length > 1 && parts[1].trim().length() == 2) {
-            try {
-                endYear = (startYear / 100) * 100 + Integer.parseInt(parts[1].trim());
-            } catch (Exception e) {
-                // ignore
-            }
-        }
-        return new Pair<>(LocalDate.of(startYear, 4, 1), LocalDate.of(endYear, 3, 31));
+        return com.portfolioos.core.rules.TaxRulesLoader.getFiscalYearBounds(fiscalYear);
     }
 }

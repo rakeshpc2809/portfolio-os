@@ -64,9 +64,10 @@ public class SqliteEventStore implements EventStorePort {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(jdbcUrl);
         config.setDriverClassName("org.sqlite.JDBC");
-        config.setMaximumPoolSize(10);
-        config.setMinimumIdle(2);
+        config.setMaximumPoolSize(1);
+        config.setMinimumIdle(1);
         config.setIdleTimeout(30000);
+        config.setConnectionInitSql("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;");
         config.setPoolName("SqliteEventStorePool");
 
         this.dataSource = new HikariDataSource(config);
@@ -299,16 +300,21 @@ public class SqliteEventStore implements EventStorePort {
 
     @Override
     public String getLatestEventHash() {
+        try (Connection conn = getConnection()) {
+            return getLatestEventHash(conn);
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch latest event hash", e);
+        }
+    }
+
+    private String getLatestEventHash(Connection conn) throws SQLException {
         String sql = "SELECT event_hash FROM tax_events ORDER BY rowid DESC LIMIT 1";
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
+        try (PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
             if (rs.next()) {
                 return rs.getString("event_hash");
             }
             return "GENESIS";
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch latest event hash", e);
         }
     }
 
@@ -371,7 +377,7 @@ public class SqliteEventStore implements EventStorePort {
                  PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
 
                 // Fix #1: prevHash starts strictly from the latest committed event_hash in SQLite
-                String prevHash = getLatestEventHash();
+                String prevHash = getLatestEventHash(conn);
                 if (prevHash == null || prevHash.isBlank()) prevHash = "GENESIS";
 
                 for (TaxEvent event : events) {

@@ -66,6 +66,7 @@ public abstract class BaseIntegrationTest {
         initTestDir();
         registry.add("sqlite.path", () -> TEST_SQLITE_PATH);
         registry.add("duckdb.path", () -> TEST_DUCKDB_PATH);
+        registry.add("api.auth.token", () -> AUTH_TOKEN);
     }
 
     protected synchronized void seedCanonicalPortfolioState() {

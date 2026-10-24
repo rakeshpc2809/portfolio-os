@@ -56,6 +56,19 @@ object SyncApiClient {
     @Volatile
     var lastWorkingBaseUrl: String? = null
 
+    private val sharedOkHttpClient: OkHttpClient by lazy {
+        val logging = HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+            redactHeader("X-Api-Auth-Token")
+            redactHeader("Authorization")
+        }
+        OkHttpClient.Builder()
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .addInterceptor(logging)
+            .build()
+    }
+
     fun getCandidateBaseUrls(context: Context): List<String> {
         val urls = mutableListOf<String>()
         val customUrl = SnapshotCacheManager.getCustomUrl(context)
@@ -63,25 +76,22 @@ object SyncApiClient {
             urls.add(if (customUrl.endsWith("/")) customUrl else "$customUrl/")
         }
         lastWorkingBaseUrl?.let { urls.add(it) }
-        urls.add(EMULATOR_BASE_URL)
+
+        val isEmulator = android.os.Build.FINGERPRINT.isNullOrBlank() ||
+                         android.os.Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
+                         android.os.Build.MODEL.contains("sdk", ignoreCase = true) ||
+                         android.os.Build.MODEL.contains("Emulator", ignoreCase = true)
+        if (isEmulator) {
+            urls.add(EMULATOR_BASE_URL)
+        }
         urls.add(USB_BASE_URL)
         return urls.distinct()
     }
 
     fun createService(baseUrl: String = DEFAULT_BASE_URL): SyncApiService {
-        val logging = HttpLoggingInterceptor().apply {
-            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
-        }
-
-        val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .addInterceptor(logging)
-            .build()
-
         val retrofit = Retrofit.Builder()
             .baseUrl(baseUrl)
-            .client(okHttpClient)
+            .client(sharedOkHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 

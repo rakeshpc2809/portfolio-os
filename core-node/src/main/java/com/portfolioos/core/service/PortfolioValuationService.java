@@ -50,6 +50,9 @@ public class PortfolioValuationService {
         this.quantSidecarClient = quantSidecarClient;
     }
 
+    private volatile String cachedOverlapKey = null;
+    private volatile Map<String, Object> cachedOverlapResult = null;
+
     private String fmt(BigDecimal val) {
         if (val == null) {
             return "0.00";
@@ -731,12 +734,18 @@ public class PortfolioValuationService {
     public static final boolean IS_LIVE_DOWNLOAD = false;
 
     public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB, boolean includeUnverified) {
+        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+        String ledgerHash = (state != null && state.ledgerHash() != null) ? state.ledgerHash() : "";
+        String cacheKey = ledgerHash + "|" + (fundA != null ? fundA : "") + "|" + (fundB != null ? fundB : "") + "|" + includeUnverified;
+        if (cacheKey.equals(cachedOverlapKey) && cachedOverlapResult != null) {
+            return cachedOverlapResult;
+        }
+
         String idA = (fundA != null && !fundA.isBlank()) ? fundA : "INF109KC13X2";
         String idB = (fundB != null && !fundB.isBlank()) ? fundB : "INF109KC12U0";
 
         Map<String, Object> pairwise = duckDbProjector.getPairwiseFundOverlap(idA, idB);
 
-        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
         Map<String, Double> fundValuations = new HashMap<>();
 
@@ -809,6 +818,8 @@ public class PortfolioValuationService {
         response.put("overlap_summary", overlapSummary);
         response.put("portfolio_top_stock_concentrations", concResult.get("concentrations"));
         response.put("coverage_telemetry", concResult.get("coverage_telemetry"));
+        this.cachedOverlapResult = response;
+        this.cachedOverlapKey = cacheKey;
         return response;
     }
 
@@ -895,10 +906,12 @@ public class PortfolioValuationService {
         List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
         boolean isProvisional = dailyReturns == null || dailyReturns.size() < 750;
 
-        double avgFailRate = 33.15; // 100.0 - 66.85% success rate on empirical baseline
-        double relStdDev = 0.84;    // 10-seed relative std dev
         FireTracker.FireSummary fire = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now());
-        BigDecimal currentSip = fire.monthlyContribution();
+        double avgFailRate = (fire != null && fire.monteCarloSuccessRatePct() > 0.0)
+            ? Math.max(0.0, 100.0 - fire.monteCarloSuccessRatePct())
+            : 0.0;
+        double relStdDev = 0.25;
+        BigDecimal currentSip = fire != null ? fire.monthlyContribution() : null;
 
         BigDecimal totalMFValue = BigDecimal.ZERO;
         for (Lot lot : openLots) {

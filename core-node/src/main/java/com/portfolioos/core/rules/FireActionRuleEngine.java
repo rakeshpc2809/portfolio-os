@@ -81,7 +81,11 @@ public class FireActionRuleEngine {
 
         // 4. Guyton-Klinger Decumulation Guardrails & CAPE-Adjusted SWR Trigger
         if (fireSummary != null) {
-            cards.add(evaluateGuytonKlingerCapeRule(fireSummary, totalMFValue));
+            com.portfolioos.core.dtos.RebalancePlanDtos.BeerSpreadContextDto beerCtx =
+                com.portfolioos.core.service.RebalancePlanEngine.loadMarketIndicators();
+            double niftyPe = beerCtx != null ? beerCtx.nifty50Pe() : 22.40;
+            double gsecYield = beerCtx != null ? beerCtx.gsec10yYieldPct() : 7.10;
+            cards.add(evaluateGuytonKlingerCapeRule(fireSummary, totalMFValue, niftyPe, gsecYield));
         }
 
         return cards;
@@ -91,7 +95,11 @@ public class FireActionRuleEngine {
         com.portfolioos.core.fire.FireTracker.FireSummary fireSummary,
         BigDecimal totalMFValue
     ) {
-        return evaluateGuytonKlingerCapeRule(fireSummary, totalMFValue, 22.40, 7.10);
+        com.portfolioos.core.dtos.RebalancePlanDtos.BeerSpreadContextDto beerCtx =
+            com.portfolioos.core.service.RebalancePlanEngine.loadMarketIndicators();
+        double niftyPe = beerCtx != null ? beerCtx.nifty50Pe() : 22.40;
+        double gsecYield = beerCtx != null ? beerCtx.gsec10yYieldPct() : 7.10;
+        return evaluateGuytonKlingerCapeRule(fireSummary, totalMFValue, niftyPe, gsecYield);
     }
 
     public ActionRecommendationCard evaluateGuytonKlingerCapeRule(

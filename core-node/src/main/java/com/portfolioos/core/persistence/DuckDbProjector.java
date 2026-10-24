@@ -71,11 +71,11 @@ public class DuckDbProjector implements AutoCloseable {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(jdbcUrl);
         config.setDriverClassName("org.duckdb.DuckDBDriver");
-        config.setMaximumPoolSize(10);
-        config.setMinimumIdle(2);
+        config.setMaximumPoolSize(2);
+        config.setMinimumIdle(1);
         config.setIdleTimeout(30000);
         config.setPoolName("DuckDbProjectorPool");
-        config.setConnectionInitSql("SET threads = " + duckDbThreads + ";");
+        config.setConnectionInitSql("SET memory_limit = '64MB'; SET threads = 2;");
 
         this.dataSource = new HikariDataSource(config);
         initReadSchema(duckDbThreads);
@@ -424,8 +424,9 @@ public class DuckDbProjector implements AutoCloseable {
                         insertStmt.setString(9, event.grossAmount().toPlainString());
                         insertStmt.setString(10, event.sourceDocumentId());
                         insertStmt.setString(11, event.ingestedAt().toString());
-                        insertStmt.executeUpdate();
+                        insertStmt.addBatch();
                     }
+                    insertStmt.executeBatch();
                 }
                 conn.commit();
             } catch (Exception e) {
@@ -506,18 +507,23 @@ public class DuckDbProjector implements AutoCloseable {
     public Map<String, BigDecimal> get52WeekPeakNavs(Set<String> assetIds) {
         Map<String, BigDecimal> result = new HashMap<>();
         if (assetIds == null || assetIds.isEmpty() || dataSource == null) return result;
-        try (Connection conn = getConnection()) {
-            String sql = "SELECT asset_id, MAX(nav) AS peak_nav FROM nav_history WHERE asset_id = ? GROUP BY asset_id";
-            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                for (String assetId : assetIds) {
-                    stmt.setString(1, assetId);
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        if (rs.next()) {
-                            double peak = rs.getDouble("peak_nav");
-                            if (peak > 0) {
-                                result.put(assetId, BigDecimal.valueOf(peak));
-                            }
-                        }
+        String cutoffDate = java.time.LocalDate.now().minusDays(365).toString();
+        String placeholders = String.join(",", Collections.nCopies(assetIds.size(), "?"));
+        String sql = "SELECT asset_id, MAX(nav) AS peak_nav FROM nav_history " +
+                     "WHERE asset_id IN (" + placeholders + ") AND nav_date >= ? AND nav > 0 " +
+                     "GROUP BY asset_id";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            int idx = 1;
+            for (String isin : assetIds) {
+                stmt.setString(idx++, isin);
+            }
+            stmt.setString(idx, cutoffDate);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    double peak = rs.getDouble("peak_nav");
+                    if (!rs.wasNull() && peak > 0.0) {
+                        result.put(rs.getString("asset_id"), BigDecimal.valueOf(peak));
                     }
                 }
             }

@@ -23,14 +23,22 @@ public class LedgerCacheService {
     private final EventStorePort eventStore;
     private final AmfiNavSync amfiSync;
     private final FifoMatcher fifoMatcher;
+    private final com.portfolioos.core.persistence.DuckDbProjector duckDbProjector;
 
     private final AtomicReference<CachedLedgerState> stateHolder = new AtomicReference<>(null);
     private volatile long lastNavSyncTime = 0L;
     private final Object updateLock = new Object();
 
     @org.springframework.beans.factory.annotation.Autowired
+    public LedgerCacheService(
+        EventStorePort eventStore,
+        @org.springframework.beans.factory.annotation.Autowired(required = false) com.portfolioos.core.persistence.DuckDbProjector duckDbProjector
+    ) {
+        this(eventStore, new AmfiNavSync(duckDbProjector), new FifoMatcher(), duckDbProjector);
+    }
+
     public LedgerCacheService(EventStorePort eventStore) {
-        this(eventStore, new AmfiNavSync(), new FifoMatcher());
+        this(eventStore, new AmfiNavSync(), new FifoMatcher(), null);
     }
 
     public LedgerCacheService(
@@ -38,9 +46,19 @@ public class LedgerCacheService {
         AmfiNavSync amfiSync,
         FifoMatcher fifoMatcher
     ) {
+        this(eventStore, amfiSync, fifoMatcher, null);
+    }
+
+    public LedgerCacheService(
+        EventStorePort eventStore,
+        AmfiNavSync amfiSync,
+        FifoMatcher fifoMatcher,
+        com.portfolioos.core.persistence.DuckDbProjector duckDbProjector
+    ) {
         this.eventStore = eventStore;
         this.amfiSync = amfiSync;
         this.fifoMatcher = fifoMatcher;
+        this.duckDbProjector = duckDbProjector;
     }
 
     public static record CachedLedgerState(
@@ -76,7 +94,10 @@ public class LedgerCacheService {
                 CachedLedgerState current = stateHolder.get();
                 if (current == null || current.ledgerHash() == null || !currentHash.equals(current.ledgerHash()) || (now - lastNavSyncTime) >= 30_000) {
                     List<TaxEvent> events = eventStore.getAllEvents();
-                    FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(events);
+                    Map<String, BigDecimal> fmv2018Map = duckDbProjector != null
+                        ? duckDbProjector.getJan2018FmvMap()
+                        : Collections.emptyMap();
+                    FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(events, fmv2018Map);
                     Map<String, BigDecimal> navMap = null;
                     Map<String, java.time.LocalDate> navDateMap = Collections.emptyMap();
                     try {
