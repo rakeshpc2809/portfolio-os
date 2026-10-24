@@ -46,6 +46,11 @@ interface SyncApiService {
         @Header("X-Api-Auth-Token") token: String,
         @Query("benchmark") benchmark: String = "NIFTY_50_TRI"
     ): com.portfolioos.mobile.model.BenchmarkAnalyticsDto
+
+    @GET("api/v1/rules/action-recommendations")
+    suspend fun getActionRecommendations(
+        @Header("X-Api-Auth-Token") token: String
+    ): List<com.portfolioos.mobile.model.ActionRecommendationDto>
 }
 
 object SyncApiClient {
@@ -142,6 +147,28 @@ object SyncApiClient {
                 lastException = e
             }
         }
-        throw lastException ?: java.io.IOException("Unable to connect to any backend candidate URL.")
+
+        // Offline Fallback: compute simulation locally on device using cached snapshot
+        val cached = SnapshotCacheManager.loadSnapshot(context)
+        if (cached != null) {
+            return com.portfolioos.mobile.data.nav.LocalTradeSimulator.simulateTradeLocally(cached, request)
+        }
+
+        throw lastException ?: java.io.IOException("Unable to connect to any backend candidate URL and no local cache present.")
+    }
+
+    suspend fun fetchActionRecommendations(context: Context): List<com.portfolioos.mobile.model.ActionRecommendationDto> {
+        val authToken = SnapshotCacheManager.getAuthToken(context)
+        val candidateUrls = getCandidateBaseUrls(context)
+
+        for (baseUrl in candidateUrls) {
+            try {
+                val result = createService(baseUrl).getActionRecommendations(token = authToken)
+                lastWorkingBaseUrl = baseUrl
+                return result
+            } catch (_: Exception) {
+            }
+        }
+        return emptyList()
     }
 }

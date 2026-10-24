@@ -147,6 +147,16 @@ public class SyncDtos {
     ) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record DailyBriefDto(
+        String status,
+        String headline,
+        String narration,
+        boolean verified,
+        String generatedAt,
+        java.util.Map<String, Object> metrics
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record UnidirectionalSyncSnapshot(
         SyncInfoDto syncInfo,
         List<FlatHoldingDto> holdings,
@@ -154,8 +164,21 @@ public class SyncDtos {
         List<RadarSignalDto> radarSignals,
         List<NetWorthPointDto> netWorthHistory,
         RebalancePlanDtos.RebalancePlanDto rebalancePlan,
-        List<ReportDtos.BucketStatusDto> bucketAllocation
+        List<ReportDtos.BucketStatusDto> bucketAllocation,
+        DailyBriefDto dailyBrief
     ) {
+        public UnidirectionalSyncSnapshot(
+            SyncInfoDto syncInfo,
+            List<FlatHoldingDto> holdings,
+            List<FlatTaxLotDto> taxLots,
+            List<RadarSignalDto> radarSignals,
+            List<NetWorthPointDto> netWorthHistory,
+            RebalancePlanDtos.RebalancePlanDto rebalancePlan,
+            List<ReportDtos.BucketStatusDto> bucketAllocation
+        ) {
+            this(syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, bucketAllocation, null);
+        }
+
         public UnidirectionalSyncSnapshot(
             SyncInfoDto syncInfo,
             List<FlatHoldingDto> holdings,
@@ -164,7 +187,7 @@ public class SyncDtos {
             List<NetWorthPointDto> netWorthHistory,
             RebalancePlanDtos.RebalancePlanDto rebalancePlan
         ) {
-            this(syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, java.util.Collections.emptyList());
+            this(syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, java.util.Collections.emptyList(), null);
         }
     }
 }

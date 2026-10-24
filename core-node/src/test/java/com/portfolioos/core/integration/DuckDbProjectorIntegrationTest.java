@@ -64,4 +64,20 @@ public class DuckDbProjectorIntegrationTest extends BaseIntegrationTest {
         assertTrue(latest.valuation() > 0.0, "Projected valuation must be strictly positive");
         assertTrue(latest.invested() > 0.0, "Projected invested capital must be strictly positive");
     }
+
+    @Test
+    @DisplayName("DuckDB Projector correctly exports projected tables to Parquet")
+    void testExportTableToParquet() throws Exception {
+        java.io.File tempParquet = java.io.File.createTempFile("test_duckdb_export_", ".parquet");
+        try {
+            duckDbProjector.exportTableToParquet("projected_events", tempParquet);
+            assertTrue(tempParquet.exists(), "Exported parquet file must exist");
+            assertTrue(tempParquet.length() > 0, "Exported parquet file must have non-zero size");
+        } finally {
+            if (tempParquet.exists()) {
+                tempParquet.delete();
+            }
+        }
+    }
 }
+

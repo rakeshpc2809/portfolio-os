@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchJson, type OverlapReportDto } from '../api';
+  import { fetchJson, fetchMultiFundUpSetAnalytics, type OverlapReportDto, type MultiFundUpSetResponse } from '../api';
   import { formatINR, formatPercent } from '../formatters';
   import { 
     AlertTriangle, 
@@ -10,7 +10,8 @@
     PieChart, 
     Layers, 
     ShieldAlert,
-    ExternalLink
+    ExternalLink,
+    Network
   } from '@lucide/svelte';
 
   interface Props {
@@ -24,7 +25,10 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let overlapData = $state<OverlapReportDto | null>(null);
-  let activeTab = $state<'PAIRWISE' | 'STOCKS'>('PAIRWISE');
+  let upsetData = $state<MultiFundUpSetResponse | null>(null);
+  let upsetLoading = $state(false);
+  let upsetError = $state<string | null>(null);
+  let activeTab = $state<'PAIRWISE' | 'STOCKS' | 'UPSET'>('PAIRWISE');
 
   async function loadOverlap() {
     loading = true;
@@ -38,9 +42,22 @@
     }
   }
 
+  async function loadUpSet() {
+    upsetLoading = true;
+    upsetError = null;
+    try {
+      upsetData = await fetchMultiFundUpSetAnalytics();
+    } catch (e: any) {
+      upsetError = e.message || 'Failed to load UpSet intersection analytics';
+    } finally {
+      upsetLoading = false;
+    }
+  }
+
   $effect(() => {
     if (open && !overlapData && !loading) {
       loadOverlap();
+      loadUpSet();
     }
   });
 
@@ -155,6 +172,15 @@
         >
           <PieChart size={14} />
           <span>Top Stock Concentrations ({overlapData?.portfolio_top_stock_concentrations?.length || 0})</span>
+        </button>
+        <button 
+          type="button" 
+          class="tab-btn" 
+          class:active={activeTab === 'UPSET'}
+          onclick={() => { activeTab = 'UPSET'; if (!upsetData && !upsetLoading) loadUpSet(); }}
+        >
+          <Network size={14} />
+          <span>Multi-Fund Intersections ({upsetData?.upset_combinations?.length || 0})</span>
         </button>
       </div>
 
@@ -272,6 +298,58 @@
                   {/each}
                 </tbody>
               </table>
+            </div>
+          {/if}
+        {:else if activeTab === 'UPSET'}
+          {#if upsetLoading && !upsetData}
+            <div class="loading-state">
+              <RefreshCw size={28} class="spin loading-icon" />
+              <p>Computing n-way set intersections in DuckDB...</p>
+            </div>
+          {:else if upsetError}
+            <div class="error-state">
+              <AlertTriangle size={28} class="error-icon" />
+              <p class="error-msg">{upsetError}</p>
+              <button type="button" class="retry-btn" onclick={loadUpSet}>Retry</button>
+            </div>
+          {:else if !upsetData?.upset_combinations || upsetData.upset_combinations.length === 0}
+            <div class="empty-state">
+              <p>No multi-fund stock intersections identified across evaluated funds.</p>
+            </div>
+          {:else}
+            <div class="upset-container">
+              <div class="upset-meta-bar">
+                <span class="meta-item">Coverage: <strong class="meta-val">{upsetData.holding_coverage_type}</strong></span>
+                <span class="meta-item">Source: <strong class="meta-val">{upsetData.constituent_source}</strong></span>
+                <span class="meta-item">Evaluated Schemes: <strong class="meta-val">{upsetData.evaluated_funds?.length || 0}</strong></span>
+              </div>
+              <div class="upset-card-list">
+                {#each upsetData.upset_combinations as combo}
+                  <div class="upset-combo-card">
+                    <div class="combo-card-header">
+                      <div class="combo-funds-tags">
+                        {#each combo.participating_funds as fundId}
+                          <span class="combo-fund-badge">{fundId}</span>
+                        {/each}
+                      </div>
+                      <div class="combo-metrics">
+                        <span class="combo-stock-count mono">{combo.stock_count} shared stocks</span>
+                        <span class="combo-weight mono bold">{combo.total_overlap_weight.toFixed(2)}% overlap</span>
+                      </div>
+                    </div>
+                    <div class="combo-stocks-preview">
+                      {#each combo.stocks.slice(0, 8) as stock}
+                        <span class="shared-stock-chip" title="Min weight: {stock.min_weight}% | Total: {stock.total_weight}%">
+                          {stock.stock_symbol} <span class="stock-chip-weight">{stock.min_weight}%</span>
+                        </span>
+                      {/each}
+                      {#if combo.stocks.length > 8}
+                        <span class="shared-stock-more">+{combo.stocks.length - 8} more</span>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
             </div>
           {/if}
         {/if}
@@ -667,6 +745,122 @@
     font-size: 0.65rem;
     background: hsla(215, 25%, 35%, 0.2);
     color: var(--text-muted);
+  }
+
+  /* UpSet Multi-Fund Intersection Styles */
+  .upset-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0.5rem 0;
+  }
+
+  .upset-meta-bar {
+    display: flex;
+    gap: 1.5rem;
+    padding: 0.65rem 1rem;
+    background: var(--surface-glass, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .meta-val {
+    color: var(--accent-cyan);
+  }
+
+  .upset-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .upset-combo-card {
+    background: var(--surface-glass, rgba(255, 255, 255, 0.02));
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    transition: border-color var(--transition-fast);
+  }
+
+  .upset-combo-card:hover {
+    border-color: rgba(6, 182, 212, 0.35);
+  }
+
+  .combo-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .combo-funds-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .combo-fund-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    background: rgba(6, 182, 212, 0.12);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(6, 182, 212, 0.25);
+    border-radius: var(--radius-sm);
+  }
+
+  .combo-metrics {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    font-size: 0.82rem;
+  }
+
+  .combo-stock-count {
+    color: var(--text-muted);
+  }
+
+  .combo-weight {
+    color: var(--accent-emerald, #10b981);
+    font-size: 0.9rem;
+  }
+
+  .combo-stocks-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .shared-stock-chip {
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    padding: 0.2rem 0.5rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-hairline, rgba(255, 255, 255, 0.08));
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .stock-chip-weight {
+    font-size: 0.68rem;
+    color: var(--accent-cyan);
+    font-weight: 600;
+  }
+
+  .shared-stock-more {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    align-self: center;
+    font-style: italic;
   }
 
   /* Modal Footer */

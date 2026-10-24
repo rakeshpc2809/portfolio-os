@@ -166,6 +166,16 @@ public class ReportController {
             .body(csv);
     }
 
+    @GetMapping(value = "/tax/harvest-calendar.ics", produces = "text/calendar")
+    public ResponseEntity<String> downloadHarvestCalendarIcs() {
+        String ics = taxService.generateHarvestCalendarIcs();
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"portfolio_harvest_calendar.ics\"")
+            .header(HttpHeaders.CONTENT_TYPE, "text/calendar; charset=UTF-8")
+            .body(ics);
+    }
+
+
     @GetMapping("/analytics/benchmark")
     public ResponseEntity<Map<String, Object>> getBenchmarkAnalytics(
         @RequestParam(value = "benchmark", defaultValue = "NIFTY_50_TRI") String benchmark
@@ -191,6 +201,32 @@ public class ReportController {
     public ResponseEntity<Map<String, Object>> getAllFundHoldingsDebug() {
         return ResponseEntity.ok(valuationService.getDuckDbProjector().getAllFundHoldingsDebug());
     }
+
+    @PostMapping("/analytics/holdings/ingest")
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<Map<String, Object>> ingestFundHoldings(@RequestBody Map<String, Object> payload) {
+        if (payload == null) {
+            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "Missing payload"));
+        }
+        String fundId = (String) payload.get("fund_id");
+        String disclosureDate = (String) payload.getOrDefault("disclosure_date", LocalDate.now().toString());
+        String sourceType = (String) payload.getOrDefault("source_type", "FACTSHEET_POI_PARSED");
+        List<Map<String, Object>> holdings = (List<Map<String, Object>>) payload.get("holdings");
+
+        if (fundId == null || fundId.isBlank() || holdings == null) {
+            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "fund_id and holdings are required"));
+        }
+
+        valuationService.getDuckDbProjector().saveFundHoldings(fundId, disclosureDate, sourceType, holdings);
+        return ResponseEntity.ok(Map.of(
+            "status", "SUCCESS",
+            "fund_id", fundId,
+            "disclosure_date", disclosureDate,
+            "source_type", sourceType,
+            "rows_ingested", holdings.size()
+        ));
+    }
+
 
     @GetMapping("/funds/registry")
     public ResponseEntity<Map<String, Object>> getFundRegistry() {

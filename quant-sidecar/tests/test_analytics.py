@@ -112,6 +112,7 @@ class TestAnalyticsEngine(unittest.TestCase):
         self.assertIsInstance(validated.beta, float)
         self.assertIsInstance(validated.alpha_pct, float)
         self.assertIsInstance(validated.sharpe_ratio, float)
+        self.assertIsInstance(validated.information_ratio, float)
 
 if __name__ == "__main__":
     unittest.main()

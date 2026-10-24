@@ -332,6 +332,92 @@ public class DuckDbProjector implements AutoCloseable {
         return res;
     }
 
+    public Map<String, Object> getAlignedFundAndBenchmarkReturns(String assetId, String benchmarkId) {
+        List<Double> fundReturns = new ArrayList<>();
+        List<Double> benchmarkReturns = new ArrayList<>();
+        try (Connection conn = getConnection()) {
+            String targetBenchmark = (benchmarkId != null && !benchmarkId.isBlank()) ? benchmarkId : "NIFTY_500_TRI";
+            try (PreparedStatement check = conn.prepareStatement("SELECT COUNT(*) FROM benchmark_history WHERE benchmark_id = ? AND level > 0")) {
+                check.setString(1, targetBenchmark);
+                try (ResultSet rs = check.executeQuery()) {
+                    if (rs.next() && rs.getInt(1) < 10) {
+                        targetBenchmark = "NIFTY_500_TRI";
+                    }
+                }
+            }
+
+            String sql = """
+                WITH fund_daily_returns AS (
+                    SELECT nav_date, nav,
+                           LAG(nav_date) OVER (ORDER BY nav_date ASC) AS prev_date,
+                           LAG(nav) OVER (ORDER BY nav_date ASC) AS prev_nav
+                    FROM nav_history
+                    WHERE asset_id = ? AND nav > 0
+                ),
+                valid_fund_returns AS (
+                    SELECT nav_date, prev_date,
+                           (nav - prev_nav) / prev_nav AS fund_ret
+                    FROM fund_daily_returns
+                    WHERE prev_nav > 0 AND prev_date IS NOT NULL
+                ),
+                benchmark_daily_returns AS (
+                    SELECT nav_date, level,
+                           LAG(nav_date) OVER (ORDER BY nav_date ASC) AS prev_date,
+                           LAG(level) OVER (ORDER BY nav_date ASC) AS prev_level
+                    FROM benchmark_history
+                    WHERE benchmark_id = ? AND level > 0
+                ),
+                valid_benchmark_returns AS (
+                    SELECT nav_date, prev_date,
+                           (level - prev_level) / prev_level AS b_ret
+                    FROM benchmark_daily_returns
+                    WHERE prev_level > 0 AND prev_date IS NOT NULL
+                )
+                SELECT f.nav_date, f.prev_date, f.fund_ret, b.b_ret
+                FROM valid_fund_returns f
+                JOIN valid_benchmark_returns b ON f.nav_date = b.nav_date AND f.prev_date = b.prev_date
+                ORDER BY f.nav_date ASC;
+            """;
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, assetId);
+                pstmt.setString(2, targetBenchmark);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    while (rs.next()) {
+                        String dateStr = rs.getString("nav_date");
+                        String prevDateStr = rs.getString("prev_date");
+                        double fRet = rs.getDouble("fund_ret");
+                        double bRet = rs.getDouble("b_ret");
+                        java.time.LocalDate currDate = null;
+                        java.time.LocalDate prevDate = null;
+                        try {
+                            currDate = java.time.LocalDate.parse(dateStr);
+                            prevDate = java.time.LocalDate.parse(prevDateStr);
+                        } catch (Exception ignored) {}
+
+                        if (currDate != null && prevDate != null) {
+                            long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(prevDate, currDate);
+                            if (daysBetween >= 1 && daysBetween <= 5) {
+                                if (Math.abs(fRet) < 0.08 * daysBetween && Math.abs(bRet) < 0.08 * daysBetween) {
+                                    double fDaily = Math.pow(1.0 + fRet, 1.0 / daysBetween) - 1.0;
+                                    double bDaily = Math.pow(1.0 + bRet, 1.0 / daysBetween) - 1.0;
+                                    fundReturns.add(fDaily);
+                                    benchmarkReturns.add(bDaily);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error fetching aligned fund benchmark returns: " + e.getMessage());
+        }
+
+        Map<String, Object> res = new HashMap<>();
+        res.put("fund_returns", fundReturns);
+        res.put("benchmark_returns", benchmarkReturns);
+        return res;
+    }
+
     public record BenchmarkLevelMetrics(Double currentLevel, Double rollingHigh) {}
 
     public BenchmarkLevelMetrics getBenchmarkLevelMetrics(String benchmarkId) {
@@ -1167,6 +1253,25 @@ public class DuckDbProjector implements AutoCloseable {
         return res;
     }
 
+    public void exportQueryToParquet(String sqlQuery, File destination) throws SQLException {
+        if (dataSource == null) {
+            return;
+        }
+        if (destination.getParentFile() != null) {
+            destination.getParentFile().mkdirs();
+        }
+        String cleanPath = destination.getAbsolutePath().replace("'", "''");
+        String copySql = "COPY (" + sqlQuery + ") TO '" + cleanPath + "' (FORMAT PARQUET, COMPRESSION ZSTD);";
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute(copySql);
+        }
+    }
+
+    public void exportTableToParquet(String tableName, File destination) throws SQLException {
+        exportQueryToParquet("SELECT * FROM " + tableName, destination);
+    }
+
     @Override
     public void close() {
         if (dataSource != null && !dataSource.isClosed()) {
@@ -1174,3 +1279,4 @@ public class DuckDbProjector implements AutoCloseable {
         }
     }
 }
+

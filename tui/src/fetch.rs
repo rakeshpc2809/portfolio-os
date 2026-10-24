@@ -173,6 +173,7 @@ pub fn fetch_all_once(tx: &Sender<AppMsg>) {
 fn do_fetch_all(agent: &ureq::Agent, config: &Config, tx: &Sender<AppMsg>) {
     fetch_snapshot(agent, config, tx);
     fetch_overlap(agent, config, tx);
+    fetch_hrp(agent, config, tx);
 }
 
 fn fetch_snapshot(agent: &ureq::Agent, config: &Config, tx: &Sender<AppMsg>) {
@@ -221,6 +222,13 @@ fn fetch_overlap(agent: &ureq::Agent, config: &Config, tx: &Sender<AppMsg>) {
             };
             let _ = tx.send(AppMsg::FetchError(concise_err));
         }
+    }
+}
+
+fn fetch_hrp(agent: &ureq::Agent, config: &Config, tx: &Sender<AppMsg>) {
+    let url = format!("{}/api/v1/analytics/hrp-audit", config.base_url);
+    if let Ok(hrp) = get_json::<crate::api::HrpAudit>(agent, &url, &config.api_token) {
+        let _ = tx.send(AppMsg::HrpUpdated(Box::new(hrp)));
     }
 }
 

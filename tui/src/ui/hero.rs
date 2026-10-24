@@ -57,7 +57,7 @@ pub fn render_hero(f: &mut Frame, area: ratatui::layout::Rect, state: &AppState)
 
     let date_str = info.generated_at.get(..10).unwrap_or(&info.generated_at);
 
-    let lines = vec![
+    let mut lines = vec![
         Line::from(vec![
             Span::styled("  NET WORTH  ", Style::default().fg(MUTED)),
             Span::styled(display_current, Style::default()
@@ -90,6 +90,25 @@ pub fn render_hero(f: &mut Frame, area: ratatui::layout::Rect, state: &AppState)
             ),
         ]),
     ];
+
+    if let Some(brief) = &snap.daily_brief {
+        if let Some(headline) = &brief.headline {
+            let truncated = if headline.len() > 42 {
+                format!("{}…", &headline[..39])
+            } else {
+                headline.clone()
+            };
+            lines.push(Line::from(vec![
+                Span::styled("  ★ BRIEF    ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(truncated, Style::default().fg(Color::White)),
+                if brief.verified {
+                    Span::styled("  ✓ AUDIT PASS", Style::default().fg(Color::Green))
+                } else {
+                    Span::raw("")
+                },
+            ]));
+        }
+    }
 
     let left_block = Paragraph::new(lines)
         .block(Block::default()

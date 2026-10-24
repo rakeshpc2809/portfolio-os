@@ -196,4 +196,57 @@ public class QuantSidecarClient {
         }
         return Collections.emptyMap();
     }
+
+    public byte[] fetchNavArrowStream(String isin) {
+        try {
+            String url = baseUrl + "/api/v1/analytics/nav_arrow_stream";
+            if (isin != null && !isin.isBlank()) {
+                url += "?isin=" + java.net.URLEncoder.encode(isin.trim(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Accept", "application/vnd.apache.arrow.stream")
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() == 200) {
+                return response.body();
+            } else {
+                log.warn("Quant sidecar fetchNavArrowStream status {}: {}", response.statusCode(), new String(response.body()));
+            }
+        } catch (Exception e) {
+            log.info("Quant sidecar fetchNavArrowStream unavailable ({}).", e.getMessage());
+        }
+        return new byte[0];
+    }
+
+    public byte[] streamNavArrowAnalytics(byte[] arrowPayload) {
+        if (arrowPayload == null || arrowPayload.length == 0) {
+            return new byte[0];
+        }
+        try {
+            String token = resolveAuthToken();
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/v1/analytics/nav_arrow_stream"))
+                .header("Content-Type", "application/vnd.apache.arrow.stream")
+                .header("Accept", "application/vnd.apache.arrow.stream")
+                .header("X-Api-Auth-Token", token)
+                .timeout(Duration.ofSeconds(15))
+                .POST(HttpRequest.BodyPublishers.ofByteArray(arrowPayload))
+                .build();
+
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() == 200) {
+                return response.body();
+            } else {
+                log.warn("Quant sidecar streamNavArrowAnalytics status {}: {}", response.statusCode(), new String(response.body()));
+            }
+        } catch (Exception e) {
+            log.info("Quant sidecar streamNavArrowAnalytics unavailable ({}).", e.getMessage());
+        }
+        return new byte[0];
+    }
 }
+

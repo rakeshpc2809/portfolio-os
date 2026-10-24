@@ -11,13 +11,23 @@ data class NetWorthPointDto(
 )
 
 @Immutable
+data class DailyBriefDto(
+    @SerializedName("status") val status: String = "SUCCESS",
+    @SerializedName("headline") val headline: String = "",
+    @SerializedName("narration") val narration: String = "",
+    @SerializedName("verified") val verified: Boolean = false,
+    @SerializedName("generated_at") val generatedAt: String? = null
+)
+
+@Immutable
 data class SyncSnapshot(
     @SerializedName("sync_info") val syncInfo: SyncInfoDto? = null,
     @SerializedName("holdings") val holdings: List<FlatHoldingDto>? = emptyList(),
     @SerializedName("tax_lots") val taxLots: List<FlatTaxLotDto>? = emptyList(),
     @SerializedName("radar_signals") val radarSignals: List<RadarSignalDto>? = emptyList(),
     @SerializedName("net_worth_history") val netWorthHistory: List<NetWorthPointDto>? = emptyList(),
-    @SerializedName("rebalance_plan") val rebalancePlan: RebalancePlanDto? = null
+    @SerializedName("rebalance_plan") val rebalancePlan: RebalancePlanDto? = null,
+    @SerializedName("daily_brief") val dailyBrief: DailyBriefDto? = null
 )
 
 @Immutable
@@ -180,7 +190,9 @@ data class SyncInfoDto(
     @SerializedName("formatted_total_invested") val formattedTotalInvested: String = "",
     @SerializedName("formatted_unrealized_gain") val formattedUnrealizedGain: String = "",
     @SerializedName("stale_nav_count") val staleNavCount: Int = 0,
-    @SerializedName("has_stale_nav") val hasStaleNav: Boolean = false
+    @SerializedName("has_stale_nav") val hasStaleNav: Boolean = false,
+    @SerializedName("ledger_age_days") val ledgerAgeDays: Long = 0L,
+    @SerializedName("valuation_freshness_hours") val valuationFreshnessHours: Long = 0L
 )
 
 @Immutable
@@ -199,7 +211,9 @@ data class FlatHoldingDto(
     @SerializedName("formatted_invested_value") val formattedInvestedValue: String = "",
     @SerializedName("expense_ratio") val expenseRatio: Double? = null,
     @SerializedName("ter_status") val terStatus: String = "UNKNOWN",
-    @SerializedName("ter_as_of_date") val terAsOfDate: String = ""
+    @SerializedName("ter_as_of_date") val terAsOfDate: String = "",
+    @SerializedName("current_nav") val currentNav: Double = 0.0,
+    @SerializedName("exit_load_free_units") val exitLoadFreeUnits: Double = 0.0
 ) {
     val effectivePortfolioPct: Double
         get() = if (portfolioPercentage > 0.0) portfolioPercentage else portfolioWeightPct
@@ -366,3 +380,17 @@ data class OverlapReportDto(
     @SerializedName("portfolio_top_stock_concentrations") val stockConcentrations: List<StockConcentrationDto> = emptyList(),
     @SerializedName("coverage_telemetry") val coverageTelemetry: CoverageTelemetryDto? = null
 )
+
+@Immutable
+data class ActionRecommendationDto(
+    @SerializedName("card_id") val cardId: String = "",
+    @SerializedName("category") val category: String = "",
+    @SerializedName("title") val title: String = "",
+    @SerializedName("status") val status: String = "",
+    @SerializedName("severity") val severity: String = "INFO",
+    @SerializedName("summary") val summary: String = "",
+    @SerializedName("detailed_rationale") val detailedRationale: String = "",
+    @SerializedName("provenance_footer") val provenanceFooter: String = "",
+    @SerializedName("metrics") val metrics: Map<String, Any>? = null
+)
+

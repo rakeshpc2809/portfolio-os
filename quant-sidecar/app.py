@@ -4,7 +4,7 @@ import threading
 import logging
 from contextlib import asynccontextmanager
 from typing import List, Optional
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Depends
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Depends, Request, Response
 from pydantic import BaseModel
 import polars as pl
 import uvicorn
@@ -19,7 +19,10 @@ from quant.analytics_engine import (
     compute_benchmark_analytics,
     compute_fund_analytics,
     FireSimulationResponse,
-    BenchmarkAnalyticsResponse
+    BenchmarkAnalyticsResponse,
+    serialize_arrow_stream,
+    nav_records_to_arrow_stream,
+    compute_arrow_stream_metrics
 )
 
 # Setup logging
@@ -173,6 +176,70 @@ def compute_batch_fund_metrics(req: FundMetricsBatchRequest):
         results[item.amfi_code] = analytics
     return results
 
+@app.get("/api/v1/analytics/nav_arrow_stream")
+def get_nav_arrow_stream(isin: Optional[str] = None, limit: Optional[int] = None):
+    """Zero-copy Apache Arrow stream endpoint for historical mutual fund NAVs."""
+    candidates = [
+        "data/nav_export.parquet",
+        "../data/nav_export.parquet",
+        "../../data/nav_export.parquet"
+    ]
+    target_parquet = None
+    for cand in candidates:
+        if os.path.exists(cand):
+            target_parquet = cand
+            break
+
+    if not target_parquet:
+        empty_stream = nav_records_to_arrow_stream([])
+        return Response(content=empty_stream, media_type="application/vnd.apache.arrow.stream")
+
+    try:
+        df = pl.read_parquet(target_parquet)
+        if isin and isin.strip():
+            df = df.filter(pl.col("isin") == isin.strip())
+        if limit and limit > 0:
+            df = df.head(limit)
+        arrow_table = df.to_arrow()
+        stream_bytes = serialize_arrow_stream(arrow_table)
+        return Response(
+            content=stream_bytes,
+            media_type="application/vnd.apache.arrow.stream",
+            headers={"Content-Disposition": "attachment; filename=nav_stream.arrow"}
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate Arrow stream: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Arrow IPC streaming failed: {str(e)}")
+
+@app.post("/api/v1/analytics/nav_arrow_stream", dependencies=[Depends(verify_auth_token)])
+async def stream_nav_analytics(request: Request):
+    """Processes an incoming Arrow IPC stream of NAV records and returns an Arrow stream of fund metrics."""
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty request body. Expected Arrow IPC stream.")
+    try:
+        output_bytes = await asyncio.to_thread(compute_arrow_stream_metrics, body)
+        return Response(
+            content=output_bytes,
+            media_type="application/vnd.apache.arrow.stream",
+            headers={"Content-Disposition": "attachment; filename=analytics_stream.arrow"}
+        )
+    except Exception as e:
+        logger.error(f"Arrow streaming analytics failed: {e}", exc_info=True)
+        raise HTTPException(status_code=422, detail=f"Arrow IPC stream processing failed: {str(e)}")
+
 if __name__ == "__main__":
-    logger.info("Starting FastAPI HTTP Server on port 8000...")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uds_path = os.getenv("QUANT_SOCKET_PATH", os.getenv("UDS_PATH"))
+    if uds_path and uds_path.strip():
+        uds_clean = uds_path.strip()
+        logger.info(f"Starting FastAPI Uvicorn on Unix Domain Socket: {uds_clean}")
+        if os.path.exists(uds_clean):
+            try:
+                os.unlink(uds_clean)
+            except OSError:
+                pass
+        uvicorn.run(app, uds=uds_clean)
+    else:
+        logger.info("Starting FastAPI HTTP Server on port 8000...")
+        uvicorn.run(app, host="127.0.0.1", port=8000)
+

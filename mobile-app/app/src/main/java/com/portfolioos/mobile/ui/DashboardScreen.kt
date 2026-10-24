@@ -20,6 +20,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -347,6 +348,7 @@ fun DashboardScreen(
                     val holdings = snapshot.holdings ?: emptyList()
                     val radarSignals = snapshot.radarSignals ?: emptyList()
                     val taxLots = snapshot.taxLots ?: emptyList()
+                    val actionRecommendations = uiState.actionRecommendations
 
                     BoxWithConstraints(
                         modifier = Modifier
@@ -361,6 +363,7 @@ fun DashboardScreen(
                                         snapshot = snapshot,
                                         syncInfo = syncInfo,
                                         holdings = holdings,
+                                        actionRecommendations = actionRecommendations,
                                         isQuietMode = isQuietModeEnabled,
                                         onSimulateSale = { h ->
                                             selectedHoldingForSimulator = h
@@ -389,6 +392,7 @@ fun DashboardScreen(
                                         syncInfo = syncInfo,
                                         holdings = holdings,
                                         radarSignals = radarSignals,
+                                        actionRecommendations = actionRecommendations,
                                         benchmarkAnalytics = benchmarkData,
                                         isQuietMode = isQuietModeEnabled,
                                         onSimulateSale = { h ->
@@ -760,6 +764,7 @@ fun HoldingsView(
     syncInfo: com.portfolioos.mobile.model.SyncInfoDto?,
     holdings: List<FlatHoldingDto>,
     radarSignals: List<RadarSignalDto> = emptyList(),
+    actionRecommendations: List<com.portfolioos.mobile.model.ActionRecommendationDto> = emptyList(),
     benchmarkAnalytics: BenchmarkAnalyticsDto? = null,
     isQuietMode: Boolean = false,
     onSimulateSale: (FlatHoldingDto) -> Unit = {},
@@ -770,6 +775,7 @@ fun HoldingsView(
     val sharpeStr = benchmarkAnalytics?.let { "%.2f".format(it.sharpeRatio) } ?: "--"
     val trackErrStr = benchmarkAnalytics?.let { "%.2f%%".format(it.trackingError * 100) } ?: "--"
     val benchLabel = benchmarkAnalytics?.benchmarkName ?: "vs Nifty 50 TRI"
+    var briefDismissed by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier
@@ -778,6 +784,14 @@ fun HoldingsView(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         contentPadding = PaddingValues(bottom = 110.dp)
     ) {
+        if (snapshot?.dailyBrief != null && !briefDismissed) {
+            item {
+                DailyBriefCardView(
+                    brief = snapshot.dailyBrief,
+                    onDismiss = { briefDismissed = true }
+                )
+            }
+        }
         item {
             Spacer(modifier = Modifier.height(4.dp))
             // Expressive M3 Hero Net Worth Card (en-IN Currency Format)
@@ -1015,6 +1029,21 @@ fun HoldingsView(
 
         item {
             PortfolioAllocationBarChart(holdings = holdings, isQuietMode = isQuietMode)
+        }
+
+        if (actionRecommendations.isNotEmpty()) {
+            item {
+                Text(
+                    text = "DECUMULATION GUARDRAILS & ACTION RULES",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = M3TextMuted,
+                    letterSpacing = 1.5.sp
+                )
+            }
+            itemsIndexed(actionRecommendations, key = { index, r -> "${r.cardId}_${r.category}_$index" }) { _, rec ->
+                ActionRecommendationCardView(rec)
+            }
         }
 
         if (radarSignals.isNotEmpty()) {
@@ -1334,6 +1363,161 @@ fun M3RadarCard(signal: RadarSignalDto) {
                 color = M3TextMuted,
                 fontSize = 12.sp
             )
+        }
+    }
+}
+
+@Composable
+fun DailyBriefCardView(
+    brief: com.portfolioos.mobile.model.DailyBriefDto,
+    onDismiss: () -> Unit = {}
+) {
+    Card(
+        shape = ShapeTokens.GlassCardShape,
+        colors = CardDefaults.cardColors(containerColor = ColorTokens.SurfaceCard),
+        border = BorderStroke(1.dp, ColorTokens.GreenPositive.copy(alpha = 0.35f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF063327).copy(alpha = 0.5f),
+                            Color(0xFF0F1B2B).copy(alpha = 0.6f),
+                            Color(0xFF0C101C)
+                        )
+                    )
+                )
+                .padding(SpacingTokens.lg)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = ColorTokens.GreenPositive.copy(alpha = 0.18f),
+                            shape = ShapeTokens.PillShape
+                        ) {
+                            Text(
+                                text = "MORNING BRIEF",
+                                color = ColorTokens.GreenPositive,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                        if (brief.verified) {
+                            Surface(
+                                color = ColorTokens.CyanBright.copy(alpha = 0.18f),
+                                shape = ShapeTokens.PillShape
+                            ) {
+                                Text(
+                                    text = "AUDIT VERIFIED",
+                                    color = ColorTokens.CyanBright,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Dismiss",
+                            tint = ColorTokens.TextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                if (brief.headline.isNotBlank()) {
+                    Text(
+                        text = brief.headline,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                if (brief.narration.isNotBlank()) {
+                    Text(
+                        text = brief.narration,
+                        color = ColorTokens.TextMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ActionRecommendationCardView(rec: com.portfolioos.mobile.model.ActionRecommendationDto) {
+    val isHigh = rec.severity.equals("HIGH", ignoreCase = true) || rec.severity.equals("ALERT", ignoreCase = true)
+    val isMedium = rec.severity.equals("MEDIUM", ignoreCase = true) || rec.severity.equals("WARNING", ignoreCase = true)
+    val borderColor = if (isHigh) Color(0xFFEF4444) else if (isMedium) M3AmberWarning else M3NeonCyan
+    val containerColor = if (isHigh) Color(0xFF260A0A) else M3SurfaceCard
+
+    OutlinedCard(
+        colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
+        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(borderColor)),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = rec.title.ifEmpty { "Action Rule" },
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Surface(
+                    color = borderColor.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(100.dp)
+                ) {
+                    Text(
+                        text = rec.status.replace("_", " "),
+                        color = borderColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = rec.summary,
+                color = M3TextMuted,
+                fontSize = 12.sp,
+                lineHeight = 16.sp
+            )
+            if (rec.provenanceFooter.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = rec.provenanceFooter,
+                    color = M3TextMuted.copy(alpha = 0.7f),
+                    fontSize = 10.sp,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                )
+            }
         }
     }
 }

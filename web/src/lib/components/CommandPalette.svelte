@@ -13,7 +13,8 @@
     Download, 
     FileSpreadsheet,
     CornerDownLeft,
-    Command
+    Command,
+    Database
   } from '@lucide/svelte';
 
   interface Props {
@@ -24,6 +25,7 @@
     ontogglequiet?: () => void;
     onopenoverlap?: () => void;
     onopenlumpsum?: () => void;
+    onopensql?: () => void;
     onsync?: () => void;
     onexportitr?: () => void;
   }
@@ -36,12 +38,14 @@
     ontogglequiet, 
     onopenoverlap, 
     onopenlumpsum, 
+    onopensql,
     onsync, 
     onexportitr 
   }: Props = $props();
 
   let query = $state('');
   let selectedIndex = $state(0);
+
 
   interface CommandItem {
     id: string;
@@ -52,7 +56,7 @@
     action: () => void;
   }
 
-  const allCommands = $derived<CommandItem[]>(() => [
+  const allCommands = $derived.by<CommandItem[]>(() => [
     {
       id: 'tab-overview',
       title: 'Switch to Executive Overview',
@@ -114,13 +118,21 @@
       subtitle: 'Generate compliant capital gains report with FMV 2018 grandfathering',
       icon: FileSpreadsheet,
       action: () => { onexportitr?.(); onclose?.(); }
+    },
+    {
+      id: 'action-sql',
+      title: 'Open DuckDB-Wasm SQL Cockpit',
+      subtitle: 'Run zero-copy, in-browser SQL queries over portfolio holdings and tax lots',
+      icon: Database,
+      shortcut: '⌘S',
+      action: () => { onopensql?.(); onclose?.(); }
     }
   ]);
 
-  const filteredCommands = $derived<CommandItem[]>(() => {
+  const filteredCommands = $derived.by<CommandItem[]>(() => {
     const q = query.toLowerCase().trim();
-    if (!q) return allCommands();
-    return allCommands().filter(c => 
+    if (!q) return allCommands;
+    return allCommands.filter((c: CommandItem) => 
       c.title.toLowerCase().includes(q) || 
       c.subtitle.toLowerCase().includes(q) ||
       (c.shortcut && c.shortcut.toLowerCase().includes(q))
@@ -132,13 +144,13 @@
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      selectedIndex = (selectedIndex + 1) % Math.max(1, filteredCommands().length);
+      selectedIndex = (selectedIndex + 1) % Math.max(1, filteredCommands.length);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      selectedIndex = (selectedIndex - 1 + filteredCommands().length) % Math.max(1, filteredCommands().length);
+      selectedIndex = (selectedIndex - 1 + filteredCommands.length) % Math.max(1, filteredCommands.length);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const list = filteredCommands();
+      const list = filteredCommands;
       if (list[selectedIndex]) {
         list[selectedIndex].action();
       }
@@ -147,6 +159,7 @@
       onclose?.();
     }
   }
+
 
   $effect(() => {
     // Reset index on search query change
@@ -186,12 +199,12 @@
 
       <!-- Command List -->
       <div class="command-list">
-        {#if filteredCommands().length === 0}
+        {#if filteredCommands.length === 0}
           <div class="no-results">
             <p>No matching commands for "{query}"</p>
           </div>
         {:else}
-          {#each filteredCommands() as cmd, i (cmd.id)}
+          {#each filteredCommands as cmd, i (cmd.id)}
             {@const isSelected = i === selectedIndex}
             {@const Icon = cmd.icon}
             <div 

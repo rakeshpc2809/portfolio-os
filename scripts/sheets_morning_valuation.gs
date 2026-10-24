@@ -395,3 +395,65 @@ function publishDailyBrief(sheet, signal, holdings, systemState, ladder) {
 
   sheet.autoResizeColumns(1, tableHeaders.length);
 }
+
+/**
+ * Web App entry point for Zero-Knowledge Cloud State Dead-Drop Relay.
+ * Allows core-node to upload portfolio_state.enc and mobile app to fetch it.
+ */
+function doGet(e) {
+  const params = e ? e.parameter : {};
+  const action = params.action || "status";
+  const token = params.token || "";
+
+  const scriptProps = PropertiesService.getScriptProperties();
+  const configuredToken = scriptProps.getProperty("API_AUTH_TOKEN") || "dev_secret_key_123";
+
+  if (token !== configuredToken) {
+    return ContentService.createTextOutput(JSON.stringify({ error: "Unauthorized" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === "bundle") {
+    const encryptedBundleB64 = scriptProps.getProperty("PORTFOLIO_STATE_ENC_B64") || "";
+    const updatedAt = scriptProps.getProperty("PORTFOLIO_STATE_UPDATED_AT") || "";
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "SUCCESS",
+      updated_at: updatedAt,
+      bundle_b64: encryptedBundleB64
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "HEALTHY",
+    engine: "Portfolio OS Sheets Relay v4.1",
+    timestamp: new Date().toISOString()
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  try {
+    const postData = JSON.parse(e.postData.contents);
+    const token = postData.token || "";
+
+    const scriptProps = PropertiesService.getScriptProperties();
+    const configuredToken = scriptProps.getProperty("API_AUTH_TOKEN") || "dev_secret_key_123";
+
+    if (token !== configuredToken) {
+      return ContentService.createTextOutput(JSON.stringify({ error: "Unauthorized" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (postData.bundle_b64) {
+      scriptProps.setProperty("PORTFOLIO_STATE_ENC_B64", postData.bundle_b64);
+      scriptProps.setProperty("PORTFOLIO_STATE_UPDATED_AT", new Date().toISOString());
+      return ContentService.createTextOutput(JSON.stringify({ status: "SUCCESS", message: "Bundle updated" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({ error: "Missing bundle_b64 payload" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}

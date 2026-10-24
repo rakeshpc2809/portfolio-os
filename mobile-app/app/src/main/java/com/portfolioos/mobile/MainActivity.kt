@@ -35,6 +35,8 @@ class MainActivity : FragmentActivity() {
             viewModel.setAppLocked(false)
         }
 
+        handleIncomingSendIntent(intent)
+
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) {
                 super.onStop(owner)
@@ -84,6 +86,7 @@ class MainActivity : FragmentActivity() {
                         onRefresh = { viewModel.fetchSyncSnapshot(isManualRefresh = true) },
                         onUpdateCustomUrl = { newUrl -> viewModel.updateCustomUrl(newUrl) },
                         onFetchOverlap = { incUnverified -> viewModel.fetchOverlapAnalytics(incUnverified) },
+                        onSimulateFullSync = { viewModel.fetchSyncSnapshot(isManualRefresh = true) },
                         onSimulateSyncFailure = {
                             scope.launch {
                                 snackbarHostState.showSnackbar(
@@ -136,5 +139,16 @@ class MainActivity : FragmentActivity() {
         setIntent(intent)
         val targetPage = intent.getIntExtra("TARGET_PAGE", 0)
         viewModel.setActivePage(targetPage)
+        handleIncomingSendIntent(intent)
+    }
+
+    private fun handleIncomingSendIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_SEND) {
+            val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+            if (uri != null) {
+                com.portfolioos.mobile.worker.CasUploadWorker.enqueueUpload(applicationContext, uri)
+                android.widget.Toast.makeText(this, "CAS Statement queued for background sync", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
     }
 }

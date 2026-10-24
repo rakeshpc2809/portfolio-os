@@ -4,6 +4,10 @@ import logging
 from typing import List, Optional
 from pydantic import BaseModel
 
+import io
+import pyarrow as pa
+import pyarrow.ipc as ipc
+
 logger = logging.getLogger("quant.analytics_engine")
 try:
     import quantstats as qs
@@ -53,6 +57,7 @@ class BenchmarkAnalyticsResponse(BaseModel):
     sharpe_ratio: float
     tracking_error_pct: float
     outperformance_pct: float
+    information_ratio: Optional[float] = 0.0
 
 def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
     if len(nav_series) < 30:
@@ -368,6 +373,7 @@ def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_
     tracking_err = round(float(np.std(p_rets - b_rets) * np.sqrt(252.0) * 100.0), 2)
     sharpe = round((p_cagr - rf_pct) / p_vol, 2) if p_vol > 0 else 0.0
     outperformance = round(p_cagr - b_cagr, 2)
+    info_ratio = round(outperformance / tracking_err, 2) if tracking_err > 0 else 0.0
 
     sample_days = len(p_rets)
     is_provisional = sample_days < 750
@@ -397,5 +403,83 @@ def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_
         "beta": beta,
         "sharpe_ratio": sharpe,
         "tracking_error_pct": tracking_err,
-        "outperformance_pct": outperformance
+        "outperformance_pct": outperformance,
+        "information_ratio": info_ratio
     }
+
+
+def serialize_arrow_stream(table: pa.Table) -> bytes:
+    """Serializes a PyArrow Table into an Arrow IPC stream byte sequence."""
+    sink = io.BytesIO()
+    with ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    return sink.getvalue()
+
+
+def deserialize_arrow_stream(data: bytes) -> pa.Table:
+    """Deserializes an Arrow IPC stream byte sequence into a PyArrow Table."""
+    sink = io.BytesIO(data)
+    with ipc.open_stream(sink) as reader:
+        return reader.read_all()
+
+
+def nav_records_to_arrow_stream(records: list) -> bytes:
+    """Converts a list of dicts ({'isin': str, 'nav_date': str, 'nav_value': float}) into an Arrow IPC stream."""
+    schema = pa.schema([
+        ("isin", pa.string()),
+        ("nav_date", pa.string()),
+        ("nav_value", pa.float64())
+    ])
+    if not records:
+        table = pa.Table.from_batches([], schema=schema)
+    else:
+        isins = [str(r.get("isin") or r.get("asset_id", "")) for r in records]
+        dates = [str(r.get("nav_date") or r.get("date", "")) for r in records]
+        vals = [float(r.get("nav_value") if r.get("nav_value") is not None else r.get("nav", 0.0)) for r in records]
+        table = pa.Table.from_arrays(
+            [pa.array(isins), pa.array(dates), pa.array(vals)],
+            schema=schema
+        )
+    return serialize_arrow_stream(table)
+
+
+def compute_arrow_stream_metrics(arrow_bytes: bytes) -> bytes:
+    """Receives an Arrow IPC stream of NAV records, computes quant analytics, and returns an Arrow stream of fund metrics."""
+    table = deserialize_arrow_stream(arrow_bytes)
+    df = table.to_pandas()
+    col_map = {}
+    for c in df.columns:
+        clow = c.lower()
+        if clow in ("isin", "asset_id"):
+            col_map[c] = "isin"
+        elif clow in ("nav_date", "date"):
+            col_map[c] = "nav_date"
+        elif clow in ("nav", "nav_value"):
+            col_map[c] = "nav_value"
+    df = df.rename(columns=col_map)
+    if "isin" not in df.columns or "nav_value" not in df.columns:
+        raise ValueError("Missing required columns ('isin' and 'nav_value') in Arrow stream")
+
+    metrics_rows = []
+    for isin, group in df.groupby("isin"):
+        sorted_group = group.sort_values("nav_date") if "nav_date" in group.columns else group
+        navs = sorted_group["nav_value"].astype(float).tolist()
+        dates = sorted_group["nav_date"].astype(str).tolist() if "nav_date" in sorted_group.columns else None
+        res = compute_fund_analytics(navs, dates=dates)
+        metrics_rows.append({
+            "isin": str(isin),
+            "status": str(res.get("status", "OK")),
+            "data_points": int(res.get("data_points", len(navs))),
+            "sharpe": float(res.get("sharpe", 0.0)),
+            "sortino": float(res.get("sortino", 0.0)),
+            "calmar": float(res.get("calmar", 0.0)),
+            "max_drawdown": float(res.get("max_drawdown", 0.0)),
+            "volatility_annual": float(res.get("volatility_annual", 0.0)),
+            "var_95": float(res.get("var_95", 0.0)),
+            "cvar_95": float(res.get("cvar_95", 0.0))
+        })
+
+    out_df = pd.DataFrame(metrics_rows)
+    out_table = pa.Table.from_pandas(out_df)
+    return serialize_arrow_stream(out_table)
+

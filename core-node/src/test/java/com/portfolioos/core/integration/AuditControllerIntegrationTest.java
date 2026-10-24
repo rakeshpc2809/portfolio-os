@@ -36,4 +36,16 @@ public class AuditControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.holdings").isArray());
     }
+
+    @Test
+    @DisplayName("GET /api/v1/analytics/factor-benchmarks returns 200 OK with factor pairs and metrics")
+    void testFactorBenchmarksEndpoint() throws Exception {
+        mockMvc.perform(get("/api/v1/analytics/factor-benchmarks")
+                .header("X-Api-Auth-Token", AUTH_TOKEN)
+                .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("OK"))
+                .andExpect(jsonPath("$.as_of").isNotEmpty())
+                .andExpect(jsonPath("$.factors").isArray());
+    }
 }

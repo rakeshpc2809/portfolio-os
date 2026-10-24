@@ -2,6 +2,15 @@
  * Portfolio OS - API Client & Type Definitions
  */
 
+export interface DailyBriefDto {
+  status: string;
+  headline: string;
+  narration: string;
+  verified: boolean;
+  generated_at?: string;
+  metrics?: Record<string, any>;
+}
+
 export interface SnapshotDto {
   generated_at?: string;
   data_freshness_status?: string;
@@ -11,6 +20,7 @@ export interface SnapshotDto {
   holdings?: HoldingDto[];
   sync_info?: SyncInfoDto;
   quiet_mode?: boolean;
+  daily_brief?: DailyBriefDto;
 }
 
 export interface PortfolioSummaryDto {
@@ -127,6 +137,53 @@ export interface OverlapReportDto {
     overlap_percentage: number;
     common_stock_count: number;
   }>;
+}
+
+export interface ActionRecommendationDto {
+  card_id?: string;
+  cardId?: string;
+  category: string;
+  title: string;
+  status: string;
+  severity: 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO' | string;
+  summary: string;
+  detailed_rationale?: string;
+  detailedRationale?: string;
+  metrics?: Record<string, any>;
+  provenance_footer?: string;
+  provenanceFooter?: string;
+}
+
+export async function fetchActionRecommendations(): Promise<ActionRecommendationDto[]> {
+  return fetchJson<ActionRecommendationDto[]>('/rules/action-recommendations');
+}
+
+export interface UpSetStockItem {
+  stock_symbol: string;
+  min_weight: number;
+  total_weight: number;
+}
+
+export interface UpSetCombination {
+  combination_key: string;
+  participating_funds: string[];
+  stock_count: number;
+  total_overlap_weight: number;
+  stocks: UpSetStockItem[];
+}
+
+export interface MultiFundUpSetResponse {
+  status: string;
+  holding_coverage_type: string;
+  constituent_source: string;
+  disclosure_date: string;
+  is_live_download: boolean;
+  upset_combinations: UpSetCombination[];
+  evaluated_funds: string[];
+}
+
+export async function fetchMultiFundUpSetAnalytics(): Promise<MultiFundUpSetResponse> {
+  return fetchJson<MultiFundUpSetResponse>('/analytics/overlap/upset');
 }
 
 export function getAuthToken(): string {
@@ -315,6 +372,62 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
       stale_nav_count: Number(syncInfo.stale_nav_count || 0),
       ledger_hmac_verified: Boolean(syncInfo.ledger_hmac_verified)
     },
-    quiet_mode: Boolean(syncInfo.quiet_mode)
+    quiet_mode: Boolean(syncInfo.quiet_mode),
+    daily_brief: snapshotRes?.daily_brief || undefined
   };
 }
+
+export async function fetchParquetTable(table: string = 'fund_holdings'): Promise<ArrayBuffer> {
+  const token = getAuthToken();
+  const headers = new Headers();
+  if (token) headers.set('X-Api-Auth-Token', token);
+  const resp = await fetch(`/api/v1/sync/parquet?table=${encodeURIComponent(table)}`, { headers });
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch parquet table ${table}: ${resp.statusText}`);
+  }
+  return resp.arrayBuffer();
+}
+
+export async function fetchParquetBundle(): Promise<ArrayBuffer> {
+  const token = getAuthToken();
+  const headers = new Headers();
+  if (token) headers.set('X-Api-Auth-Token', token);
+  const resp = await fetch('/api/v1/sync/parquet-bundle', { headers });
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch parquet bundle: ${resp.statusText}`);
+  }
+  return resp.arrayBuffer();
+}
+
+export interface FactorBenchmarkMetric {
+  isin: string;
+  fundName: string;
+  benchmarkId: string;
+  benchmarkName: string;
+  beta: number;
+  trackingErrorPct: number;
+  alphaPct: number;
+  informationRatio: number;
+  outperformancePct: number;
+  sampleStatus: string;
+  sampleDays: number;
+}
+
+export interface FactorBenchmarksResponse {
+  status: string;
+  as_of: string;
+  count: number;
+  factors: FactorBenchmarkMetric[];
+}
+
+export async function fetchFactorBenchmarks(): Promise<FactorBenchmarksResponse> {
+  const token = getAuthToken();
+  const headers = new Headers();
+  if (token) headers.set('X-Api-Auth-Token', token);
+  const resp = await fetch('/api/v1/analytics/factor-benchmarks', { headers });
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch factor benchmarks: ${resp.statusText}`);
+  }
+  return resp.json();
+}
+

@@ -34,7 +34,7 @@
     holding: HoldingDto;
   }
 
-  const allLots = $derived<EnrichedLot[]>(() => {
+  const allLots = $derived.by<EnrichedLot[]>(() => {
     const list: EnrichedLot[] = [];
     for (const h of holdings) {
       if (h.lots && h.lots.length > 0) {
@@ -46,23 +46,23 @@
     return list;
   });
 
-  const filteredLots = $derived<EnrichedLot[]>(() => {
-    let list = allLots();
+  const filteredLots = $derived.by<EnrichedLot[]>(() => {
+    let list = allLots;
     const q = searchQuery.toLowerCase().trim();
     if (q) {
       list = list.filter(
-        l => l.holding.asset_name.toLowerCase().includes(q) ||
+        (l: EnrichedLot) => l.holding.asset_name.toLowerCase().includes(q) ||
              l.holding.isin.toLowerCase().includes(q) ||
              (l.lot_id && l.lot_id.toLowerCase().includes(q))
       );
     }
 
     if (activeFilter === 'LTCG') {
-      list = list.filter(l => l.tax_term === 'LONG_TERM');
+      list = list.filter((l: EnrichedLot) => l.tax_term === 'LONG_TERM');
     } else if (activeFilter === 'STCG') {
-      list = list.filter(l => l.tax_term === 'SHORT_TERM');
+      list = list.filter((l: EnrichedLot) => l.tax_term === 'SHORT_TERM');
     } else if (activeFilter === 'HARVEST') {
-      list = list.filter(l => (l.realized_or_unrealized_gain || 0) < 0);
+      list = list.filter((l: EnrichedLot) => (l.realized_or_unrealized_gain || 0) < 0);
     }
 
     return list;
@@ -78,10 +78,10 @@
     gainPct: number;
   }
 
-  const groupedSchemes = $derived<GroupedHolding[]>(() => {
+  const groupedSchemes = $derived.by<GroupedHolding[]>(() => {
     const map = new Map<string, GroupedHolding>();
 
-    for (const lot of filteredLots()) {
+    for (const lot of filteredLots) {
       const isin = lot.holding.isin;
       if (!map.has(isin)) {
         map.set(isin, {
@@ -108,7 +108,7 @@
   });
 
   // Summary tallies
-  const metrics = $derived(() => {
+  const metrics = $derived.by(() => {
     let ltcgCount = 0;
     let ltcgGain = 0;
     let stcgCount = 0;
@@ -116,7 +116,7 @@
     let harvestCount = 0;
     let harvestLoss = 0;
 
-    for (const l of allLots()) {
+    for (const l of allLots) {
       const g = l.realized_or_unrealized_gain || 0;
       if (l.tax_term === 'LONG_TERM') {
         ltcgCount++;
@@ -133,6 +133,7 @@
 
     return { ltcgCount, ltcgGain, stcgCount, stcgGain, harvestCount, harvestLoss };
   });
+
 
   function toggleScheme(isin: string) {
     expandedSchemes[isin] = !expandedSchemes[isin];
@@ -162,7 +163,7 @@
         onclick={() => setFilter('ALL')}
       >
         <Layers size={14} />
-        <span>All Lots ({allLots().length})</span>
+        <span>All Lots ({allLots.length})</span>
       </button>
 
       <button 
@@ -172,8 +173,8 @@
         onclick={() => setFilter('LTCG')}
       >
         <ShieldCheck size={14} />
-        <span>LTCG Mature ({metrics().ltcgCount})</span>
-        <span class="chip-badge positive">{formatINR(metrics().ltcgGain, quietMode)}</span>
+        <span>LTCG Mature ({metrics.ltcgCount})</span>
+        <span class="chip-badge positive">{formatINR(metrics.ltcgGain, quietMode)}</span>
       </button>
 
       <button 
@@ -183,11 +184,11 @@
         onclick={() => setFilter('STCG')}
       >
         <Clock size={14} />
-        <span>STCG Locked ({metrics().stcgCount})</span>
-        <span class="chip-badge neutral">{formatINR(metrics().stcgGain, quietMode)}</span>
+        <span>STCG Locked ({metrics.stcgCount})</span>
+        <span class="chip-badge neutral">{formatINR(metrics.stcgGain, quietMode)}</span>
       </button>
 
-      {#if metrics().harvestCount > 0}
+      {#if metrics.harvestCount > 0}
         <button 
           type="button" 
           class="chip harvest-chip" 
@@ -195,8 +196,8 @@
           onclick={() => setFilter('HARVEST')}
         >
           <Sparkles size={14} />
-          <span>Loss Harvest ({metrics().harvestCount})</span>
-          <span class="chip-badge negative">-{formatINR(metrics().harvestLoss, quietMode)}</span>
+          <span>Loss Harvest ({metrics.harvestCount})</span>
+          <span class="chip-badge negative">-{formatINR(metrics.harvestLoss, quietMode)}</span>
         </button>
       {/if}
     </div>
@@ -222,11 +223,20 @@
         <span class="strong">Sec 112A Tax-Harvest Opportunity:</span>
         <span>You have <strong>{formatINR(ltcgRemaining, quietMode)}</strong> of tax-free LTCG headroom remaining this financial year (exempt up to ₹1.25 Lakh).</span>
       </div>
+      <a 
+        href="/api/v1/tax/harvest-calendar.ics" 
+        download="portfolio_harvest_calendar.ics"
+        class="calendar-feed-btn"
+        title="Download iCalendar file with lot maturation alarms"
+      >
+        <Calendar size={13} />
+        <span>Add Maturation Reminders (.ics)</span>
+      </a>
     </div>
   {/if}
 
   <!-- Scheme Groups Accordion -->
-  {#if groupedSchemes().length === 0}
+  {#if groupedSchemes.length === 0}
     <div class="empty-state">
       <Filter size={32} class="empty-icon" />
       <p class="empty-title">No matching tax lots found</p>
@@ -234,7 +244,8 @@
     </div>
   {:else}
     <div class="schemes-list">
-      {#each groupedSchemes() as group (group.holding.isin)}
+      {#each groupedSchemes as group (group.holding.isin)}
+
         {@const isExpanded = expandedSchemes[group.holding.isin] ?? false}
         <div class="scheme-group-card" class:expanded={isExpanded}>
           <!-- Header Bar -->
@@ -581,6 +592,30 @@
     font-weight: 600;
     margin-right: 0.4rem;
   }
+
+  .calendar-feed-btn {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: hsla(158, 85%, 45%, 0.15);
+    border: 1px solid hsla(158, 85%, 45%, 0.35);
+    color: var(--accent-emerald);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.35rem 0.65rem;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .calendar-feed-btn:hover {
+    background: hsla(158, 85%, 45%, 0.25);
+    color: #fff;
+    border-color: var(--accent-emerald);
+  }
+
 
   /* Empty State */
   .empty-state {

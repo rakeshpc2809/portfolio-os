@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchJson, type RebalancePlanDto } from '../api';
+  import { fetchJson, fetchActionRecommendations, type RebalancePlanDto, type ActionRecommendationDto } from '../api';
   import { formatINR, formatPercent } from '../formatters';
   import { 
     Flame, 
@@ -49,8 +49,27 @@
     }>;
   }
 
+  interface HrpAuditDto {
+    status: string;
+    trading_days?: number;
+    start_date?: string;
+    end_date?: string;
+    allocations?: Array<{
+      isin: string;
+      name: string;
+      bucket: string;
+      target_pct: number;
+      hrp_pct: number;
+      drift_pct: number;
+    }>;
+  }
+
   let fireData = $state<FireSummary | null>(null);
   let loadingFire = $state(false);
+  let actionRecommendations = $state<ActionRecommendationDto[]>([]);
+  let loadingRecommendations = $state(false);
+  let hrpData = $state<HrpAuditDto | null>(null);
+  let showHrpComparison = $state(false);
 
   async function loadFireSummary() {
     loadingFire = true;
@@ -63,8 +82,29 @@
     }
   }
 
+  async function loadActionRecommendations() {
+    loadingRecommendations = true;
+    try {
+      actionRecommendations = await fetchActionRecommendations();
+    } catch {
+      // fallback gracefully
+    } finally {
+      loadingRecommendations = false;
+    }
+  }
+
+  async function loadHrpAudit() {
+    try {
+      hrpData = await fetchJson<HrpAuditDto>('/analytics/hrp-audit');
+    } catch {
+      // fallback gracefully
+    }
+  }
+
   onMount(() => {
     loadFireSummary();
+    loadActionRecommendations();
+    loadHrpAudit();
   });
 </script>
 
@@ -106,15 +146,32 @@
       </div>
 
       <div class="orders-list">
-        <span class="orders-title">Target Bucket Allocation:</span>
+        <div class="orders-header-row">
+          <span class="orders-title">Target Bucket Allocation:</span>
+          <button 
+            type="button" 
+            class="hrp-toggle-pill" 
+            class:active={showHrpComparison}
+            onclick={() => showHrpComparison = !showHrpComparison}
+          >
+            <Compass size={12} />
+            <span>{showHrpComparison ? 'Hide HRP (95% CVaR)' : 'Compare HRP (95% CVaR)'}</span>
+          </button>
+        </div>
         {#if rebalancePlan?.buy_side?.buckets && rebalancePlan.buy_side.buckets.length > 0}
           {#each rebalancePlan.buy_side.buckets as b}
             {@const alloc = b.amount_allocated ?? 0}
+            {@const bNameUpper = b.bucket.toUpperCase().replace(/\s+/g, '_')}
+            {@const hrpAlloc = hrpData?.allocations?.filter(a => a.bucket.toUpperCase() === bNameUpper || bNameUpper.includes(a.bucket.toUpperCase()))}
+            {@const hrpPct = hrpAlloc && hrpAlloc.length > 0 ? hrpAlloc.reduce((acc, curr) => acc + curr.hrp_pct, 0) : null}
             <div class="order-row">
               <div class="order-info">
                 <span class="bucket-name font-medium">{b.bucket}</span>
                 <span class="pct-detail mono text-muted">
                   {formatPercent(b.current_pct)} → <strong class="text-cyan">{formatPercent(b.post_pct ?? b.target_pct)}</strong>
+                  {#if showHrpComparison && hrpPct !== null}
+                    <span class="hrp-badge mono">HRP CVaR: <strong class="text-emerald">{hrpPct.toFixed(1)}%</strong></span>
+                  {/if}
                 </span>
               </div>
               <div class="order-amount mono bold" class:allocated={alloc > 0}>
@@ -208,6 +265,46 @@
           </span>
         </div>
       </div>
+
+      <!-- Decumulation Guardrails & Action Rules Grid -->
+      {#if actionRecommendations && actionRecommendations.length > 0}
+        <div class="guardrails-panel">
+          <div class="guardrails-header">
+            <div class="guardrails-header-left">
+              <ShieldCheck size={16} class="text-cyan" />
+              <span class="guardrails-heading">Decumulation Guardrails & Action Rules</span>
+            </div>
+            <span class="guardrails-badge">RULE ENGINE v4.1</span>
+          </div>
+          <div class="guardrails-grid">
+            {#each actionRecommendations as rec}
+              <div class="guardrail-card {rec.severity?.toLowerCase() || 'info'}">
+                <div class="gr-top">
+                  <span class="gr-category">{rec.category?.replace(/_/g, ' ') || 'ACTION RULE'}</span>
+                  <span class="gr-status-pill {rec.severity?.toLowerCase() || 'info'}">
+                    {rec.status?.replace(/_/g, ' ') || 'INFORMATIONAL'}
+                  </span>
+                </div>
+                <h4 class="gr-title">{rec.title}</h4>
+                <p class="gr-summary">{rec.summary}</p>
+                {#if rec.metrics && Object.keys(rec.metrics).length > 0}
+                  <div class="gr-metrics">
+                    {#each Object.entries(rec.metrics) as [k, v]}
+                      <div class="gr-metric-item">
+                        <span class="gr-metric-k">{k.replace(/_/g, ' ')}:</span>
+                        <span class="gr-metric-v mono">{typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(2)) : v}</span>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+                {#if rec.provenance_footer || rec.provenanceFooter}
+                  <div class="gr-footer">{rec.provenance_footer || rec.provenanceFooter}</div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       <!-- Scenarios Selector -->
       {#if fireData.scenarios && fireData.scenarios.length > 0}
@@ -366,6 +463,47 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+  }
+
+  .orders-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .hrp-toggle-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.68rem;
+    font-family: var(--font-mono, monospace);
+    background: var(--surface-void);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition-fast, 0.15s ease);
+  }
+
+  .hrp-toggle-pill:hover {
+    border-color: var(--accent-emerald);
+    color: var(--accent-emerald);
+  }
+
+  .hrp-toggle-pill.active {
+    background: hsla(158, 85%, 45%, 0.12);
+    border-color: var(--accent-emerald);
+    color: var(--accent-emerald);
+  }
+
+  .hrp-badge {
+    margin-left: 0.5rem;
+    font-size: 0.68rem;
+    padding: 0.1rem 0.35rem;
+    background: hsla(158, 85%, 45%, 0.1);
+    border-radius: var(--radius-sm);
+    border: 1px solid hsla(158, 85%, 45%, 0.2);
   }
 
   .orders-title {
@@ -612,6 +750,159 @@
   .text-cyan { color: var(--accent-cyan); }
   .text-emerald { color: var(--accent-emerald); }
   .text-amber { color: var(--accent-amber); }
+
+  .guardrails-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .guardrails-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .guardrails-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .guardrails-heading {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-primary);
+  }
+
+  .guardrails-badge {
+    font-size: 0.65rem;
+    font-family: var(--font-mono, monospace);
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: hsla(185, 85%, 52%, 0.12);
+    color: var(--accent-cyan);
+    border: 1px solid hsla(185, 85%, 52%, 0.25);
+  }
+
+  .guardrails-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0.85rem;
+  }
+
+  .guardrail-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.9rem 1rem;
+    background: var(--surface-void);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+
+  .guardrail-card:hover {
+    border-color: var(--border-prominent);
+    transform: translateY(-1px);
+  }
+
+  .guardrail-card.high, .guardrail-card.alert {
+    border-color: hsla(0, 85%, 60%, 0.4);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.08);
+  }
+
+  .guardrail-card.medium, .guardrail-card.warning {
+    border-color: hsla(38, 92%, 50%, 0.35);
+  }
+
+  .gr-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .gr-category {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+  }
+
+  .gr-status-pill {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 9999px;
+    background: var(--surface-elevated);
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .gr-status-pill.high, .gr-status-pill.alert {
+    background: hsla(0, 85%, 60%, 0.15);
+    color: #f87171;
+    border-color: hsla(0, 85%, 60%, 0.3);
+  }
+
+  .gr-status-pill.medium, .gr-status-pill.warning {
+    background: hsla(38, 92%, 50%, 0.15);
+    color: var(--accent-amber);
+    border-color: hsla(38, 92%, 50%, 0.3);
+  }
+
+  .gr-title {
+    margin: 0;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .gr-summary {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+  }
+
+  .gr-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.8rem;
+    padding: 0.4rem 0.6rem;
+    background: var(--surface-base, rgba(0,0,0,0.2));
+    border-radius: var(--radius-sm);
+    font-size: 0.72rem;
+    margin-top: 0.2rem;
+  }
+
+  .gr-metric-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .gr-metric-k {
+    color: var(--text-muted);
+    text-transform: capitalize;
+  }
+
+  .gr-metric-v {
+    color: var(--accent-cyan);
+    font-weight: 600;
+  }
+
+  .gr-footer {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 0.2rem;
+  }
 
   @media (max-width: 900px) {
     .rebalance-grid {

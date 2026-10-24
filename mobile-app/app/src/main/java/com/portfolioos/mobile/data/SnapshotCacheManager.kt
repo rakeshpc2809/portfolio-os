@@ -80,7 +80,9 @@ object SnapshotCacheManager {
     }
 
     fun getAuthToken(context: Context): String {
-        return getPrefs(context).getString(KEY_AUTH_TOKEN, "") ?: ""
+        val token = getPrefs(context).getString(KEY_AUTH_TOKEN, null)
+        if (!token.isNullOrBlank()) return token
+        return if (com.portfolioos.mobile.BuildConfig.DEBUG) "dev_secret_key_123" else ""
     }
 
     fun setAuthToken(context: Context, token: String) {
@@ -132,12 +134,25 @@ object SnapshotCacheManager {
     }
 
     fun loadSnapshot(context: Context): SyncSnapshot? {
-        val json = getPrefs(context).getString(KEY_SNAPSHOT_JSON, null) ?: return null
-        return try {
-            Gson().fromJson(json, SyncSnapshot::class.java)
-        } catch (e: Exception) {
-            null
+        val json = getPrefs(context).getString(KEY_SNAPSHOT_JSON, null)
+        if (json != null) {
+            return try {
+                Gson().fromJson(json, SyncSnapshot::class.java)
+            } catch (e: Exception) {
+                null
+            }
         }
+        // Fallback for fresh installs / completely offline cold boots: load pre-bundled ledger snapshot from assets
+        return runCatching {
+            context.assets.open("fallback_snapshot.json").bufferedReader().use { reader ->
+                val assetJson = reader.readText()
+                val snapshot = Gson().fromJson(assetJson, SyncSnapshot::class.java)
+                if (snapshot != null) {
+                    saveSnapshot(context, snapshot, isFullLedgerSync = false)
+                }
+                snapshot
+            }
+        }.getOrNull()
     }
 
     fun saveSnapshot(context: Context, snapshot: SyncSnapshot, isFullLedgerSync: Boolean) {

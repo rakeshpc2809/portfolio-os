@@ -25,14 +25,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @RestController
 @RequestMapping("/api/v1/sync")
@@ -44,18 +49,30 @@ public class SyncController {
     private final com.portfolioos.core.service.PortfolioValuationService valuationService;
     private final DuckDbProjector duckDbProjector;
     private final QuantSidecarClient quantSidecarClient;
+    private final com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter;
 
     @Autowired
     public SyncController(
         LedgerCacheService cacheService,
         com.portfolioos.core.service.PortfolioValuationService valuationService,
         DuckDbProjector duckDbProjector,
-        QuantSidecarClient quantSidecarClient
+        QuantSidecarClient quantSidecarClient,
+        com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter
     ) {
         this.cacheService = cacheService;
         this.valuationService = valuationService;
         this.duckDbProjector = duckDbProjector;
         this.quantSidecarClient = quantSidecarClient;
+        this.cloudBundleExporter = cloudBundleExporter;
+    }
+
+    public SyncController(
+        LedgerCacheService cacheService,
+        com.portfolioos.core.service.PortfolioValuationService valuationService,
+        DuckDbProjector duckDbProjector,
+        QuantSidecarClient quantSidecarClient
+    ) {
+        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, null);
     }
 
     private static String detectFineBucket(String assetName) {
@@ -377,9 +394,31 @@ public class SyncController {
             .filter(s -> "WARNING".equalsIgnoreCase(s.severity()) || "CRITICAL".equalsIgnoreCase(s.severity()))
             .toList();
 
+        DailyBriefDto dailyBrief = loadDailyBriefCache();
+
         return ResponseEntity.ok(new UnidirectionalSyncSnapshot(
-            syncInfo, holdings, taxLots, filteredSignals, netWorthHistory, rebalancePlan, bucketAllocation
+            syncInfo, holdings, taxLots, filteredSignals, netWorthHistory, rebalancePlan, bucketAllocation, dailyBrief
         ));
+    }
+
+    private DailyBriefDto loadDailyBriefCache() {
+        java.io.File[] candidates = new java.io.File[] {
+            new java.io.File("data/daily_brief_cache.json"),
+            new java.io.File("../data/daily_brief_cache.json"),
+            new java.io.File("../../data/daily_brief_cache.json"),
+            new java.io.File("/app/data/daily_brief_cache.json")
+        };
+        for (java.io.File f : candidates) {
+            if (f.exists() && f.isFile()) {
+                try {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    return mapper.readValue(f, DailyBriefDto.class);
+                } catch (Exception e) {
+                    // ignore
+                }
+            }
+        }
+        return null;
     }
 
     @GetMapping("/rebalance/plan")
@@ -453,4 +492,133 @@ public class SyncController {
         );
         return ResponseEntity.ok(plan);
     }
+
+    @GetMapping(value = "/bundle/encrypted", produces = org.springframework.http.MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    public ResponseEntity<byte[]> getEncryptedBundle() {
+        if (cloudBundleExporter == null) {
+            return ResponseEntity.status(503).build();
+        }
+        byte[] existing = cloudBundleExporter.getExistingEncryptedBundle();
+        if (existing == null) {
+            try {
+                UnidirectionalSyncSnapshot snapshot = getSnapshot(null, null).getBody();
+                if (snapshot != null) {
+                    existing = cloudBundleExporter.exportAndEncryptBundle(snapshot);
+                }
+            } catch (Exception e) {
+                log.error("Failed on-demand bundle export: {}", e.getMessage(), e);
+            }
+        }
+        if (existing == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok()
+            .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"portfolio_state.enc\"")
+            .body(existing);
+    }
+
+    @PostMapping("/bundle/export")
+    public ResponseEntity<Map<String, Object>> triggerBundleExport() {
+        if (cloudBundleExporter == null) {
+            return ResponseEntity.status(503).body(Map.of("status", "ERROR", "message", "Cloud bundle exporter not initialized"));
+        }
+        try {
+            UnidirectionalSyncSnapshot snapshot = getSnapshot(null, null).getBody();
+            if (snapshot == null) {
+                return ResponseEntity.internalServerError().body(Map.of("status", "ERROR", "message", "Unable to build snapshot"));
+            }
+            byte[] encrypted = cloudBundleExporter.exportAndEncryptBundle(snapshot);
+            return ResponseEntity.ok(Map.of(
+                "status", "SUCCESS",
+                "bytes", encrypted.length,
+                "file", "data/portfolio_state.enc"
+            ));
+        } catch (Exception e) {
+            log.error("Bundle export failed: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("status", "ERROR", "message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/parquet")
+    public ResponseEntity<byte[]> getParquetTable(@RequestParam(defaultValue = "fund_holdings") String table) {
+        if (duckDbProjector == null) {
+            return ResponseEntity.status(503).build();
+        }
+        String cleanTable = table.replaceAll("[^a-zA-Z0-9_]", "");
+        if (cleanTable.isBlank()) {
+            cleanTable = "fund_holdings";
+        }
+        File tempFile = null;
+        try {
+            tempFile = File.createTempFile("parquet_" + cleanTable + "_", ".parquet");
+            duckDbProjector.exportTableToParquet(cleanTable, tempFile);
+            byte[] bytes = Files.readAllBytes(tempFile.toPath());
+            return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/vnd.apache.parquet")
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + cleanTable + ".parquet\"")
+                .body(bytes);
+        } catch (Exception e) {
+            log.error("Failed to export table {} to parquet: {}", cleanTable, e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        } finally {
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
+    }
+
+    @GetMapping("/parquet-bundle")
+    public ResponseEntity<byte[]> getParquetBundle() {
+        if (duckDbProjector == null) {
+            return ResponseEntity.status(503).build();
+        }
+        List<File> tempFiles = new ArrayList<>();
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            try (ZipOutputStream zos = new ZipOutputStream(baos)) {
+                // 1. open_lots.parquet (PII stripped - no folio_no)
+                File openLotsFile = File.createTempFile("open_lots_", ".parquet");
+                tempFiles.add(openLotsFile);
+                duckDbProjector.exportQueryToParquet(
+                    "SELECT id, asset_id, asset_name, event_date, units, price_per_unit, gross_amount FROM projected_events WHERE event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS')",
+                    openLotsFile
+                );
+                zos.putNextEntry(new ZipEntry("open_lots.parquet"));
+                zos.write(Files.readAllBytes(openLotsFile.toPath()));
+                zos.closeEntry();
+
+                // 2. fund_holdings.parquet
+                File fundHoldingsFile = File.createTempFile("fund_holdings_", ".parquet");
+                tempFiles.add(fundHoldingsFile);
+                duckDbProjector.exportTableToParquet("fund_holdings", fundHoldingsFile);
+                zos.putNextEntry(new ZipEntry("fund_holdings.parquet"));
+                zos.write(Files.readAllBytes(fundHoldingsFile.toPath()));
+                zos.closeEntry();
+
+                // 3. benchmark_history.parquet
+                File benchmarkFile = File.createTempFile("benchmark_history_", ".parquet");
+                tempFiles.add(benchmarkFile);
+                duckDbProjector.exportTableToParquet("benchmark_history", benchmarkFile);
+                zos.putNextEntry(new ZipEntry("benchmark_history.parquet"));
+                zos.write(Files.readAllBytes(benchmarkFile.toPath()));
+                zos.closeEntry();
+            }
+
+            byte[] zipBytes = baos.toByteArray();
+            return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/zip")
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"parquet_bundle.zip\"")
+                .body(zipBytes);
+        } catch (Exception e) {
+            log.error("Failed to export parquet bundle: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        } finally {
+            for (File f : tempFiles) {
+                if (f != null && f.exists()) {
+                    f.delete();
+                }
+            }
+        }
+    }
 }
+

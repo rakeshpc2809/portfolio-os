@@ -1,0 +1,15 @@
+# Portfolio OS — Litestream Continuous WAL Replication
+# Replicates SQLite write-ahead log (WAL) frames streaming to S3, Cloudflare R2, or GCS
+# Enables point-in-time recovery down to the millisecond with zero runtime latency.
+
+dbs:
+  - path: data/tax_ledger.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET:-portfolio-os-wal-backup}
+        path: tax_ledger
+        endpoint: ${LITESTREAM_ENDPOINT:-https://s3.amazonaws.com}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID:-}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY:-}
+        retention: 720h # 30 days retention
+        sync-interval: 10s

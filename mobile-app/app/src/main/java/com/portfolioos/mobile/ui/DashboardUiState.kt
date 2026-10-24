@@ -21,7 +21,8 @@ data class DashboardUiState(
     val activePage: Int = 0,
     val benchmarkData: BenchmarkAnalyticsDto? = null,
     val fireSummaryData: FireSummaryResponseDto? = null,
-    val overlapData: OverlapReportDto? = null
+    val overlapData: OverlapReportDto? = null,
+    val actionRecommendations: List<com.portfolioos.mobile.model.ActionRecommendationDto> = emptyList()
 ) {
     val isMasked: Boolean
         get() = (isAppLocked && isBiometricLockEnabled) || isQuietModeEnabled

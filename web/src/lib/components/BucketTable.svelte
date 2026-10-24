@@ -1,23 +1,53 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { BucketAllocationDto } from '../api';
+  import { fetchFactorBenchmarks, type FactorBenchmarkMetric } from '../api';
   import { formatINR } from '../formatters';
+
+  interface Props {
+    buckets?: BucketAllocationDto[];
+    isQuiet?: boolean;
+    quietMode?: boolean;
+    onInspectFund?: (isin: string) => void;
+  }
 
   let {
     buckets = [],
     isQuiet = false,
     quietMode = false,
     onInspectFund = (isin: string) => {}
-  } = $props<{
-    buckets?: BucketAllocationDto[];
-    isQuiet?: boolean;
-    quietMode?: boolean;
-    onInspectFund?: (isin: string) => void;
-  }>();
+  }: Props = $props();
+
 
   const effectiveQuiet = $derived(isQuiet || quietMode);
 
   // Set of currently expanded bucket rows
   let expandedBuckets = $state<Set<string>>(new Set(['EQUITY_CORE']));
+  let expandedFundIsin = $state<string | null>(null);
+  let factorMetrics = $state<Record<string, FactorBenchmarkMetric>>({});
+
+  onMount(async () => {
+    try {
+      const res = await fetchFactorBenchmarks();
+      if (res && res.factors) {
+        const map: Record<string, FactorBenchmarkMetric> = {};
+        for (const f of res.factors) {
+          map[f.isin] = f;
+        }
+        factorMetrics = map;
+      }
+    } catch (e) {
+      console.warn('Could not load factor benchmarks', e);
+    }
+  });
+
+  function toggleInspectFund(isin: string) {
+    if (expandedFundIsin === isin) {
+      expandedFundIsin = null;
+    } else {
+      expandedFundIsin = isin;
+    }
+  }
 
   function toggleBucket(bucketName: string) {
     const next = new Set(expandedBuckets);
@@ -152,20 +182,27 @@
           <!-- Collapsible Fund Holdings Sub-rows -->
           {#if isExpanded && b.funds && b.funds.length > 0}
             {#each b.funds as fund}
+              {@const isin = fund.isin || fund.asset_id}
+              {@const isFundDrawerOpen = expandedFundIsin === isin}
+              {@const factor = factorMetrics[isin]}
               <tr class="fund-subrow">
                 <td colspan="6">
                   <div
                     class="fund-item"
+                    class:drawer-open={isFundDrawerOpen}
                     role="button"
                     tabindex="0"
-                    onclick={() => onInspectFund(fund.isin || fund.asset_id)}
+                    onclick={() => toggleInspectFund(isin)}
                     onkeydown={(e) => {
-                      if (e.key === 'Enter') onInspectFund(fund.isin || fund.asset_id);
+                      if (e.key === 'Enter') toggleInspectFund(isin);
                     }}
                   >
                     <div class="fund-info">
-                      <span class="fund-name">{fund.fund_name || fund.asset_name || fund.name || fund.isin}</span>
-                      <span class="fund-isin">{fund.isin || fund.asset_id}</span>
+                      <div class="fund-name-row">
+                        <span class="chevron fund-chevron" class:open={isFundDrawerOpen}>▶</span>
+                        <span class="fund-name">{fund.fund_name || fund.asset_name || fund.name || isin}</span>
+                      </div>
+                      <span class="fund-isin">{isin}</span>
                     </div>
                     <div class="fund-metrics tnum">
                       <div class="metric-item">
@@ -182,9 +219,79 @@
                           {/if}
                         </span>
                       </div>
-                      <span class="inspect-hint">🔍 Inspect Tax Lots ➔</span>
+                      {#if factor}
+                        <div class="metric-item factor-quick-pill">
+                          <span class="m-label">β:</span>
+                          <span class="m-val" style="color: var(--accent-cyan);">{factor.beta.toFixed(2)}</span>
+                          <span class="m-label" style="margin-left: 6px;">IR:</span>
+                          <span class="m-val" style="color: {factor.informationRatio >= 0.5 ? 'var(--accent-emerald)' : 'var(--text-muted)'};">{factor.informationRatio.toFixed(2)}</span>
+                        </div>
+                      {/if}
+                      <span class="inspect-hint">{isFundDrawerOpen ? '▲ Close HUD' : '▼ Factor HUD'}</span>
                     </div>
                   </div>
+
+                  <!-- Factor Inspection Drawer -->
+                  {#if isFundDrawerOpen}
+                    <div class="factor-hud-drawer">
+                      <div class="drawer-header">
+                        <div class="benchmark-identity">
+                          <span class="badge-bench">FACTOR BENCHMARK</span>
+                          <span class="benchmark-title">{factor ? factor.benchmarkName : 'Standard Factor Benchmark'}</span>
+                          <span class="benchmark-id">({factor ? factor.benchmarkId : 'NIFTY_500_TRI'})</span>
+                        </div>
+                        <button
+                          class="view-lots-btn"
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            onInspectFund(isin);
+                          }}
+                        >
+                          View Tax Lots ➔
+                        </button>
+                      </div>
+
+                      {#if factor}
+                        <div class="factor-grid">
+                          <div class="factor-stat-card">
+                            <span class="stat-label">Market Beta (β)</span>
+                            <span class="stat-value tnum">{factor.beta.toFixed(2)}</span>
+                            <span class="stat-sub">{factor.beta > 1.05 ? 'High Volatility vs Factor' : factor.beta < 0.95 ? 'Defensive Factor Dampener' : 'Neutral Factor Sensitivity'}</span>
+                          </div>
+                          <div class="factor-stat-card">
+                            <span class="stat-label">Tracking Error</span>
+                            <span class="stat-value tnum">{factor.trackingErrorPct.toFixed(2)}%</span>
+                            <span class="stat-sub">{factor.trackingErrorPct < 0.5 ? 'Tight Factor Replication' : 'Active Share Divergence'}</span>
+                          </div>
+                          <div class="factor-stat-card">
+                            <span class="stat-label">Annualized Alpha</span>
+                            <span class="stat-value tnum" style="color: {factor.alphaPct >= 0 ? 'var(--accent-emerald-bright)' : 'var(--accent-rose)'};">
+                              {factor.alphaPct > 0 ? '+' : ''}{factor.alphaPct.toFixed(2)}%
+                            </span>
+                            <span class="stat-sub">Jensen's Alpha vs RBI 91D T-Bill</span>
+                          </div>
+                          <div class="factor-stat-card">
+                            <span class="stat-label">Information Ratio</span>
+                            <span class="stat-value tnum" style="color: {factor.informationRatio >= 0.5 ? 'var(--accent-emerald-bright)' : 'var(--accent-amber)'};">
+                              {factor.informationRatio.toFixed(2)}
+                            </span>
+                            <span class="stat-sub">{factor.informationRatio >= 0.5 ? 'Exceptional Risk-Adjusted' : 'Consistent Factor Match'}</span>
+                          </div>
+                        </div>
+
+                        <div class="stat-audit-bar">
+                          <span class="sample-badge {factor.sampleStatus && factor.sampleStatus.includes('MATURE') ? 'mature' : 'provisional'}">
+                            {factor.sampleStatus}
+                          </span>
+                          <span class="sample-days">{factor.sampleDays} Trading Days Aligned</span>
+                        </div>
+                      {:else}
+                        <div class="factor-empty">
+                          <span>Historical factor return series alignment loading or uncalibrated...</span>
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
                 </td>
               </tr>
             {/each}
@@ -413,5 +520,148 @@
     font-size: 0.72rem;
     color: var(--accent-cyan);
     margin-left: 8px;
+  }
+
+  .fund-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .fund-chevron {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+  }
+  .fund-chevron.open {
+    transform: rotate(90deg);
+  }
+  .drawer-open {
+    border-color: rgba(6, 182, 212, 0.45) !important;
+    background: rgba(6, 182, 212, 0.05) !important;
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+  }
+  .factor-quick-pill {
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-hairline);
+  }
+  .factor-hud-drawer {
+    background: rgba(10, 15, 28, 0.85);
+    border: 1px solid rgba(6, 182, 212, 0.35);
+    border-top: none;
+    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: var(--radius-md);
+    padding: 14px 18px;
+    backdrop-filter: blur(12px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .benchmark-identity {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .badge-bench {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(6, 182, 212, 0.15);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+  }
+  .benchmark-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #fff;
+  }
+  .benchmark-id {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+  .view-lots-btn {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    background: rgba(6, 182, 212, 0.1);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .view-lots-btn:hover {
+    background: rgba(6, 182, 212, 0.2);
+    border-color: var(--accent-cyan);
+  }
+  .factor-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .factor-stat-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-hairline);
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .stat-label {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stat-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  .stat-sub {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+  }
+  .stat-audit-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+  .sample-badge {
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.65rem;
+  }
+  .sample-badge.mature {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--accent-emerald-bright);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+  .sample-badge.provisional {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--accent-amber-bright);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+  .sample-days {
+    font-family: var(--font-mono);
+  }
+  .factor-empty {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 8px 0;
   }
 </style>

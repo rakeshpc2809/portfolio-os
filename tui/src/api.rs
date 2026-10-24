@@ -7,6 +7,16 @@ use serde::Deserialize;
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct DailyBrief {
+    pub status: Option<String>,
+    pub headline: Option<String>,
+    pub narration: Option<String>,
+    #[serde(default)]
+    pub verified: bool,
+    pub generated_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Snapshot {
     pub sync_info: SyncInfo,
     pub holdings: Vec<FlatHolding>,
@@ -17,6 +27,8 @@ pub struct Snapshot {
     pub rebalance_plan: Option<RebalancePlan>,
     #[serde(default)]
     pub bucket_allocation: Vec<BucketStatus>,
+    #[serde(default)]
+    pub daily_brief: Option<DailyBrief>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

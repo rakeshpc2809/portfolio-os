@@ -18,6 +18,14 @@ check:
     just test-mobile
     just test-web
 
+# Pre-release smoke test and validation gate for v4.1+
+release-v4-1:
+    ./scripts/pre_release_smoke_test.py
+
+# Chaos & Disaster Recovery Drill (Litestream WAL + Google Sheets Zero-Knowledge restoration)
+drill-recovery:
+    ./scripts/chaos_recovery_drill.py
+
 # -------------------------------------------------------------
 # Mobile App (Android / Kotlin)
 # -------------------------------------------------------------

@@ -11,6 +11,7 @@
   import OverlapModal from './lib/components/OverlapModal.svelte';
   import LumpsumModal from './lib/components/LumpsumModal.svelte';
   import CommandPalette from './lib/components/CommandPalette.svelte';
+  import AdHocSqlModal from './lib/components/AdHocSqlModal.svelte';
 
   import { 
     LayoutDashboard, 
@@ -25,6 +26,7 @@
     Command, 
     PieChart, 
     Coins, 
+    Database,
     ShieldCheck, 
     AlertTriangle,
     Wallet,
@@ -51,11 +53,13 @@
   let showCommandPalette = $state(false);
   let showOverlapModal = $state(false);
   let showLumpsumModal = $state(false);
+  let showSqlModal = $state(false);
   let showCasModal = $state(false);
   let casPassword = $state('');
   let casFile = $state<File | null>(null);
   let casUploading = $state(false);
   let casStatusMsg = $state<string | null>(null);
+  let briefDismissed = $state(false);
 
   async function loadSnapshot() {
     loading = true;
@@ -194,6 +198,8 @@
       (window as any).closeLumpsumModal = () => { showLumpsumModal = false; };
       (window as any).openOverlapModal = () => { showOverlapModal = true; };
       (window as any).closeOverlapModal = () => { showOverlapModal = false; };
+      (window as any).openSqlModal = () => { showSqlModal = true; };
+      (window as any).closeSqlModal = () => { showSqlModal = false; };
       (window as any).closeCasPasswordModal = () => { showCasModal = false; };
       (window as any).toggleBucketRow = () => {};
       (window as any).toggleAllBuckets = () => {};
@@ -255,6 +261,17 @@
       >
         <PieChart size={15} />
         <span class="btn-text">Overlap</span>
+      </button>
+
+      <!-- DuckDB-Wasm SQL Cockpit Trigger -->
+      <button 
+        type="button" 
+        class="action-btn" 
+        onclick={() => showSqlModal = true}
+        title="Interactive DuckDB-Wasm SQL Cockpit"
+      >
+        <Database size={15} />
+        <span class="btn-text">DuckDB SQL</span>
       </button>
 
       <!-- Lumpsum Simulator Trigger -->
@@ -323,6 +340,35 @@
 
   <!-- Main Content Layout -->
   <main class="main-body">
+    {#if snapshot?.daily_brief && !briefDismissed}
+      <aside class="brief-banner" role="region" aria-label="Morning Executive Brief">
+        <div class="brief-content">
+          <div class="brief-header">
+            <div class="brief-badge-row">
+              <span class="brief-tag"><Sparkles size={13} /> MORNING EXECUTIVE BRIEF</span>
+              {#if snapshot.daily_brief.verified}
+                <span class="brief-verified-tag"><ShieldCheck size={12} /> AUDIT VERIFIED</span>
+              {/if}
+              {#if snapshot.daily_brief.generated_at}
+                <span class="brief-timestamp">{snapshot.daily_brief.generated_at}</span>
+              {/if}
+            </div>
+            <button 
+              type="button" 
+              class="brief-dismiss" 
+              onclick={() => briefDismissed = true} 
+              aria-label="Dismiss brief"
+              title="Dismiss brief"
+            >
+              <X size={15} />
+            </button>
+          </div>
+          <h3 class="brief-headline">{snapshot.daily_brief.headline}</h3>
+          <p class="brief-narration">{snapshot.daily_brief.narration}</p>
+        </div>
+      </aside>
+    {/if}
+
     <!-- Executive HUD Cards Grid -->
     <section class="hud-grid" aria-label="Executive Portfolio Metrics">
       <!-- Card 1: Net Worth -->
@@ -469,7 +515,6 @@
           <!-- Asset Allocation Bucket Table -->
           <BucketTable
             buckets={snapshot?.rebalance_plan?.buckets}
-            holdings={snapshot?.holdings}
             quietMode={quietMode}
           />
         </div>
@@ -506,6 +551,7 @@
     ontogglequiet={toggleQuietMode}
     onopenoverlap={() => showOverlapModal = true}
     onopenlumpsum={() => showLumpsumModal = true}
+    onopensql={() => showSqlModal = true}
     onsync={triggerSync}
     onexportitr={exportItr2Zip}
   />
@@ -514,6 +560,11 @@
     open={showOverlapModal}
     quietMode={quietMode}
     onclose={() => showOverlapModal = false}
+  />
+
+  <AdHocSqlModal
+    open={showSqlModal}
+    onclose={() => showSqlModal = false}
   />
 
   <LumpsumModal
@@ -786,6 +837,102 @@
     flex-direction: column;
     gap: 1.8rem;
     z-index: 1;
+  }
+
+  /* Morning Executive Brief Banner */
+  .brief-banner {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.08) 50%, rgba(15, 23, 42, 0.6) 100%);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: var(--radius-lg, 12px);
+    padding: 1.1rem 1.4rem;
+    backdrop-filter: blur(16px);
+    box-shadow: 0 8px 32px -8px rgba(16, 185, 129, 0.15);
+  }
+
+  .brief-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .brief-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .brief-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .brief-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent-emerald, #10b981);
+    background: rgba(16, 185, 129, 0.14);
+    padding: 0.25rem 0.55rem;
+    border-radius: var(--radius-pill, 9999px);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+  }
+
+  .brief-verified-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--accent-cyan, #06b6d4);
+    background: rgba(6, 182, 212, 0.12);
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-pill, 9999px);
+    border: 1px solid rgba(6, 182, 212, 0.25);
+  }
+
+  .brief-timestamp {
+    font-size: 0.72rem;
+    color: var(--text-muted, #94a3b8);
+    font-family: var(--font-mono, monospace);
+  }
+
+  .brief-dismiss {
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #94a3b8);
+    cursor: pointer;
+    padding: 0.3rem;
+    border-radius: var(--radius-sm, 6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+  }
+
+  .brief-dismiss:hover {
+    color: var(--text-main, #f8fafc);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .brief-headline {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-main, #f8fafc);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .brief-narration {
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: rgba(226, 232, 240, 0.88);
+    margin: 0;
   }
 
   /* HUD Grid */

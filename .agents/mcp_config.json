@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "portfolio-os": {
+      "command": "/home/rakeshpc/Projects/portfolio-os/quant-sidecar/.venv/bin/python",
+      "args": [
+        "/home/rakeshpc/Projects/portfolio-os/quant-sidecar/mcp_server.py"
+      ],
+      "env": {
+        "API_AUTH_TOKEN": "dev_secret_key_123"
+      }
+    }
+  }
+}

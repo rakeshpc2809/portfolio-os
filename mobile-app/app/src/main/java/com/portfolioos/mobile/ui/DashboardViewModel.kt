@@ -97,16 +97,19 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         val benchDeferred = async { runCatching { service.getBenchmarkAnalytics(token) }.getOrNull() }
                         val fireDeferred = async { runCatching { service.getFireSummary(token) }.getOrNull() }
                         val overlapDeferred = async { runCatching { service.getOverlapAnalytics(token) }.getOrNull() }
+                        val actionDeferred = async { runCatching { service.getActionRecommendations(token) }.getOrNull() }
 
                         val bench = benchDeferred.await()
                         val fire = fireDeferred.await()
                         val overlap = overlapDeferred.await()
-                        if (bench != null || fire != null || overlap != null) {
+                        val recs = actionDeferred.await()
+                        if (bench != null || fire != null || overlap != null || recs != null) {
                             _uiState.update { state ->
                                 state.copy(
                                     benchmarkData = bench ?: state.benchmarkData,
                                     fireSummaryData = fire ?: state.fireSummaryData,
-                                    overlapData = overlap ?: state.overlapData
+                                    overlapData = overlap ?: state.overlapData,
+                                    actionRecommendations = recs ?: state.actionRecommendations
                                 )
                             }
                             return@coroutineScope true

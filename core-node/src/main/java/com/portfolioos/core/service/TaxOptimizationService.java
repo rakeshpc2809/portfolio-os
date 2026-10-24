@@ -314,4 +314,75 @@ public class TaxOptimizationService {
 
         return new CombinedHarvestAndLiquidationPlanDto(harvestPlan, liquidationPlan, summary);
     }
+
+    public String generateHarvestCalendarIcs() {
+        LedgerCacheService.CachedLedgerState state = resolveState();
+        List<Lot> openLots = state.fifoResult().openLots();
+        LocalDate today = LocalDate.now();
+        java.time.format.DateTimeFormatter icsDtf = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd");
+        java.time.format.DateTimeFormatter icsTimestamp = java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
+        String nowUtc = java.time.Instant.now().atOffset(java.time.ZoneOffset.UTC).format(icsTimestamp);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("BEGIN:VCALENDAR\r\n");
+        sb.append("VERSION:2.0\r\n");
+        sb.append("PRODID:-//Portfolio OS//Tax Harvest Calendar 1.0//EN\r\n");
+        sb.append("CALSCALE:GREGORIAN\r\n");
+        sb.append("METHOD:PUBLISH\r\n");
+        sb.append("X-WR-CALNAME:Portfolio OS Tax Harvest Calendar\r\n");
+
+        int currentYear = today.getYear();
+        LocalDate marchHarvestDate = LocalDate.of(today.getMonthValue() > 3 ? currentYear + 1 : currentYear, 3, 15);
+        sb.append("BEGIN:VEVENT\r\n");
+        sb.append("UID:sec112a-harvest-").append(marchHarvestDate.getYear()).append("@portfolioos.local\r\n");
+        sb.append("DTSTAMP:").append(nowUtc).append("\r\n");
+        sb.append("DTSTART;VALUE=DATE:").append(marchHarvestDate.format(icsDtf)).append("\r\n");
+        sb.append("DTEND;VALUE=DATE:").append(marchHarvestDate.plusDays(1).format(icsDtf)).append("\r\n");
+        sb.append("SUMMARY:Sec 112A ₹1.25L Tax-Gain Harvesting Window\r\n");
+        sb.append("DESCRIPTION:Review unrealized capital gains. Harvest up to ₹1.25 Lakh tax-free before fiscal year ends on March 31.\r\n");
+        sb.append("BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Sec 112A Tax Harvesting Reminder\r\nTRIGGER:-P7D\r\nEND:VALARM\r\n");
+        sb.append("END:VEVENT\r\n");
+
+        int eventCount = 0;
+        for (Lot lot : openLots) {
+            LocalDate buyDate = lot.acquisitionDate();
+            if (buyDate == null) continue;
+
+            LocalDate equityLtcgDate = buyDate.plusDays(365);
+            if (!equityLtcgDate.isBefore(today) && equityLtcgDate.isBefore(today.plusDays(90))) {
+                sb.append("BEGIN:VEVENT\r\n");
+                String uidId = lot.lotId() != null ? lot.lotId() : (lot.assetId() + "-" + eventCount);
+                sb.append("UID:ltcg-maturation-").append(uidId).append("@portfolioos.local\r\n");
+                sb.append("DTSTAMP:").append(nowUtc).append("\r\n");
+                sb.append("DTSTART;VALUE=DATE:").append(equityLtcgDate.format(icsDtf)).append("\r\n");
+                sb.append("DTEND;VALUE=DATE:").append(equityLtcgDate.plusDays(1).format(icsDtf)).append("\r\n");
+                sb.append("SUMMARY:LTCG Flip: ").append(lot.assetName() != null ? lot.assetName() : lot.assetId()).append(" (").append(lot.remainingUnits()).append(" units)\r\n");
+                sb.append("DESCRIPTION:Lot bought on ").append(buyDate).append(" at ₹").append(lot.costPerUnit()).append(" flips from 20% STCG to 12.5% LTCG.\r\n");
+                sb.append("BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:LTCG Maturity Alert\r\nTRIGGER:-P1D\r\nEND:VALARM\r\n");
+                sb.append("END:VEVENT\r\n");
+                eventCount++;
+            }
+
+            if ("INF205K01KR8".equals(lot.assetId())) {
+                LocalDate exitLoadDate = buyDate.plusDays(15);
+                if (!exitLoadDate.isBefore(today) && exitLoadDate.isBefore(today.plusDays(30))) {
+                    sb.append("BEGIN:VEVENT\r\n");
+                    String uidId = lot.lotId() != null ? lot.lotId() : String.valueOf(eventCount);
+                    sb.append("UID:exitload-arbitrage-").append(uidId).append("@portfolioos.local\r\n");
+                    sb.append("DTSTAMP:").append(nowUtc).append("\r\n");
+                    sb.append("DTSTART;VALUE=DATE:").append(exitLoadDate.format(icsDtf)).append("\r\n");
+                    sb.append("DTEND;VALUE=DATE:").append(exitLoadDate.plusDays(1).format(icsDtf)).append("\r\n");
+                    sb.append("SUMMARY:Exit-Load Free: Invesco Arbitrage (").append(lot.remainingUnits()).append(" units)\r\n");
+                    sb.append("DESCRIPTION:15-day exit load period expires today. Free to liquidate without exit load fee.\r\n");
+                    sb.append("BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Exit Load Maturity\r\nTRIGGER:-P1D\r\nEND:VALARM\r\n");
+                    sb.append("END:VEVENT\r\n");
+                    eventCount++;
+                }
+            }
+        }
+
+        sb.append("END:VCALENDAR\r\n");
+        return sb.toString();
+    }
 }
+
