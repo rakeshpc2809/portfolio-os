@@ -18,11 +18,17 @@
     onInspectFund = (isin: string) => {}
   }: Props = $props();
 
-
   const effectiveQuiet = $derived(isQuiet || quietMode);
 
-  // Set of currently expanded bucket rows
-  let expandedBuckets = $state<Set<string>>(new Set(['EQUITY_CORE']));
+  // Reactive map of expanded buckets for reliable Svelte 5 reactivity
+  let expandedBuckets = $state<Record<string, boolean>>({
+    EQUITY_CORE: true,
+    EQUITY_SATELLITE: false,
+    GOLD_SILVER: false,
+    LIQUID_BUFFER: false,
+    LEGACY_HOLDINGS: false
+  });
+
   let expandedFundIsin = $state<string | null>(null);
   let factorMetrics = $state<Record<string, FactorBenchmarkMetric>>({});
 
@@ -32,7 +38,20 @@
       if (res && res.factors) {
         const map: Record<string, FactorBenchmarkMetric> = {};
         for (const f of res.factors) {
-          map[f.isin] = f;
+          const item: FactorBenchmarkMetric = {
+            isin: f.isin || '',
+            fundName: f.fundName || (f as any).fund_name || '',
+            benchmarkId: f.benchmarkId || (f as any).benchmark_id || 'NIFTY_500_TRI',
+            benchmarkName: f.benchmarkName || (f as any).benchmark_name || 'Standard Factor Benchmark',
+            beta: Number(f.beta ?? 1.0),
+            trackingErrorPct: Number(f.trackingErrorPct ?? (f as any).tracking_error_pct ?? 0),
+            alphaPct: Number(f.alphaPct ?? (f as any).alpha_pct ?? 0),
+            informationRatio: Number(f.informationRatio ?? (f as any).information_ratio ?? 0),
+            outperformancePct: Number(f.outperformancePct ?? (f as any).outperformance_pct ?? 0),
+            sampleStatus: String(f.sampleStatus || (f as any).sample_status || 'PROVISIONAL'),
+            sampleDays: Number(f.sampleDays ?? (f as any).sample_days ?? 0),
+          };
+          map[f.isin] = item;
         }
         factorMetrics = map;
       }
@@ -50,13 +69,10 @@
   }
 
   function toggleBucket(bucketName: string) {
-    const next = new Set(expandedBuckets);
-    if (next.has(bucketName)) {
-      next.delete(bucketName);
-    } else {
-      next.add(bucketName);
-    }
-    expandedBuckets = next;
+    expandedBuckets = {
+      ...expandedBuckets,
+      [bucketName]: !expandedBuckets[bucketName]
+    };
   }
 
   function getBucketColor(bucket: string): string {
@@ -90,6 +106,18 @@
   function formatBucketName(raw: string): string {
     return raw.replace(/_/g, ' ');
   }
+
+  function getPreferredFundName(bucket: string): string {
+    switch (bucket) {
+      case 'EQUITY_CORE': return 'Parag Parikh Flexi Cap / UTI Nifty 50 Index';
+      case 'EQUITY_SATELLITE': return 'ICICI Prudential Smallcap / Bandhan Large Cap';
+      case 'GOLD_SILVER': return 'Motilal Oswal Gold and Silver Passive FoF';
+      case 'LIQUID_BUFFER':
+      case 'ARBITRAGE_LIQUID': return 'Invesco India Arbitrage / Parag Parikh Liquid';
+      case 'LEGACY_HOLDINGS': return 'Motilal Oswal Midcap (Phase-out Target)';
+      default: return 'Policy Canonical Fund';
+    }
+  }
 </script>
 
 <div class="bucket-card obsidian-card">
@@ -115,15 +143,18 @@
       </thead>
       <tbody>
         {#each buckets as b}
-          {@const isExpanded = expandedBuckets.has(b.bucket)}
+          {@const isExpanded = Boolean(expandedBuckets[b.bucket])}
           {@const color = getBucketColor(b.bucket)}
           {@const gradient = getBucketGradient(b.bucket)}
           {@const drift = (b.current_pct || 0) - (b.target_pct || 0)}
           {@const isDrift = Math.abs(drift) > 5.0 && b.bucket !== 'LEGACY_HOLDINGS'}
+          {@const hasFunds = b.funds && b.funds.length > 0}
 
           <!-- Bucket Summary Row -->
           <tr
             class="bucket-row"
+            id="bucket-row-{b.bucket}"
+            data-bucket={b.bucket}
             class:expanded={isExpanded}
             tabindex="0"
             role="button"
@@ -140,11 +171,9 @@
               <div class="bucket-name-cell">
                 <span class="chevron" class:open={isExpanded}>▶</span>
                 <span class="bucket-label">{formatBucketName(b.bucket)}</span>
-                {#if b.funds && b.funds.length > 0}
-                  <span class="fund-count-pill" style="color: {color}; border-color: {color}33;">
-                    {b.funds.length} {b.funds.length === 1 ? 'Fund' : 'Funds'}
-                  </span>
-                {/if}
+                <span class="fund-count-pill" style="color: {color}; border-color: {color}33;">
+                  {hasFunds ? `${b.funds!.length} ${b.funds!.length === 1 ? 'Fund' : 'Funds'}` : '0 Funds'}
+                </span>
               </div>
             </td>
             <td class="tnum" style="text-align: right; color: var(--text-muted); font-weight: 600;">
@@ -180,8 +209,8 @@
           </tr>
 
           <!-- Collapsible Fund Holdings Sub-rows -->
-          {#if isExpanded && b.funds && b.funds.length > 0}
-            {#each b.funds as fund}
+          {#if isExpanded && hasFunds}
+            {#each b.funds! as fund}
               {@const isin = fund.isin || fund.asset_id}
               {@const isFundDrawerOpen = expandedFundIsin === isin}
               {@const factor = factorMetrics[isin]}
@@ -189,6 +218,8 @@
                 <td colspan="6">
                   <div
                     class="fund-item"
+                    id="fund-item-{isin}"
+                    data-isin={isin}
                     class:drawer-open={isFundDrawerOpen}
                     role="button"
                     tabindex="0"
@@ -207,7 +238,7 @@
                     <div class="fund-metrics tnum">
                       <div class="metric-item">
                         <span class="m-label">NAV:</span>
-                        <span class="m-val">₹{fund.nav || fund.current_nav || '--'}</span>
+                        <span class="m-val">₹{fund.current_nav || fund.nav || '--'}</span>
                       </div>
                       <div class="metric-item">
                         <span class="m-label">Value:</span>
@@ -219,12 +250,20 @@
                           {/if}
                         </span>
                       </div>
+                      {#if fund.unrealized_gain !== undefined && !effectiveQuiet}
+                        <div class="metric-item">
+                          <span class="m-label">Gain:</span>
+                          <span class="m-val" style="color: {Number(fund.unrealized_gain) >= 0 ? 'var(--accent-emerald-bright)' : 'var(--accent-rose)'};">
+                            {Number(fund.unrealized_gain) >= 0 ? '+' : ''}{formatINR(Number(fund.unrealized_gain))} ({Number(fund.gain_pct || 0).toFixed(1)}%)
+                          </span>
+                        </div>
+                      {/if}
                       {#if factor}
                         <div class="metric-item factor-quick-pill">
                           <span class="m-label">β:</span>
-                          <span class="m-val" style="color: var(--accent-cyan);">{factor.beta.toFixed(2)}</span>
+                          <span class="m-val" style="color: var(--accent-cyan);">{(factor.beta ?? 1.0).toFixed(2)}</span>
                           <span class="m-label" style="margin-left: 6px;">IR:</span>
-                          <span class="m-val" style="color: {factor.informationRatio >= 0.5 ? 'var(--accent-emerald)' : 'var(--text-muted)'};">{factor.informationRatio.toFixed(2)}</span>
+                          <span class="m-val" style="color: {(factor.informationRatio ?? 0) >= 0.5 ? 'var(--accent-emerald)' : 'var(--text-muted)'};">{(factor.informationRatio ?? 0).toFixed(2)}</span>
                         </div>
                       {/if}
                       <span class="inspect-hint">{isFundDrawerOpen ? '▲ Close HUD' : '▼ Factor HUD'}</span>
@@ -237,10 +276,11 @@
                       <div class="drawer-header">
                         <div class="benchmark-identity">
                           <span class="badge-bench">FACTOR BENCHMARK</span>
-                          <span class="benchmark-title">{factor ? factor.benchmarkName : 'Standard Factor Benchmark'}</span>
-                          <span class="benchmark-id">({factor ? factor.benchmarkId : 'NIFTY_500_TRI'})</span>
+                          <span class="benchmark-title">{factor?.benchmarkName || 'Standard Factor Benchmark'}</span>
+                          <span class="benchmark-id">({factor?.benchmarkId || 'NIFTY_500_TRI'})</span>
                         </div>
                         <button
+                          type="button"
                           class="view-lots-btn"
                           onclick={(e) => {
                             e.stopPropagation();
@@ -255,39 +295,39 @@
                         <div class="factor-grid">
                           <div class="factor-stat-card">
                             <span class="stat-label">Market Beta (β)</span>
-                            <span class="stat-value tnum">{factor.beta.toFixed(2)}</span>
-                            <span class="stat-sub">{factor.beta > 1.05 ? 'High Volatility vs Factor' : factor.beta < 0.95 ? 'Defensive Factor Dampener' : 'Neutral Factor Sensitivity'}</span>
+                            <span class="stat-value tnum">{(factor.beta ?? 1.0).toFixed(2)}</span>
+                            <span class="stat-sub">{(factor.beta ?? 1.0) > 1.05 ? 'High Volatility vs Factor' : (factor.beta ?? 1.0) < 0.95 ? 'Defensive Factor Dampener' : 'Neutral Factor Sensitivity'}</span>
                           </div>
                           <div class="factor-stat-card">
                             <span class="stat-label">Tracking Error</span>
-                            <span class="stat-value tnum">{factor.trackingErrorPct.toFixed(2)}%</span>
-                            <span class="stat-sub">{factor.trackingErrorPct < 0.5 ? 'Tight Factor Replication' : 'Active Share Divergence'}</span>
+                            <span class="stat-value tnum">{(factor.trackingErrorPct ?? 0).toFixed(2)}%</span>
+                            <span class="stat-sub">{(factor.trackingErrorPct ?? 0) < 0.5 ? 'Tight Factor Replication' : 'Active Share Divergence'}</span>
                           </div>
                           <div class="factor-stat-card">
                             <span class="stat-label">Annualized Alpha</span>
-                            <span class="stat-value tnum" style="color: {factor.alphaPct >= 0 ? 'var(--accent-emerald-bright)' : 'var(--accent-rose)'};">
-                              {factor.alphaPct > 0 ? '+' : ''}{factor.alphaPct.toFixed(2)}%
+                            <span class="stat-value tnum" style="color: {(factor.alphaPct ?? 0) >= 0 ? 'var(--accent-emerald-bright)' : 'var(--accent-rose)'};">
+                              {(factor.alphaPct ?? 0) > 0 ? '+' : ''}{(factor.alphaPct ?? 0).toFixed(2)}%
                             </span>
                             <span class="stat-sub">Jensen's Alpha vs RBI 91D T-Bill</span>
                           </div>
                           <div class="factor-stat-card">
                             <span class="stat-label">Information Ratio</span>
-                            <span class="stat-value tnum" style="color: {factor.informationRatio >= 0.5 ? 'var(--accent-emerald-bright)' : 'var(--accent-amber)'};">
-                              {factor.informationRatio.toFixed(2)}
+                            <span class="stat-value tnum" style="color: {(factor.informationRatio ?? 0) >= 0.5 ? 'var(--accent-emerald-bright)' : 'var(--accent-amber)'};">
+                              {(factor.informationRatio ?? 0).toFixed(2)}
                             </span>
-                            <span class="stat-sub">{factor.informationRatio >= 0.5 ? 'Exceptional Risk-Adjusted' : 'Consistent Factor Match'}</span>
+                            <span class="stat-sub">{(factor.informationRatio ?? 0) >= 0.5 ? 'Exceptional Risk-Adjusted' : 'Consistent Factor Match'}</span>
                           </div>
                         </div>
 
                         <div class="stat-audit-bar">
                           <span class="sample-badge {factor.sampleStatus && factor.sampleStatus.includes('MATURE') ? 'mature' : 'provisional'}">
-                            {factor.sampleStatus}
+                            {factor.sampleStatus || 'PROVISIONAL'}
                           </span>
-                          <span class="sample-days">{factor.sampleDays} Trading Days Aligned</span>
+                          <span class="sample-days">{factor.sampleDays ?? 0} Trading Days Aligned</span>
                         </div>
                       {:else}
                         <div class="factor-empty">
-                          <span>Historical factor return series alignment loading or uncalibrated...</span>
+                          <span>Historical factor return series alignment loading or uncalibrated for {isin}...</span>
                         </div>
                       {/if}
                     </div>
@@ -295,6 +335,28 @@
                 </td>
               </tr>
             {/each}
+          {:else if isExpanded}
+            <!-- Empty Bucket Informative Card -->
+            <tr class="fund-subrow">
+              <td colspan="6">
+                <div class="empty-bucket-card">
+                  <div class="empty-bucket-left">
+                    <span class="empty-icon" style="color: {color};">🛡️</span>
+                    <div class="empty-text">
+                      <span class="empty-title">No Active Holdings in {formatBucketName(b.bucket)}</span>
+                      <span class="empty-desc">
+                        Target allocation: <strong style="color: {color};">{b.target_pct || 0}%</strong>.
+                        Preferred policy fund: <span class="fund-highlight">{getPreferredFundName(b.bucket)}</span>.
+                        Any fresh lumpsum deployment or waterfall trim will route capital here automatically.
+                      </span>
+                    </div>
+                  </div>
+                  <div class="empty-badge" style="border-color: {color}44; color: {color};">
+                    AWAITING DEPLOYMENT
+                  </div>
+                </div>
+              </td>
+            </tr>
           {/if}
         {/each}
       </tbody>
@@ -373,9 +435,10 @@
   .bucket-row {
     cursor: pointer;
     transition: background 0.15s ease;
+    user-select: none;
   }
   .bucket-row:hover {
-    background: oklch(1 0 0 / 0.025);
+    background: oklch(1 0 0 / 0.035);
   }
   .bucket-row:focus-visible {
     outline: 2px solid var(--accent-cyan);
@@ -391,7 +454,7 @@
   .chevron {
     font-size: 0.62rem;
     color: var(--text-muted);
-    transition: transform 0.2s ease;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     display: inline-block;
   }
   .chevron.open {
@@ -408,9 +471,10 @@
     font-family: var(--font-mono);
     font-size: 0.68rem;
     font-weight: 600;
-    padding: 1px 6px;
+    padding: 1px 7px;
     border-radius: 4px;
     background: oklch(1 0 0 / 0.05);
+    border: 1px solid var(--border-hairline);
   }
 
   .alloc-track {
@@ -448,52 +512,49 @@
   }
   .badge-drift.negative {
     background: rgba(244, 63, 94, 0.16);
-    color: var(--accent-rose-bright);
-    border: 1px solid rgba(244, 63, 94, 0.35);
+    color: var(--accent-rose);
+    border-color: rgba(244, 63, 94, 0.35);
   }
   .badge-phaseout {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-muted);
-    border: 1px solid var(--border-hairline);
+    background: rgba(244, 63, 94, 0.16);
+    color: var(--accent-rose);
+    border: 1px solid rgba(244, 63, 94, 0.4);
   }
 
-  /* Sub-row styling */
+  /* Subrows */
   .fund-subrow td {
-    padding: 6px 14px 10px 32px;
-    background: rgba(14, 20, 36, 0.4);
+    padding: 4px 12px 10px 32px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--border-hairline);
   }
 
   .fund-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 16px;
-    border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    margin-bottom: 6px;
     cursor: pointer;
-    transition: transform 0.2s var(--ease-bounce), 
-                background 0.2s ease, 
-                border-color 0.2s ease, 
-                box-shadow 0.2s ease;
+    transition: all 0.2s ease;
   }
   .fund-item:hover {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(6, 182, 212, 0.35);
-    transform: translateX(4px);
-    box-shadow: 0 4px 16px -4px rgba(6, 182, 212, 0.2);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.12);
   }
 
   .fund-info {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
   }
 
   .fund-name {
     font-weight: 600;
     color: #ffffff;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
   }
 
   .fund-isin {
@@ -506,6 +567,7 @@
     display: flex;
     align-items: center;
     gap: 16px;
+    flex-wrap: wrap;
   }
 
   .metric-item {
@@ -563,6 +625,7 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    margin-bottom: 8px;
   }
   .drawer-header {
     display: flex;
@@ -668,5 +731,64 @@
     color: var(--text-muted);
     font-style: italic;
     padding: 8px 0;
+  }
+
+  /* Empty bucket state card */
+  .empty-bucket-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 14px 18px;
+    margin: 4px 0 8px 0;
+  }
+  .empty-bucket-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .empty-icon {
+    font-size: 1.3rem;
+  }
+  .empty-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .empty-title {
+    font-weight: 600;
+    color: #ffffff;
+    font-size: 0.85rem;
+  }
+  .empty-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+  .fund-highlight {
+    color: var(--accent-cyan);
+    font-family: var(--font-mono);
+  }
+  .empty-badge {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 768px) {
+    .factor-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .empty-bucket-card {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+    }
   }
 </style>

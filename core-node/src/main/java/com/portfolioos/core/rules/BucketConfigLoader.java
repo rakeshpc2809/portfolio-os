@@ -330,9 +330,10 @@ public class BucketConfigLoader {
             if (b != null) {
                 BigDecimal tVal = BigDecimal.valueOf(tc.targetPct()).setScale(2, RoundingMode.HALF_UP);
                 targetMap.merge(b, tVal, BigDecimal::add);
-                // Canonical aggregate drift tolerance is 5.00% across all top-level evaluation buckets
-                BigDecimal bVal = (tc.bandPct() > 0 && b != BucketEngine.Bucket.EQUITY_SATELLITE)
-                    ? BigDecimal.valueOf(tc.bandPct()).setScale(2, RoundingMode.HALF_UP)
+                // Use triggerDriftPct (e.g. 12.0% for GOLD_SILVER accumulator) when configured, else bandPct
+                double effectiveBand = tc.triggerDriftPct() > 0 ? tc.triggerDriftPct() : tc.bandPct();
+                BigDecimal bVal = (effectiveBand > 0 && b != BucketEngine.Bucket.EQUITY_SATELLITE)
+                    ? BigDecimal.valueOf(effectiveBand).setScale(2, RoundingMode.HALF_UP)
                     : new BigDecimal("5.00");
                 bandMap.put(b, bVal);
             }

@@ -274,8 +274,8 @@ public class RebalancePlanEngine {
             }
         }
 
-        boolean hasSellSide = resolution.hasSellSide() ||
-            (requestedTriggerType != null && ("DRIFT".equalsIgnoreCase(requestedTriggerType) || "SCHEDULED".equalsIgnoreCase(requestedTriggerType) || "DRAWDOWN".equalsIgnoreCase(requestedTriggerType)));
+        boolean hasSellSide = !"GOLD_FLOOR_BACKSTOP".equalsIgnoreCase(resolvedType) && (resolution.hasSellSide() ||
+            (requestedTriggerType != null && ("DRIFT".equalsIgnoreCase(requestedTriggerType) || "SCHEDULED".equalsIgnoreCase(requestedTriggerType) || "DRAWDOWN".equalsIgnoreCase(requestedTriggerType))));
 
         if (isLumpsum && !includeRebalance) {
             totalPool = manualLumpsumAmount;
@@ -360,8 +360,8 @@ public class RebalancePlanEngine {
                 }
             }
 
-            // Legacy holdings liquidation: target allocation for legacy holdings is 0%.
-            // Liquidate legacy holdings up to the deficit required to fund under-allocated target buckets.
+            // Step 0: Legacy holdings liquidation runs unconditionally before everything else.
+            // All eligible LTCG and loss-making legacy lots are liquidated with no stalling at deficit/exemption limits.
             BigDecimal totalLegacyValue = BigDecimal.ZERO;
             if (openLots != null) {
                 for (Lot lot : openLots) {
@@ -372,15 +372,12 @@ public class RebalancePlanEngine {
                     }
                 }
             }
-            if (poolNeeded.compareTo(BigDecimal.ZERO) == 0 && totalLegacyValue.compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal remainingDeficit = totalDeficit.subtract(poolNeeded).max(BigDecimal.ZERO);
-                BigDecimal legacyTrim = totalDeficit.compareTo(BigDecimal.ZERO) > 0
-                    ? totalLegacyValue.min(remainingDeficit)
-                    : totalLegacyValue;
-                if (legacyTrim.compareTo(BigDecimal.ZERO) > 0) {
-                    bucketTrims.put(BucketEngine.Bucket.LEGACY_HOLDINGS, legacyTrim);
-                    poolNeeded = poolNeeded.add(legacyTrim);
-                }
+            if (totalLegacyValue.compareTo(BigDecimal.ZERO) > 0) {
+                Map<BucketEngine.Bucket, BigDecimal> orderedTrims = new java.util.LinkedHashMap<>();
+                orderedTrims.put(BucketEngine.Bucket.LEGACY_HOLDINGS, totalLegacyValue.setScale(2, RoundingMode.HALF_UP));
+                orderedTrims.putAll(bucketTrims);
+                bucketTrims = orderedTrims;
+                poolNeeded = poolNeeded.add(totalLegacyValue.setScale(2, RoundingMode.HALF_UP));
             }
 
             if (isLumpsum) {
@@ -608,6 +605,21 @@ public class RebalancePlanEngine {
             totalShortfall = totalShortfall.add(shortfall);
         }
 
+        boolean hasWaterfallBuckets = activeTargets != null && activeTargets.stream().anyMatch(t -> t.bucket() == BucketEngine.Bucket.GOLD_SILVER || t.bucket() == BucketEngine.Bucket.LIQUID_BUFFER);
+        BigDecimal coreTrimProceeds = bucketSoldAmounts.getOrDefault(BucketEngine.Bucket.EQUITY_CORE, BigDecimal.ZERO);
+        com.portfolioos.core.valuation.RebalanceWaterfallEngine.TrimDestinationAllocation coreWaterfallAlloc = null;
+        if (coreTrimProceeds.compareTo(BigDecimal.ZERO) > 0 && !isLumpsum && hasWaterfallBuckets) {
+            BigDecimal gVal = statusMap.containsKey(BucketEngine.Bucket.GOLD_SILVER) ? statusMap.get(BucketEngine.Bucket.GOLD_SILVER).currentValue() : BigDecimal.ZERO;
+            BigDecimal aVal = statusMap.containsKey(BucketEngine.Bucket.LIQUID_BUFFER) ? statusMap.get(BucketEngine.Bucket.LIQUID_BUFFER).currentValue() : BigDecimal.ZERO;
+            BigDecimal cVal = statusMap.containsKey(BucketEngine.Bucket.EQUITY_CORE) ? statusMap.get(BucketEngine.Bucket.EQUITY_CORE).currentValue().subtract(coreTrimProceeds) : BigDecimal.ZERO;
+            BigDecimal gTgt = postActiveCorpus.multiply(new BigDecimal("0.10")).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal aTgt = postActiveCorpus.multiply(new BigDecimal("0.10")).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal cTgt = postActiveCorpus.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
+            coreWaterfallAlloc = com.portfolioos.core.valuation.RebalanceWaterfallEngine.routeTrimProceeds(
+                coreTrimProceeds, gVal, gTgt, aVal, aTgt, cVal, cTgt, postActiveCorpus
+            );
+        }
+
         List<RebalanceBucketAllocationDto> buyBuckets = new ArrayList<>();
 
         for (BucketEngine.BucketTarget target : activeTargets) {
@@ -621,7 +633,22 @@ public class RebalancePlanEngine {
             BigDecimal amountAllocated = BigDecimal.ZERO;
             BigDecimal shortfall = bucketShortfalls.getOrDefault(target.bucket(), BigDecimal.ZERO);
 
-            if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
+            if (coreWaterfallAlloc != null) {
+                if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER) {
+                    amountAllocated = coreWaterfallAlloc.toGold();
+                } else if (target.bucket() == BucketEngine.Bucket.LIQUID_BUFFER) {
+                    amountAllocated = coreWaterfallAlloc.toArbTarget().add(coreWaterfallAlloc.toArbTerminal());
+                } else if (target.bucket() == BucketEngine.Bucket.EQUITY_CORE) {
+                    amountAllocated = coreWaterfallAlloc.toCore();
+                } else {
+                    amountAllocated = BigDecimal.ZERO;
+                }
+                BigDecimal nonCorePool = totalPool.subtract(coreTrimProceeds).max(BigDecimal.ZERO);
+                if (nonCorePool.compareTo(BigDecimal.ZERO) > 0 && totalShortfall.compareTo(BigDecimal.ZERO) > 0 && shortfall.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal legAlloc = nonCorePool.multiply(shortfall).divide(totalShortfall, 2, RoundingMode.HALF_UP).min(shortfall);
+                    amountAllocated = amountAllocated.add(legAlloc);
+                }
+            } else if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
                 if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER) {
                     amountAllocated = totalPool;
                 }

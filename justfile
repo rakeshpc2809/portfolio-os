@@ -107,6 +107,10 @@ test-quant:
 refresh-nav-export:
     cd quant-sidecar && uv run python scripts/backfill_nav_history.py
 
+# Run Portfolio OS Model Context Protocol (MCP) Server (stdio)
+run-mcp:
+    cd quant-sidecar && uv run python mcp_server.py
+
 
 # -------------------------------------------------------------
 # Portfolio OS TUI Terminal Cockpit (Textual)

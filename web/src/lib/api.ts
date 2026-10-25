@@ -361,20 +361,57 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
 
   // Normalize buckets
   const rawBuckets = snapshotRes?.bucket_allocation || [];
-  const normalizedBuckets: BucketAllocationDto[] = rawBuckets.map((b: any) => ({
-    bucket: b.bucket || '',
-    target_pct: Number(b.target_pct || 0),
-    current_pct: Number(b.current_pct || 0),
-    current_value: Number(b.current_value || 0),
-    is_drifted: Boolean(b.is_drifted),
-    funds: (b.funds || []).map((f: any) => ({
+  const normalizedBuckets: BucketAllocationDto[] = rawBuckets.map((b: any) => {
+    const rawBucketName = String(b.bucket || '');
+    let funds = (b.funds || []).map((f: any) => ({
       ...f,
-      asset_name: f.fund_name || f.asset_name || f.isin,
+      fund_name: f.fund_name || f.asset_name || f.name || f.isin,
+      asset_name: f.fund_name || f.asset_name || f.name || f.isin,
       isin: f.isin || f.asset_id,
       current_value: Number(f.current_value || f.value || 0),
-      current_nav: Number(f.current_nav || 0)
-    }))
-  }));
+      current_nav: Number(f.current_nav || f.nav || 0),
+      total_units: Number(f.total_units || f.units || 0),
+      invested_value: Number(f.invested_value || f.cost_basis || 0),
+      unrealized_gain: Number(f.unrealized_gain || 0),
+      gain_pct: Number(f.gain_pct || 0)
+    }));
+
+    // If backend did not provide nested funds for this bucket, match from normalizedHoldings
+    if (funds.length === 0) {
+      const matchingHoldings = normalizedHoldings.filter(h => {
+        const hBucket = (h.bucket || '').toUpperCase();
+        const bName = rawBucketName.toUpperCase();
+        return hBucket === bName || 
+          (bName === 'GOLD_SILVER' && (hBucket.includes('GOLD') || hBucket.includes('SILVER'))) ||
+          (bName === 'LIQUID_BUFFER' && (hBucket.includes('LIQUID') || hBucket.includes('ARBITRAGE'))) ||
+          (bName === 'EQUITY_CORE' && hBucket.includes('CORE')) ||
+          (bName === 'EQUITY_SATELLITE' && hBucket.includes('SATELLITE')) ||
+          (bName === 'LEGACY_HOLDINGS' && hBucket.includes('LEGACY'));
+      });
+
+      funds = matchingHoldings.map(h => ({
+        fund_name: h.asset_name,
+        asset_name: h.asset_name,
+        isin: h.isin,
+        current_value: h.current_value,
+        current_nav: h.current_nav,
+        total_units: h.current_units,
+        invested_value: h.cost_basis,
+        unrealized_gain: h.unrealized_gain,
+        gain_pct: h.unrealized_gain_pct,
+        lots: h.lots
+      }));
+    }
+
+    return {
+      bucket: rawBucketName,
+      target_pct: Number(b.target_pct || 0),
+      current_pct: Number(b.current_pct || 0),
+      current_value: Number(b.current_value || 0),
+      is_drifted: Boolean(b.is_drifted),
+      funds: funds
+    };
+  });
 
   // Rebalance plan with normalized buy-side buckets & fund breakdowns
   const rawBuyBuckets = snapshotRes?.rebalance_plan?.buy_side?.buckets || [];
@@ -497,6 +534,26 @@ export async function fetchFactorBenchmarks(): Promise<FactorBenchmarksResponse>
   if (!resp.ok) {
     throw new Error(`Failed to fetch factor benchmarks: ${resp.statusText}`);
   }
-  return resp.json();
+  const data = await resp.json();
+  const rawList = Array.isArray(data?.factors) ? data.factors : [];
+  const factors: FactorBenchmarkMetric[] = rawList.map((f: any) => ({
+    isin: String(f.isin || ''),
+    fundName: String(f.fundName || f.fund_name || ''),
+    benchmarkId: String(f.benchmarkId || f.benchmark_id || 'NIFTY_500_TRI'),
+    benchmarkName: String(f.benchmarkName || f.benchmark_name || 'Standard Factor Benchmark'),
+    beta: Number(f.beta ?? 1.0),
+    trackingErrorPct: Number(f.trackingErrorPct ?? f.tracking_error_pct ?? 0),
+    alphaPct: Number(f.alphaPct ?? f.alpha_pct ?? 0),
+    informationRatio: Number(f.informationRatio ?? f.information_ratio ?? 0),
+    outperformancePct: Number(f.outperformancePct ?? f.outperformance_pct ?? 0),
+    sampleStatus: String(f.sampleStatus || f.sample_status || 'PROVISIONAL'),
+    sampleDays: Number(f.sampleDays ?? f.sample_days ?? 0),
+  }));
+  return {
+    status: data?.status || 'OK',
+    as_of: data?.as_of || '',
+    count: factors.length,
+    factors
+  };
 }
 

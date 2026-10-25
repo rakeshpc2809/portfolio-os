@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "portfolio-os": {
+      "command": "python3",
+      "args": ["quant-sidecar/mcp_server.py"],
+      "env": {
+        "CORE_NODE_URL": "http://127.0.0.1:8080",
+        "API_AUTH_TOKEN": "dev_secret_key_123"
+      }
+    }
+  }
+}

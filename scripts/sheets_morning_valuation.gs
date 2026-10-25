@@ -20,8 +20,8 @@ const ARBITRAGE_ISIN = "INF205K01KR8"; // Invesco India Arbitrage Fund
 // Ladder Thresholds
 const LADDER_RESET_THRESHOLD_PCT = -5.0;
 const RUNG_1_TRIGGER_PCT = -10.0;
-const RUNG_2_TRIGGER_PCT = -20.0;
-const RUNG_3_TRIGGER_PCT = -30.0;
+const RUNG_2_TRIGGER_PCT = -15.0;
+const RUNG_3_TRIGGER_PCT = -20.0;
 
 /**
  * Main 07:00 AM IST entry point.
@@ -243,19 +243,19 @@ function evaluateLumpsumLadder(holdings, navMap, systemState) {
 
   if (benchmarkDrawdownPct <= RUNG_3_TRIGGER_PCT) {
     activeRung = 3;
-    deployPct = 33.34;
+    deployPct = 100.0;
     rungAction = "RUNG_3_DEPLOY";
-    rungNarrative = "Nifty 500 <= -30%: Deploy final 1/3 of Arbitrage capital into core index buckets.";
+    rungNarrative = "Nifty 500 <= -20%: Deploy 100% of exit-load-free Arbitrage buffer into core index buckets.";
   } else if (benchmarkDrawdownPct <= RUNG_2_TRIGGER_PCT) {
     activeRung = 2;
-    deployPct = 33.33;
+    deployPct = 50.0;
     rungAction = "RUNG_2_DEPLOY";
-    rungNarrative = "Nifty 500 <= -20%: Deploy second 1/3 of Arbitrage capital into equity.";
+    rungNarrative = "Nifty 500 <= -15%: Deploy 50% of exit-load-free Arbitrage buffer into equity.";
   } else if (benchmarkDrawdownPct <= RUNG_1_TRIGGER_PCT) {
     activeRung = 1;
-    deployPct = 33.33;
+    deployPct = 25.0;
     rungAction = "RUNG_1_DEPLOY";
-    rungNarrative = "Nifty 500 <= -10%: Deploy first 1/3 of exit-load-free Arbitrage capital into underweight equity.";
+    rungNarrative = "Nifty 500 <= -10%: Deploy 25% of exit-load-free Arbitrage buffer into underweight equity.";
   } else if (benchmarkDrawdownPct > LADDER_RESET_THRESHOLD_PCT) {
     activeRung = 0;
     deployPct = 0.0;

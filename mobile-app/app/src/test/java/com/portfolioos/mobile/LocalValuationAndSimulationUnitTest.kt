@@ -13,10 +13,10 @@ class LocalValuationAndSimulationUnitTest {
     fun testLocalPortfolioValuator_advancesTimeAndRevalues() {
         val today = LocalDate.of(2026, 10, 24)
 
-        // Lot 1: Bought 400 days ago (2025-09-19) -> Should be LTCG (>365d) and exit-load free
+        // Lot 1: Bought 800 days ago (2024-08-15) -> Should be LTCG (>365d) and exit-load free (>=730d for PPFAS)
         val lot1 = FlatTaxLotDto(
             isin = "INF879O01027",
-            buyDate = "2025-09-19",
+            buyDate = "2024-08-15",
             units = 100.0,
             taxClassification = "EQUITY",
             costPerUnit = 50.0
@@ -77,7 +77,7 @@ class LocalValuationAndSimulationUnitTest {
 
         // 1. Verify Tax Lots Time Advancement
         val revaluedLots = revalued.taxLots!!
-        val rLot1 = revaluedLots.first { it.buyDate == "2025-09-19" }
+        val rLot1 = revaluedLots.first { it.buyDate == "2024-08-15" }
         assertTrue("Lot 1 held > 365 days must be long term", rLot1.isLongTerm)
         assertEquals(0L, rLot1.daysToLtcg)
         assertTrue(rLot1.holdingDays >= 400L)

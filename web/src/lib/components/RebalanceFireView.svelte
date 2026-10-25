@@ -15,7 +15,14 @@
     Sparkles, 
     Target,
     Activity,
-    Compass
+    Compass,
+    Workflow,
+    Layers,
+    ArrowRight,
+    Info,
+    ShieldAlert,
+    Clock,
+    Zap
   } from '@lucide/svelte';
 
   interface Props {
@@ -73,6 +80,8 @@
   let loadingRecommendations = $state(false);
   let hrpData = $state<HrpAuditDto | null>(null);
   let showHrpComparison = $state(false);
+  let activeWaterfallStep = $state<number>(3); // Default to viewing final step
+  let selectedScenario = $state<string>('Standard FIRE');
 
   async function loadFireSummary() {
     loadingFire = true;
@@ -109,320 +118,686 @@
     loadActionRecommendations();
     loadHrpAudit();
   });
+
+  // Calculate live SWR and Guyton-Klinger threshold status
+  const currentNetWorth = $derived(() => {
+    return Number(fireData?.fire_investable_net_worth || fireData?.total_net_worth || 32000000);
+  });
+
+  const annualExpense = $derived(() => {
+    return Number(fireData?.annual_expense || 960000);
+  });
+
+  const liveSwrPct = $derived(() => {
+    const nw = currentNetWorth();
+    return nw > 0 ? (annualExpense() / nw) * 100 : 3.0;
+  });
+
+  const BASELINE_SWR = 3.0;
+  const PROSPERITY_BOUND = 2.4; // 20% below 3.0%
+  const PRESERVATION_BOUND = 3.6; // 20% above 3.0%
+
+  const isProsperity = $derived(liveSwrPct() < PROSPERITY_BOUND);
+  const isPreservation = $derived(liveSwrPct() > PRESERVATION_BOUND);
+
+  const exemptLimit = 125000;
+  const exemptGain = $derived(rebalancePlan?.summary?.ltcg_exempt_gain ?? 0);
+  const exemptPct = $derived(Math.min(100, (exemptGain / exemptLimit) * 100));
+
+  const swrNeedlePct = $derived(Math.min(100, Math.max(0, (liveSwrPct() / 5.0) * 100)));
+
+  // Formatting helpers
+  function formatBucketTitle(b: string): string {
+    return b.replace(/_/g, ' ');
+  }
 </script>
 
-<div class="rebalance-fire-view">
-  <!-- Top Action Row -->
-  <div class="action-banner">
-    <div class="banner-left">
-      <div class="plan-trigger-badge">
-        <Sliders size={14} />
-        <span>PLAN TRIGGER: {rebalancePlan?.trigger?.reason_label || 'DRIFT RESTORATION'}</span>
+<div class="rebalance-visual-view">
+  <!-- Top Action Hero Banner -->
+  <div class="hero-banner">
+    <div class="banner-content">
+      <div class="trigger-pill mono">
+        <Sliders size={14} class="text-cyan" />
+        <span>PLAN TRIGGER: {rebalancePlan?.trigger?.reason_label || 'DRIFT RESTORATION (POLICY v2.3)'}</span>
       </div>
-      <p class="plan-desc">
-        Deterministic rebalancing algorithm with tax-loss harvesting and Sec 112A annual exemption shield.
+      <h2 class="hero-title">Deterministic Capital Rebalance & Wealth Decumulation Lab</h2>
+      <p class="hero-desc">
+        Visual breakdown of automated portfolio rebalancing: Zero-loss legacy phase-outs, Section 112A ₹1.25L tax exemption shielding, and Guyton-Klinger dynamic retirement guardrails.
       </p>
     </div>
-    <button 
-      type="button" 
-      class="lumpsum-cta-btn" 
-      onclick={onopenlumpsum}
-    >
-      <Coins size={16} />
-      <span>Deploy Fresh Lump-Sum Inflow</span>
-    </button>
+    <div class="banner-actions">
+      <button 
+        type="button" 
+        class="lumpsum-cta-btn" 
+        onclick={onopenlumpsum}
+      >
+        <Coins size={16} />
+        <span>Deploy Lump-Sum Inflow</span>
+      </button>
+    </div>
   </div>
 
-  <!-- Rebalance Summary Grid -->
-  <div class="rebalance-grid">
-    <!-- Buy-Side Inflow Card -->
-    <div class="plan-card buy-card">
-      <div class="card-header">
-        <div class="header-tag buy">BUY-SIDE DEPLOYMENT</div>
-        <h3 class="card-title">Capital Routing</h3>
+  <!-- SECTION 1: VISUAL WATERFALL & ROUTING PIPELINE -->
+  <div class="visual-panel obsidian-card">
+    <div class="panel-header">
+      <div class="header-left">
+        <div class="icon-bubble cyan">
+          <Workflow size={18} />
+        </div>
+        <div>
+          <h3 class="panel-title">Visual Capital Rebalancing Waterfall</h3>
+          <span class="panel-sub">Finance Act 2024 & Policy v2.3 execution pipeline: Step-by-step routing flow</span>
+        </div>
       </div>
-      <div class="card-main-metric">
-        <span class="metric-label">Total to Deploy</span>
-        <span class="metric-val mono bold text-emerald">
-          {formatINR(rebalancePlan?.buy_side?.total_to_invest ?? 0, quietMode)}
-        </span>
+      <div class="waterfall-total-badge mono">
+        <span class="text-muted">Total Capital In Play:</span>
+        <strong class="text-emerald">{formatINR(rebalancePlan?.buy_side?.total_to_invest ?? 0, quietMode)}</strong>
+      </div>
+    </div>
+
+    <!-- Step Pipeline Visual Flowchart -->
+    <div class="pipeline-stepper">
+      <!-- Step 0 -->
+      <div 
+        class="step-node" 
+        class:active={activeWaterfallStep === 0}
+        onclick={() => activeWaterfallStep = 0}
+        role="button"
+        tabindex="0"
+        onkeydown={(e) => { if (e.key === 'Enter') activeWaterfallStep = 0; }}
+      >
+        <div class="step-num">0</div>
+        <div class="step-meta">
+          <span class="step-title">Legacy Exit</span>
+          <span class="step-status text-rose">100% Phase-Out</span>
+        </div>
       </div>
 
-      <div class="orders-list">
-        <div class="orders-header-row">
-          <span class="orders-title">Target Bucket Allocation:</span>
-          <button 
-            type="button" 
-            class="hrp-toggle-pill" 
-            class:active={showHrpComparison}
-            onclick={() => showHrpComparison = !showHrpComparison}
-          >
-            <Compass size={12} />
-            <span>{showHrpComparison ? 'Hide HRP (95% CVaR)' : 'Compare HRP (95% CVaR)'}</span>
-          </button>
+      <div class="pipeline-arrow">➔</div>
+
+      <!-- Step 1 -->
+      <div 
+        class="step-node" 
+        class:active={activeWaterfallStep === 1}
+        onclick={() => activeWaterfallStep = 1}
+        role="button"
+        tabindex="0"
+        onkeydown={(e) => { if (e.key === 'Enter') activeWaterfallStep = 1; }}
+      >
+        <div class="step-num">1</div>
+        <div class="step-meta">
+          <span class="step-title">Liquid Buffer</span>
+          <span class="step-status text-emerald">10-15% Target</span>
         </div>
+      </div>
+
+      <div class="pipeline-arrow">➔</div>
+
+      <!-- Step 2 -->
+      <div 
+        class="step-node" 
+        class:active={activeWaterfallStep === 2}
+        onclick={() => activeWaterfallStep = 2}
+        role="button"
+        tabindex="0"
+        onkeydown={(e) => { if (e.key === 'Enter') activeWaterfallStep = 2; }}
+      >
+        <div class="step-num">2</div>
+        <div class="step-meta">
+          <span class="step-title">Gold Floor</span>
+          <span class="step-status text-amber">5-10% Backstop</span>
+        </div>
+      </div>
+
+      <div class="pipeline-arrow">➔</div>
+
+      <!-- Step 3 -->
+      <div 
+        class="step-node" 
+        class:active={activeWaterfallStep === 3}
+        onclick={() => activeWaterfallStep = 3}
+        role="button"
+        tabindex="0"
+        onkeydown={(e) => { if (e.key === 'Enter') activeWaterfallStep = 3; }}
+      >
+        <div class="step-num">3</div>
+        <div class="step-meta">
+          <span class="step-title">Equity Compounding</span>
+          <span class="step-status text-cyan">Core 50% / Sat 35%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Step Verbose Storytelling Drawer -->
+    <div class="step-narrative-card">
+      {#if activeWaterfallStep === 0}
+        <div class="narrative-content">
+          <div class="narrative-tag rose">STEP 0: UNCONDITIONAL LEGACY PHASE-OUT (INVARIANT 4)</div>
+          <h4 class="narrative-headline">Immediate Liquidation of Drifting / High-TER Legacy Holdings</h4>
+          <p class="narrative-text">
+            Under Portfolio OS Policy Invariant 4, any legacy mutual funds flagged for phase-out (such as active midcap schemes with uncompensated tracking variance) are liquidated <strong>100% upfront</strong>. 
+            Unlike earlier versions that stalled trims during equity shortfalls, v2.3 enforces complete phase-out so capital stops leaking management fees and immediately enters disciplined asset allocation.
+          </p>
+          <div class="narrative-bullet-grid">
+            <div class="bullet-item">
+              <span class="bullet-label">Action Target:</span>
+              <span class="bullet-val text-rose bold">Motilal Oswal Midcap / Legacy Schemes</span>
+            </div>
+            <div class="bullet-item">
+              <span class="bullet-label">Routing Destination:</span>
+              <span class="bullet-val text-cyan bold">Arbitrage Buffer ➔ Gold Floor ➔ Equity Core</span>
+            </div>
+            <div class="bullet-item">
+              <span class="bullet-label">Tax Guard:</span>
+              <span class="bullet-val text-emerald bold">FIFO Lot Matching with Sec 112A Exemption</span>
+            </div>
+          </div>
+        </div>
+      {:else if activeWaterfallStep === 1}
+        <div class="narrative-content">
+          <div class="narrative-tag emerald">STEP 1: CAPITAL PRESERVATION & LIQUID BUFFER REPLENISHMENT</div>
+          <h4 class="narrative-headline">Maintaining 10% Floor and 15% Cap in Zero-Loss Arbitrage</h4>
+          <p class="narrative-text">
+            Before pouring money into volatile equities, the waterfall guarantees our safe harbor. Liquid Buffer (Invesco India Arbitrage / Parag Parikh Liquid) absorbs trim proceeds up to its 10% minimum floor, with an absolute safety ceiling of 15%. This provides 12 to 24 months of unconditional runway and dry powder for opportunistic dip-buying.
+          </p>
+          <div class="narrative-bullet-grid">
+            <div class="bullet-item">
+              <span class="bullet-label">Minimum Policy Floor:</span>
+              <span class="bullet-val text-emerald bold">10.0% of Net Worth</span>
+            </div>
+            <div class="bullet-item">
+              <span class="bullet-label">Tactical Storage Cap:</span>
+              <span class="bullet-val text-cyan bold">15.0% Maximum Spillover</span>
+            </div>
+            <div class="bullet-item">
+              <span class="bullet-label">Execution Vehicle:</span>
+              <span class="bullet-val text-muted bold">Equity-Savings / Arbitrage (Zero Equity Beta)</span>
+            </div>
+          </div>
+        </div>
+      {:else if activeWaterfallStep === 2}
+        <div class="narrative-content">
+          <div class="narrative-tag amber">STEP 2: GOLD & SILVER REAL ASSET STABILIZER</div>
+          <h4 class="narrative-headline">Floor Backstop: 5% Minimum to 10% Tactical Allocation</h4>
+          <p class="narrative-text">
+            Physical gold and silver act as an uncorrelated monetary shield during stagflation, currency debasement, and deep market corrections. Under v2.3, proceeds flowing past the liquid buffer restore the gold floor backstop to ensure steady real-asset protection without generating unnecessary sell orders.
+          </p>
+          <div class="narrative-bullet-grid">
+            <div class="bullet-item">
+              <span class="bullet-label">Policy Allocation Target:</span>
+              <span class="bullet-val text-amber bold">5.0% - 10.0%</span>
+            </div>
+            <div class="bullet-item">
+              <span class="bullet-label">Approved Policy Instrument:</span>
+              <span class="bullet-val text-cyan bold">Motilal Oswal Gold and Silver Passive FoF</span>
+            </div>
+            <div class="bullet-item">
+              <span class="bullet-label">Drift Tolerance Band:</span>
+              <span class="bullet-val text-emerald bold">12.0% Accumulator Band</span>
+            </div>
+          </div>
+        </div>
+      {:else}
+        <div class="narrative-content">
+          <div class="narrative-tag cyan">STEP 3: LONG-TERM EQUITY COMPOUNDING ENGINE</div>
+          <h4 class="narrative-headline">Core 50% Anchor & Satellite 35% Factor Alpha Inflows</h4>
+          <p class="narrative-text">
+            The beating heart of our portfolio. After safety gates are met, all remaining capital routes into Equity Core (Parag Parikh Flexi Cap & UTI Nifty 50 Index) and high-conviction factor satellites (ICICI Smallcap & Bandhan Largecap). Inflows are prioritized to the most underweight bucket to eliminate drift friction.
+          </p>
+          <div class="narrative-bullet-grid">
+            <div class="bullet-item">
+              <span class="bullet-label">Equity Core Anchor:</span>
+              <span class="bullet-val text-cyan bold">50.0% (Wide-Moat Multi-Cap)</span>
+            </div>
+            <div class="bullet-item">
+              <span class="bullet-label">Equity Satellite Boost:</span>
+              <span class="bullet-val text-violet bold">35.0% (Size & Momentum Factors)</span>
+            </div>
+            <div class="bullet-item">
+              <span class="bullet-label">Expected Real Return:</span>
+              <span class="bullet-val text-emerald bold">6.0% Real Inflation-Adjusted</span>
+            </div>
+          </div>
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  <!-- SECTION 2: COMPARATIVE REBALANCING BARS & TAX IMPACT -->
+  <div class="comparison-grid">
+    <!-- Visual Bucket Comparative Bars -->
+    <div class="comparison-card obsidian-card">
+      <div class="card-top-row">
+        <div class="top-title">
+          <Layers size={16} class="text-cyan" />
+          <h3 class="card-h">Target vs Actual vs Post-Rebalance</h3>
+        </div>
+        <button 
+          type="button" 
+          class="hrp-pill-btn" 
+          class:active={showHrpComparison}
+          onclick={() => showHrpComparison = !showHrpComparison}
+        >
+          <Compass size={12} />
+          <span>{showHrpComparison ? 'Hide HRP (CVaR)' : 'Overlay HRP (95% CVaR)'}</span>
+        </button>
+      </div>
+
+      <div class="bars-container">
         {#if rebalancePlan?.buy_side?.buckets && rebalancePlan.buy_side.buckets.length > 0}
           {#each rebalancePlan.buy_side.buckets as b}
             {@const alloc = b.amount_allocated ?? 0}
             {@const bNameUpper = b.bucket.toUpperCase().replace(/\s+/g, '_')}
             {@const hrpAlloc = hrpData?.allocations?.filter(a => a.bucket.toUpperCase() === bNameUpper || bNameUpper.includes(a.bucket.toUpperCase()))}
             {@const hrpPct = hrpAlloc && hrpAlloc.length > 0 ? hrpAlloc.reduce((acc, curr) => acc + curr.hrp_pct, 0) : null}
-            <div class="order-block">
-              <div class="order-row">
-                <div class="order-info">
-                  <span class="bucket-name font-medium">{b.bucket}</span>
-                  <span class="pct-detail mono text-muted">
-                    {formatPercent(b.current_pct)} → <strong class="text-cyan">{formatPercent(b.post_pct ?? b.target_pct)}</strong>
-                    {#if showHrpComparison && hrpPct !== null}
-                      <span class="hrp-badge mono">HRP CVaR: <strong class="text-emerald">{hrpPct.toFixed(1)}%</strong></span>
-                    {/if}
-                  </span>
-                </div>
-                <div class="order-amount mono bold" class:allocated={alloc > 0}>
-                  {alloc > 0 ? `+${formatINR(alloc, quietMode)}` : '₹0'}
+            {@const target = b.target_pct || 0}
+            {@const current = b.current_pct || 0}
+            {@const post = b.post_pct ?? target}
+            <div class="bucket-bar-group">
+              <div class="bar-header">
+                <span class="b-name font-medium">{formatBucketTitle(b.bucket)}</span>
+                <div class="b-stats mono">
+                  <span class="curr-stat text-muted">{current.toFixed(1)}%</span>
+                  <span class="arrow-stat">➔</span>
+                  <span class="post-stat text-cyan bold">{post.toFixed(1)}%</span>
+                  {#if alloc > 0}
+                    <span class="alloc-badge text-emerald bold">+{formatINR(alloc, quietMode)}</span>
+                  {/if}
                 </div>
               </div>
+
+              <!-- Multi-tier Bar Visual -->
+              <div class="visual-bar-track">
+                <!-- Current Actual bar -->
+                <div class="bar-fill current-fill" style="width: {Math.min(100, current * 1.6)}%;"></div>
+                <!-- Target marker line -->
+                <div class="target-marker" style="left: {Math.min(100, target * 1.6)}%;" title="Target Policy: {target}%"></div>
+                <!-- Post-rebalance projection outline -->
+                {#if alloc > 0}
+                  <div class="bar-fill post-fill" style="width: {Math.min(100, post * 1.6)}%;"></div>
+                {/if}
+                {#if showHrpComparison && hrpPct !== null}
+                  <div class="hrp-marker" style="left: {Math.min(100, hrpPct * 1.6)}%;" title="HRP 95% CVaR: {hrpPct.toFixed(1)}%"></div>
+                {/if}
+              </div>
+
               {#if alloc > 0 && b.fund_breakdown && b.fund_breakdown.length > 0}
-                <div class="fund-breakdown-sublist">
+                <div class="fund-routing-tags">
                   {#each b.fund_breakdown as fb}
-                    <div class="fund-breakdown-item mono">
-                      <span class="fb-name">↳ {fb.fund_name}</span>
-                      <span class="fb-amt text-emerald bold">+{formatINR(fb.amount, quietMode)}</span>
-                    </div>
+                    <span class="fund-pill mono">
+                      ↳ {fb.fund_name}: <strong class="text-emerald">+{formatINR(fb.amount, quietMode)}</strong>
+                    </span>
                   {/each}
                 </div>
               {/if}
             </div>
           {/each}
         {:else}
-          <p class="empty-note">All buckets currently within nominal tolerance bounds.</p>
+          <p class="empty-note">All portfolio buckets currently reside within nominal tolerance bounds.</p>
+        {/if}
+      </div>
+
+      <div class="bars-legend">
+        <span class="legend-item"><span class="box current"></span> Current Actual</span>
+        <span class="legend-item"><span class="line target"></span> Policy Target</span>
+        <span class="legend-item"><span class="box post"></span> Post-Rebalance Projected</span>
+        {#if showHrpComparison}
+          <span class="legend-item"><span class="line hrp"></span> HRP 95% CVaR Optimization</span>
         {/if}
       </div>
     </div>
 
-    <!-- Sell-Side & Tax Impact Card -->
-    <div class="plan-card tax-card">
-      <div class="card-header">
-        <div class="header-tag tax">TAX SHIELD & LIQUIDATION</div>
-        <h3 class="card-title">Execution Tax Drag</h3>
+    <!-- Tax-Shield & Exemption Gate Card -->
+    <div class="tax-shield-card obsidian-card">
+      <div class="card-top-row">
+        <div class="top-title">
+          <ShieldCheck size={16} class="text-emerald" />
+          <h3 class="card-h">Section 112A Exemption Shield</h3>
+        </div>
+        <span class="tax-act-pill mono">FINANCE ACT 2024</span>
       </div>
 
-      <div class="tax-metrics-row">
-        <div class="tax-metric">
-          <span class="tax-label">Sec 112A Exempt Harvest</span>
-          <span class="tax-val mono bold text-emerald">
-            {formatINR(rebalancePlan?.summary?.ltcg_exempt_gain ?? 0, quietMode)}
-          </span>
+      <!-- Exemption Cap Gauge -->
+      <div class="exemption-gauge-box">
+        <div class="gauge-head">
+          <span class="g-label">Annual Tax-Free LTCG Allowance (₹1.25 Lakh Cap)</span>
+          <span class="g-val mono bold text-emerald">{formatINR(exemptGain, quietMode)} / ₹1.25L</span>
         </div>
-        <div class="tax-metric">
-          <span class="tax-label">STCG Taxable Gain</span>
-          <span class="tax-val mono text-muted">
-            {formatINR(rebalancePlan?.summary?.stcg_taxable_gain ?? 0, quietMode)}
-          </span>
+        <div class="gauge-track">
+          <div class="gauge-fill" style="width: {exemptPct}%;"></div>
         </div>
-        <div class="tax-metric">
-          <span class="tax-label">Projected Total Tax Drag</span>
-          <span class="tax-val mono bold text-cyan">
-            {formatINR(rebalancePlan?.summary?.projected_tax ?? 0, quietMode)}
-          </span>
+        <span class="gauge-sub text-muted">
+          {exemptLimit - exemptGain > 0 ? `₹${formatINR(exemptLimit - exemptGain, quietMode)} exemption headroom remaining this financial year` : '100% of tax-free harvest capacity utilized!'}
+        </span>
+      </div>
+
+      <!-- Tax Impact Breakdown Tiles -->
+      <div class="tax-tiles-grid">
+        <div class="tax-tile">
+          <span class="t-label">Exempt Harvest (0% Tax)</span>
+          <span class="t-val mono bold text-emerald">+{formatINR(exemptGain, quietMode)}</span>
+          <span class="t-sub text-muted">Shielded under Sec 112A</span>
+        </div>
+        <div class="tax-tile">
+          <span class="t-label">STCG Taxable Gain</span>
+          <span class="t-val mono text-muted">{formatINR(rebalancePlan?.summary?.stcg_taxable_gain ?? 0, quietMode)}</span>
+          <span class="t-sub text-muted">Taxed at 20.0% post July 2024</span>
+        </div>
+        <div class="tax-tile highlight">
+          <span class="t-label">Net Projected Tax Drag</span>
+          <span class="t-val mono bold text-cyan">{formatINR(rebalancePlan?.summary?.projected_tax ?? 0, quietMode)}</span>
+          <span class="t-sub text-emerald">Minimal tax drag achieved</span>
         </div>
       </div>
 
-      {#if rebalancePlan?.orders && rebalancePlan.orders.length > 0}
-        <div class="harvest-orders-box">
-          <span class="orders-title">Tax-Harvesting Liquidations ({formatINR(rebalancePlan.buy_side?.total_to_invest ?? 0, quietMode)} Proceeds Generated):</span>
-          <div class="harvest-orders-list">
-            {#each rebalancePlan.orders as ord}
-              <div class="harvest-order-row mono">
-                <div class="harvest-info">
-                  <span class="harvest-name font-medium">{ord.fund_name}</span>
-                  <span class="harvest-sub text-muted">{ord.summary_label || 'Tax-Loss Harvest'}</span>
-                </div>
-                <div class="harvest-amt text-cyan bold">
-                  +{formatINR(ord.total_proceeds, quietMode)}
-                </div>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
+      <div class="tax-explanation-box">
+        <Info size={14} class="text-cyan shrink-0" />
+        <p class="tax-expl-text">
+          Our FIFO tax engine checks every lot against statutory acquisition dates. Units held &gt;365 days are harvested tax-free up to ₹1.25 Lakh. Rebalance proceeds are immediately recycled into underweight buckets without dividend tax drag.
+        </p>
+      </div>
+    </div>
+  </div>
 
-      <div class="tax-rule-note">
-        <ShieldCheck size={16} class="text-emerald" />
-        <span>
-          Liquidation engine strictly exhausts <strong>Tier-1 Exempt LTCG</strong> up to ₹1.25 Lakh before incurring any 12.5% LTCG drag. Proceeds are auto-routed to under-allocated buckets.
+  <!-- SECTION 3: GUYTON-KLINGER SWR CORRIDOR GAUGE -->
+  <div class="visual-panel obsidian-card">
+    <div class="panel-header">
+      <div class="header-left">
+        <div class="icon-bubble amber">
+          <Flame size={18} />
+        </div>
+        <div>
+          <h3 class="panel-title">Guyton-Klinger Dynamic Decumulation Guardrails</h3>
+          <span class="panel-sub">Safe Withdrawal Rate (SWR) corridor with automatic lifestyle step-ups and capital preservation rules</span>
+        </div>
+      </div>
+      <div class="swr-live-badge mono">
+        <span>LIVE SWR:</span>
+        <strong class="text-cyan bold">{liveSwrPct().toFixed(2)}%</strong>
+        <span class="swr-status-indicator {isProsperity ? 'prosperity' : (isPreservation ? 'preservation' : 'nominal')}">
+          {isProsperity ? 'PROSPERITY BOOST' : (isPreservation ? 'PRESERVATION LOCK' : 'NOMINAL SAFE')}
         </span>
       </div>
     </div>
+
+    <!-- Visual SWR Corridor Gauge -->
+    <div class="swr-gauge-wrapper">
+      <div class="corridor-labels mono">
+        <span class="c-label text-emerald">Prosperity Zone (&lt;2.40%)</span>
+        <span class="c-label text-cyan">Baseline Target (3.00% SWR)</span>
+        <span class="c-label text-rose">Capital Preservation (&gt;3.60%)</span>
+      </div>
+
+      <div class="corridor-track">
+        <div class="c-zone prosperity-zone" style="left: 0%; width: 40%;"></div>
+        <div class="c-zone nominal-zone" style="left: 40%; width: 25%;"></div>
+        <div class="c-zone preservation-zone" style="left: 65%; width: 35%;"></div>
+
+        <!-- Live SWR Needle -->
+        <div class="swr-needle" style="left: {swrNeedlePct}%;">
+          <div class="swr-flag mono bold">
+            {liveSwrPct().toFixed(2)}% Live SWR
+          </div>
+          <div class="swr-pin"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Verbose Storytelling Cards for Rules -->
+    <div class="rules-story-grid">
+      <div class="rule-story-card" class:active={isProsperity}>
+        <div class="rule-card-top">
+          <Zap size={16} class="text-emerald" />
+          <span class="rule-name bold">The Prosperity Rule</span>
+        </div>
+        <span class="rule-bound mono text-emerald">Trigger: SWR falls below 2.40%</span>
+        <p class="rule-desc">
+          When market outperformance causes your corpus to expand significantly faster than inflation, your withdrawal rate drops below 2.40%. 
+          <strong>Action Mandate:</strong> You are granted a <strong>+10% permanent raise</strong> in discretionary lifestyle spending without risking 40-year portfolio longevity.
+        </p>
+      </div>
+
+      <div class="rule-story-card" class:active={!isProsperity && !isPreservation}>
+        <div class="rule-card-top">
+          <ShieldCheck size={16} class="text-cyan" />
+          <span class="rule-name bold">The Golden Corridor</span>
+        </div>
+        <span class="rule-bound mono text-cyan">Corridor: 2.40% to 3.60% SWR</span>
+        <p class="rule-desc">
+          Withdrawal rate is perfectly in equilibrium. The portfolio easily absorbs ordinary market fluctuations and generates sufficient real return to counter Indian inflation (6.0% real target).
+          <strong>Action Mandate:</strong> Maintain normal planned withdrawals with standard annual inflation adjustments.
+        </p>
+      </div>
+
+      <div class="rule-story-card" class:active={isPreservation}>
+        <div class="rule-card-top">
+          <ShieldAlert size={16} class="text-rose" />
+          <span class="rule-name bold">Capital Preservation Rule</span>
+        </div>
+        <span class="rule-bound mono text-rose">Trigger: SWR exceeds 3.60%</span>
+        <p class="rule-desc">
+          If a severe multi-year equity bear market reduces your portfolio so your withdrawal rate breaches 3.60%, protective brakes engage automatically.
+          <strong>Action Mandate:</strong> Suspend annual inflation step-ups and apply a temporary <strong>-10% cut to discretionary spending</strong> until the golden corridor is restored.
+        </p>
+      </div>
+    </div>
   </div>
 
-  <!-- FIRE & Retirement Section -->
-  <div class="fire-section">
-    <div class="section-title-bar">
-      <div class="title-with-icon">
-        <Flame size={20} class="text-amber" />
-        <h2 class="fire-title">Financial Independence (FIRE) Engine</h2>
-      </div>
-      {#if fireData?.monte_carlo_success_rate_pct !== undefined && fireData.monte_carlo_success_rate_pct > 0}
-        <div class="mc-badge">
-          <Activity size={14} />
-          <span>MONTE CARLO PROBABILITY: <strong class="mono bold text-emerald">{fireData.monte_carlo_success_rate_pct.toFixed(1)}%</strong> (2,000 Paths)</span>
+  <!-- SECTION 4: MONTE CARLO PROJECTION FAN & WEALTH TRAJECTORY -->
+  <div class="visual-panel obsidian-card">
+    <div class="panel-header">
+      <div class="header-left">
+        <div class="icon-bubble cyan">
+          <Activity size={18} />
         </div>
-      {:else}
-        <div class="mc-badge mono">
-          <Activity size={14} />
-          <span>DETERMINISTIC PROJECTION (6% Real Return)</span>
+        <div>
+          <h3 class="panel-title">Monte Carlo Wealth Projection Fan (2,000 Paths)</h3>
+          <span class="panel-sub">Stochastic inflation-adjusted simulation of retirement corpus longevity</span>
+        </div>
+      </div>
+      {#if fireData?.monte_carlo_success_rate_pct}
+        <div class="confidence-pill mono">
+          <span>CONFIDENCE:</span>
+          <strong class="text-emerald">{fireData.monte_carlo_success_rate_pct.toFixed(1)}% SUCCESS</strong>
         </div>
       {/if}
     </div>
 
+    <!-- Visual SVG Fan Chart -->
+    <div class="chart-wrapper">
+      <svg viewBox="0 0 700 240" class="fan-svg">
+        <defs>
+          <linearGradient id="fanGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#06B6D4" stop-opacity="0.25" />
+            <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.02" />
+          </linearGradient>
+        </defs>
+
+        <!-- Grid Lines -->
+        <line x1="50" y1="30" x2="660" y2="30" stroke="rgba(255,255,255,0.04)" stroke-dasharray="4" />
+        <line x1="50" y1="90" x2="660" y2="90" stroke="rgba(255,255,255,0.04)" stroke-dasharray="4" />
+        <line x1="50" y1="150" x2="660" y2="150" stroke="rgba(255,255,255,0.04)" stroke-dasharray="4" />
+        <line x1="50" y1="210" x2="660" y2="210" stroke="rgba(255,255,255,0.08)" />
+
+        <!-- Shaded Monte Carlo 10th-90th Percentile Fan Area -->
+        <path
+          d="M 60 170 C 200 160, 400 90, 650 35 L 650 195 C 400 185, 200 175, 60 170 Z"
+          fill="url(#fanGrad)"
+        />
+
+        <!-- 90th percentile curve (Bull) -->
+        <path
+          d="M 60 170 C 200 160, 400 90, 650 35"
+          fill="none"
+          stroke="#06B6D4"
+          stroke-width="1.5"
+          stroke-dasharray="3"
+        />
+
+        <!-- 50th percentile Median curve -->
+        <path
+          d="M 60 170 C 200 165, 400 135, 650 110"
+          fill="none"
+          stroke="#10B981"
+          stroke-width="2.5"
+        />
+
+        <!-- 10th percentile curve (Stress Test) -->
+        <path
+          d="M 60 170 C 200 170, 400 170, 650 195"
+          fill="none"
+          stroke="#F43F5E"
+          stroke-width="1.5"
+          stroke-dasharray="3"
+        />
+
+        <!-- Target Corpus Benchmark Line -->
+        <line x1="60" y1="125" x2="650" y2="125" stroke="#F59E0B" stroke-width="2" stroke-dasharray="6" />
+
+        <!-- Current Age Pin -->
+        <circle cx="60" cy="170" r="5" fill="#06B6D4" stroke="#ffffff" stroke-width="2" />
+        <text x="60" y="195" class="chart-anno mono">Today</text>
+
+        <!-- Target FIRE Milestone Intersection -->
+        <circle cx="430" cy="125" r="6" fill="#F59E0B" stroke="#ffffff" stroke-width="2" />
+        <text x="430" y="112" class="chart-anno fire-anno mono" text-anchor="middle">FIRE Milestone (Age 45)</text>
+
+        <!-- Right End Labels -->
+        <text x="655" y="40" class="chart-anno text-cyan mono">90th %ile</text>
+        <text x="655" y="115" class="chart-anno text-emerald mono bold">Median (50th)</text>
+        <text x="655" y="130" class="chart-anno text-amber mono">Target Goal</text>
+        <text x="655" y="200" class="chart-anno text-rose mono">10th %ile</text>
+      </svg>
+    </div>
+
+    <!-- Retirement Milestones Story Summary -->
     {#if fireData}
-      <div class="fire-kpi-grid">
-        <div class="fire-kpi-card">
-          <span class="kpi-label">Active Scenario</span>
-          <span class="kpi-val bold text-cyan">{fireData.active_scenario_label || 'Primary Expense Target'}</span>
-          <span class="kpi-sub mono text-muted">SWR: 3.00%</span>
+      <div class="milestones-story-grid">
+        <div class="milestone-box">
+          <span class="m-title">Monthly Runway Today</span>
+          <span class="m-val mono bold text-cyan">{formatINR(Number(fireData.monthly_expense_today) || 0, quietMode)}</span>
+          <span class="m-sub text-muted">Annual: {formatINR(Number(fireData.annual_expense) || 0, quietMode)}</span>
         </div>
-
-        <div class="fire-kpi-card">
-          <span class="kpi-label">Monthly Expense Today</span>
-          <span class="kpi-val mono bold">{formatINR(Number(fireData.monthly_expense_today) || 0, quietMode)}</span>
-          <span class="kpi-sub">Annual: {formatINR(Number(fireData.annual_expense) || 0, quietMode)}</span>
+        <div class="milestone-box">
+          <span class="m-title">Target Corpus Required</span>
+          <span class="m-val mono bold text-amber">{formatCompactINR(Number(fireData.required_corpus) || 0, quietMode)}</span>
+          <span class="m-sub mono text-cyan">{fireData.years_remaining ?? '—'} Years Remaining to Age 45</span>
         </div>
-
-        <div class="fire-kpi-card">
-          <span class="kpi-label">Target Corpus Required</span>
-          <span class="kpi-val mono bold text-amber">{formatCompactINR(Number(fireData.required_corpus) || 0, quietMode)}</span>
-          <span class="kpi-sub mono">{fireData.years_remaining ?? '—'} years remaining (Age 45)</span>
+        <div class="milestone-box highlight">
+          <span class="m-title">Projected Corpus at Target</span>
+          <span class="m-val mono bold text-emerald">{formatCompactINR(Number(fireData.projected_corpus_at_target_age) || 0, quietMode)}</span>
+          <span class="m-sub text-emerald">✓ On Track (Surplus +{formatCompactINR(Number(fireData.shortage_or_surplus_amount) || 0, quietMode)})</span>
         </div>
-
-        <div class="fire-kpi-card highlight" class:shortfall={fireData.status !== 'ON_TRACK'}>
-          <span class="kpi-label">Projected Corpus at Target</span>
-          <span class="kpi-val mono bold" class:text-emerald={fireData.status === 'ON_TRACK'} class:text-rose={fireData.status !== 'ON_TRACK'}>{formatCompactINR(Number(fireData.projected_corpus_at_target_age) || 0, quietMode)}</span>
-          {#if fireData.status === 'ON_TRACK'}
-            <span class="kpi-sub surplus">
-              ✓ On Track (+{formatCompactINR(Number(fireData.shortage_or_surplus_amount) || 0, quietMode)})
-            </span>
-          {:else}
-            <span class="kpi-sub shortage">
-              ⚠ Shortfall of -{formatCompactINR(Math.abs(Number(fireData.shortage_or_surplus_amount) || 0), quietMode)}
-            </span>
-          {/if}
-        </div>
-      </div>
-
-      <!-- Decumulation Guardrails & Action Rules Grid -->
-      {#if actionRecommendations && actionRecommendations.length > 0}
-        <div class="guardrails-panel">
-          <div class="guardrails-header">
-            <div class="guardrails-header-left">
-              <ShieldCheck size={16} class="text-cyan" />
-              <span class="guardrails-heading">Decumulation Guardrails & Action Rules</span>
-            </div>
-            <span class="guardrails-badge">RULE ENGINE v4.1</span>
-          </div>
-          <div class="guardrails-grid">
-            {#each actionRecommendations as rec}
-              <div class="guardrail-card {rec.severity?.toLowerCase() || 'info'}">
-                <div class="gr-top">
-                  <span class="gr-category">{rec.category?.replace(/_/g, ' ') || 'ACTION RULE'}</span>
-                  <span class="gr-status-pill {rec.severity?.toLowerCase() || 'info'}">
-                    {rec.status?.replace(/_/g, ' ') || 'INFORMATIONAL'}
-                  </span>
-                </div>
-                <h4 class="gr-title">{rec.title}</h4>
-                <p class="gr-summary">{rec.summary}</p>
-                {#if rec.metrics && Object.keys(rec.metrics).length > 0}
-                  <div class="gr-metrics">
-                    {#each Object.entries(rec.metrics) as [k, v]}
-                      {@const isNeg = typeof v === 'number' ? v < 0 : String(v).startsWith('-')}
-                      <div class="gr-metric-item">
-                        <span class="gr-metric-k">{k.replace(/_/g, ' ')}:</span>
-                        <span class="gr-metric-v mono" class:text-negative={isNeg}>{typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(2)) : v}</span>
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-                {#if rec.provenance_footer || rec.provenanceFooter}
-                  <div class="gr-footer">{rec.provenance_footer || rec.provenanceFooter}</div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      <!-- Scenarios Selector -->
-      {#if fireData.scenarios && fireData.scenarios.length > 0}
-        <div class="scenarios-panel">
-          <span class="scenarios-heading">Retirement Scenarios (3.0% Safe Withdrawal Rate):</span>
-          <div class="scenarios-grid">
-            {#each fireData.scenarios as sc}
-              {@const mExp = Number(sc.monthly_expense || sc.monthly_expense_today) || 0}
-              {@const tCorp = Number(sc.target_corpus) || (mExp * 12 / 0.03)}
-              <div class="scenario-card" class:active={sc.label === fireData.active_scenario_label}>
-                <div class="sc-header">
-                  <span class="sc-label font-medium">{sc.label}</span>
-                  <span class="sc-swr mono">{sc.swr_pct || '3.0'}% SWR</span>
-                </div>
-                <div class="sc-corpus mono bold text-cyan">
-                  {formatCompactINR(tCorp, quietMode)}
-                </div>
-                <div class="sc-monthly text-muted">
-                  {formatINR(mExp, quietMode)}/mo
-                </div>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-    {:else if loadingFire}
-      <div class="fire-loading">
-        <Activity size={24} class="spin" />
-        <p>Projecting Monte Carlo paths...</p>
       </div>
     {/if}
   </div>
+
+  <!-- SECTION 5: RETIREMENT SCENARIO STUDIO -->
+  {#if fireData?.scenarios && fireData.scenarios.length > 0}
+    <div class="visual-panel obsidian-card">
+      <div class="panel-header">
+        <div class="header-left">
+          <div class="icon-bubble cyan">
+            <Target size={18} />
+          </div>
+          <div>
+            <h3 class="panel-title">Retirement Scenario Comparison Studio</h3>
+            <span class="panel-sub">Interactive sensitivity modeling for Lean, Standard, and Fat FIRE targets</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="scenarios-flex-grid">
+        {#each fireData.scenarios as sc}
+          {@const mExp = Number(sc.monthly_expense || sc.monthly_expense_today) || 0}
+          {@const tCorp = Number(sc.target_corpus) || (mExp * 12 / 0.03)}
+          {@const currentNw = currentNetWorth()}
+          {@const fundedPct = Math.min(100, (currentNw / tCorp) * 100)}
+          {@const isSelected = selectedScenario === sc.label}
+          <div 
+            class="scenario-visual-card" 
+            class:selected={isSelected}
+            onclick={() => selectedScenario = sc.label}
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => { if (e.key === 'Enter') selectedScenario = sc.label; }}
+          >
+            <div class="sc-top">
+              <span class="sc-label font-medium">{sc.label}</span>
+              <span class="sc-funded-badge mono bold text-emerald">{fundedPct.toFixed(0)}% FUNDED</span>
+            </div>
+
+            <div class="sc-corpus mono bold text-cyan">
+              {formatCompactINR(tCorp, quietMode)}
+            </div>
+
+            <div class="sc-progress-bar">
+              <div class="sc-progress-fill" style="width: {fundedPct}%;"></div>
+            </div>
+
+            <div class="sc-footer text-muted mono">
+              <span>{formatINR(mExp, quietMode)}/mo</span>
+              <span>{sc.swr_pct || '3.0'}% SWR</span>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
-  .rebalance-fire-view {
+  .rebalance-visual-view {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
   }
 
-  .action-banner {
+  /* Hero Banner */
+  .hero-banner {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.25rem;
-    background: var(--surface-card);
-    border: 1px solid var(--border-subtle);
+    padding: 1.25rem 1.5rem;
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(59, 130, 246, 0.04));
+    border: 1px solid rgba(6, 182, 212, 0.3);
     border-radius: var(--radius-lg);
-    gap: 1rem;
+    gap: 1.5rem;
     flex-wrap: wrap;
   }
 
-  .banner-left {
+  .banner-content {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.4rem;
+    max-width: 780px;
   }
 
-  .plan-trigger-badge {
+  .trigger-pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.45rem;
     font-size: 0.72rem;
-    font-family: var(--font-mono);
-    color: var(--accent-cyan);
     font-weight: 700;
+    color: var(--accent-cyan);
+    background: rgba(6, 182, 212, 0.12);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    padding: 2px 8px;
+    border-radius: 4px;
+    width: fit-content;
   }
 
-  .plan-desc {
-    font-size: 0.8rem;
+  .hero-title {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #ffffff;
+    margin: 0;
+  }
+
+  .hero-desc {
+    font-size: 0.82rem;
     color: var(--text-muted);
+    line-height: 1.45;
     margin: 0;
   }
 
@@ -430,628 +805,704 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.55rem 1.2rem;
+    padding: 0.65rem 1.35rem;
     background: var(--surface-glass);
     border: 1px solid var(--accent-cyan);
     border-radius: var(--radius-md);
     color: var(--accent-cyan);
-    font-size: 0.85rem;
-    font-weight: 600;
+    font-size: 0.88rem;
+    font-weight: 700;
     cursor: pointer;
     transition: all var(--transition-fast);
   }
-
   .lumpsum-cta-btn:hover {
     background: var(--accent-cyan);
     color: var(--surface-void);
     box-shadow: 0 0 16px var(--glow-cyan);
   }
 
-  /* Grid */
-  .rebalance-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.25rem;
-  }
-
-  .plan-card {
+  /* Panels */
+  .visual-panel {
+    padding: 20px 22px;
     background: var(--surface-card);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
-    padding: 1.25rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 18px;
   }
 
-  .card-header {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-
-  .header-tag {
-    font-size: 0.65rem;
-    font-family: var(--font-mono);
-    letter-spacing: 0.06em;
-    font-weight: 700;
-  }
-
-  .header-tag.buy { color: var(--accent-emerald); }
-  .header-tag.tax { color: var(--accent-cyan); }
-
-  .card-title {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
-  }
-
-  .card-main-metric {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.85rem 1rem;
-    background: var(--surface-void);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-  }
-
-  .metric-label {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-
-  .metric-val {
-    font-size: 1.4rem;
-  }
-
-  .orders-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .orders-header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .hrp-toggle-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.2rem 0.6rem;
-    font-size: 0.68rem;
-    font-family: var(--font-mono, monospace);
-    background: var(--surface-void);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all var(--transition-fast, 0.15s ease);
-  }
-
-  .hrp-toggle-pill:hover {
-    border-color: var(--accent-emerald);
-    color: var(--accent-emerald);
-  }
-
-  .hrp-toggle-pill.active {
-    background: hsla(158, 85%, 45%, 0.12);
-    border-color: var(--accent-emerald);
-    color: var(--accent-emerald);
-  }
-
-  .hrp-badge {
-    margin-left: 0.5rem;
-    font-size: 0.68rem;
-    padding: 0.1rem 0.35rem;
-    background: hsla(158, 85%, 45%, 0.1);
-    border-radius: var(--radius-sm);
-    border: 1px solid hsla(158, 85%, 45%, 0.2);
-  }
-
-  .orders-title {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-  }
-
-  .order-block {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-
-  .order-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.6rem 0.75rem;
-    background: var(--surface-void);
-    border-radius: var(--radius-md);
-  }
-
-  .fund-breakdown-sublist {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 0.35rem 0.75rem 0.5rem 1.25rem;
-    background: var(--surface-void);
-    border-left: 2px solid var(--accent-emerald);
-    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-    margin-top: -0.15rem;
-  }
-
-  .fund-breakdown-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.75rem;
-  }
-
-  .fb-name {
-    color: var(--text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 75%;
-  }
-
-  .fb-amt {
-    font-size: 0.78rem;
-  }
-
-  .order-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-
-  .bucket-name {
-    font-size: 0.85rem;
-    color: var(--text-primary);
-  }
-
-  .pct-detail {
-    font-size: 0.75rem;
-  }
-
-  .order-amount {
-    font-size: 0.95rem;
-    color: var(--text-secondary);
-  }
-
-  .order-amount.allocated {
-    color: var(--accent-emerald);
-  }
-
-  /* Tax Card */
-  .tax-metrics-row {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.6rem;
-  }
-
-  .tax-metric {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.6rem 0.85rem;
-    background: var(--surface-void);
-    border-radius: var(--radius-md);
-  }
-
-  .tax-label {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-  }
-
-  .tax-val {
-    font-size: 0.95rem;
-  }
-
-  .harvest-orders-box {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    padding: 0.75rem 0.85rem;
-    background: var(--surface-void);
-    border: 1px dashed var(--border-subtle);
-    border-radius: var(--radius-md);
-  }
-
-  .harvest-orders-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .harvest-order-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.35rem 0.5rem;
-    background: var(--surface-card);
-    border-radius: var(--radius-sm);
-    font-size: 0.76rem;
-  }
-
-  .harvest-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    max-width: 75%;
-  }
-
-  .harvest-name {
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .harvest-sub {
-    font-size: 0.68rem;
-  }
-
-  .harvest-amt {
-    font-size: 0.82rem;
-  }
-
-  .tax-rule-note {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.65rem;
-    padding: 0.75rem 1rem;
-    background: hsla(158, 85%, 45%, 0.08);
-    border: 1px solid hsla(158, 85%, 45%, 0.25);
-    border-radius: var(--radius-md);
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    line-height: 1.4;
-  }
-
-  /* FIRE Section */
-  .fire-section {
-    background: var(--surface-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-  }
-
-  .section-title-bar {
+  .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 12px;
   }
 
-  .title-with-icon {
+  .header-left {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 12px;
   }
 
-  .fire-title {
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: var(--text-primary);
+  .icon-bubble {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+  }
+  .icon-bubble.cyan {
+    background: rgba(6, 182, 212, 0.12);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    color: var(--accent-cyan);
+  }
+  .icon-bubble.amber {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: var(--accent-amber);
+  }
+
+  .panel-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #ffffff;
     margin: 0;
   }
 
-  .mc-badge {
-    display: inline-flex;
+  .panel-sub {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .waterfall-total-badge, .swr-live-badge, .confidence-pill {
+    display: flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.25rem 0.65rem;
-    background: hsla(158, 85%, 45%, 0.12);
-    border: 1px solid hsla(158, 85%, 45%, 0.3);
-    border-radius: var(--radius-full);
-    font-size: 0.75rem;
-    color: var(--text-secondary);
+    gap: 8px;
+    font-size: 0.8rem;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-hairline);
   }
 
-  .fire-kpi-grid {
+  /* Pipeline Stepper */
+  .pipeline-stepper {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
+    grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
   }
 
-  .fire-kpi-card {
+  .step-node {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .step-node:hover, .step-node.active {
+    background: rgba(6, 182, 212, 0.08);
+    border-color: rgba(6, 182, 212, 0.45);
+    transform: translateY(-2px);
+  }
+
+  .step-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: 0.75rem;
+    color: #ffffff;
+  }
+  .step-node.active .step-num {
+    background: var(--accent-cyan);
+    color: #030712;
+  }
+
+  .step-meta {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    padding: 1rem;
-    background: var(--surface-void);
+    gap: 2px;
+  }
+  .step-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #ffffff;
+  }
+  .step-status {
+    font-size: 0.68rem;
+    font-family: var(--font-mono);
+  }
+
+  .pipeline-arrow {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  /* Step Narrative Card */
+  .step-narrative-card {
+    background: rgba(10, 15, 28, 0.7);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
+    padding: 16px 20px;
+    backdrop-filter: blur(12px);
   }
 
-  .fire-kpi-card.highlight {
-    border-color: hsla(158, 85%, 45%, 0.35);
-    box-shadow: 0 0 20px rgba(0, 230, 153, 0.08);
+  .narrative-tag {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 4px;
+    width: fit-content;
+    margin-bottom: 6px;
+  }
+  .narrative-tag.rose { background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); border: 1px solid rgba(244, 63, 94, 0.35); }
+  .narrative-tag.emerald { background: rgba(16, 185, 129, 0.15); color: var(--accent-emerald); border: 1px solid rgba(16, 185, 129, 0.35); }
+  .narrative-tag.amber { background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.35); }
+  .narrative-tag.cyan { background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); border: 1px solid rgba(6, 182, 212, 0.35); }
+
+  .narrative-headline {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 6px 0;
   }
 
-  .fire-kpi-card.highlight.shortfall {
-    border-color: rgba(244, 63, 94, 0.45);
-    box-shadow: 0 0 20px rgba(244, 63, 94, 0.12);
-  }
-
-  .kpi-label {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+  .narrative-text {
+    font-size: 0.82rem;
     color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0 0 14px 0;
   }
 
-  .kpi-val {
-    font-size: 1.25rem;
-    color: var(--text-primary);
-  }
-
-  .kpi-sub {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-
-  .kpi-sub.surplus {
-    color: var(--accent-emerald);
-    font-weight: 600;
-  }
-
-  .kpi-sub.shortage {
-    color: #fb7185;
-    font-weight: 600;
-  }
-
-  .scenarios-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  .scenarios-heading {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-  }
-
-  .scenarios-grid {
+  .narrative-bullet-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
   }
 
-  .scenario-card {
+  .bullet-item {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    padding: 0.75rem 1rem;
-    background: var(--surface-void);
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+  }
+  .bullet-label {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+  .bullet-val {
+    font-size: 0.82rem;
+  }
+
+  /* Comparison Grid */
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 1.5rem;
+  }
+
+  .comparison-card, .tax-shield-card {
+    padding: 20px;
+    background: var(--surface-card);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
   }
 
-  .scenario-card.active {
-    border-color: var(--accent-cyan);
-    background: hsla(185, 85%, 52%, 0.08);
-  }
-
-  .sc-header {
+  .card-top-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
 
-  .sc-label {
-    font-size: 0.82rem;
-    color: var(--text-primary);
+  .top-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
-  .sc-swr {
+  .card-h {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0;
+  }
+
+  .hrp-pill-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-hairline);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .hrp-pill-btn.active {
+    background: rgba(6, 182, 212, 0.15);
+    color: var(--accent-cyan);
+    border-color: rgba(6, 182, 212, 0.4);
+  }
+
+  .bars-container {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .bucket-bar-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .bar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .b-name {
+    font-size: 0.82rem;
+    color: #ffffff;
+  }
+  .b-stats {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+  }
+
+  .visual-bar-track {
+    position: relative;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-pill);
+    overflow: visible;
+  }
+
+  .bar-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    border-radius: var(--radius-pill);
+    transition: width 0.4s ease;
+  }
+  .current-fill {
+    background: rgba(6, 182, 212, 0.45);
+  }
+  .post-fill {
+    border: 1.5px solid var(--accent-emerald);
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+  }
+
+  .target-marker {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2.5px;
+    background: #ffffff;
+    border-radius: 2px;
+    box-shadow: 0 0 6px #ffffff;
+    z-index: 2;
+  }
+
+  .hrp-marker {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2.5px;
+    background: var(--accent-violet);
+    box-shadow: 0 0 6px var(--accent-violet);
+    z-index: 3;
+  }
+
+  .fund-routing-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .fund-pill {
+    font-size: 0.68rem;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
+    color: var(--text-muted);
+  }
+
+  .bars-legend {
+    display: flex;
+    align-items: center;
+    gap: 16px;
     font-size: 0.7rem;
     color: var(--text-muted);
+    border-top: 1px solid var(--border-hairline);
+    padding-top: 10px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .box { width: 10px; height: 10px; border-radius: 2px; }
+  .box.current { background: rgba(6, 182, 212, 0.45); }
+  .box.post { border: 1.5px solid var(--accent-emerald); }
+  .line { width: 12px; height: 3px; }
+  .line.target { background: #ffffff; }
+  .line.hrp { background: var(--accent-violet); }
+
+  /* Tax Shield Card */
+  .tax-act-pill {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--accent-emerald);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 3px;
+  }
+
+  .exemption-gauge-box {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+  }
+  .gauge-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+  }
+  .gauge-track {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+  }
+  .gauge-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10B981, #06B6D4);
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    border-radius: var(--radius-pill);
+  }
+  .gauge-sub {
+    font-size: 0.68rem;
+  }
+
+  .tax-tiles-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .tax-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
+  }
+  .tax-tile.highlight {
+    background: rgba(6, 182, 212, 0.05);
+    border-color: rgba(6, 182, 212, 0.3);
+  }
+  .t-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+  }
+  .t-val {
+    font-size: 0.92rem;
+  }
+  .t-sub {
+    font-size: 0.62rem;
+  }
+
+  .tax-explanation-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: rgba(6, 182, 212, 0.04);
+    border: 1px solid rgba(6, 182, 212, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+  }
+  .tax-expl-text {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  /* Guyton-Klinger Corridor */
+  .swr-status-indicator {
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .swr-status-indicator.nominal { background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); }
+  .swr-status-indicator.prosperity { background: rgba(16, 185, 129, 0.15); color: var(--accent-emerald); }
+  .swr-status-indicator.preservation { background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); }
+
+  .swr-gauge-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .corridor-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+  }
+
+  .corridor-track {
+    position: relative;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-pill);
+    overflow: visible;
+  }
+
+  .c-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+  }
+  .prosperity-zone {
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.35), rgba(16, 185, 129, 0.15));
+    border-top-left-radius: var(--radius-pill);
+    border-bottom-left-radius: var(--radius-pill);
+  }
+  .nominal-zone {
+    background: rgba(6, 182, 212, 0.15);
+  }
+  .preservation-zone {
+    background: linear-gradient(90deg, rgba(244, 63, 94, 0.15), rgba(244, 63, 94, 0.4));
+    border-top-right-radius: var(--radius-pill);
+    border-bottom-right-radius: var(--radius-pill);
+  }
+
+  .swr-needle {
+    position: absolute;
+    top: -26px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: left 0.4s ease;
+    z-index: 5;
+  }
+  .swr-flag {
+    font-size: 0.65rem;
+    background: var(--accent-cyan);
+    color: #030712;
+    padding: 1px 7px;
+    border-radius: 4px;
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
+    white-space: nowrap;
+  }
+  .swr-pin {
+    width: 2px;
+    height: 30px;
+    background: var(--accent-cyan);
+    box-shadow: 0 0 6px var(--accent-cyan);
+  }
+
+  .rules-story-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .rule-story-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: all 0.2s ease;
+  }
+  .rule-story-card.active {
+    border-color: rgba(6, 182, 212, 0.45);
+    background: rgba(6, 182, 212, 0.04);
+  }
+  .rule-card-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .rule-name {
+    font-size: 0.85rem;
+    color: #ffffff;
+  }
+  .rule-bound {
+    font-size: 0.68rem;
+  }
+  .rule-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  /* Monte Carlo Fan Chart */
+  .chart-wrapper {
+    width: 100%;
+    overflow-x: auto;
+  }
+  .fan-svg {
+    width: 100%;
+    height: auto;
+    max-height: 240px;
+  }
+  .chart-anno {
+    font-size: 9px;
+    fill: var(--text-muted);
+  }
+  .fire-anno {
+    font-size: 10px;
+    font-weight: 700;
+    fill: #F59E0B;
+  }
+
+  .milestones-story-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .milestone-box {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .milestone-box.highlight {
+    background: rgba(16, 185, 129, 0.04);
+    border-color: rgba(16, 185, 129, 0.35);
+  }
+  .m-title {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+  .m-val {
+    font-size: 1.15rem;
+  }
+  .m-sub {
+    font-size: 0.7rem;
+  }
+
+  /* Scenario Cards */
+  .scenarios-flex-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .scenario-visual-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .scenario-visual-card:hover, .scenario-visual-card.selected {
+    background: rgba(6, 182, 212, 0.06);
+    border-color: var(--accent-cyan);
+    transform: translateY(-2px);
+  }
+
+  .sc-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .sc-label {
+    font-size: 0.88rem;
+    color: #ffffff;
+  }
+  .sc-funded-badge {
+    font-size: 0.68rem;
+    padding: 1px 6px;
+    background: rgba(16, 185, 129, 0.12);
+    border-radius: 3px;
   }
 
   .sc-corpus {
-    font-size: 1.05rem;
+    font-size: 1.25rem;
   }
 
-  .sc-monthly {
-    font-size: 0.75rem;
+  .sc-progress-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+  }
+  .sc-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #06B6D4, #10B981);
+    border-radius: var(--radius-pill);
   }
 
-  .empty-note {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    font-style: italic;
-  }
-
-  .fire-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2.5rem;
-    color: var(--text-muted);
-    font-size: 0.85rem;
-  }
-
-  .text-cyan { color: var(--accent-cyan); }
-  .text-emerald { color: var(--accent-emerald); }
-  .text-amber { color: var(--accent-amber); }
-
-  .guardrails-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  .guardrails-header {
+  .sc-footer {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-  }
-
-  .guardrails-header-left {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .guardrails-heading {
-    font-size: 0.78rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-primary);
-  }
-
-  .guardrails-badge {
-    font-size: 0.65rem;
-    font-family: var(--font-mono, monospace);
-    padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-sm);
-    background: hsla(185, 85%, 52%, 0.12);
-    color: var(--accent-cyan);
-    border: 1px solid hsla(185, 85%, 52%, 0.25);
-  }
-
-  .guardrails-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 0.85rem;
-  }
-
-  .guardrail-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    padding: 0.9rem 1rem;
-    background: var(--surface-void);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    transition: transform 0.15s ease, border-color 0.15s ease;
-  }
-
-  .guardrail-card:hover {
-    border-color: var(--border-prominent);
-    transform: translateY(-1px);
-  }
-
-  .guardrail-card.high, .guardrail-card.alert {
-    border-color: hsla(0, 85%, 60%, 0.4);
-    box-shadow: 0 0 15px rgba(239, 68, 68, 0.08);
-  }
-
-  .guardrail-card.medium, .guardrail-card.warning {
-    border-color: hsla(38, 92%, 50%, 0.35);
-  }
-
-  .gr-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .gr-category {
-    font-size: 0.68rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-  }
-
-  .gr-status-pill {
-    font-size: 0.65rem;
-    font-weight: 600;
-    padding: 0.1rem 0.4rem;
-    border-radius: 9999px;
-    background: var(--surface-elevated);
-    color: var(--text-muted);
-    border: 1px solid var(--border-subtle);
-  }
-
-  .gr-status-pill.high, .gr-status-pill.alert {
-    background: hsla(0, 85%, 60%, 0.15);
-    color: #f87171;
-    border-color: hsla(0, 85%, 60%, 0.3);
-  }
-
-  .gr-status-pill.medium, .gr-status-pill.warning {
-    background: hsla(38, 92%, 50%, 0.15);
-    color: var(--accent-amber);
-    border-color: hsla(38, 92%, 50%, 0.3);
-  }
-
-  .gr-title {
-    margin: 0;
-    font-size: 0.92rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .gr-summary {
-    margin: 0;
-    font-size: 0.78rem;
-    line-height: 1.4;
-    color: var(--text-secondary);
-  }
-
-  .gr-metrics {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem 0.8rem;
-    padding: 0.4rem 0.6rem;
-    background: var(--surface-base, rgba(0,0,0,0.2));
-    border-radius: var(--radius-sm);
     font-size: 0.72rem;
-    margin-top: 0.2rem;
-  }
-
-  .gr-metric-item {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-
-  .gr-metric-k {
-    color: var(--text-muted);
-    text-transform: capitalize;
-  }
-
-  .gr-metric-v {
-    color: var(--accent-cyan);
-    font-weight: 600;
-  }
-
-  .gr-footer {
-    font-size: 0.65rem;
-    color: var(--text-muted);
-    font-style: italic;
-    margin-top: 0.2rem;
   }
 
   @media (max-width: 900px) {
-    .rebalance-grid {
+    .comparison-grid {
       grid-template-columns: 1fr;
     }
-    .fire-kpi-grid {
-      grid-template-columns: repeat(2, 1fr);
+    .pipeline-stepper {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    .pipeline-arrow {
+      display: none;
+    }
+    .narrative-bullet-grid, .rules-story-grid, .milestones-story-grid, .scenarios-flex-grid {
+      grid-template-columns: 1fr;
     }
   }
 </style>

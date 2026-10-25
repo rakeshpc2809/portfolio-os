@@ -55,10 +55,11 @@ object LocalPortfolioValuator {
             totalCurrentValue += revaluedCurrentVal
             totalInvestedValue += investedVal
 
-            // Calculate exit load free units from the advanced lots (held >= 365 days)
+            // Calculate exit load free units using scheme-specific exit-load rules
             val isinLots = lotsByIsin[holding.isin] ?: emptyList()
+            val reqDays = requiredExitLoadDays(holding.isin)
             val exitLoadFreeUnits = if (isinLots.isNotEmpty()) {
-                isinLots.filter { it.holdingDays >= 365L }.sumOf { it.units }
+                isinLots.filter { it.holdingDays >= reqDays }.sumOf { it.units }
             } else {
                 holding.exitLoadFreeUnits
             }
@@ -122,10 +123,12 @@ object LocalPortfolioValuator {
 
         val holdingDays = max(0L, ChronoUnit.DAYS.between(buyDate, asOfDate))
 
-        // Equity / Hybrid: 365 days; Debt / Unlisted: 730 days
-        val isDebtOrNonEquity = lot.taxClassification.contains("DEBT", ignoreCase = true) ||
-                lot.taxClassification.contains("UNLISTED", ignoreCase = true)
-        val ltcgThresholdDays = if (isDebtOrNonEquity) 730L else 365L
+        // Equity / Hybrid: 365 days; Debt / Unlisted / Gold / International: 730 days
+        val is24MonthLtcg = lot.taxClassification.contains("DEBT", ignoreCase = true) ||
+                lot.taxClassification.contains("UNLISTED", ignoreCase = true) ||
+                lot.taxClassification.contains("GOLD_SILVER", ignoreCase = true) ||
+                lot.taxClassification.contains("INTERNATIONAL", ignoreCase = true)
+        val ltcgThresholdDays = if (is24MonthLtcg) 730L else 365L
 
         val isLongTerm = holdingDays >= ltcgThresholdDays
         val daysToLtcg = if (isLongTerm) 0L else (ltcgThresholdDays - holdingDays)
@@ -135,6 +138,13 @@ object LocalPortfolioValuator {
             isLongTerm = isLongTerm,
             daysToLtcg = daysToLtcg
         )
+    }
+
+    private fun requiredExitLoadDays(isin: String): Long = when (isin.uppercase()) {
+        "INF205K01KR8", "INF247L01BM8" -> 15L  // Invesco Arbitrage & Motilal Gold/Silver FoF
+        "INF879O01027" -> 730L                 // PPFAS Flexi Cap (2-year exit load window)
+        "INF204K01K15" -> 365L                 // Nippon Small Cap (1-year exit load window)
+        else -> 0L                             // Direct Index Funds (0 exit load)
     }
 
     private fun parseDateOrFallback(dateStr: String?, fallback: LocalDate): LocalDate {

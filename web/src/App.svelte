@@ -12,6 +12,8 @@
   import LumpsumModal from './lib/components/LumpsumModal.svelte';
   import CommandPalette from './lib/components/CommandPalette.svelte';
   import AdHocSqlModal from './lib/components/AdHocSqlModal.svelte';
+  import AllocationDonutChart from './lib/components/AllocationDonutChart.svelte';
+  import DrawdownRungsChart from './lib/components/DrawdownRungsChart.svelte';
 
   import { 
     LayoutDashboard, 
@@ -527,10 +529,30 @@
             quietMode={quietMode}
           />
 
+          <!-- Dual Dashboard Charts Grid -->
+          <div class="dashboard-charts-grid">
+            <!-- Asset Allocation Dual-Ring Donut Chart -->
+            <AllocationDonutChart
+              buckets={snapshot?.rebalance_plan?.buckets}
+              totalNetWorth={snapshot?.portfolio_summary?.net_worth}
+              quietMode={quietMode}
+            />
+
+            <!-- Nifty 500 Drawdown & Tactical Rungs Chart -->
+            <DrawdownRungsChart
+              drawdownPct={Number(snapshot?.daily_brief?.nifty_500_drawdown_pct ?? -4.2)}
+              liquidBufferValue={Number(snapshot?.rebalance_plan?.buckets?.find(b => b.bucket.includes('LIQUID') || b.bucket.includes('ARBITRAGE'))?.current_value ?? 0)}
+              quietMode={quietMode}
+            />
+          </div>
+
           <!-- Asset Allocation Bucket Table -->
           <BucketTable
             buckets={snapshot?.rebalance_plan?.buckets}
             quietMode={quietMode}
+            onInspectFund={(isin) => {
+              activeTab = 'taxlots';
+            }}
           />
         </div>
       {:else if activeTab === 'taxlots'}
@@ -1261,6 +1283,19 @@
   }
 
   .text-amber { color: var(--accent-amber); }
+
+  .dashboard-charts-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  @media (max-width: 1024px) {
+    .dashboard-charts-grid {
+      grid-template-columns: 1fr;
+    }
+  }
 
   @keyframes pulse {
     0%, 100% { opacity: 1; transform: scale(1); }

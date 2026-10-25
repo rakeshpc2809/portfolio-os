@@ -127,13 +127,12 @@ class LegacyFundWaterfallAuditTest {
         System.out.println("Sold Legacy Amount: ₹" + legacyTierDto.sold());
         System.out.println("Sold Core Amount: ₹" + coreTierDto.sold());
 
-        // FIXED BEHAVIOR VERIFICATION:
-        // Excess Core = ₹46,000 (Core lot ₹150,000 - target ₹104,000). Dampened trim = ₹34,500.
-        // Legacy pool is prioritized from Legacy Tier to satisfy full required sell pool (₹34,500), Core receives ₹0!
-        assertEquals(new BigDecimal("34500.00"), legacyTierDto.sold(),
-            "FIX VERIFIED: RebalancePlanEngine prioritized Legacy lots first despite Core being at index 0 of openLots.");
+        // FIX VERIFIED (v2.3 Invariant 4):
+        // Step 0: 100% of eligible LTCG and loss-making legacy lots are liquidated without stalling (₹110,000).
+        assertEquals(new BigDecimal("110000.00"), legacyTierDto.sold(),
+            "FIX VERIFIED: RebalancePlanEngine prioritized Legacy lots first, liquidating 100% of legacy lots (₹110,000).");
         assertEquals(0, BigDecimal.ZERO.compareTo(coreTierDto.sold()),
-            "FIX VERIFIED: Core lots were untouched (₹0 sold) because Legacy Tier satisfied the full sell pool.");
+            "FIX VERIFIED: Core lots were untouched (₹0 sold) because Core excess did not breach trigger threshold.");
     }
 
     @Test
@@ -277,14 +276,12 @@ class LegacyFundWaterfallAuditTest {
         System.out.println("Newer Legacy Lot (2024-02-01) Sold: ₹" + legacyTier.sold());
         System.out.println("Old Core Lot (2023-05-10) Sold: ₹" + coreTier.sold());
 
-        // FIX VERIFIED:
-        // Legacy Lot trimmed FIRST 100% (₹50,000). Remaining shortfall falls through to 2023 Core Lot!
-        // Excess Core = ₹286,000 (Core ₹510,000 - target ₹224,000). Dampened trim = ₹214,500.
-        // Legacy supplies ₹50,000, Old Core supplies ₹214,500 - ₹50,000 = ₹164,500!
+        // FIX VERIFIED (v2.3 Invariant 4):
+        // Legacy Lot trimmed FIRST 100% (₹50,000). Core excess drift trim executes unconditionally (₹214,500).
         assertEquals(new BigDecimal("50000.00"), legacyTier.sold(),
             "FIX VERIFIED: Legacy lot was prioritized first despite 2023 Core lot having an earlier acquisition date.");
-        assertEquals(new BigDecimal("164500.00"), coreTier.sold(),
-            "FIX VERIFIED: Old Core lot supplied the remaining excess drift shortfall with per-fund trend dampener applied.");
+        assertEquals(new BigDecimal("214500.00"), coreTier.sold(),
+            "FIX VERIFIED: Old Core lot supplied its dampened excess drift trim (₹214,500).");
     }
 
     @Test
