@@ -69,7 +69,18 @@ object LocalTradeSimulator {
             if (remainingUnitsToSell <= 0.0) break
 
             val unitsFromLot = min(remainingUnitsToSell, lot.units)
-            val costForSlice = unitsFromLot * lot.costPerUnit
+            val effectiveCostPerUnit = if (lot.grandfatheredNav != null && lot.grandfatheredNav > 0.0) {
+                val fmvFloor = max(lot.costPerUnit, lot.grandfatheredNav)
+                if (request.pricePerUnit >= lot.costPerUnit) {
+                    min(request.pricePerUnit, fmvFloor)
+                } else {
+                    lot.costPerUnit
+                }
+            } else {
+                lot.costPerUnit
+            }
+
+            val costForSlice = unitsFromLot * effectiveCostPerUnit
             val proceedsForSlice = unitsFromLot * request.pricePerUnit
             val gainForSlice = proceedsForSlice - costForSlice
 
@@ -90,7 +101,12 @@ object LocalTradeSimulator {
                     upperClass.contains("INTERNATIONAL") || upperClass.contains("UNLISTED")
 
             if (isSpecifiedDebt) {
-                slabRateGain += gainForSlice
+                val isLegacyDebt = buyDate.isBefore(LocalDate.of(2023, 4, 1))
+                if (isLegacyDebt && holdingDays >= 730L) {
+                    ltcgNonEquity += gainForSlice
+                } else {
+                    slabRateGain += gainForSlice
+                }
             } else if (isGoldOrIntl) {
                 if (holdingDays >= 730L) {
                     ltcgNonEquity += gainForSlice

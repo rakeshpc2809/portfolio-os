@@ -157,7 +157,47 @@ class LocalValuationAndSimulationUnitTest {
         assertEquals(400.0, result.stcgEquity, 0.001)
         assertEquals(2500.0, result.sec112aExemptionApplied, 0.001)
         assertEquals(83.20, result.estimatedTaxLiability, 0.01)
-        assertEquals(4000.0, result.postTradeNetWorth, 0.001) // 10000 - 6000
+        assertEquals(9916.80, result.postTradeNetWorth, 0.01) // 10000 - 83.20 tax liability
+    }
+
+    @Test
+    fun testLocalTradeSimulator_grandfatheredFmvSec55_2_ac() {
+        val today = LocalDate.of(2026, 10, 24)
+
+        // Pre-2018 Equity Lot: Bought at ₹50, FMV as of Jan 31, 2018 was ₹80.
+        // Selling at ₹100. Under Sec 55(2)(ac), effective cost floor is ₹80, so gain is only ₹20/unit instead of ₹50/unit.
+        val lot = FlatTaxLotDto(
+            isin = "INF879O01027",
+            buyDate = "2017-06-15",
+            units = 100.0,
+            taxClassification = "EQUITY",
+            costPerUnit = 50.0,
+            grandfatheredNav = 80.0
+        )
+
+        val snapshot = SyncSnapshot(
+            syncInfo = SyncInfoDto(currentValue = 10000.0, totalInvested = 5000.0),
+            taxLots = listOf(lot)
+        )
+
+        val request = TradeSimulationRequestDto(
+            isin = "INF879O01027",
+            schemeName = "PPFCF",
+            units = 50.0,
+            pricePerUnit = 100.0,
+            tradeType = "DISPOSAL"
+        )
+
+        val result = LocalTradeSimulator.simulateTradeLocally(snapshot, request, today)
+
+        assertEquals(5000.0, result.grossTradeAmount, 0.001) // 50 * 100
+        // Effective cost = 50 * 80 = 4000
+        // Capital gain = 5000 - 4000 = 1000 (NOT 5000 - 2500 = 2500)
+        assertEquals(1000.0, result.grossCapitalGain, 0.001)
+        assertEquals(1000.0, result.ltcgEquity, 0.001)
+        assertEquals(1000.0, result.sec112aExemptionApplied, 0.001) // Fully exempt under 1.25L
+        assertEquals(0.0, result.estimatedTaxLiability, 0.001)
+        assertEquals(10000.0, result.postTradeNetWorth, 0.001) // 0 tax liability, full net worth preserved
     }
 
     @Test
