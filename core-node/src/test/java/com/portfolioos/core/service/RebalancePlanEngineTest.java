@@ -1050,5 +1050,55 @@ class RebalancePlanEngineTest {
                 "Entire realized gain on non-equity LTCG must be taxable");
         }
     }
+
+    @Test
+    @DisplayName("F4 Residual Test: Long-term loss lot must NOT apply negative exemption or inflate headroom")
+    void testLongTermLossLotDoesNotInflateHeadroomOrApplyNegativeExemption() {
+        BigDecimal nav = new BigDecimal("100.00");
+        LocalDate today = LocalDate.of(2026, 8, 26);
+
+        // Legacy equity lot with loss:
+        // Acquired 400 days ago (> 365d threshold for LTCG)
+        // NAV = 100.00, Cost = 120.00 -> Realized Loss = -20.00/unit (-2,000 total)
+        Lot lossLot = new Lot("lot-legacy-loss", "INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund",
+            today.minusDays(400), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("120.00"), new BigDecimal("12000.00"), false, null);
+
+        List<BucketEngine.BucketTarget> targets = List.of(
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("80.00"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("20.00"), new BigDecimal("2.00"))
+        );
+
+        Map<String, BigDecimal> navMap = Map.of("INF247L01BQ9", nav);
+        BigDecimal corpus = new BigDecimal("10000.00");
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            List.of(lossLot), Collections.emptyList(), navMap, today,
+            corpus, corpus, targets, "2026-27", null, null, false, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.sellSide());
+        assertNotNull(plan.sellSide().taxSummary());
+
+        // Negative gains must never be added to totalLtcgExempt
+        assertEquals(0, BigDecimal.ZERO.compareTo(plan.sellSide().taxSummary().totalLtcgExempt()),
+            "Loss lots must NOT decrement totalLtcgExempt (which at HEAD became negative -2000.00)");
+
+        List<RebalanceLotImpactDto> lotImpacts = plan.sellSide().waterfall().stream()
+            .flatMap(t -> t.lots().stream())
+            .toList();
+        assertEquals(1, lotImpacts.size());
+
+        RebalanceLotImpactDto impact = lotImpacts.get(0);
+        assertNotNull(impact.taxImpact());
+
+        // Exemption applied must be 0, never negative
+        assertEquals(0, BigDecimal.ZERO.compareTo(impact.taxImpact().exemptionApplied()),
+            "Loss lot exemptionApplied must be 0.00; at HEAD min(gain, headroom) produced -2000.00");
+        assertEquals(0, BigDecimal.ZERO.compareTo(impact.taxImpact().taxableAmount()),
+            "Loss lot taxableAmount must be 0.00");
+        assertEquals(0, BigDecimal.ZERO.compareTo(impact.taxImpact().taxAmount()),
+            "Loss lot taxAmount must be 0.00");
+    }
 }
 
