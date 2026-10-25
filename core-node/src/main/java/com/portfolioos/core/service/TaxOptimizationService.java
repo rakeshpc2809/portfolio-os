@@ -140,7 +140,7 @@ public class TaxOptimizationService {
                 LocalDate targetDate = today.plusDays(daysRemaining);
                 BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "TaxOptimizationService.getMaturationLadder");
                 BigDecimal currentVal = lot.remainingUnits().multiply(nav);
-                BigDecimal gain = currentVal.subtract(lot.totalCostBasis());
+                BigDecimal gain = currentVal.subtract(lot.effectiveTotalCostBasis(nav));
 
                 ladder.add(new MaturationLadderDto(
                     lot.assetId(),
@@ -348,7 +348,10 @@ public class TaxOptimizationService {
             LocalDate buyDate = lot.acquisitionDate();
             if (buyDate == null) continue;
 
-            LocalDate equityLtcgDate = buyDate.plusDays(365);
+            AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
+            boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
+            long thresholdDays = (cat == AssetCategory.EQUITY || isListed) ? 365L : 730L;
+            LocalDate equityLtcgDate = buyDate.plusDays(thresholdDays);
             if (!equityLtcgDate.isBefore(today) && equityLtcgDate.isBefore(today.plusDays(90))) {
                 sb.append("BEGIN:VEVENT\r\n");
                 String uidId = lot.lotId() != null ? lot.lotId() : (lot.assetId() + "-" + eventCount);

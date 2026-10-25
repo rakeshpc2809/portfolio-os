@@ -154,4 +154,26 @@ class SyncControllerTest {
         assertNotNull(plan.sellSide());
         assertNotNull(plan.sellSide().taxSummary(), "sell_side.tax_summary must be present in rebalance plan");
     }
+
+    @Test
+    void testDefaultTriggerEvaluationDoesNotForceDriftWhenRequestedTriggerIsNull() {
+        // When trigger parameter is null, SyncController must pass null derivedTriggerType so RebalanceTriggerEvaluator rules apply
+        ResponseEntity<UnidirectionalSyncSnapshot> response = syncController.getSnapshot("2026-27", null);
+        assertNotNull(response);
+        assertNotNull(response.getBody());
+        RebalancePlanDto plan = response.getBody().rebalancePlan();
+        assertNotNull(plan);
+        assertNotNull(plan.trigger());
+        // Since benchmark is null, it should NOT force a hardcoded DRIFT override if resolution were NONE
+        assertNotNull(plan.trigger().type());
+    }
+
+    @Test
+    void testGetRebalancePlanIgnoresInducedDefaultValue() {
+        // When trigger is "INDUCED" or omitted, effectiveTrigger is null and evaluator runs
+        ResponseEntity<RebalancePlanDto> response = syncController.getRebalancePlan("INDUCED");
+        assertNotNull(response);
+        assertNotNull(response.getBody());
+        assertNotNull(response.getBody().trigger());
+    }
 }

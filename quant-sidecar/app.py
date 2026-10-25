@@ -176,7 +176,7 @@ def compute_batch_fund_metrics(req: FundMetricsBatchRequest):
         results[item.amfi_code] = analytics
     return results
 
-@app.get("/api/v1/analytics/nav_arrow_stream")
+@app.get("/api/v1/analytics/nav_arrow_stream", dependencies=[Depends(verify_auth_token)])
 def get_nav_arrow_stream(isin: Optional[str] = None, limit: Optional[int] = None):
     """Zero-copy Apache Arrow stream endpoint for historical mutual fund NAVs."""
     candidates = [

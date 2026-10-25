@@ -55,6 +55,7 @@ public class RebalanceTriggerEvaluator {
 
         // 1. Calculate Corpus and Bucket Valuations
         BigDecimal liveCorpus = BigDecimal.ZERO;
+        BigDecimal activeCorpus = BigDecimal.ZERO;
         Map<String, BigDecimal> bucketValuations = new HashMap<>();
 
         if (openLots != null) {
@@ -62,6 +63,11 @@ public class RebalanceTriggerEvaluator {
                 BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalanceTriggerEvaluator");
                 BigDecimal lotVal = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
                 liveCorpus = liveCorpus.add(lotVal);
+
+                BucketEngine.Bucket b = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
+                if (b != BucketEngine.Bucket.LEGACY_HOLDINGS) {
+                    activeCorpus = activeCorpus.add(lotVal);
+                }
 
                 String bucketName = BucketConfigLoader.mapAssetToBucket(lot.assetId(), lot.assetName());
                 bucketValuations.put(bucketName, bucketValuations.getOrDefault(bucketName, BigDecimal.ZERO).add(lotVal));
@@ -147,8 +153,9 @@ public class RebalanceTriggerEvaluator {
 
             BigDecimal coreTotalVal = largeMidVal.add(ppfcVal);
             boolean coreAggregateBreached = false;
-            if (coreTotalVal.compareTo(BigDecimal.ZERO) > 0) {
-                double coreWeightPct = (coreTotalVal.doubleValue() / liveCorpus.doubleValue()) * 100.0;
+            BigDecimal effectiveCorpus = activeCorpus.compareTo(BigDecimal.ZERO) > 0 ? activeCorpus : liveCorpus;
+            if (coreTotalVal.compareTo(BigDecimal.ZERO) > 0 && effectiveCorpus.compareTo(BigDecimal.ZERO) > 0) {
+                double coreWeightPct = (coreTotalVal.doubleValue() / effectiveCorpus.doubleValue()) * 100.0;
                 if (coreWeightPct > 65.0 || coreWeightPct < 35.0) {
                     driftedBuckets.add("CORE_AGGREGATE_BREACH");
                     coreAggregateBreached = true;

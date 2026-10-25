@@ -303,7 +303,10 @@ public class SyncController {
 
         for (Lot lot : openLots) {
             long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
-            long daysToLtcg = Math.max(0L, 365L - holdingDays);
+            AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
+            boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
+            long thresholdDays = (cat == AssetCategory.EQUITY || isListed) ? 365L : 730L;
+            long daysToLtcg = Math.max(0L, thresholdDays - holdingDays);
             if (daysToLtcg > 0 && daysToLtcg <= 120 && daysToLtcg < minDaysToLtcg) {
                 minDaysToLtcg = daysToLtcg;
                 maturingLot = lot;
@@ -381,7 +384,7 @@ public class SyncController {
         if (requestedTrigger != null && !requestedTrigger.isBlank()) {
             derivedTriggerType = requestedTrigger.toUpperCase();
         } else {
-            derivedTriggerType = "DRIFT";
+            derivedTriggerType = null;
         }
 
         DuckDbProjector.BenchmarkLevelMetrics benchMetrics = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
@@ -442,8 +445,9 @@ public class SyncController {
 
     @GetMapping("/rebalance/plan")
     public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> getRebalancePlan(
-        @RequestParam(value = "trigger", required = false, defaultValue = "INDUCED") String triggerType
+        @RequestParam(value = "trigger", required = false) String triggerType
     ) {
+        String effectiveTrigger = (triggerType != null && !triggerType.isBlank() && !"INDUCED".equalsIgnoreCase(triggerType)) ? triggerType : null;
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
         List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
@@ -456,7 +460,7 @@ public class SyncController {
 
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
             openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, effectiveTrigger, null
         );
         return ResponseEntity.ok(plan);
     }
@@ -615,10 +619,8 @@ public class SyncController {
                 // 1. open_lots.parquet (PII stripped - no folio_no)
                 File openLotsFile = File.createTempFile("open_lots_", ".parquet");
                 tempFiles.add(openLotsFile);
-                duckDbProjector.exportQueryToParquet(
-                    "SELECT id, asset_id, asset_name, isin, event_date, TRY_CAST(units AS DOUBLE) AS units, TRY_CAST(price_per_unit AS DOUBLE) AS price_per_unit, TRY_CAST(gross_amount AS DOUBLE) AS gross_amount FROM projected_events WHERE event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS')",
-                    openLotsFile
-                );
+                duckDbProjector.syncOpenLots(cacheService.getCachedState().fifoResult().openLots());
+                duckDbProjector.exportTableToParquet("open_lots", openLotsFile);
                 zos.putNextEntry(new ZipEntry("open_lots.parquet"));
                 zos.write(Files.readAllBytes(openLotsFile.toPath()));
                 zos.closeEntry();
