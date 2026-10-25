@@ -943,20 +943,27 @@ class RebalancePlanEngineTest {
     }
 
     @Test
-    @DisplayName("F4 Test: Exemption headroom must NOT be double-decremented across steps and DTO tax regimes")
+    @DisplayName("F4 Test: Exemption headroom must NOT be double-decremented across steps and DTO tax regimes (62.5k < G < 125k)")
     void testExemptionHeadroomNotDoubleDecrementedAcrossStepsAndDtos() {
         BigDecimal nav = new BigDecimal("100.00");
         LocalDate today = LocalDate.of(2026, 8, 26);
 
-        // Core fund lots: 3 lots with 25,000 gain each (total gain = 75,000)
-        // Headroom before rebalance = 125,000 INR
-        // Total LTCG gain (75k) is well within 125k headroom, so all 3 lots MUST be SEC_112A_EXEMPT with 0 tax!
+        // Core fund lots: Total corpus 400,000 in EQUITY_CORE (Target 50% = 200,000).
+        // Drift is 100% -> 0.75x dampener trims 150,000:
+        // - Lot 1: 1,000 units trimmed completely (100,000 proceeds, cost 20.00 -> gain 80,000)
+        // - Lot 2: 500 units trimmed partially (50,000 proceeds, cost 20.00 -> gain 40,000)
+        // Total realized LTCG gain = 80,000 + 40,000 = 120,000 INR (62.5k < 120k < 125k).
+        // Headroom before rebalance = 125,000 INR.
+        // Under correct single-decrement logic, all trimmed lots MUST be SEC_112A_EXEMPT with 0 tax!
+        // At HEAD, double-decrement leaves DTO loop with only 5k headroom, causing Lot 1 and Lot 2 to be taxed at 12.5%!
         Lot lot1 = new Lot("lot-1", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
-            today.minusDays(800), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("50.00"), new BigDecimal("25000.00"), false, null);
+            today.minusDays(800), new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("20.00"), new BigDecimal("20000.00"), false, null);
         Lot lot2 = new Lot("lot-2", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
-            today.minusDays(800), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("50.00"), new BigDecimal("25000.00"), false, null);
+            today.minusDays(800), new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("20.00"), new BigDecimal("20000.00"), false, null);
         Lot lot3 = new Lot("lot-3", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
-            today.minusDays(800), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("50.00"), new BigDecimal("25000.00"), false, null);
+            today.minusDays(800), new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("20.00"), new BigDecimal("20000.00"), false, null);
+        Lot lot4 = new Lot("lot-4", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(800), new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("20.00"), new BigDecimal("20000.00"), false, null);
 
         List<BucketEngine.BucketTarget> targets = List.of(
             new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("50.00"), new BigDecimal("5.00")),
@@ -964,10 +971,10 @@ class RebalancePlanEngineTest {
         );
 
         Map<String, BigDecimal> navMap = Map.of("INF109KC12U0", nav);
-        BigDecimal corpus = new BigDecimal("300000.00");
+        BigDecimal corpus = new BigDecimal("400000.00");
 
         RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
-            List.of(lot1, lot2, lot3), Collections.emptyList(), navMap, today,
+            List.of(lot1, lot2, lot3, lot4), Collections.emptyList(), navMap, today,
             corpus, corpus, targets, "2026-27", null, null, false, evaluator
         );
 
@@ -975,19 +982,72 @@ class RebalancePlanEngineTest {
         assertNotNull(plan.sellSide());
         assertNotNull(plan.sellSide().taxSummary());
         assertEquals(0, BigDecimal.ZERO.compareTo(plan.sellSide().taxSummary().totalTaxEstimate()),
-            "Total tax estimate must be exactly zero when all LTCG gains are within Section 112A headroom");
+            "Total tax estimate must be exactly zero when all LTCG gains (120k) are within Section 112A headroom (125k)");
 
         List<RebalanceLotImpactDto> lotImpacts = plan.sellSide().waterfall().stream()
             .flatMap(t -> t.lots().stream())
             .toList();
-        assertEquals(2, lotImpacts.size(), "Both trimmed lots must be present in lot impacts");
+        assertEquals(2, lotImpacts.size(), "Exactly 2 lots must be trimmed (100k + 50k = 150k proceeds)");
 
         for (RebalanceLotImpactDto impact : lotImpacts) {
             assertNotNull(impact.taxImpact());
             assertEquals("SEC_112A_EXEMPT", impact.taxImpact().regime(),
-                "Lot impact tax regime must be SEC_112A_EXEMPT when gains are within headroom");
+                "Lot impact tax regime must be SEC_112A_EXEMPT when total gain (120k) < headroom (125k)");
             assertEquals(0, BigDecimal.ZERO.compareTo(impact.taxImpact().taxAmount()),
                 "Tax amount must be 0 for exempt lots; headroom must not be double-decremented!");
+        }
+    }
+
+    @Test
+    @DisplayName("F4 Residual Test: Non-equity LTCG (Gold FoF) must NOT consume Section 112A exemption and must be taxable")
+    void testNonEquityLtcgDoesNotConsumeSec112AExemption() {
+        BigDecimal nav = new BigDecimal("100.00");
+        LocalDate today = LocalDate.of(2026, 8, 26);
+
+        // Gold FoF lots: held for 800 days (> 730d threshold for LTCG)
+        // Cost = 50.00, NAV = 100.00 -> Realized Gain = 50.00/unit
+        // Total Gold corpus = 200,000 (Target = 20% -> 40,000)
+        // Excess = 160,000 -> Trim = 120,000
+        Lot goldLot1 = new Lot("lot-gold-1", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds",
+            today.minusDays(800), new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("50.00"), new BigDecimal("50000.00"), false, null);
+        Lot goldLot2 = new Lot("lot-gold-2", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds",
+            today.minusDays(800), new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("50.00"), new BigDecimal("50000.00"), false, null);
+
+        List<BucketEngine.BucketTarget> targets = List.of(
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("20.00"), new BigDecimal("2.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("80.00"), new BigDecimal("5.00"))
+        );
+
+        Map<String, BigDecimal> navMap = Map.of("INF247L01BM8", nav);
+        BigDecimal corpus = new BigDecimal("200000.00");
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            List.of(goldLot1, goldLot2), Collections.emptyList(), navMap, today,
+            corpus, corpus, targets, "2026-27", null, null, false, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.sellSide());
+        assertNotNull(plan.sellSide().taxSummary());
+
+        // Sec 112A exemption is strictly for equity; Gold FoF LTCG cannot consume exemption
+        assertEquals(0, BigDecimal.ZERO.compareTo(plan.sellSide().taxSummary().totalLtcgExempt()),
+            "Gold FoF LTCG must NOT consume Section 112A exemption; totalLtcgExempt must be 0");
+        assertTrue(plan.sellSide().taxSummary().totalTaxEstimate().compareTo(BigDecimal.ZERO) > 0,
+            "Gold FoF LTCG must incur tax drag at 12.5% without Section 112A exemption");
+
+        List<RebalanceLotImpactDto> lotImpacts = plan.sellSide().waterfall().stream()
+            .flatMap(t -> t.lots().stream())
+            .toList();
+        assertFalse(lotImpacts.isEmpty());
+
+        for (RebalanceLotImpactDto impact : lotImpacts) {
+            assertEquals("SEC_112A_TAXABLE_12_5", impact.taxImpact().regime(),
+                "Non-equity LTCG regime must be SEC_112A_TAXABLE_12_5 (or taxable), never SEC_112A_EXEMPT");
+            assertEquals(0, BigDecimal.ZERO.compareTo(impact.taxImpact().exemptionApplied()),
+                "Non-equity LTCG exemptionApplied must be exactly zero");
+            assertEquals(impact.realizedGain(), impact.taxImpact().taxableAmount(),
+                "Entire realized gain on non-equity LTCG must be taxable");
         }
     }
 }

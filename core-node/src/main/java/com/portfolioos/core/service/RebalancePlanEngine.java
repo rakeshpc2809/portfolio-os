@@ -7,6 +7,8 @@ import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.matcher.FundTierClassifier;
 import com.portfolioos.core.persistence.TriggerHistoryRepository;
 import com.portfolioos.core.reporting.ExemptionTracker;
+import com.portfolioos.core.model.AssetCategory;
+import com.portfolioos.core.matcher.TaxClassifier;
 import com.portfolioos.core.rules.BucketConfigLoader;
 import com.portfolioos.core.valuation.BucketEngine;
 import com.portfolioos.core.valuation.FundTrendDampenerCalculator;
@@ -523,15 +525,24 @@ public class RebalancePlanEngine {
 
                     BigDecimal costBasis = step.proceeds().subtract(step.realizedGain()).max(BigDecimal.ZERO);
                     boolean isLongTerm = "LONG_TERM".equals(step.taxTerm());
+                    AssetCategory cat = origLot != null ? TaxClassifier.detectCategory(origLot.assetId(), origLot.assetName()) : AssetCategory.EQUITY;
+                    boolean isEquityLtcg = isLongTerm && cat == AssetCategory.EQUITY;
 
                     BigDecimal exempt = BigDecimal.ZERO;
                     BigDecimal taxable = BigDecimal.ZERO;
 
-                    if (isLongTerm) {
-                        exempt = step.realizedGain().min(dtoHeadroom);
-                        taxable = step.realizedGain().subtract(exempt).max(BigDecimal.ZERO);
-                        dtoHeadroom = dtoHeadroom.subtract(exempt).max(BigDecimal.ZERO);
-                        totalLtcgExempt = totalLtcgExempt.add(exempt);
+                    if (isEquityLtcg) {
+                        if (step.realizedGain().compareTo(BigDecimal.ZERO) > 0) {
+                            exempt = step.realizedGain().min(dtoHeadroom);
+                            taxable = step.realizedGain().subtract(exempt).max(BigDecimal.ZERO);
+                            dtoHeadroom = dtoHeadroom.subtract(exempt).max(BigDecimal.ZERO);
+                            totalLtcgExempt = totalLtcgExempt.add(exempt);
+                        } else {
+                            taxable = BigDecimal.ZERO;
+                        }
+                    } else if (isLongTerm) {
+                        // Non-equity LTCG (e.g. Gold FoF, Debt, International) -> No Sec 112A exemption
+                        taxable = step.realizedGain().max(BigDecimal.ZERO);
                     } else {
                         taxable = step.realizedGain();
                         totalStcgTaxable = totalStcgTaxable.add(taxable);
@@ -539,9 +550,15 @@ public class RebalancePlanEngine {
 
                     totalGain = totalGain.add(step.realizedGain());
 
-                    String regime = isLongTerm ?
-                        (exempt.compareTo(BigDecimal.ZERO) > 0 && taxable.compareTo(BigDecimal.ZERO) == 0 ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5") :
-                        "SLAB_RATE_STCG";
+                    String regime;
+                    if (isEquityLtcg) {
+                        regime = (step.realizedGain().compareTo(BigDecimal.ZERO) <= 0 || (exempt.compareTo(BigDecimal.ZERO) > 0 && taxable.compareTo(BigDecimal.ZERO) == 0))
+                            ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5";
+                    } else if (isLongTerm) {
+                        regime = "SEC_112A_TAXABLE_12_5";
+                    } else {
+                        regime = "SLAB_RATE_STCG";
+                    }
 
                     RebalanceLotImpactDto lotImpact = new RebalanceLotImpactDto(
                         step.lotId(),
