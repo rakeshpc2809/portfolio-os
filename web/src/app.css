@@ -21,6 +21,7 @@
   --glow-emerald: 0 0 28px -4px rgba(16, 185, 129, 0.35);
   --glow-amber: 0 0 28px -4px rgba(245, 158, 11, 0.35);
   --glow-violet: 0 0 28px -4px rgba(168, 85, 247, 0.35);
+  --glow-rose: 0 0 28px -4px rgba(244, 63, 94, 0.35);
 
   /* Chromatic Fun & Saturated Accents */
   --accent-cyan: #06B6D4;
@@ -35,6 +36,9 @@
   --accent-rose: #F43F5E;
   --accent-rose-bright: #FB7185;
   --accent-rose-bg: rgba(244, 63, 94, 0.15);
+  --accent-crimson: #F43F5E;
+  --accent-crimson-bright: #FB7185;
+  --accent-crimson-bg: rgba(244, 63, 94, 0.15);
   --accent-violet: #A855F7;
   --accent-violet-bright: #C084FC;
   --accent-violet-bg: rgba(168, 85, 247, 0.15);
@@ -222,4 +226,25 @@ button:active {
 @keyframes pulse-glow {
   0%, 100% { opacity: 0.6; transform: scale(0.95); }
   50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* Global Positive & Negative Value Utilities */
+.text-rose, .text-negative, .text-danger, .negative {
+  color: var(--accent-rose-bright, #FB7185) !important;
+}
+
+.text-emerald, .text-positive, .text-success, .positive {
+  color: var(--accent-emerald-bright, #34D399) !important;
+}
+
+.badge-negative, .badge-danger {
+  background: rgba(244, 63, 94, 0.16) !important;
+  color: var(--accent-rose-bright, #FB7185) !important;
+  border: 1px solid rgba(244, 63, 94, 0.35) !important;
+}
+
+.badge-positive, .badge-success {
+  background: rgba(16, 185, 129, 0.16) !important;
+  color: var(--accent-emerald-bright, #34D399) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
 }

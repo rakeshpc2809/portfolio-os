@@ -394,14 +394,14 @@ public class SyncController {
             .filter(s -> "WARNING".equalsIgnoreCase(s.severity()) || "CRITICAL".equalsIgnoreCase(s.severity()))
             .toList();
 
-        DailyBriefDto dailyBrief = loadDailyBriefCache();
+        DailyBriefDto dailyBrief = loadDailyBriefCache(BigDecimal.valueOf(syncInfo.currentValue()));
 
         return ResponseEntity.ok(new UnidirectionalSyncSnapshot(
             syncInfo, holdings, taxLots, filteredSignals, netWorthHistory, rebalancePlan, bucketAllocation, dailyBrief
         ));
     }
 
-    private DailyBriefDto loadDailyBriefCache() {
+    private DailyBriefDto loadDailyBriefCache(BigDecimal currentNetWorth) {
         java.io.File[] candidates = new java.io.File[] {
             new java.io.File("data/daily_brief_cache.json"),
             new java.io.File("../data/daily_brief_cache.json"),
@@ -412,7 +412,21 @@ public class SyncController {
             if (f.exists() && f.isFile()) {
                 try {
                     com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                    return mapper.readValue(f, DailyBriefDto.class);
+                    DailyBriefDto dto = mapper.readValue(f, DailyBriefDto.class);
+                    // Zero-Trust Validation: verify cached brief doesn't hallucinate or diverge from live net worth
+                    if (dto != null && dto.metrics() != null && dto.metrics().containsKey("net_worth")) {
+                        Object nwObj = dto.metrics().get("net_worth");
+                        if (nwObj instanceof Number nwNum && currentNetWorth != null && currentNetWorth.compareTo(BigDecimal.ZERO) > 0) {
+                            BigDecimal cachedNw = BigDecimal.valueOf(nwNum.doubleValue());
+                            BigDecimal diff = cachedNw.subtract(currentNetWorth).abs();
+                            BigDecimal tolerance = currentNetWorth.multiply(new BigDecimal("0.15"));
+                            if (diff.compareTo(tolerance) > 0) {
+                                // Stale mock or divergent brief detected — reject to prevent user-facing hallucination
+                                return null;
+                            }
+                        }
+                    }
+                    return dto;
                 } catch (Exception e) {
                     // ignore
                 }

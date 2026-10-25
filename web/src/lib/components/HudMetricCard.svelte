@@ -14,8 +14,8 @@
     icon?: Component<any> | any;
     isQuiet?: boolean;
     quietMode?: boolean;
-    accentGlow?: 'cyan' | 'emerald' | 'amber' | 'violet';
-    accentColor?: 'cyan' | 'emerald' | 'amber' | 'violet';
+    accentGlow?: 'cyan' | 'emerald' | 'amber' | 'violet' | 'rose';
+    accentColor?: 'cyan' | 'emerald' | 'amber' | 'violet' | 'rose';
     progressPct?: number | null;
   }
 
@@ -43,6 +43,14 @@
   const computedSubtext = $derived(
     subtext || (subLabel && subValue ? `${subLabel}: ${subValue}` : (subLabel || subValue || ''))
   );
+  const isNegativeValue = $derived(
+    String(displayValue).startsWith('-') || 
+    String(displayValue).includes('-%') || 
+    String(displayValue).startsWith('-₹')
+  );
+  const isNegativeSubvalue = $derived(
+    subValue != null ? (String(subValue).startsWith('-') || String(subValue).includes('-%') || String(subValue).startsWith('-₹')) : false
+  );
 </script>
 
 <div class="hud-card glow-{effectiveAccent}">
@@ -68,7 +76,7 @@
         <span class="mask-badge">QUIET SHIELD</span>
       </div>
     {:else}
-      <div class="hud-value tnum">{displayValue}</div>
+      <div class="hud-value tnum" class:negative={isNegativeValue}>{displayValue}</div>
     {/if}
   </div>
 
@@ -80,7 +88,12 @@
 
   {#if computedSubtext}
     <div class="hud-subtext" style={subtextColor ? `color: ${subtextColor};` : ''}>
-      {computedSubtext}
+      {#if subLabel && subValue}
+        <span class="sub-label">{subLabel}:</span>
+        <span class="sub-value" class:negative={isNegativeSubvalue} class:positive={!isNegativeSubvalue && (subLabel.includes('Return') || subLabel.includes('Gain'))}>{subValue}</span>
+      {:else}
+        <span class:negative={String(computedSubtext).startsWith('-') || String(computedSubtext).startsWith('-₹')}>{computedSubtext}</span>
+      {/if}
     </div>
   {/if}
 </div>
@@ -126,6 +139,10 @@
     box-shadow: 0 18px 40px -10px rgba(168, 85, 247, 0.35);
     border-color: rgba(168, 85, 247, 0.45);
   }
+  .glow-rose:hover {
+    box-shadow: 0 18px 40px -10px rgba(244, 63, 94, 0.35);
+    border-color: rgba(244, 63, 94, 0.45);
+  }
 
   /* Vibrant top accent line */
   .hud-card::before {
@@ -142,6 +159,7 @@
   .glow-emerald::before { background: linear-gradient(90deg, transparent, var(--accent-emerald), transparent); }
   .glow-amber::before { background: linear-gradient(90deg, transparent, var(--accent-amber), transparent); }
   .glow-violet::before { background: linear-gradient(90deg, transparent, var(--accent-violet), transparent); }
+  .glow-rose::before { background: linear-gradient(90deg, transparent, var(--accent-rose), transparent); }
 
   .hud-card:hover::before {
     opacity: 1;
@@ -171,6 +189,7 @@
   .icon-emerald { color: var(--accent-emerald); }
   .icon-amber { color: var(--accent-amber); }
   .icon-violet { color: var(--accent-violet); }
+  .icon-rose { color: var(--accent-rose); }
 
   .hud-label {
     font-family: var(--font-sans);
@@ -228,6 +247,7 @@
   .pip-emerald { background: var(--accent-emerald); box-shadow: 0 0 10px var(--accent-emerald); }
   .pip-amber { background: var(--accent-amber); box-shadow: 0 0 10px var(--accent-amber); }
   .pip-violet { background: var(--accent-violet); box-shadow: 0 0 10px var(--accent-violet); }
+  .pip-rose { background: var(--accent-rose); box-shadow: 0 0 10px var(--accent-rose); }
 
   @keyframes pipPulse {
     0%, 100% { transform: scale(1); opacity: 0.9; }
@@ -290,6 +310,11 @@
   .fill-emerald { background: linear-gradient(90deg, var(--accent-emerald), var(--accent-emerald-bright)); }
   .fill-amber { background: linear-gradient(90deg, var(--accent-amber), var(--accent-amber-bright)); }
   .fill-violet { background: linear-gradient(90deg, var(--accent-violet), var(--accent-violet-bright)); }
+  .fill-rose { background: linear-gradient(90deg, var(--accent-rose), var(--accent-rose-bright)); }
+
+  .hud-value.negative {
+    color: var(--accent-rose-bright, #FB7185) !important;
+  }
 
   .hud-subtext {
     font-size: 0.82rem;
@@ -300,5 +325,14 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .sub-value.negative {
+    color: var(--accent-rose-bright, #FB7185) !important;
+    font-weight: 700;
+  }
+  .sub-value.positive {
+    color: var(--accent-emerald-bright, #34D399) !important;
+    font-weight: 600;
   }
 </style>

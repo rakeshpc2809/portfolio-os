@@ -19,6 +19,12 @@ public class DuckDbProjector implements AutoCloseable {
     private final String dbPath;
     private final String jdbcUrl;
     private final HikariDataSource dataSource;
+    private final java.util.concurrent.atomic.AtomicReference<List<NetWorthPoint>> cachedDailyTrend = new java.util.concurrent.atomic.AtomicReference<>(null);
+    private final java.util.concurrent.atomic.AtomicLong lastTrendTime = new java.util.concurrent.atomic.AtomicLong(0L);
+
+    public void invalidateTrendCache() {
+        cachedDailyTrend.set(null);
+    }
 
     public static record NavHistorySeriesEntry(
         List<Double> navs,
@@ -71,14 +77,14 @@ public class DuckDbProjector implements AutoCloseable {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(jdbcUrl);
         config.setDriverClassName("org.duckdb.DuckDBDriver");
-        config.setMaximumPoolSize(2);
-        config.setMinimumIdle(1);
+        config.setMaximumPoolSize(6);
+        config.setMinimumIdle(2);
         config.setIdleTimeout(30000);
         String memLimit = System.getenv("DUCKDB_MEMORY_LIMIT");
         if (memLimit == null || memLimit.isBlank()) {
-            memLimit = "256MB";
+            memLimit = "1024MB";
         }
-        config.setConnectionInitSql("SET memory_limit = '" + memLimit.trim() + "'; SET threads = 2;");
+        config.setConnectionInitSql("SET memory_limit = '" + memLimit.trim() + "'; SET threads = 4;");
 
         this.dataSource = new HikariDataSource(config);
         initReadSchema(duckDbThreads);
@@ -733,6 +739,11 @@ public class DuckDbProjector implements AutoCloseable {
     ) {}
 
     public List<NetWorthPoint> getDailyNetWorthTrend() {
+        List<NetWorthPoint> cached = cachedDailyTrend.get();
+        if (cached != null && !cached.isEmpty() && (System.currentTimeMillis() - lastTrendTime.get() < 300_000L)) {
+            return cached;
+        }
+
         List<NetWorthPoint> trend = new ArrayList<>();
         try (Connection conn = getConnection()) {
             String sql = """
@@ -806,6 +817,10 @@ public class DuckDbProjector implements AutoCloseable {
                     boolean est = rs.getBoolean("is_estimated");
                     trend.add(new NetWorthPoint(d, val, inv, realVal, est));
                 }
+            }
+            if (!trend.isEmpty()) {
+                cachedDailyTrend.set(trend);
+                lastTrendTime.set(System.currentTimeMillis());
             }
         } catch (SQLException e) {
             System.err.println("Failed to fetch daily net worth trend from DuckDB: " + e.getMessage());

@@ -174,7 +174,7 @@
       >
         <ShieldCheck size={14} />
         <span>LTCG Mature ({metrics.ltcgCount})</span>
-        <span class="chip-badge positive">{formatINR(metrics.ltcgGain, quietMode)}</span>
+        <span class="chip-badge" class:positive={metrics.ltcgGain >= 0} class:negative={metrics.ltcgGain < 0}>{formatINR(metrics.ltcgGain, quietMode)}</span>
       </button>
 
       <button 
@@ -185,7 +185,7 @@
       >
         <Clock size={14} />
         <span>STCG Locked ({metrics.stcgCount})</span>
-        <span class="chip-badge neutral">{formatINR(metrics.stcgGain, quietMode)}</span>
+        <span class="chip-badge" class:positive={metrics.stcgGain > 0} class:neutral={metrics.stcgGain === 0} class:negative={metrics.stcgGain < 0}>{formatINR(metrics.stcgGain, quietMode)}</span>
       </button>
 
       {#if metrics.harvestCount > 0}
@@ -535,8 +535,9 @@
   }
 
   .chip-badge.negative {
-    background: hsla(350, 85%, 60%, 0.15);
-    color: var(--accent-crimson);
+    background: rgba(244, 63, 94, 0.16);
+    color: var(--accent-rose-bright, #FB7185);
+    border: 1px solid rgba(244, 63, 94, 0.35);
   }
 
   .search-box {
@@ -794,8 +795,9 @@
   }
 
   .gain-badge.negative {
-    background: hsla(350, 85%, 60%, 0.12);
-    color: var(--accent-crimson);
+    background: rgba(244, 63, 94, 0.16);
+    color: var(--accent-rose-bright, #FB7185);
+    border: 1px solid rgba(244, 63, 94, 0.35);
   }
 
   .gain-badge .pct {
@@ -854,7 +856,8 @@
   }
 
   .gain-val.negative {
-    color: var(--accent-crimson);
+    color: var(--accent-rose-bright, #FB7185) !important;
+    font-weight: 700;
   }
 
   .sub-pct {
@@ -1059,7 +1062,8 @@
   }
 
   .fin-val.negative {
-    color: var(--accent-crimson);
+    color: var(--accent-rose-bright, #FB7185) !important;
+    font-weight: 700;
   }
 
   .modal-footer {

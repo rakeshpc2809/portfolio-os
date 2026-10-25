@@ -35,6 +35,8 @@ import com.portfolioos.core.rpc.QuantSidecarClient;
 @Service
 public class PortfolioValuationService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PortfolioValuationService.class);
+
     private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
     private final QuantSidecarClient quantSidecarClient;
@@ -238,13 +240,19 @@ public class PortfolioValuationService {
     public NetWorthTrendResponse getNetWorthTrend() {
         List<DuckDbProjector.NetWorthPoint> rawTrend = duckDbProjector.getDailyNetWorthTrend();
         if (rawTrend.isEmpty()) {
-            LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
-            Set<String> isins = state.events().stream().map(TaxEvent::assetId).collect(Collectors.toSet());
-            MfApiNavDownloader downloader = new MfApiNavDownloader();
-            for (String isin : isins) {
-                downloader.downloadHistoricalNavsForIsin(isin, duckDbProjector);
-            }
-            rawTrend = duckDbProjector.getDailyNetWorthTrend();
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
+                    Set<String> isins = state.events().stream().map(TaxEvent::assetId).collect(Collectors.toSet());
+                    MfApiNavDownloader downloader = new MfApiNavDownloader();
+                    for (String isin : isins) {
+                        downloader.downloadHistoricalNavsForIsin(isin, duckDbProjector);
+                    }
+                    duckDbProjector.invalidateTrendCache();
+                } catch (Exception e) {
+                    log.warn("Background historical NAV backfill error: {}", e.getMessage());
+                }
+            });
         }
         List<String> dates = new ArrayList<>();
         List<Double> values = new ArrayList<>();
@@ -521,7 +529,7 @@ public class PortfolioValuationService {
                     }
                 });
             }
-            mcResult = quantSidecarClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 10000);
+            mcResult = quantSidecarClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 2000);
         } catch (Exception e) {
             System.err.println("Failed to fetch Monte Carlo FIRE simulation via Quant Sidecar: " + e.getMessage());
         }
@@ -557,12 +565,21 @@ public class PortfolioValuationService {
                 successRate, mcMedian.toPlainString(), deterministicFv.toPlainString(), ds));
         }
 
-        List<FireScenarioDto> scenarioDtos = fire.scenarios().stream().map(s -> new FireScenarioDto(
-            s.id(),
-            s.label(),
-            fmt(s.monthlyExpenseToday()),
-            s.active()
-        )).toList();
+        List<FireScenarioDto> scenarioDtos = fire.scenarios().stream().map(s -> {
+            BigDecimal monthly = s.monthlyExpenseToday();
+            BigDecimal annual = monthly.multiply(BigDecimal.valueOf(12));
+            BigDecimal targetCorp = annual.divide(new BigDecimal("0.03"), 2, RoundingMode.HALF_UP);
+            return new FireScenarioDto(
+                s.id(),
+                s.label(),
+                fmt(monthly),
+                fmt(monthly),
+                fmt(annual),
+                fmt(targetCorp),
+                "3.0",
+                s.active()
+            );
+        }).toList();
 
         List<Object> trajectories = mcResult.containsKey("fan_chart_trajectories") ? (List<Object>) mcResult.get("fan_chart_trajectories") : Collections.emptyList();
 
@@ -860,7 +877,7 @@ public class PortfolioValuationService {
 
         List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
 
-        Map<String, Object> mcResult = quantSidecarClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 10000);
+        Map<String, Object> mcResult = quantSidecarClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 2000);
 
         Map<String, Object> response = new HashMap<>(mcResult);
         response.put("custom_monthly_sip", monthlyContrib);

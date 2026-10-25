@@ -90,7 +90,7 @@ public class QuantSidecarClient {
                 .uri(URI.create(baseUrl + "/api/v1/simulate_fire"))
                 .header("Content-Type", "application/json")
                 .header("X-Api-Auth-Token", token)
-                .timeout(Duration.ofSeconds(10))
+                .timeout(Duration.ofSeconds(15))
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
 

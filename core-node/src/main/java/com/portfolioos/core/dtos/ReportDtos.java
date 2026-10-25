@@ -220,10 +220,14 @@ public class ReportDtos {
     ) {}
 
     public record FireScenarioDto(
-        String id,
-        String label,
-        String monthlyExpenseToday,
-        boolean active
+        @JsonProperty("scenario_id") String id,
+        @JsonProperty("label") String label,
+        @JsonProperty("monthly_expense") String monthlyExpense,
+        @JsonProperty("monthly_expense_today") String monthlyExpenseToday,
+        @JsonProperty("annual_expense") String annualExpense,
+        @JsonProperty("target_corpus") String targetCorpus,
+        @JsonProperty("swr_pct") String swrPct,
+        @JsonProperty("active") boolean active
     ) {}
 
     public record FireSummaryResponse(

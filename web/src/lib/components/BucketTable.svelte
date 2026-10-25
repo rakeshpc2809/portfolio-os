@@ -172,7 +172,7 @@
               {#if b.bucket === 'LEGACY_HOLDINGS'}
                 <span class="badge badge-phaseout">PHASE-OUT</span>
               {:else if isDrift}
-                <span class="badge badge-drift">DRIFT ({drift > 0 ? '+' : ''}{drift.toFixed(1)}%)</span>
+                <span class="badge badge-drift" class:negative={drift < 0}>DRIFT ({drift > 0 ? '+' : ''}{drift.toFixed(1)}%)</span>
               {:else}
                 <span class="badge badge-balanced">BALANCED</span>
               {/if}
@@ -445,6 +445,11 @@
     background: rgba(245, 158, 11, 0.16);
     color: var(--accent-amber-bright);
     border: 1px solid rgba(245, 158, 11, 0.35);
+  }
+  .badge-drift.negative {
+    background: rgba(244, 63, 94, 0.16);
+    color: var(--accent-rose-bright);
+    border: 1px solid rgba(244, 63, 94, 0.35);
   }
   .badge-phaseout {
     background: rgba(255, 255, 255, 0.08);

@@ -64,6 +64,31 @@ export interface LotDto {
   is_grandfathered?: boolean;
   fmv_2018?: number;
   holding_period_days?: number;
+  days_to_ltcg?: number;
+  is_harvest_candidate?: boolean;
+  estimated_tax_drag?: number;
+}
+
+export interface FundAllocationOrderDto {
+  fund_id: string;
+  fund_name: string;
+  amount: number;
+  current_pct?: number;
+  post_pct?: number;
+  pre_valuation?: number;
+  post_valuation?: number;
+}
+
+export interface RebalanceOrderDto {
+  fund_id: string;
+  fund_name: string;
+  total_proceeds: number;
+  total_units?: number;
+  total_realized_gain?: number;
+  total_exemption_applied?: number;
+  total_tax_amount?: number;
+  tax_classification?: string;
+  summary_label?: string;
 }
 
 export interface RebalancePlanDto {
@@ -81,6 +106,7 @@ export interface RebalancePlanDto {
     stcg_taxable_gain?: number;
     projected_tax?: number;
   };
+  orders?: RebalanceOrderDto[];
   buckets?: BucketAllocationDto[];
   buy_side?: {
     total_to_invest: number;
@@ -90,6 +116,7 @@ export interface RebalancePlanDto {
   sell_side?: {
     total_required: number;
     waterfall_tiers: any[];
+    orders?: RebalanceOrderDto[];
   };
 }
 
@@ -102,6 +129,7 @@ export interface BucketAllocationDto {
   amount_allocated?: number;
   is_drifted?: boolean;
   funds?: any[];
+  fund_breakdown?: FundAllocationOrderDto[];
 }
 
 export interface NetworthTrendDto {
@@ -253,14 +281,8 @@ export async function fetchJson<T>(endpoint: string, options: RequestInit = {}):
  * Loads and normalizes complete portfolio data across Core Node endpoints.
  */
 export async function loadDashboardData(): Promise<SnapshotDto> {
-  const [snapshotRes, holdingsRes, bucketsRes, trendRes] = await Promise.all([
-    fetchJson<any>('/sync/snapshot').catch(e => { console.warn('Snapshot error:', e); return null; }),
-    fetchJson<any[]>('/reports/holdings').catch(e => { console.warn('Holdings error:', e); return []; }),
-    fetchJson<any[]>('/reports/allocations/bucket').catch(e => { console.warn('Buckets error:', e); return []; }),
-    fetchJson<any>('/portfolio/net-worth-trend').catch(e => { console.warn('Trend error:', e); return null; }),
-  ]);
-
-  if (!snapshotRes && (!holdingsRes || holdingsRes.length === 0)) {
+  const snapshotRes = await fetchJson<any>('/sync/snapshot');
+  if (!snapshotRes) {
     throw new Error('Could not connect to Portfolio OS backend. Please check if portfolio-os-core is running.');
   }
 
@@ -270,8 +292,19 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
   const unrealizedGain = Number(syncInfo.unrealized_gain) || (currentNetWorth - totalInvested);
   const unrealizedGainPct = Number(syncInfo.unrealized_gain_pct) || (totalInvested > 0 ? (unrealizedGain / totalInvested) * 100 : 0);
 
+  // Group tax lots by ISIN so each holding has its nested lots
+  const rawTaxLots = snapshotRes?.tax_lots || [];
+  const lotsByIsin: Record<string, any[]> = {};
+  for (const lot of rawTaxLots) {
+    const isin = lot.isin || lot.asset_id;
+    if (isin) {
+      if (!lotsByIsin[isin]) lotsByIsin[isin] = [];
+      lotsByIsin[isin].push(lot);
+    }
+  }
+
   // Normalize holdings & lots
-  const rawHoldings = (holdingsRes && holdingsRes.length > 0) ? holdingsRes : (snapshotRes?.holdings || []);
+  const rawHoldings = snapshotRes?.holdings || [];
   const normalizedHoldings: HoldingDto[] = rawHoldings.map((h: any) => {
     const isin = h.isin || h.asset_id || '';
     const name = h.asset_name || h.fund_name || isin;
@@ -280,20 +313,34 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
     const cBasis = Number(h.invested_value) || 0;
     const uGain = Number(h.unrealized_gain) || (cVal - cBasis);
     const uGainPct = Number(h.unrealized_gain_pct) || (cBasis > 0 ? (uGain / cBasis) * 100 : 0);
+    const currentNav = Number(h.current_nav || 0);
 
-    const lots: LotDto[] = (h.lots || []).map((l: any) => ({
-      lot_id: l.lot_id || '',
-      acquisition_date: l.acquisition_date || l.buy_date || '',
-      units: Number(l.remaining_units ?? l.units ?? 0),
-      cost_nav: Number(l.cost_per_unit ?? l.cost_nav ?? 0),
-      cost_basis: Number(l.total_cost_basis ?? l.cost_basis ?? 0),
-      current_value: Number(l.current_value ?? 0),
-      realized_or_unrealized_gain: Number(l.unrealized_gain ?? l.realized_or_unrealized_gain ?? 0),
-      tax_term: (l.is_ltcg || l.is_long_term || l.tax_classification?.includes('LTCG')) ? 'LONG_TERM' : 'SHORT_TERM',
-      is_grandfathered: Boolean(l.grandfathered_nav),
-      fmv_2018: l.grandfathered_nav ? Number(l.grandfathered_nav) : undefined,
-      holding_period_days: Number(l.holding_days ?? 0)
-    }));
+    const holdingLots = (h.lots && h.lots.length > 0) ? h.lots : (lotsByIsin[isin] || []);
+
+    const lots: LotDto[] = holdingLots.map((l: any, idx: number) => {
+      const u = Number(l.remaining_units ?? l.units ?? 0);
+      const cNav = Number(l.cost_per_unit ?? l.cost_nav ?? 0);
+      const basis = Number(l.total_cost_basis ?? l.cost_basis ?? (u * cNav));
+      const val = Number(l.current_value ?? (currentNav > 0 ? u * currentNav : basis));
+      const gain = Number(l.unrealized_gain ?? l.realized_or_unrealized_gain ?? (val - basis));
+
+      return {
+        lot_id: l.lot_id || `${isin}-${l.buy_date || l.acquisition_date || idx}-${u}`,
+        acquisition_date: l.acquisition_date || l.buy_date || '',
+        units: u,
+        cost_nav: cNav,
+        cost_basis: basis,
+        current_value: val,
+        realized_or_unrealized_gain: gain,
+        tax_term: (l.is_ltcg || l.is_long_term || l.tax_classification?.includes('LTCG')) ? 'LONG_TERM' : 'SHORT_TERM',
+        is_grandfathered: Boolean(l.grandfathered_nav),
+        fmv_2018: l.grandfathered_nav ? Number(l.grandfathered_nav) : undefined,
+        holding_period_days: Number(l.holding_days ?? l.holding_period_days ?? 0),
+        days_to_ltcg: Number(l.days_to_ltcg ?? 0),
+        is_harvest_candidate: Boolean(l.is_harvest_candidate),
+        estimated_tax_drag: Number(l.estimated_tax_drag ?? 0)
+      };
+    });
 
     return {
       asset_id: isin,
@@ -301,7 +348,7 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
       asset_name: name,
       bucket: bucket,
       current_units: Number(h.total_units || 0),
-      current_nav: Number(h.current_nav || lots[0]?.cost_nav || 0),
+      current_nav: currentNav || lots[0]?.cost_nav || 0,
       nav_date: h.nav_date || syncInfo.generated_at?.split('T')?.[0] || '2026-10-24',
       current_value: cVal,
       cost_basis: cBasis,
@@ -313,7 +360,7 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
   });
 
   // Normalize buckets
-  const rawBuckets = (bucketsRes && bucketsRes.length > 0) ? bucketsRes : (snapshotRes?.bucket_allocation || []);
+  const rawBuckets = snapshotRes?.bucket_allocation || [];
   const normalizedBuckets: BucketAllocationDto[] = rawBuckets.map((b: any) => ({
     bucket: b.bucket || '',
     target_pct: Number(b.target_pct || 0),
@@ -329,20 +376,42 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
     }))
   }));
 
-  // Rebalance plan with normalized buckets
+  // Rebalance plan with normalized buy-side buckets & fund breakdowns
+  const rawBuyBuckets = snapshotRes?.rebalance_plan?.buy_side?.buckets || [];
+  const normalizedBuyBuckets: BucketAllocationDto[] = rawBuyBuckets.length > 0
+    ? rawBuyBuckets.map((b: any) => ({
+        bucket: b.bucket || '',
+        target_pct: Number(b.target_pct || 0),
+        current_pct: Number(b.current_pct || 0),
+        post_pct: Number(b.post_rebalance_pct ?? b.post_pct ?? b.target_pct ?? 0),
+        amount_allocated: Number(b.amount_allocated || 0),
+        fund_breakdown: (b.fund_breakdown || []).map((f: any) => ({
+          fund_id: f.fund_id || f.isin || '',
+          fund_name: f.fund_name || f.name || '',
+          amount: Number(f.amount || 0),
+          current_pct: Number(f.current_pct || 0),
+          post_pct: Number(f.post_pct || 0),
+          pre_valuation: Number(f.pre_valuation || 0),
+          post_valuation: Number(f.post_valuation || 0)
+        }))
+      }))
+    : normalizedBuckets;
+
   const rebalancePlan: RebalancePlanDto = {
     ...(snapshotRes?.rebalance_plan || {}),
+    orders: snapshotRes?.rebalance_plan?.orders || snapshotRes?.rebalance_plan?.sell_side?.orders || [],
     buckets: normalizedBuckets,
     buy_side: snapshotRes?.rebalance_plan?.buy_side ? {
       ...snapshotRes.rebalance_plan.buy_side,
-      buckets: normalizedBuckets
+      buckets: normalizedBuyBuckets
     } : undefined
   };
 
-  // Trend data
-  const trendDates = trendRes?.dates?.length ? trendRes.dates : [syncInfo.generated_at?.split('T')?.[0] || '2026-10-24'];
-  const trendValues = trendRes?.values?.length ? trendRes.values : [currentNetWorth];
-  const trendInvested = trendRes?.invested_values?.length ? trendRes.invested_values : [totalInvested];
+  // Trend data from unified snapshot
+  const history = snapshotRes?.net_worth_history || [];
+  const trendDates = history.length > 0 ? history.map((p: any) => p.date) : [syncInfo.generated_at?.split('T')?.[0] || '2026-10-24'];
+  const trendValues = history.length > 0 ? history.map((p: any) => p.valuation) : [currentNetWorth];
+  const trendInvested = history.length > 0 ? history.map((p: any) => p.invested) : [totalInvested];
 
   return {
     generated_at: syncInfo.generated_at || new Date().toISOString(),

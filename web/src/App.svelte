@@ -39,7 +39,17 @@
 
   type TabType = 'overview' | 'taxlots' | 'rebalance';
 
-  let activeTab = $state<TabType>('overview');
+  function getInitialTab(): TabType {
+    if (typeof window !== 'undefined') {
+      const qTab = new URLSearchParams(window.location.search).get('tab');
+      if (qTab === 'taxlots' || qTab === 'rebalance' || qTab === 'overview') return qTab;
+      if (window.location.hash === '#taxlots') return 'taxlots';
+      if (window.location.hash === '#rebalance') return 'rebalance';
+    }
+    return 'overview';
+  }
+
+  let activeTab = $state<TabType>(getInitialTab());
   let snapshot = $state<SnapshotDto | null>(null);
   let loading = $state(true);
   let syncing = $state(false);
@@ -60,6 +70,11 @@
   let casUploading = $state(false);
   let casStatusMsg = $state<string | null>(null);
   let briefDismissed = $state(false);
+
+  const gainPct = $derived(snapshot?.portfolio_summary?.unrealized_gain_pct);
+  const absGain = $derived(snapshot?.portfolio_summary?.unrealized_gain ?? 0);
+  const xirrStr = $derived(snapshot?.portfolio_summary?.formatted_xirr || snapshot?.portfolio_summary?.xirr_percentage || "—");
+  const isNegativeReturn = $derived((absGain < 0) || (gainPct !== undefined && gainPct !== null && gainPct < 0) || xirrStr.includes('-'));
 
   async function loadSnapshot() {
     loading = true;
@@ -377,8 +392,8 @@
         formattedValue={formatINR(snapshot?.portfolio_summary?.net_worth, quietMode)}
         subLabel="Cost Basis"
         subValue={formatINR(snapshot?.portfolio_summary?.total_invested, quietMode)}
-        badgeText={snapshot?.portfolio_summary?.unrealized_gain_pct ? formatPercent(snapshot.portfolio_summary.unrealized_gain_pct) : undefined}
-        badgeType="positive"
+        badgeText={gainPct !== undefined && gainPct !== null ? formatPercent(gainPct) : undefined}
+        badgeType={(gainPct ?? 0) < 0 ? "negative" : "positive"}
         icon={Wallet}
         quietMode={quietMode}
         accentColor="cyan"
@@ -413,14 +428,14 @@
       <!-- Card 4: Portfolio Return & XIRR -->
       <HudMetricCard
         label="Annualized XIRR Performance"
-        formattedValue={snapshot?.portfolio_summary?.formatted_xirr || snapshot?.portfolio_summary?.xirr_percentage || "—"}
+        formattedValue={xirrStr}
         subLabel="Absolute Return"
-        subValue={formatINR(snapshot?.portfolio_summary?.unrealized_gain, quietMode)}
-        badgeText={snapshot?.portfolio_summary?.unrealized_gain_pct ? formatPercent(snapshot.portfolio_summary.unrealized_gain_pct) : undefined}
-        badgeType="positive"
+        subValue={formatINR(absGain, quietMode)}
+        badgeText={gainPct !== undefined && gainPct !== null ? formatPercent(gainPct) : undefined}
+        badgeType={isNegativeReturn ? "negative" : "positive"}
         icon={TrendingUp}
         quietMode={quietMode}
-        accentColor="cyan"
+        accentColor={isNegativeReturn ? "rose" : "cyan"}
       />
     </section>
 

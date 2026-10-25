@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fetchJson, fetchActionRecommendations, type RebalancePlanDto, type ActionRecommendationDto } from '../api';
-  import { formatINR, formatPercent } from '../formatters';
+  import { formatINR, formatPercent, formatCompactINR } from '../formatters';
   import { 
     Flame, 
     Sliders, 
@@ -41,11 +41,14 @@
     monte_carlo_median_corpus?: string;
     monte_carlo_data_source_label?: string;
     scenarios?: Array<{
-      scenario_id: string;
+      scenario_id?: string;
+      id?: string;
       label: string;
-      target_corpus: string;
-      monthly_expense: string;
-      swr_pct: string;
+      target_corpus?: string;
+      monthly_expense?: string;
+      monthly_expense_today?: string;
+      annual_expense?: string;
+      swr_pct?: string;
     }>;
   }
 
@@ -164,19 +167,31 @@
             {@const bNameUpper = b.bucket.toUpperCase().replace(/\s+/g, '_')}
             {@const hrpAlloc = hrpData?.allocations?.filter(a => a.bucket.toUpperCase() === bNameUpper || bNameUpper.includes(a.bucket.toUpperCase()))}
             {@const hrpPct = hrpAlloc && hrpAlloc.length > 0 ? hrpAlloc.reduce((acc, curr) => acc + curr.hrp_pct, 0) : null}
-            <div class="order-row">
-              <div class="order-info">
-                <span class="bucket-name font-medium">{b.bucket}</span>
-                <span class="pct-detail mono text-muted">
-                  {formatPercent(b.current_pct)} → <strong class="text-cyan">{formatPercent(b.post_pct ?? b.target_pct)}</strong>
-                  {#if showHrpComparison && hrpPct !== null}
-                    <span class="hrp-badge mono">HRP CVaR: <strong class="text-emerald">{hrpPct.toFixed(1)}%</strong></span>
-                  {/if}
-                </span>
+            <div class="order-block">
+              <div class="order-row">
+                <div class="order-info">
+                  <span class="bucket-name font-medium">{b.bucket}</span>
+                  <span class="pct-detail mono text-muted">
+                    {formatPercent(b.current_pct)} → <strong class="text-cyan">{formatPercent(b.post_pct ?? b.target_pct)}</strong>
+                    {#if showHrpComparison && hrpPct !== null}
+                      <span class="hrp-badge mono">HRP CVaR: <strong class="text-emerald">{hrpPct.toFixed(1)}%</strong></span>
+                    {/if}
+                  </span>
+                </div>
+                <div class="order-amount mono bold" class:allocated={alloc > 0}>
+                  {alloc > 0 ? `+${formatINR(alloc, quietMode)}` : '₹0'}
+                </div>
               </div>
-              <div class="order-amount mono bold" class:allocated={alloc > 0}>
-                {alloc > 0 ? `+${formatINR(alloc, quietMode)}` : '₹0'}
-              </div>
+              {#if alloc > 0 && b.fund_breakdown && b.fund_breakdown.length > 0}
+                <div class="fund-breakdown-sublist">
+                  {#each b.fund_breakdown as fb}
+                    <div class="fund-breakdown-item mono">
+                      <span class="fb-name">↳ {fb.fund_name}</span>
+                      <span class="fb-amt text-emerald bold">+{formatINR(fb.amount, quietMode)}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
             </div>
           {/each}
         {:else}
@@ -213,10 +228,29 @@
         </div>
       </div>
 
+      {#if rebalancePlan?.orders && rebalancePlan.orders.length > 0}
+        <div class="harvest-orders-box">
+          <span class="orders-title">Tax-Harvesting Liquidations ({formatINR(rebalancePlan.buy_side?.total_to_invest ?? 0, quietMode)} Proceeds Generated):</span>
+          <div class="harvest-orders-list">
+            {#each rebalancePlan.orders as ord}
+              <div class="harvest-order-row mono">
+                <div class="harvest-info">
+                  <span class="harvest-name font-medium">{ord.fund_name}</span>
+                  <span class="harvest-sub text-muted">{ord.summary_label || 'Tax-Loss Harvest'}</span>
+                </div>
+                <div class="harvest-amt text-cyan bold">
+                  +{formatINR(ord.total_proceeds, quietMode)}
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
       <div class="tax-rule-note">
         <ShieldCheck size={16} class="text-emerald" />
         <span>
-          Liquidation engine strictly exhausts <strong>Tier-1 Exempt LTCG</strong> up to ₹1.25 Lakh before incurring any 12.5% LTCG drag.
+          Liquidation engine strictly exhausts <strong>Tier-1 Exempt LTCG</strong> up to ₹1.25 Lakh before incurring any 12.5% LTCG drag. Proceeds are auto-routed to under-allocated buckets.
         </span>
       </div>
     </div>
@@ -229,10 +263,15 @@
         <Flame size={20} class="text-amber" />
         <h2 class="fire-title">Financial Independence (FIRE) Engine</h2>
       </div>
-      {#if fireData?.monte_carlo_success_rate_pct !== undefined}
+      {#if fireData?.monte_carlo_success_rate_pct !== undefined && fireData.monte_carlo_success_rate_pct > 0}
         <div class="mc-badge">
           <Activity size={14} />
-          <span>MONTE CARLO PROBABILITY: <strong class="mono bold text-emerald">{fireData.monte_carlo_success_rate_pct.toFixed(1)}%</strong></span>
+          <span>MONTE CARLO PROBABILITY: <strong class="mono bold text-emerald">{fireData.monte_carlo_success_rate_pct.toFixed(1)}%</strong> (2,000 Paths)</span>
+        </div>
+      {:else}
+        <div class="mc-badge mono">
+          <Activity size={14} />
+          <span>DETERMINISTIC PROJECTION (6% Real Return)</span>
         </div>
       {/if}
     </div>
@@ -241,28 +280,34 @@
       <div class="fire-kpi-grid">
         <div class="fire-kpi-card">
           <span class="kpi-label">Active Scenario</span>
-          <span class="kpi-val bold text-cyan">{fireData.active_scenario_label || 'Standard FIRE'}</span>
-          <span class="kpi-sub mono text-muted">SWR: 3.50%</span>
+          <span class="kpi-val bold text-cyan">{fireData.active_scenario_label || 'Primary Expense Target'}</span>
+          <span class="kpi-sub mono text-muted">SWR: 3.00%</span>
         </div>
 
         <div class="fire-kpi-card">
           <span class="kpi-label">Monthly Expense Today</span>
-          <span class="kpi-val mono bold">{quietMode ? '••••••••' : `₹${fireData.monthly_expense_today || '—'}`}</span>
-          <span class="kpi-sub">Annual: {quietMode ? '••••••••' : `₹${fireData.annual_expense || '—'}`}</span>
+          <span class="kpi-val mono bold">{formatINR(Number(fireData.monthly_expense_today) || 0, quietMode)}</span>
+          <span class="kpi-sub">Annual: {formatINR(Number(fireData.annual_expense) || 0, quietMode)}</span>
         </div>
 
         <div class="fire-kpi-card">
           <span class="kpi-label">Target Corpus Required</span>
-          <span class="kpi-val mono bold text-amber">{quietMode ? '••••••••' : `₹${fireData.required_corpus || '—'}`}</span>
-          <span class="kpi-sub mono">{fireData.years_remaining ?? '—'} years remaining</span>
+          <span class="kpi-val mono bold text-amber">{formatCompactINR(Number(fireData.required_corpus) || 0, quietMode)}</span>
+          <span class="kpi-sub mono">{fireData.years_remaining ?? '—'} years remaining (Age 45)</span>
         </div>
 
-        <div class="fire-kpi-card highlight">
+        <div class="fire-kpi-card highlight" class:shortfall={fireData.status !== 'ON_TRACK'}>
           <span class="kpi-label">Projected Corpus at Target</span>
-          <span class="kpi-val mono bold text-emerald">{quietMode ? '••••••••' : `₹${fireData.projected_corpus_at_target_age || '—'}`}</span>
-          <span class="kpi-sub surplus">
-            {fireData.status === 'ON_TRACK' ? '✓ ' : ''}{fireData.shortage_or_surplus_amount || 'On Track'}
-          </span>
+          <span class="kpi-val mono bold" class:text-emerald={fireData.status === 'ON_TRACK'} class:text-rose={fireData.status !== 'ON_TRACK'}>{formatCompactINR(Number(fireData.projected_corpus_at_target_age) || 0, quietMode)}</span>
+          {#if fireData.status === 'ON_TRACK'}
+            <span class="kpi-sub surplus">
+              ✓ On Track (+{formatCompactINR(Number(fireData.shortage_or_surplus_amount) || 0, quietMode)})
+            </span>
+          {:else}
+            <span class="kpi-sub shortage">
+              ⚠ Shortfall of -{formatCompactINR(Math.abs(Number(fireData.shortage_or_surplus_amount) || 0), quietMode)}
+            </span>
+          {/if}
         </div>
       </div>
 
@@ -290,9 +335,10 @@
                 {#if rec.metrics && Object.keys(rec.metrics).length > 0}
                   <div class="gr-metrics">
                     {#each Object.entries(rec.metrics) as [k, v]}
+                      {@const isNeg = typeof v === 'number' ? v < 0 : String(v).startsWith('-')}
                       <div class="gr-metric-item">
                         <span class="gr-metric-k">{k.replace(/_/g, ' ')}:</span>
-                        <span class="gr-metric-v mono">{typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(2)) : v}</span>
+                        <span class="gr-metric-v mono" class:text-negative={isNeg}>{typeof v === 'number' ? (Number.isInteger(v) ? v : v.toFixed(2)) : v}</span>
                       </div>
                     {/each}
                   </div>
@@ -309,19 +355,21 @@
       <!-- Scenarios Selector -->
       {#if fireData.scenarios && fireData.scenarios.length > 0}
         <div class="scenarios-panel">
-          <span class="scenarios-heading">Retirement Scenarios:</span>
+          <span class="scenarios-heading">Retirement Scenarios (3.0% Safe Withdrawal Rate):</span>
           <div class="scenarios-grid">
             {#each fireData.scenarios as sc}
+              {@const mExp = Number(sc.monthly_expense || sc.monthly_expense_today) || 0}
+              {@const tCorp = Number(sc.target_corpus) || (mExp * 12 / 0.03)}
               <div class="scenario-card" class:active={sc.label === fireData.active_scenario_label}>
                 <div class="sc-header">
                   <span class="sc-label font-medium">{sc.label}</span>
-                  <span class="sc-swr mono">{sc.swr_pct}% SWR</span>
+                  <span class="sc-swr mono">{sc.swr_pct || '3.0'}% SWR</span>
                 </div>
                 <div class="sc-corpus mono bold text-cyan">
-                  {quietMode ? '••••••••' : `₹${sc.target_corpus}`}
+                  {formatCompactINR(tCorp, quietMode)}
                 </div>
                 <div class="sc-monthly text-muted">
-                  {quietMode ? '••••••••' : `₹${sc.monthly_expense}/mo`}
+                  {formatINR(mExp, quietMode)}/mo
                 </div>
               </div>
             {/each}
@@ -513,6 +561,12 @@
     color: var(--text-muted);
   }
 
+  .order-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
   .order-row {
     display: flex;
     justify-content: space-between;
@@ -520,6 +574,36 @@
     padding: 0.6rem 0.75rem;
     background: var(--surface-void);
     border-radius: var(--radius-md);
+  }
+
+  .fund-breakdown-sublist {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.35rem 0.75rem 0.5rem 1.25rem;
+    background: var(--surface-void);
+    border-left: 2px solid var(--accent-emerald);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    margin-top: -0.15rem;
+  }
+
+  .fund-breakdown-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+  }
+
+  .fb-name {
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 75%;
+  }
+
+  .fb-amt {
+    font-size: 0.78rem;
   }
 
   .order-info {
@@ -569,6 +653,54 @@
 
   .tax-val {
     font-size: 0.95rem;
+  }
+
+  .harvest-orders-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.75rem 0.85rem;
+    background: var(--surface-void);
+    border: 1px dashed var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .harvest-orders-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .harvest-order-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.35rem 0.5rem;
+    background: var(--surface-card);
+    border-radius: var(--radius-sm);
+    font-size: 0.76rem;
+  }
+
+  .harvest-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    max-width: 75%;
+  }
+
+  .harvest-name {
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .harvest-sub {
+    font-size: 0.68rem;
+  }
+
+  .harvest-amt {
+    font-size: 0.82rem;
   }
 
   .tax-rule-note {
@@ -649,6 +781,11 @@
     box-shadow: 0 0 20px rgba(0, 230, 153, 0.08);
   }
 
+  .fire-kpi-card.highlight.shortfall {
+    border-color: rgba(244, 63, 94, 0.45);
+    box-shadow: 0 0 20px rgba(244, 63, 94, 0.12);
+  }
+
   .kpi-label {
     font-size: 0.72rem;
     text-transform: uppercase;
@@ -668,6 +805,11 @@
 
   .kpi-sub.surplus {
     color: var(--accent-emerald);
+    font-weight: 600;
+  }
+
+  .kpi-sub.shortage {
+    color: #fb7185;
     font-weight: 600;
   }
 
