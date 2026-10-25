@@ -14,6 +14,7 @@
   import AdHocSqlModal from './lib/components/AdHocSqlModal.svelte';
   import AllocationDonutChart from './lib/components/AllocationDonutChart.svelte';
   import DrawdownRungsChart from './lib/components/DrawdownRungsChart.svelte';
+  import FundBenchmarkChart from './lib/components/FundBenchmarkChart.svelte';
 
   import { 
     LayoutDashboard, 
@@ -546,13 +547,18 @@
             />
           </div>
 
-          <!-- Asset Allocation Bucket Table -->
+          <!-- Asset Allocation Bucket Table (Target Allocation & Drift Status) -->
           <BucketTable
             buckets={snapshot?.rebalance_plan?.buckets}
             quietMode={quietMode}
             onInspectFund={(isin) => {
               activeTab = 'taxlots';
             }}
+          />
+
+          <!-- Combined Benchmark vs. Portfolio & Scheme Factor Performance Chart -->
+          <FundBenchmarkChart
+            quietMode={quietMode}
           />
         </div>
       {:else if activeTab === 'taxlots'}
@@ -567,6 +573,8 @@
         <div id="panel-rebalance" role="tabpanel" aria-labelledby="tab-rebalance" class="tab-panel">
           <RebalanceFireView
             rebalancePlan={snapshot?.rebalance_plan}
+            holdings={snapshot?.holdings}
+            netWorth={snapshot?.portfolio_summary?.net_worth}
             quietMode={quietMode}
             onopenlumpsum={() => showLumpsumModal = true}
           />
@@ -606,6 +614,8 @@
 
   <LumpsumModal
     open={showLumpsumModal}
+    holdings={snapshot?.holdings}
+    netWorth={snapshot?.portfolio_summary?.net_worth}
     quietMode={quietMode}
     onclose={() => showLumpsumModal = false}
     onapply={(plan) => {

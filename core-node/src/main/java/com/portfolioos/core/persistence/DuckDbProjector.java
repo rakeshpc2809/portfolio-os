@@ -151,6 +151,17 @@ public class DuckDbProjector implements AutoCloseable {
                 stmt.execute("ALTER TABLE fund_holdings ADD COLUMN IF NOT EXISTS market VARCHAR DEFAULT 'IN'");
                 stmt.execute("ALTER TABLE fund_holdings ADD COLUMN IF NOT EXISTS source_type VARCHAR DEFAULT 'NSE_INDEX_CONSTITUENTS'");
             } catch (SQLException ignored) {}
+
+            stmt.execute(
+                "CREATE OR REPLACE VIEW open_lots AS " +
+                "SELECT id, asset_id, asset_name, isin, event_date, " +
+                "TRY_CAST(units AS DOUBLE) AS units, " +
+                "TRY_CAST(price_per_unit AS DOUBLE) AS price_per_unit, " +
+                "TRY_CAST(gross_amount AS DOUBLE) AS gross_amount " +
+                "FROM projected_events " +
+                "WHERE event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS')"
+            );
+
             seedStandardConstituents();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize DuckDB schema", e);
@@ -239,9 +250,33 @@ public class DuckDbProjector implements AutoCloseable {
         }
     }
 
+    public boolean hasBenchmarkData(String benchmarkId) {
+        if (benchmarkId == null || benchmarkId.isBlank()) return false;
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement("SELECT COUNT(*) FROM benchmark_history WHERE benchmark_id = ? AND level > 0")) {
+            pstmt.setString(1, benchmarkId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next() && rs.getInt(1) >= 20;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public Map<String, Object> getAlignedPortfolioAndBenchmarkReturns(String benchmarkId) {
         List<Double> portfolioReturns = new ArrayList<>();
         List<Double> benchmarkReturns = new ArrayList<>();
+        List<String> dates = new ArrayList<>();
+        List<Double> portfolioCumulative = new ArrayList<>();
+        List<Double> benchmarkCumulative = new ArrayList<>();
+        double pCum = 100.0;
+        double bCum = 100.0;
+        String targetBenchmark = (benchmarkId != null && !benchmarkId.isBlank()) ? benchmarkId : "NIFTY_500_TRI";
+        if (targetBenchmark.equalsIgnoreCase("NIFTY_50") || targetBenchmark.equalsIgnoreCase("NIFTY50")) {
+            targetBenchmark = "NIFTY_50_TRI";
+        } else if (targetBenchmark.equalsIgnoreCase("NIFTY_500") || targetBenchmark.equalsIgnoreCase("NIFTY500")) {
+            targetBenchmark = "NIFTY_500_TRI";
+        }
         try (Connection conn = getConnection()) {
             String sql = """
                 WITH nav_dates AS (
@@ -300,7 +335,7 @@ public class DuckDbProjector implements AutoCloseable {
                 ORDER BY p.nav_date ASC;
             """;
             try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, benchmarkId);
+                pstmt.setString(1, targetBenchmark);
                 try (ResultSet rs = pstmt.executeQuery()) {
                     while (rs.next()) {
                         String dateStr = rs.getString("nav_date");
@@ -322,6 +357,11 @@ public class DuckDbProjector implements AutoCloseable {
                                     double bDaily = Math.pow(1.0 + bRet, 1.0 / daysBetween) - 1.0;
                                     portfolioReturns.add(pDaily);
                                     benchmarkReturns.add(bDaily);
+                                    dates.add(dateStr);
+                                    pCum *= (1.0 + pDaily);
+                                    bCum *= (1.0 + bDaily);
+                                    portfolioCumulative.add(Math.round(pCum * 100.0) / 100.0);
+                                    benchmarkCumulative.add(Math.round(bCum * 100.0) / 100.0);
                                 }
                             }
                         }
@@ -335,6 +375,9 @@ public class DuckDbProjector implements AutoCloseable {
         Map<String, Object> res = new HashMap<>();
         res.put("portfolio_returns", portfolioReturns);
         res.put("benchmark_returns", benchmarkReturns);
+        res.put("dates", dates);
+        res.put("portfolio_cumulative", portfolioCumulative);
+        res.put("benchmark_cumulative", benchmarkCumulative);
         return res;
     }
 

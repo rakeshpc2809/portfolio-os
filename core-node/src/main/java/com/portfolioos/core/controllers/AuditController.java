@@ -23,15 +23,18 @@ public class AuditController {
     private final LedgerCacheService cacheService;
     private final DuckDbProjector duckDbProjector;
     private final QuantSidecarClient quantSidecarClient;
+    private final com.portfolioos.core.service.PortfolioValuationService valuationService;
 
     public AuditController(
         LedgerCacheService cacheService,
         DuckDbProjector duckDbProjector,
-        QuantSidecarClient quantSidecarClient
+        QuantSidecarClient quantSidecarClient,
+        @org.springframework.beans.factory.annotation.Autowired(required = false) com.portfolioos.core.service.PortfolioValuationService valuationService
     ) {
         this.cacheService = cacheService;
         this.duckDbProjector = duckDbProjector;
         this.quantSidecarClient = quantSidecarClient;
+        this.valuationService = valuationService;
     }
 
     public record FundHealthItem(
@@ -187,6 +190,10 @@ public class AuditController {
 
             String benchId = benchConfig[0];
             String benchName = benchConfig[1];
+
+            if (valuationService != null) {
+                valuationService.ensureBenchmarkData(benchId);
+            }
 
             Map<String, Object> aligned = duckDbProjector.getAlignedFundAndBenchmarkReturns(isin, benchId);
             @SuppressWarnings("unchecked")

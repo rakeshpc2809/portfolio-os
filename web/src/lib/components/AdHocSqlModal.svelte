@@ -69,6 +69,12 @@
       } catch (e) {
         console.warn('Could not load open_lots table:', e);
       }
+      try {
+        await loadParquetTable('benchmark_history');
+        loaded.push('benchmark_history');
+      } catch (e) {
+        console.warn('Could not load benchmark_history table:', e);
+      }
       tablesLoaded = loaded;
       statusMsg = `DuckDB-Wasm Ready. Tables registered: ${loaded.join(', ')}`;
       if (loaded.length > 0 && queryResults.length === 0) {
@@ -80,6 +86,23 @@
     } finally {
       executing = false;
     }
+  }
+
+  async function selectPreset(p: typeof presets[0]) {
+    sqlQuery = p.sql;
+    if (p.sql.includes('open_lots') && !tablesLoaded.includes('open_lots')) {
+      try {
+        statusMsg = 'Loading open_lots table...';
+        await loadParquetTable('open_lots');
+        if (!tablesLoaded.includes('open_lots')) {
+          tablesLoaded = [...tablesLoaded, 'open_lots'];
+        }
+      } catch (e: any) {
+        errorMsg = 'Could not load open_lots: ' + (e.message || e);
+        return;
+      }
+    }
+    await runQuery();
   }
 
   async function runQuery() {
@@ -170,7 +193,7 @@
             <button 
               type="button" 
               class="preset-chip"
-              onclick={() => { sqlQuery = p.sql; runQuery(); }}
+              onclick={() => selectPreset(p)}
             >
               {p.name}
             </button>

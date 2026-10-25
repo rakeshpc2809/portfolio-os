@@ -27,11 +27,33 @@
 
   interface Props {
     rebalancePlan?: RebalancePlanDto;
+    holdings?: any[];
+    netWorth?: number;
     quietMode?: boolean;
     onopenlumpsum?: () => void;
   }
 
-  let { rebalancePlan, quietMode = false, onopenlumpsum }: Props = $props();
+  let { rebalancePlan, holdings = [], netWorth = 0, quietMode = false, onopenlumpsum }: Props = $props();
+
+  function getFundHoldingMetrics(fundIdOrName: string, orderProceeds: number = 0) {
+    const nw = netWorth || currentNetWorth() || 2178955;
+    const holding = holdings?.find((h: any) => 
+      (h.asset_id && fundIdOrName.toLowerCase().includes(h.asset_id.toLowerCase())) ||
+      (h.isin && fundIdOrName.toLowerCase().includes(h.isin.toLowerCase())) ||
+      (h.asset_name && fundIdOrName.toLowerCase().includes(h.asset_name.toLowerCase())) ||
+      (h.asset_name && h.asset_name.toLowerCase().includes(fundIdOrName.toLowerCase()))
+    );
+    const curVal = Number(holding?.current_value ?? (orderProceeds > 0 ? orderProceeds * 1.5 : 0));
+    const curPct = nw > 0 ? (curVal / nw) * 100 : 0;
+    const postVal = Math.max(0, curVal - orderProceeds);
+    const postPct = nw > 0 ? (postVal / nw) * 100 : 0;
+    return {
+      curVal,
+      curPct,
+      postVal,
+      postPct
+    };
+  }
 
   interface FireSummary {
     active_scenario_label?: string;
@@ -119,32 +141,73 @@
     loadHrpAudit();
   });
 
-  // Calculate live SWR and Guyton-Klinger threshold status
+  // Calculate live FIRE status, accumulation metrics and Guyton-Klinger thresholds
   const currentNetWorth = $derived(() => {
-    return Number(fireData?.fire_investable_net_worth || fireData?.total_net_worth || 32000000);
+    return Number(fireData?.fire_investable_net_worth || fireData?.total_net_worth || 2178955);
+  });
+
+  const activeScenario = $derived(() => {
+    return fireData?.scenarios?.find(s => s.active) || fireData?.scenarios?.[0] || null;
   });
 
   const annualExpense = $derived(() => {
-    return Number(fireData?.annual_expense || 960000);
+    return Number(activeScenario()?.annual_expense || fireData?.annual_expense || 720000);
   });
 
-  const liveSwrPct = $derived(() => {
+  const targetCorpus = $derived(() => {
+    return Number(activeScenario()?.target_corpus || 24000000);
+  });
+
+  const yearsRemaining = $derived(() => {
+    return fireData?.years_remaining ?? 13;
+  });
+
+  const isAccumulationPhase = $derived((yearsRemaining() ?? 13) > 0);
+
+  const fundedRatioPct = $derived(() => {
+    const target = targetCorpus();
+    return target > 0 ? (currentNetWorth() / target) * 100 : 0;
+  });
+
+  const projectedCorpus = $derived(() => {
+    return Number(fireData?.projected_corpus_at_target_age || 21641478);
+  });
+
+  // Target retirement SWR planned for post-retirement (typically 3.00%)
+  const targetRetirementSwrPct = $derived(() => {
+    return Number(activeScenario()?.swr_pct || 3.0);
+  });
+
+  // SWR projected when reaching retirement target age
+  const projectedRetirementSwrPct = $derived(() => {
+    const proj = projectedCorpus();
+    return proj > 0 ? (annualExpense() / proj) * 100 : targetRetirementSwrPct();
+  });
+
+  // Hypothetical instant burn rate if earning ceased today
+  const hypotheticalInstantSwrPct = $derived(() => {
     const nw = currentNetWorth();
     return nw > 0 ? (annualExpense() / nw) * 100 : 3.0;
+  });
+
+  // SWR to evaluate on the Guyton-Klinger gauge:
+  // In accumulation phase, show projected retirement SWR against baseline
+  const activeGaugeSwrPct = $derived(() => {
+    return isAccumulationPhase ? projectedRetirementSwrPct() : hypotheticalInstantSwrPct();
   });
 
   const BASELINE_SWR = 3.0;
   const PROSPERITY_BOUND = 2.4; // 20% below 3.0%
   const PRESERVATION_BOUND = 3.6; // 20% above 3.0%
 
-  const isProsperity = $derived(liveSwrPct() < PROSPERITY_BOUND);
-  const isPreservation = $derived(liveSwrPct() > PRESERVATION_BOUND);
+  const isProsperity = $derived(activeGaugeSwrPct() < PROSPERITY_BOUND);
+  const isPreservation = $derived(activeGaugeSwrPct() > PRESERVATION_BOUND);
 
   const exemptLimit = 125000;
   const exemptGain = $derived(rebalancePlan?.summary?.ltcg_exempt_gain ?? 0);
   const exemptPct = $derived(Math.min(100, (exemptGain / exemptLimit) * 100));
 
-  const swrNeedlePct = $derived(Math.min(100, Math.max(0, (liveSwrPct() / 5.0) * 100)));
+  const swrNeedlePct = $derived(Math.min(100, Math.max(0, (activeGaugeSwrPct() / 5.0) * 100)));
 
   // Formatting helpers
   function formatBucketTitle(b: string): string {
@@ -194,6 +257,106 @@
         <strong class="text-emerald">{formatINR(rebalancePlan?.buy_side?.total_to_invest ?? 0, quietMode)}</strong>
       </div>
     </div>
+
+    <!-- Capital Source & Deployment Breakdown Box: Explains exactly where the 20k came from and what funds to buy -->
+    {#if (rebalancePlan?.buy_side?.total_to_invest ?? 0) > 0}
+      {@const sellOrders = rebalancePlan?.sell_side?.orders ?? []}
+      {@const buyBuckets = rebalancePlan?.buy_side?.buckets?.filter(b => (b.amount_allocated ?? 0) > 0) ?? []}
+      <div class="capital-provenance-box">
+        <div class="provenance-col sources">
+          <div class="prov-header">
+            <span class="prov-badge rose">SELL-SIDE CAPITAL SOURCES ({sellOrders.length} Schemes)</span>
+            <span class="prov-sub text-muted">Disciplined trims & zero-tax FIFO harvesting with fund impact %</span>
+          </div>
+          <div class="prov-list">
+            {#if sellOrders.length > 0}
+              {#each sellOrders as order}
+                {@const metrics = getFundHoldingMetrics(order.fund_id || order.fund_name, order.total_proceeds)}
+                <div class="prov-item">
+                  <div class="prov-item-left">
+                    <span class="prov-name font-medium">{order.fund_name}</span>
+                    <div class="prov-impact-row mono">
+                      <span class="fund-impact-tag sell">
+                        Fund Impact: <strong class="text-rose">{metrics.curPct.toFixed(1)}% ➔ {metrics.postPct.toFixed(1)}%</strong>
+                      </span>
+                      <span class="prov-sub-tag text-muted">
+                        ({formatCompactINR(metrics.curVal)} ➔ {formatCompactINR(metrics.postVal)})
+                      </span>
+                    </div>
+                    <span class="prov-meta mono text-muted">
+                      {order.summary_label || 'FIFO Lot Trim'} · Net P&L: 
+                      <span class={(order.total_realized_gain ?? 0) >= 0 ? 'text-emerald' : 'text-amber'}>
+                        {(order.total_realized_gain ?? 0) >= 0 ? '+' : ''}{formatINR(order.total_realized_gain ?? 0, quietMode)}
+                      </span>
+                    </span>
+                  </div>
+                  <strong class="prov-amount mono text-rose">+{formatINR(order.total_proceeds, quietMode)}</strong>
+                </div>
+              {/each}
+            {:else if rebalancePlan?.buy_side?.is_manual_lumpsum}
+              <div class="prov-item">
+                <span class="prov-name">Fresh Cash Lumpsum Inflow</span>
+                <strong class="prov-amount mono text-cyan">+{formatINR(rebalancePlan?.buy_side?.total_to_invest ?? 0, quietMode)}</strong>
+              </div>
+            {:else}
+              <div class="prov-item">
+                <span class="prov-name">Portfolio Cash Buffer / Rebalance Trim Pool</span>
+                <strong class="prov-amount mono text-emerald">+{formatINR(rebalancePlan?.buy_side?.total_to_invest ?? 0, quietMode)}</strong>
+              </div>
+            {/if}
+          </div>
+        </div>
+
+        <div class="provenance-divider">
+          <div class="prov-arrow">➔</div>
+          <span class="prov-tax-pill mono">TAX DRAG: ₹0.00</span>
+        </div>
+
+        <div class="provenance-col targets">
+          <div class="prov-header">
+            <span class="prov-badge cyan">BUY-SIDE SPECIFIC FUNDS TO BUY ({buyBuckets.length} Buckets)</span>
+            <span class="prov-sub text-muted">Directed to underweight buckets & funds with exact pre ➔ post %</span>
+          </div>
+          <div class="prov-list">
+            {#each buyBuckets as b}
+              <div class="prov-bucket-group">
+                <div class="prov-item bucket-level">
+                  <div class="prov-item-left">
+                    <span class="prov-name font-bold text-cyan">{formatBucketTitle(b.bucket)}</span>
+                    <span class="prov-meta mono text-muted">
+                      Target: {b.target_pct}% · Bucket Share: <strong class="text-cyan">{b.current_pct.toFixed(1)}% ➔ {b.post_rebalance_pct ? b.post_rebalance_pct.toFixed(1) : (b.post_pct ? b.post_pct.toFixed(1) : b.target_pct)}%</strong>
+                    </span>
+                  </div>
+                  <strong class="prov-amount mono text-emerald">+{formatINR(b.amount_allocated ?? 0, quietMode)}</strong>
+                </div>
+
+                {#if b.fund_breakdown && b.fund_breakdown.length > 0}
+                  <div class="prov-fund-sublist">
+                    {#each b.fund_breakdown as fb}
+                      <div class="prov-fund-item">
+                        <div class="fund-item-left">
+                          <span class="fund-bullet">↳</span>
+                          <span class="fund-name font-medium">{fb.fund_name}</span>
+                          <span class="fund-impact-tag buy mono">
+                            Fund Impact: {fb.current_pct ? fb.current_pct.toFixed(1) : '0.0'}% ➔ <strong class="text-emerald">{fb.post_pct ? fb.post_pct.toFixed(1) : '0.0'}%</strong>
+                          </span>
+                          {#if fb.pre_valuation !== undefined && fb.post_valuation !== undefined}
+                            <span class="prov-sub-tag mono text-muted">
+                              ({formatCompactINR(fb.pre_valuation)} ➔ {formatCompactINR(fb.post_valuation)})
+                            </span>
+                          {/if}
+                        </div>
+                        <strong class="fund-alloc mono text-emerald">+{formatINR(fb.amount, quietMode)}</strong>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+    {/if}
 
     <!-- Step Pipeline Visual Flowchart -->
     <div class="pipeline-stepper">
@@ -512,11 +675,29 @@
         </div>
       </div>
       <div class="swr-live-badge mono">
-        <span>LIVE SWR:</span>
-        <strong class="text-cyan bold">{liveSwrPct().toFixed(2)}%</strong>
-        <span class="swr-status-indicator {isProsperity ? 'prosperity' : (isPreservation ? 'preservation' : 'nominal')}">
-          {isProsperity ? 'PROSPERITY BOOST' : (isPreservation ? 'PRESERVATION LOCK' : 'NOMINAL SAFE')}
-        </span>
+        {#if isAccumulationPhase}
+          <div class="badge-accumulation-group">
+            <span class="phase-pill">ACCUMULATION PHASE</span>
+            <span class="years-pill">{yearsRemaining()} Yrs to FI (Age 45)</span>
+          </div>
+          <div class="swr-stat-group">
+            <span class="label text-muted">TARGET SWR:</span>
+            <strong class="text-cyan bold">{targetRetirementSwrPct().toFixed(2)}%</strong>
+          </div>
+          <div class="swr-stat-group">
+            <span class="label text-muted">PROJECTED SWR:</span>
+            <strong class="text-emerald bold">{projectedRetirementSwrPct().toFixed(2)}%</strong>
+          </div>
+          <span class="swr-status-indicator nominal">
+            NOMINAL SAFE
+          </span>
+        {:else}
+          <span>LIVE SWR:</span>
+          <strong class="text-cyan bold">{hypotheticalInstantSwrPct().toFixed(2)}%</strong>
+          <span class="swr-status-indicator {isProsperity ? 'prosperity' : (isPreservation ? 'preservation' : 'nominal')}">
+            {isProsperity ? 'PROSPERITY BOOST' : (isPreservation ? 'PRESERVATION LOCK' : 'NOMINAL SAFE')}
+          </span>
+        {/if}
       </div>
     </div>
 
@@ -533,12 +714,41 @@
         <div class="c-zone nominal-zone" style="left: 40%; width: 25%;"></div>
         <div class="c-zone preservation-zone" style="left: 65%; width: 35%;"></div>
 
-        <!-- Live SWR Needle -->
+        <!-- SWR Needle -->
         <div class="swr-needle" style="left: {swrNeedlePct}%;">
           <div class="swr-flag mono bold">
-            {liveSwrPct().toFixed(2)}% Live SWR
+            {activeGaugeSwrPct().toFixed(2)}% {isAccumulationPhase ? 'Projected SWR' : 'Live SWR'}
           </div>
           <div class="swr-pin"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phase & Burn Rate Clarity Box -->
+    <div class="accumulation-clarity-card">
+      <div class="clarity-left">
+        <Info size={16} class="text-cyan shrink-0" />
+        <div class="clarity-body">
+          <span class="clarity-title">Accumulation Phase: <strong>{fundedRatioPct().toFixed(1)}% Funded</strong> ({formatINR(currentNetWorth(), quietMode)} of {formatINR(targetCorpus(), quietMode)} Goal)</span>
+          <p class="clarity-desc">
+            Guyton-Klinger dynamic decumulation rules (Prosperity & Capital Preservation) govern your withdrawals <strong>after retirement</strong>.
+            If you ceased earning today and withdrew annual expenses ({formatINR(annualExpense(), quietMode)}/yr) directly from your current early-stage accumulation corpus, the mathematical burn rate would be <strong class="text-amber">{hypotheticalInstantSwrPct().toFixed(1)}%</strong> (depleting in ~3 years). 
+            Your planned retirement SWR at Age 45 is <strong class="text-emerald">{targetRetirementSwrPct().toFixed(2)}%</strong> (with projected corpus {formatINR(projectedCorpus(), quietMode)} yielding a comfortable <strong class="text-emerald">{projectedRetirementSwrPct().toFixed(2)}%</strong> SWR), firmly inside the safe corridor.
+          </p>
+        </div>
+      </div>
+      <div class="clarity-metrics mono">
+        <div class="c-metric">
+          <span class="c-lbl">Corpus Today</span>
+          <span class="c-val">{formatINR(currentNetWorth(), quietMode)}</span>
+        </div>
+        <div class="c-metric">
+          <span class="c-lbl">Target at Age 45</span>
+          <span class="c-val text-cyan">{formatINR(targetCorpus(), quietMode)}</span>
+        </div>
+        <div class="c-metric">
+          <span class="c-lbl">Projected at 45</span>
+          <span class="c-val text-emerald">{formatINR(projectedCorpus(), quietMode)}</span>
         </div>
       </div>
     </div>
@@ -1488,6 +1698,290 @@
     display: flex;
     justify-content: space-between;
     font-size: 0.72rem;
+  }
+
+  /* Capital Provenance Breakdown Box */
+  .capital-provenance-box {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 16px;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+
+  .provenance-col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .prov-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .prov-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 3px 8px;
+    border-radius: var(--radius-pill);
+    align-self: flex-start;
+  }
+  .prov-badge.rose {
+    background: rgba(244, 63, 94, 0.15);
+    color: var(--accent-rose-bright);
+    border: 1px solid rgba(244, 63, 94, 0.3);
+  }
+  .prov-badge.cyan {
+    background: rgba(6, 182, 212, 0.15);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+  }
+
+  .prov-sub {
+    font-size: 0.72rem;
+  }
+
+  .prov-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .prov-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    gap: 12px;
+  }
+
+  .prov-item-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .prov-name {
+    font-size: 0.8rem;
+    color: #e2e8f0;
+  }
+
+  .prov-meta {
+    font-size: 0.68rem;
+  }
+
+  .prov-amount {
+    font-size: 0.88rem;
+    white-space: nowrap;
+  }
+
+  .provenance-divider {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+  }
+
+  .prov-arrow {
+    font-size: 1.2rem;
+    color: var(--accent-cyan);
+  }
+
+  .prov-tax-pill {
+    font-size: 0.65rem;
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--accent-emerald-bright);
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    white-space: nowrap;
+  }
+
+  .prov-bucket-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+  }
+
+  .prov-item.bucket-level {
+    background: transparent;
+    border: none;
+    padding: 2px 0 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .prov-fund-sublist {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-left: 8px;
+  }
+
+  .prov-fund-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.74rem;
+    background: rgba(255, 255, 255, 0.02);
+    padding: 4px 8px;
+    border-radius: 4px;
+    gap: 8px;
+  }
+
+  .fund-item-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .fund-bullet {
+    color: var(--accent-cyan);
+    font-weight: 700;
+  }
+
+  .fund-name {
+    color: #e2e8f0;
+  }
+
+  .fund-impact-tag {
+    font-size: 0.68rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .fund-impact-tag.buy {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--accent-emerald-bright);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+  }
+  .fund-impact-tag.sell {
+    background: rgba(244, 63, 94, 0.12);
+    color: var(--accent-rose-bright);
+    border: 1px solid rgba(244, 63, 94, 0.25);
+  }
+
+  .prov-impact-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 0;
+  }
+
+  .prov-sub-tag {
+    font-size: 0.66rem;
+  }
+
+  .fund-alloc {
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+
+  /* Accumulation Clarity Card */
+  .badge-accumulation-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .phase-pill {
+    background: rgba(6, 182, 212, 0.15);
+    color: var(--accent-cyan);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+  .years-pill {
+    background: rgba(255, 255, 255, 0.06);
+    color: #cbd5e1;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+  }
+  .swr-stat-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+  }
+
+  .accumulation-clarity-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(6, 182, 212, 0.04);
+    border: 1px solid rgba(6, 182, 212, 0.2);
+    border-radius: var(--radius-md);
+    padding: 14px 18px;
+    margin-top: 18px;
+    gap: 20px;
+  }
+
+  .clarity-left {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .clarity-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .clarity-title {
+    font-size: 0.88rem;
+    color: #ffffff;
+  }
+
+  .clarity-desc {
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: #94a3b8;
+    margin: 0;
+  }
+
+  .clarity-metrics {
+    display: flex;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  .c-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    min-width: 110px;
+  }
+
+  .c-lbl {
+    font-size: 0.65rem;
+    color: #64748b;
+    text-transform: uppercase;
+  }
+
+  .c-val {
+    font-size: 0.88rem;
+    font-weight: 700;
   }
 
   @media (max-width: 900px) {

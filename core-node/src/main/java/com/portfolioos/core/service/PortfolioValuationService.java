@@ -734,12 +734,57 @@ public class PortfolioValuationService {
         );
     }
 
+    public static final Map<String, Long> BENCHMARK_SCHEME_CODES = Map.of(
+        "NIFTY_50_TRI", 120716L,
+        "NIFTY_500_TRI", 147625L,
+        "NIFTY_LARGEMIDCAP_250", 152482L,
+        "NIFTY_200_VALUE_30", 152936L,
+        "NIFTY_200_MOMENTUM_30", 148703L,
+        "NIFTY_SMALLCAP_250", 147623L
+    );
+
+    public static String normalizeBenchmarkId(String benchmarkId) {
+        if (benchmarkId == null || benchmarkId.isBlank()) return "NIFTY_500_TRI";
+        String normalized = benchmarkId.trim().toUpperCase().replace("-", "_").replace(" ", "_");
+        if (normalized.equals("NIFTY_50") || normalized.equals("NIFTY50") || normalized.equals("NIFTY_50_INDEX")) {
+            return "NIFTY_50_TRI";
+        }
+        if (normalized.equals("NIFTY_500") || normalized.equals("NIFTY500") || normalized.equals("NIFTY_500_INDEX")) {
+            return "NIFTY_500_TRI";
+        }
+        return normalized;
+    }
+
+    public synchronized void ensureBenchmarkData(String benchmarkId) {
+        if (benchmarkId == null || benchmarkId.isBlank()) return;
+        String normalized = normalizeBenchmarkId(benchmarkId);
+        if (!duckDbProjector.hasBenchmarkData(normalized)) {
+            Long schemeCode = BENCHMARK_SCHEME_CODES.get(normalized);
+            if (schemeCode != null) {
+                log.info("Benchmark {} not found in DuckDB. Auto-fetching historical series from MFAPI (Scheme {})...", normalized, schemeCode);
+                try {
+                    new MfApiNavDownloader().downloadBenchmarkData(normalized, schemeCode, duckDbProjector);
+                    duckDbProjector.checkpoint();
+                } catch (Exception e) {
+                    log.error("Failed to auto-fetch benchmark {}: {}", normalized, e.getMessage());
+                }
+            }
+        }
+    }
+
     public Map<String, Object> getBenchmarkAnalytics(String benchmarkId) {
-        String targetBenchmark = (benchmarkId != null && !benchmarkId.isBlank()) ? benchmarkId : "NIFTY_50_TRI";
+        String targetBenchmark = normalizeBenchmarkId(benchmarkId);
+        ensureBenchmarkData(targetBenchmark);
         Map<String, Object> aligned = duckDbProjector.getAlignedPortfolioAndBenchmarkReturns(targetBenchmark);
+        @SuppressWarnings("unchecked")
         List<Double> pReturns = (List<Double>) aligned.getOrDefault("portfolio_returns", java.util.Collections.emptyList());
+        @SuppressWarnings("unchecked")
         List<Double> bReturns = (List<Double>) aligned.getOrDefault("benchmark_returns", java.util.Collections.emptyList());
-        return quantSidecarClient.computeBenchmarkAnalytics(pReturns, bReturns, targetBenchmark);
+        Map<String, Object> sidecarRes = new HashMap<>(quantSidecarClient.computeBenchmarkAnalytics(pReturns, bReturns, targetBenchmark));
+        sidecarRes.put("dates", aligned.get("dates"));
+        sidecarRes.put("portfolio_cumulative", aligned.get("portfolio_cumulative"));
+        sidecarRes.put("benchmark_cumulative", aligned.get("benchmark_cumulative"));
+        return sidecarRes;
     }
 
     public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB) {

@@ -18,26 +18,26 @@
     {
       level: 1,
       threshold: -10.0,
-      deployFraction: 0.25,
-      deployLabel: '25% of Liquid Buffer',
+      deployFraction: 0.3333,
+      deployLabel: '33% of Liquid Buffer',
       targetBucket: 'EQUITY_CORE',
-      desc: 'Deploy 25% of reserves into Parag Parikh Flexi Cap to average down on first correction rung.'
+      desc: 'Deploy 1/3 of exit-load-free Invesco Arbitrage reserves into underweight Core Equity (ICICI LargeMidcap 250 & Parag Parikh Flexi Cap).'
     },
     {
       level: 2,
       threshold: -15.0,
-      deployFraction: 0.50,
-      deployLabel: '50% of Liquid Buffer',
-      targetBucket: 'EQUITY_CORE & SATELLITE',
-      desc: 'Deploy 50% of remaining buffer into Core + ICICI Smallcap / Bandhan Largecap.'
+      deployFraction: 0.3333,
+      deployLabel: 'Second 33% of Buffer',
+      targetBucket: 'CORE & FACTOR SATELLITE',
+      desc: 'Deploy second 1/3 into Core & Satellite dips (ICICI Value 30, Edelweiss Momentum 50, Nippon Small Cap).'
     },
     {
       level: 3,
       threshold: -20.0,
-      deployFraction: 1.00,
-      deployLabel: '100% (Full Deployment)',
-      targetBucket: 'MAX COMPACTION EQUITY',
-      desc: 'Deep value capitulation trigger — fully deploy remaining tactical liquid reserves.'
+      deployFraction: 0.3334,
+      deployLabel: 'Final 33% (Full Buffer)',
+      targetBucket: 'MAX CORE COMPOUNDING',
+      desc: 'Market capitulation trigger — fully deploy remaining arbitrage buffer into long-term Core index compounding.'
     }
   ];
 

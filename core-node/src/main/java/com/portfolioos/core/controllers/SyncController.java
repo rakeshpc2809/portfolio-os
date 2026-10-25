@@ -565,7 +565,14 @@ public class SyncController {
         File tempFile = null;
         try {
             tempFile = File.createTempFile("parquet_" + cleanTable + "_", ".parquet");
-            duckDbProjector.exportTableToParquet(cleanTable, tempFile);
+            if ("open_lots".equalsIgnoreCase(cleanTable)) {
+                duckDbProjector.exportQueryToParquet(
+                    "SELECT id, asset_id, asset_name, isin, event_date, TRY_CAST(units AS DOUBLE) AS units, TRY_CAST(price_per_unit AS DOUBLE) AS price_per_unit, TRY_CAST(gross_amount AS DOUBLE) AS gross_amount FROM projected_events WHERE event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS')",
+                    tempFile
+                );
+            } else {
+                duckDbProjector.exportTableToParquet(cleanTable, tempFile);
+            }
             byte[] bytes = Files.readAllBytes(tempFile.toPath());
             return ResponseEntity.ok()
                 .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/vnd.apache.parquet")
@@ -594,7 +601,7 @@ public class SyncController {
                 File openLotsFile = File.createTempFile("open_lots_", ".parquet");
                 tempFiles.add(openLotsFile);
                 duckDbProjector.exportQueryToParquet(
-                    "SELECT id, asset_id, asset_name, event_date, units, price_per_unit, gross_amount FROM projected_events WHERE event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS')",
+                    "SELECT id, asset_id, asset_name, isin, event_date, TRY_CAST(units AS DOUBLE) AS units, TRY_CAST(price_per_unit AS DOUBLE) AS price_per_unit, TRY_CAST(gross_amount AS DOUBLE) AS gross_amount FROM projected_events WHERE event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS')",
                     openLotsFile
                 );
                 zos.putNextEntry(new ZipEntry("open_lots.parquet"));

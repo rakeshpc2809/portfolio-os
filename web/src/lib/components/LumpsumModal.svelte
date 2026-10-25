@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fetchJson, type RebalancePlanDto } from '../api';
-  import { formatINR, formatPercent } from '../formatters';
+  import { formatINR, formatPercent, formatCompactINR } from '../formatters';
   import { 
     Coins, 
     ArrowRight, 
@@ -15,12 +15,14 @@
 
   interface Props {
     open?: boolean;
+    holdings?: any[];
+    netWorth?: number;
     quietMode?: boolean;
     onclose?: () => void;
     onapply?: (plan: RebalancePlanDto) => void;
   }
 
-  let { open = false, quietMode = false, onclose, onapply }: Props = $props();
+  let { open = false, holdings = [], netWorth = 0, quietMode = false, onclose, onapply }: Props = $props();
 
   let amount = $state(50000);
   let includeRebalance = $state(false);
@@ -30,6 +32,26 @@
 
   const PRESET_AMOUNTS = [25000, 50000, 100000, 250000, 500000];
 
+  function getFundHoldingMetrics(fundIdOrName: string, orderProceeds: number = 0) {
+    const nw = netWorth || Number(simulatedPlan?.summary?.net_worth ?? 2178955);
+    const holding = holdings?.find((h: any) => 
+      (h.asset_id && fundIdOrName.toLowerCase().includes(h.asset_id.toLowerCase())) ||
+      (h.isin && fundIdOrName.toLowerCase().includes(h.isin.toLowerCase())) ||
+      (h.asset_name && fundIdOrName.toLowerCase().includes(h.asset_name.toLowerCase())) ||
+      (h.asset_name && h.asset_name.toLowerCase().includes(fundIdOrName.toLowerCase()))
+    );
+    const curVal = Number(holding?.current_value ?? (orderProceeds > 0 ? orderProceeds * 1.5 : 0));
+    const curPct = nw > 0 ? (curVal / nw) * 100 : 0;
+    const postVal = Math.max(0, curVal - orderProceeds);
+    const postPct = nw > 0 ? (postVal / nw) * 100 : 0;
+    return {
+      curVal,
+      curPct,
+      postVal,
+      postPct
+    };
+  }
+
   async function runSimulation() {
     if (!amount || amount <= 0) {
       error = 'Please enter a valid positive lump-sum amount.';
@@ -38,14 +60,26 @@
     loading = true;
     error = null;
     try {
-      const res = await fetchJson<RebalancePlanDto>('/rebalance/simulate-lumpsum', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: amount,
-          includeRebalance: includeRebalance
-        })
-      });
+      let res: RebalancePlanDto;
+      try {
+        res = await fetchJson<RebalancePlanDto>('/rebalance/simulate-lumpsum', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: amount,
+            includeRebalance: includeRebalance
+          })
+        });
+      } catch {
+        res = await fetchJson<RebalancePlanDto>('/sync/rebalance/simulate-lumpsum', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: amount,
+            includeRebalance: includeRebalance
+          })
+        });
+      }
       simulatedPlan = res;
     } catch (e: any) {
       error = e.message || 'Simulation failed';
@@ -135,7 +169,7 @@
         </div>
 
         <div class="preset-chips">
-          <span class="chips-label">Quick:</span>
+          <span class="chips-label">Quick Presets:</span>
           {#each PRESET_AMOUNTS as preset}
             <button 
               type="button" 
@@ -148,24 +182,57 @@
           {/each}
         </div>
 
-        <!-- Mode Toggle -->
-        <div class="mode-toggle-card">
-          <label class="toggle-control">
-            <input 
-              type="checkbox" 
-              bind:checked={includeRebalance}
-              onchange={runSimulation}
-            />
-            <span class="toggle-slider"></span>
-            <span class="toggle-text">
-              <strong>Include Sell-Side Rebalancing:</strong>
-              {#if includeRebalance}
-                <span class="mode-desc">Liquidates overweight buckets in addition to deploying cash. May trigger capital gains tax.</span>
-              {:else}
-                <span class="mode-desc">Pure Inflow Mode (Tax-Free): Deploys fresh cash strictly to underweight asset classes.</span>
-              {/if}
-            </span>
-          </label>
+        <!-- Dual Mode Selection Segmented Cards -->
+        <div class="simulation-mode-grid">
+          <button 
+            type="button" 
+            class="mode-card" 
+            class:active={!includeRebalance}
+            onclick={() => {
+              if (includeRebalance) {
+                includeRebalance = false;
+                runSimulation();
+              }
+            }}
+          >
+            <div class="mode-icon emerald">
+              <ShieldCheck size={18} />
+            </div>
+            <div class="mode-text">
+              <div class="mode-title-row">
+                <span class="mode-title">1. Lump-Sum Alone</span>
+                <span class="mode-tax-badge emerald">0% TAX DRAG</span>
+              </div>
+              <p class="mode-desc">
+                Deploys cash strictly into underweight buckets. <strong>Zero asset sales</strong>, preserving all existing holdings.
+              </p>
+            </div>
+          </button>
+
+          <button 
+            type="button" 
+            class="mode-card" 
+            class:active={includeRebalance}
+            onclick={() => {
+              if (!includeRebalance) {
+                includeRebalance = true;
+                runSimulation();
+              }
+            }}
+          >
+            <div class="mode-icon amber">
+              <Sliders size={18} />
+            </div>
+            <div class="mode-text">
+              <div class="mode-title-row">
+                <span class="mode-title">2. Inflow + Full Rebalance</span>
+                <span class="mode-tax-badge amber">INCLUDES SELLS</span>
+              </div>
+              <p class="mode-desc">
+                Deploys cash <strong>plus trims overweight holdings</strong> to bring every asset class to exact Policy v2.3 targets.
+              </p>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -206,48 +273,112 @@
             </div>
           </div>
 
-          <!-- Bucket Allocation Targets Table -->
+          <!-- Section: Sell Suggestions (Only when includeRebalance is true and sell orders exist) -->
+          {#if includeRebalance && simulatedPlan.sell_side?.orders && simulatedPlan.sell_side.orders.length > 0}
+            <div class="results-table-section sell-section">
+              <div class="section-header">
+                <div class="sec-left">
+                  <span class="sec-pill rose">SELL TRIMS</span>
+                  <h4 class="section-title">Disciplined Sell Suggestions ({simulatedPlan.sell_side.orders.length} Schemes)</h4>
+                </div>
+                <span class="section-badge text-rose mono">
+                  Total Proceeds: +{formatINR(simulatedPlan.sell_side.total_required, quietMode)}
+                </span>
+              </div>
+
+              <div class="sell-orders-cards">
+                {#each simulatedPlan.sell_side.orders as order}
+                  {@const metrics = getFundHoldingMetrics(order.fund_id || order.fund_name, order.total_proceeds)}
+                  <div class="sell-order-card">
+                    <div class="so-left">
+                      <span class="so-name font-medium">{order.fund_name}</span>
+                      <div class="so-meta mono">
+                        <span class="so-impact-pill">
+                          Impact: <strong class="text-rose">{metrics.curPct.toFixed(1)}% ➔ {metrics.postPct.toFixed(1)}%</strong>
+                        </span>
+                        <span class="so-val-span text-muted">
+                          ({formatCompactINR(metrics.curVal)} ➔ {formatCompactINR(metrics.postVal)})
+                        </span>
+                        <span class="so-label-span">{order.summary_label || 'Trim'}</span>
+                      </div>
+                    </div>
+                    <div class="so-right mono">
+                      <strong class="so-proceeds text-rose">+{formatINR(order.total_proceeds, quietMode)}</strong>
+                      <span class="so-tax-tag">
+                        Net P&L: 
+                        <span class={(order.total_realized_gain ?? 0) >= 0 ? 'text-emerald' : 'text-amber'}>
+                          {(order.total_realized_gain ?? 0) >= 0 ? '+' : ''}{formatINR(order.total_realized_gain ?? 0, quietMode)}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          <!-- Section: Recommended Fund Deployments (Buys) -->
           <div class="results-table-section">
             <div class="section-header">
-              <h4 class="section-title">Recommended Capital Distribution</h4>
-              <span class="section-badge">OPTIMAL DRIFT RESTORATION</span>
+              <div class="sec-left">
+                <span class="sec-pill cyan">BUY DEPLOYMENTS</span>
+                <h4 class="section-title">Recommended Fund Inflow Routing</h4>
+              </div>
+              <span class="section-badge text-emerald mono">OPTIMAL DRIFT RESTORATION</span>
             </div>
 
-            <table class="allocation-table">
-              <thead>
-                <tr>
-                  <th>Bucket</th>
-                  <th>Current Share</th>
-                  <th>Target Share</th>
-                  <th>Post Share</th>
-                  <th class="right-align">Inflow Allocation</th>
-                  <th class="right-align">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#if simulatedPlan.buy_side?.buckets}
-                  {#each simulatedPlan.buy_side.buckets as b}
-                    {@const alloc = b.amount_allocated ?? 0}
-                    <tr>
-                      <td class="bucket-name font-medium">{b.bucket}</td>
-                      <td class="mono">{formatPercent(b.current_pct)}</td>
-                      <td class="mono text-muted">{formatPercent(b.target_pct)}</td>
-                      <td class="mono bold text-cyan">{formatPercent(b.post_pct ?? b.current_pct)}</td>
-                      <td class="mono bold right-align" class:text-emerald={alloc > 0}>
-                        {alloc > 0 ? `+${formatINR(alloc, quietMode)}` : '—'}
-                      </td>
-                      <td class="right-align">
+            <div class="buy-buckets-container">
+              {#if simulatedPlan.buy_side?.buckets}
+                {#each simulatedPlan.buy_side.buckets as b}
+                  {@const alloc = b.amount_allocated ?? 0}
+                  <div class="buy-bucket-card" class:active-alloc={alloc > 0}>
+                    <div class="bb-header">
+                      <div class="bb-left">
+                        <span class="bb-name font-bold">{b.bucket}</span>
+                        <span class="bb-drift mono text-muted">
+                          Target: {b.target_pct}% · Share: <strong class="text-cyan">{b.current_pct.toFixed(1)}% ➔ {b.post_rebalance_pct ? b.post_rebalance_pct.toFixed(1) : (b.post_pct ? b.post_pct.toFixed(1) : b.target_pct)}%</strong>
+                        </span>
+                      </div>
+                      <div class="bb-right mono">
                         {#if alloc > 0}
+                          <strong class="bb-alloc text-emerald">+{formatINR(alloc, quietMode)}</strong>
                           <span class="action-pill buy">BUY</span>
                         {:else}
-                          <span class="action-pill hold">HOLD</span>
+                          <span class="action-pill hold">HOLD (IN TARGET)</span>
                         {/if}
-                      </td>
-                    </tr>
-                  {/each}
-                {/if}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+
+                    <!-- Specific Funds to Buy inside this Bucket -->
+                    {#if alloc > 0 && b.fund_breakdown && b.fund_breakdown.length > 0}
+                      <div class="bb-funds-subtable">
+                        <div class="funds-subtable-head mono">
+                          <span>SPECIFIC FUND TO BUY</span>
+                          <span class="mono-head-right">PRE ➔ POST IMPACT · ALLOCATION</span>
+                        </div>
+                        {#each b.fund_breakdown as fb}
+                          <div class="fund-subrow">
+                            <div class="fs-left">
+                              <span class="fs-arrow">↳</span>
+                              <span class="fs-name font-medium">{fb.fund_name}</span>
+                              <span class="fs-impact-badge mono">
+                                {fb.current_pct ? fb.current_pct.toFixed(1) : '0.0'}% ➔ <strong class="text-emerald">{fb.post_pct ? fb.post_pct.toFixed(1) : '0.0'}%</strong>
+                              </span>
+                              {#if fb.pre_valuation !== undefined && fb.post_valuation !== undefined}
+                                <span class="fs-val-note mono text-muted">
+                                  ({formatCompactINR(fb.pre_valuation)} ➔ {formatCompactINR(fb.post_valuation)})
+                                </span>
+                              {/if}
+                            </div>
+                            <strong class="fs-amount mono text-emerald">+{formatINR(fb.amount, quietMode)}</strong>
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              {/if}
+            </div>
           </div>
         {/if}
       </div>
@@ -293,7 +424,7 @@
     border: 1px solid var(--border-medium);
     border-radius: var(--radius-xl);
     width: 100%;
-    max-width: 720px;
+    max-width: 780px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
@@ -361,82 +492,72 @@
     cursor: pointer;
   }
 
-  .close-btn:hover {
-    color: var(--text-primary);
-  }
-
-  /* Input Section */
+  /* Inputs */
   .input-section {
     padding: 1.25rem 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
-    background: var(--surface-void);
+    gap: 1rem;
+    background: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid var(--border-subtle);
   }
 
+  .amount-field-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
   .input-label {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
+    font-size: 0.78rem;
     font-weight: 600;
-    margin-bottom: 0.35rem;
-    display: block;
+    color: var(--text-secondary);
   }
 
   .input-with-symbol {
     display: flex;
     align-items: center;
     position: relative;
-    gap: 0.75rem;
+    background: var(--surface-void);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-md);
+    overflow: hidden;
   }
 
   .currency-prefix {
-    position: absolute;
-    left: 1rem;
-    font-family: var(--font-mono);
-    color: var(--text-muted);
+    padding-left: 1rem;
     font-size: 1.1rem;
-    pointer-events: none;
+    font-family: var(--font-mono);
+    color: var(--accent-cyan);
+    font-weight: 700;
   }
 
   .amount-input {
     flex: 1;
-    padding: 0.65rem 1rem 0.65rem 2.2rem;
-    background: var(--surface-card);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-md);
+    background: transparent;
+    border: none;
+    padding: 0.65rem 0.75rem;
+    font-size: 1.2rem;
     color: var(--text-primary);
-    font-size: 1.15rem;
-    font-weight: 600;
     outline: none;
-    transition: border-color var(--transition-fast);
-  }
-
-  .amount-input:focus {
-    border-color: var(--accent-cyan);
-    box-shadow: 0 0 15px var(--glow-cyan);
   }
 
   .simulate-btn {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.65rem 1.25rem;
-    background: var(--surface-glass);
-    border: 1px solid var(--accent-cyan);
-    border-radius: var(--radius-md);
+    padding: 0.65rem 1.2rem;
+    background: var(--surface-card-hover);
+    border: none;
+    border-left: 1px solid var(--border-subtle);
     color: var(--accent-cyan);
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: all var(--transition-fast) ease;
   }
-
-  .simulate-btn:hover:not(:disabled) {
-    background: var(--accent-cyan);
-    color: var(--surface-void);
+  .simulate-btn:hover {
+    background: hsla(185, 85%, 52%, 0.1);
   }
 
   .preset-chips {
@@ -469,39 +590,97 @@
     border-color: var(--accent-cyan);
   }
 
-  /* Mode Toggle */
-  .mode-toggle-card {
-    padding: 0.65rem 0.85rem;
-    background: var(--surface-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+  /* Dual Mode Selection Grid */
+  .simulation-mode-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
   }
 
-  .toggle-control {
+  .mode-card {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
+    gap: 12px;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
     cursor: pointer;
+    text-align: left;
+    transition: all 0.2s ease;
+  }
+  .mode-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .mode-card.active {
+    background: rgba(6, 182, 212, 0.08);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 16px rgba(6, 182, 212, 0.15);
   }
 
-  .toggle-control input {
-    margin-top: 0.25rem;
-    accent-color: var(--accent-cyan);
-    width: 16px;
-    height: 16px;
+  .mode-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .mode-icon.emerald {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--accent-emerald-bright);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+  .mode-icon.amber {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--accent-amber);
+    border: 1px solid rgba(245, 158, 11, 0.3);
   }
 
-  .toggle-text {
+  .mode-text {
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
-    font-size: 0.82rem;
-    color: var(--text-primary);
+    gap: 3px;
+  }
+
+  .mode-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .mode-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .mode-tax-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: var(--radius-pill);
+    font-family: var(--font-mono);
+  }
+  .mode-tax-badge.emerald {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--accent-emerald-bright);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+  }
+  .mode-tax-badge.amber {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--accent-amber);
+    border: 1px solid rgba(245, 158, 11, 0.4);
   }
 
   .mode-desc {
-    font-size: 0.75rem;
-    color: var(--text-muted);
+    font-size: 0.72rem;
+    color: #94a3b8;
+    line-height: 1.4;
+    margin: 0;
   }
 
   /* Body */
@@ -543,12 +722,13 @@
 
   .text-cyan { color: var(--accent-cyan); }
   .text-emerald { color: var(--accent-emerald); }
+  .text-rose { color: var(--accent-rose); }
 
-  /* Allocation Table */
+  /* Sections */
   .results-table-section {
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    gap: 0.75rem;
   }
 
   .section-header {
@@ -557,10 +737,34 @@
     align-items: center;
   }
 
+  .sec-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sec-pill {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+  }
+  .sec-pill.rose {
+    background: rgba(244, 63, 94, 0.15);
+    color: var(--accent-rose-bright);
+    border: 1px solid rgba(244, 63, 94, 0.3);
+  }
+  .sec-pill.cyan {
+    background: rgba(6, 182, 212, 0.15);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+  }
+
   .section-title {
     font-size: 0.85rem;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: #e2e8f0;
     margin: 0;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -568,49 +772,199 @@
 
   .section-badge {
     font-size: 0.65rem;
-    color: var(--accent-emerald);
     font-family: var(--font-mono);
   }
 
-  .allocation-table {
-    width: 100%;
-    border-collapse: collapse;
+  /* Sell Orders Cards */
+  .sell-orders-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .sell-order-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(244, 63, 94, 0.04);
+    border: 1px solid rgba(244, 63, 94, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    gap: 14px;
+  }
+
+  .so-left {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .so-name {
     font-size: 0.82rem;
+    color: #f1f5f9;
   }
 
-  .allocation-table th {
-    padding: 0.55rem 0.75rem;
-    text-align: left;
+  .so-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.7rem;
+    flex-wrap: wrap;
+  }
+
+  .so-impact-pill {
+    padding: 1px 6px;
+    background: rgba(244, 63, 94, 0.15);
+    border-radius: 3px;
+    color: #fca5a5;
+  }
+
+  .so-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+
+  .so-proceeds {
+    font-size: 0.92rem;
+  }
+
+  .so-tax-tag {
     font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-    background: var(--surface-void);
-    border-bottom: 1px solid var(--border-subtle);
+    color: #94a3b8;
   }
 
-  .allocation-table td {
-    padding: 0.65rem 0.75rem;
-    border-bottom: 1px solid hsla(215, 25%, 20%, 0.4);
-    color: var(--text-secondary);
+  /* Buy Buckets Cards */
+  .buy-buckets-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .buy-bucket-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .buy-bucket-card.active-alloc {
+    background: rgba(6, 182, 212, 0.03);
+    border-color: rgba(6, 182, 212, 0.25);
+  }
+
+  .bb-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .bb-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .bb-name {
+    font-size: 0.85rem;
+    color: #ffffff;
+  }
+
+  .bb-drift {
+    font-size: 0.72rem;
+  }
+
+  .bb-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .bb-alloc {
+    font-size: 0.95rem;
   }
 
   .action-pill {
-    padding: 0.15rem 0.45rem;
+    padding: 0.15rem 0.5rem;
     border-radius: var(--radius-sm);
     font-size: 0.68rem;
     font-weight: 700;
   }
-
   .action-pill.buy {
     background: hsla(158, 85%, 45%, 0.15);
-    color: var(--accent-emerald);
+    color: var(--accent-emerald-bright);
     border: 1px solid hsla(158, 85%, 45%, 0.3);
   }
-
   .action-pill.hold {
     background: hsla(215, 25%, 35%, 0.2);
     color: var(--text-muted);
+  }
+
+  /* Specific Funds Subtable inside Bucket */
+  .bb-funds-subtable {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .funds-subtable-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .fund-subrow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    gap: 12px;
+  }
+
+  .fs-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 0.76rem;
+  }
+
+  .fs-arrow {
+    color: var(--accent-cyan);
+    font-weight: 700;
+  }
+
+  .fs-name {
+    color: #e2e8f0;
+  }
+
+  .fs-impact-badge {
+    font-size: 0.68rem;
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--accent-emerald-bright);
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+  }
+
+  .fs-val-note {
+    font-size: 0.68rem;
+  }
+
+  .fs-amount {
+    font-size: 0.85rem;
+    white-space: nowrap;
   }
 
   .alert-box.error {
@@ -674,8 +1028,6 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-
-  .right-align { text-align: right; }
 
   @keyframes fadeIn {
     from { opacity: 0; }

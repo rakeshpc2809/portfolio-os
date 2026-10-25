@@ -22,7 +22,11 @@ public class CoreApplication {
     }
 
     @Bean
-    public CommandLineRunner startupRunner(EventStorePort eventStore, DuckDbProjector duckDbProjector) {
+    public CommandLineRunner startupRunner(
+        EventStorePort eventStore,
+        DuckDbProjector duckDbProjector,
+        com.portfolioos.core.service.PortfolioValuationService valuationService
+    ) {
         return args -> {
             System.out.println("Verifying SQLite HMAC ledger integrity...");
             if (!eventStore.verifyLedgerIntegrity()) {
@@ -35,6 +39,16 @@ public class CoreApplication {
             } catch (Exception e) {
                 System.err.println("Failed to build startup projection: " + e.getMessage());
             }
+
+            // Pre-seed benchmark indices asynchronously so UI startup is instant
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    valuationService.ensureBenchmarkData("NIFTY_500_TRI");
+                    valuationService.ensureBenchmarkData("NIFTY_50_TRI");
+                } catch (Exception e) {
+                    System.err.println("Async benchmark seed notice: " + e.getMessage());
+                }
+            });
         };
     }
 }

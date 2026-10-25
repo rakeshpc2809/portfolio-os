@@ -145,8 +145,33 @@ export interface SyncInfoDto {
   ledger_hmac_verified: boolean;
 }
 
+export interface OverlapCommonStock {
+  stock_symbol: string;
+  weight_a: number;
+  weight_b: number;
+  overlap_pct: number;
+}
+
+export interface PairwiseOverlapItem {
+  fund_a?: string;
+  fund_b?: string;
+  fund_a_name: string;
+  fund_b_name: string;
+  overlap_percentage: number;
+  common_stock_count: number;
+  common_stocks?: OverlapCommonStock[];
+  date_a?: string;
+  date_b?: string;
+  date_mismatch?: boolean;
+  is_unverified_estimate?: boolean;
+}
+
 export interface OverlapReportDto {
   status: string;
+  holding_coverage_type?: string;
+  constituent_source?: string;
+  disclosure_date?: string;
+  is_live_download?: boolean;
   overlap_summary?: {
     max_overlap_percentage: number;
     fund_a_name: string;
@@ -159,12 +184,8 @@ export interface OverlapReportDto {
     rupee_exposure: number;
     is_audited: boolean;
   }>;
-  pairwise_overlap?: Array<{
-    fund_a_name: string;
-    fund_b_name: string;
-    overlap_percentage: number;
-    common_stock_count: number;
-  }>;
+  pairwise_matrix?: PairwiseOverlapItem[];
+  pairwise_overlap?: PairwiseOverlapItem | PairwiseOverlapItem[];
 }
 
 export interface ActionRecommendationDto {
@@ -556,4 +577,32 @@ export async function fetchFactorBenchmarks(): Promise<FactorBenchmarksResponse>
     factors
   };
 }
+
+export interface CombinedBenchmarkAnalyticsDto {
+  status: string;
+  benchmark_name: string;
+  sample_days: number;
+  is_provisional: boolean;
+  sample_status: string;
+  data_source_label: string;
+  risk_free_rate_pct: number;
+  portfolio_cagr_pct: number;
+  benchmark_cagr_pct: number;
+  portfolio_vol_pct: number;
+  benchmark_vol_pct: number;
+  alpha_pct: number;
+  beta: number;
+  sharpe_ratio: number;
+  tracking_error_pct: number;
+  outperformance_pct: number;
+  information_ratio: number;
+  dates?: string[];
+  portfolio_cumulative?: number[];
+  benchmark_cumulative?: number[];
+}
+
+export async function fetchCombinedBenchmarkAnalytics(benchmark: string = 'NIFTY_500_TRI'): Promise<CombinedBenchmarkAnalyticsDto> {
+  return fetchJson<CombinedBenchmarkAnalyticsDto>(`/analytics/benchmark?benchmark=${encodeURIComponent(benchmark)}`);
+}
+
 

@@ -12,13 +12,27 @@ import java.math.BigDecimal;
 public class RebalanceController {
 
     private final PortfolioValuationService valuationService;
+    private final SyncController syncController;
 
     public RebalanceController(PortfolioValuationService valuationService) {
+        this(valuationService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RebalanceController(PortfolioValuationService valuationService, @org.springframework.beans.factory.annotation.Autowired(required = false) SyncController syncController) {
         this.valuationService = valuationService;
+        this.syncController = syncController;
     }
 
     private String resolveFy(String fy) {
         return (fy != null && !fy.isBlank()) ? fy : com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(java.time.LocalDate.now());
+    }
+
+    @PostMapping({"/rebalance/simulate-lumpsum", "/portfolio/simulate-lumpsum"})
+    public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> simulateLumpsum(
+        @RequestBody java.util.Map<String, Object> req
+    ) {
+        return syncController.simulateLumpsum(req);
     }
 
     @GetMapping({"/rebalance/bucket", "/portfolio/buckets/rebalance"})

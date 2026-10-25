@@ -11,7 +11,10 @@
     Layers, 
     ShieldAlert,
     ExternalLink,
-    Network
+    Network,
+    Search,
+    ChevronDown,
+    ChevronUp
   } from '@lucide/svelte';
 
   interface Props {
@@ -29,6 +32,52 @@
   let upsetLoading = $state(false);
   let upsetError = $state<string | null>(null);
   let activeTab = $state<'PAIRWISE' | 'STOCKS' | 'UPSET'>('PAIRWISE');
+  let onlyOverlapping = $state(true);
+  let pairSearch = $state('');
+  let expandedPairKey = $state<string | null>(null);
+
+  const pairwisePairs = $derived.by(() => {
+    if (!overlapData) return [];
+    if (Array.isArray(overlapData.pairwise_matrix) && overlapData.pairwise_matrix.length > 0) {
+      return overlapData.pairwise_matrix;
+    }
+    if (Array.isArray(overlapData.pairwise_overlap)) {
+      return overlapData.pairwise_overlap;
+    }
+    if (overlapData.pairwise_overlap && typeof overlapData.pairwise_overlap === 'object') {
+      const obj = overlapData.pairwise_overlap as any;
+      if (obj.fund_a_name || obj.overlap_percentage !== undefined) {
+        return [obj];
+      }
+    }
+    return [];
+  });
+
+  const totalPairsCount = $derived(pairwisePairs.length);
+  const overlappingPairsCount = $derived(pairwisePairs.filter(p => (p.overlap_percentage ?? 0) > 0).length);
+
+  const filteredPairs = $derived.by(() => {
+    let list = [...pairwisePairs];
+    if (onlyOverlapping) {
+      list = list.filter(p => (p.overlap_percentage ?? 0) > 0);
+    }
+    if (pairSearch.trim()) {
+      const q = pairSearch.toLowerCase().trim();
+      list = list.filter(p => 
+        (p.fund_a_name && p.fund_a_name.toLowerCase().includes(q)) ||
+        (p.fund_b_name && p.fund_b_name.toLowerCase().includes(q))
+      );
+    }
+    return list.sort((a, b) => (b.overlap_percentage ?? 0) - (a.overlap_percentage ?? 0));
+  });
+
+  function togglePairExpand(key: string) {
+    if (expandedPairKey === key) {
+      expandedPairKey = null;
+    } else {
+      expandedPairKey = key;
+    }
+  }
 
   async function loadOverlap() {
     loading = true;
@@ -162,7 +211,7 @@
           onclick={() => activeTab = 'PAIRWISE'}
         >
           <Layers size={14} />
-          <span>Pairwise Overlap Matrix ({overlapData?.pairwise_overlap?.length || 0})</span>
+          <span>Pairwise Overlap Matrix ({overlappingPairsCount > 0 ? `${overlappingPairsCount} Active` : totalPairsCount})</span>
         </button>
         <button 
           type="button" 
@@ -198,9 +247,38 @@
             <button type="button" class="retry-btn" onclick={loadOverlap}>Retry Analysis</button>
           </div>
         {:else if activeTab === 'PAIRWISE'}
-          {#if !overlapData?.pairwise_overlap || overlapData.pairwise_overlap.length === 0}
+          <!-- Pairwise Toolbar -->
+          <div class="pairwise-toolbar">
+            <div class="search-box">
+              <Search size={14} class="search-icon" />
+              <input 
+                type="text" 
+                placeholder="Search scheme name..." 
+                bind:value={pairSearch} 
+                class="search-input"
+              />
+              {#if pairSearch}
+                <button type="button" class="clear-search-btn" onclick={() => pairSearch = ''}>
+                  <X size={12} />
+                </button>
+              {/if}
+            </div>
+            <label class="toggle-filter-label">
+              <input 
+                type="checkbox" 
+                bind:checked={onlyOverlapping} 
+                class="filter-checkbox"
+              />
+              <span>Only show overlapping schemes ({overlappingPairsCount})</span>
+            </label>
+          </div>
+
+          {#if filteredPairs.length === 0}
             <div class="empty-state">
-              <p>No pairwise overlap records found. Upload latest portfolio disclosures to calculate overlap.</p>
+              <p>No pairwise overlap records match current search or filters.</p>
+              {#if onlyOverlapping}
+                <button type="button" class="retry-btn" onclick={() => { onlyOverlapping = false; pairSearch = ''; }}>Show All {totalPairsCount} Pairs</button>
+              {/if}
             </div>
           {:else}
             <div class="table-container">
@@ -211,14 +289,23 @@
                     <th>Scheme B</th>
                     <th>Overlap %</th>
                     <th class="right-align">Common Stocks</th>
+                    <th class="expand-col"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {#each overlapData.pairwise_overlap as pair}
-                    {@const pct = pair.overlap_percentage}
+                  {#each filteredPairs as pair}
+                    {@const pct = pair.overlap_percentage ?? 0}
                     {@const isHigh = pct >= 30}
                     {@const isMid = pct >= 20 && pct < 30}
-                    <tr>
+                    {@const pairKey = `${pair.fund_a || pair.fund_a_name}_${pair.fund_b || pair.fund_b_name}`}
+                    {@const isExpanded = expandedPairKey === pairKey}
+                    {@const hasCommonStocks = (pair.common_stocks && pair.common_stocks.length > 0) || (pair.common_stock_count ?? 0) > 0}
+                    <tr 
+                      class="pair-row" 
+                      class:row-clickable={hasCommonStocks}
+                      class:row-expanded={isExpanded}
+                      onclick={() => hasCommonStocks && togglePairExpand(pairKey)}
+                    >
                       <td class="fund-cell font-medium">{pair.fund_a_name}</td>
                       <td class="fund-cell font-medium">{pair.fund_b_name}</td>
                       <td>
@@ -237,8 +324,52 @@
                           </div>
                         </div>
                       </td>
-                      <td class="right-align mono">{pair.common_stock_count} stocks</td>
+                      <td class="right-align mono">
+                        {pair.common_stock_count ?? 0} stocks
+                      </td>
+                      <td class="expand-col">
+                        {#if hasCommonStocks}
+                          <button 
+                            type="button" 
+                            class="expand-icon-btn" 
+                            aria-label={isExpanded ? 'Collapse common stocks' : 'Expand common stocks'}
+                          >
+                            {#if isExpanded}
+                              <ChevronUp size={14} />
+                            {:else}
+                              <ChevronDown size={14} />
+                            {/if}
+                          </button>
+                        {/if}
+                      </td>
                     </tr>
+                    {#if isExpanded && pair.common_stocks && pair.common_stocks.length > 0}
+                      <tr class="common-stocks-drawer-row">
+                        <td colspan="5">
+                          <div class="common-stocks-drawer">
+                            <div class="drawer-header-meta">
+                              <span class="drawer-label">Common Stock Lookthrough ({pair.common_stocks.length} overlapping holdings):</span>
+                              <span class="drawer-hint">Overlap contribution = min(Weight A, Weight B)</span>
+                            </div>
+                            <div class="stocks-chips-grid">
+                              {#each pair.common_stocks as stock}
+                                <div class="stock-overlap-chip">
+                                  <div class="chip-top">
+                                    <span class="chip-symbol mono bold">{stock.stock_symbol}</span>
+                                    <span class="chip-overlap-pct mono bold">+{stock.overlap_pct?.toFixed(2) ?? '0.00'}%</span>
+                                  </div>
+                                  <div class="chip-bottom">
+                                    <span class="weight-a" title={pair.fund_a_name}>A: {stock.weight_a?.toFixed(1) ?? '0.0'}%</span>
+                                    <span class="weight-sep">|</span>
+                                    <span class="weight-b" title={pair.fund_b_name}>B: {stock.weight_b?.toFixed(1) ?? '0.0'}%</span>
+                                  </div>
+                                </div>
+                              {/each}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    {/if}
                   {/each}
                 </tbody>
               </table>
@@ -619,9 +750,187 @@
     cursor: pointer;
   }
 
+  /* Pairwise Toolbar */
+  .pairwise-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface-glass, rgba(255, 255, 255, 0.02));
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+  }
+
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--surface-void, #0a0e17);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    padding: 0.25rem 0.5rem;
+    width: 260px;
+  }
+
+  :global(.search-icon) {
+    color: var(--text-muted);
+  }
+
+  .search-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    width: 100%;
+  }
+
+  .clear-search-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+  }
+
+  .clear-search-btn:hover {
+    color: var(--text-primary);
+  }
+
+  .toggle-filter-label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .filter-checkbox {
+    accent-color: var(--accent-cyan);
+    cursor: pointer;
+  }
+
   /* Table styling */
   .table-container {
     overflow-x: auto;
+  }
+
+  .row-clickable {
+    cursor: pointer;
+    transition: background var(--transition-fast);
+  }
+
+  .row-expanded td {
+    background: hsla(185, 85%, 52%, 0.05) !important;
+    border-bottom: none !important;
+  }
+
+  .expand-col {
+    width: 32px;
+    text-align: center;
+    padding: 0.4rem !important;
+  }
+
+  .expand-icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+  }
+
+  .row-clickable:hover .expand-icon-btn {
+    color: var(--accent-cyan);
+    background: hsla(185, 85%, 52%, 0.1);
+  }
+
+  .common-stocks-drawer-row td {
+    padding: 0 0.8rem 0.85rem !important;
+    background: hsla(185, 85%, 52%, 0.04);
+    border-bottom: 1px solid var(--border-subtle) !important;
+  }
+
+  .common-stocks-drawer {
+    background: rgba(10, 15, 25, 0.7);
+    border: 1px solid hsla(185, 85%, 52%, 0.2);
+    border-radius: var(--radius-md);
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .drawer-header-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+  }
+
+  .drawer-label {
+    font-weight: 600;
+    color: var(--accent-cyan);
+  }
+
+  .drawer-hint {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .stocks-chips-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 0.5rem;
+  }
+
+  .stock-overlap-chip {
+    background: var(--surface-card, rgba(20, 27, 45, 0.85));
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 0.45rem 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .chip-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .chip-symbol {
+    font-size: 0.78rem;
+    color: var(--text-primary);
+  }
+
+  .chip-overlap-pct {
+    font-size: 0.75rem;
+    color: var(--accent-emerald, #10b981);
+  }
+
+  .chip-bottom {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+  }
+
+  .weight-sep {
+    color: var(--border-medium);
   }
 
   .data-table {
