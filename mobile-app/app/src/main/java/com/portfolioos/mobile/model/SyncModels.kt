@@ -124,7 +124,8 @@ data class ReasoningNarrativeDto(
 data class RebalanceTriggerDto(
     @SerializedName("type") val type: String = "",
     @SerializedName("reason_code") val reasonCode: String = "",
-    @SerializedName("reason_label") val reasonLabel: String = ""
+    @SerializedName("reason_label") val reasonLabel: String = "",
+    @SerializedName("drawdown_context") val drawdownContext: DrawdownContextDto? = null
 )
 
 @Immutable
@@ -172,7 +173,11 @@ data class TaxSummaryDto(
     @SerializedName("total_realized_gain") val totalRealizedGain: Double = 0.0,
     @SerializedName("total_ltcg_exempt") val totalLtcgExempt: Double = 0.0,
     @SerializedName("total_stcg_taxable") val totalStcgTaxable: Double = 0.0,
-    @SerializedName("total_tax_estimate") val totalTaxEstimate: Double = 0.0
+    @SerializedName("total_tax_estimate") val totalTaxEstimate: Double = 0.0,
+    @SerializedName("exemption_headroom_before") val exemptionHeadroomBefore: Double = 125000.0,
+    @SerializedName("exemption_headroom_after") val exemptionHeadroomAfter: Double = 125000.0,
+    @SerializedName("statutory_exemption_cap") val statutoryExemptionCap: Double = 125000.0,
+    @SerializedName("exemption_utilized_pct") val exemptionUtilizedPct: Double = 0.0
 )
 
 @Immutable

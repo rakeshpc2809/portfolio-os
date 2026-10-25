@@ -140,7 +140,7 @@ class LocalValuationAndSimulationUnitTest {
         // Total gross proceeds = 6000
         // Total gain = 2900 (LTCG 2500, STCG 400)
         // LTCG is under ₹1.25L exemption, so LTCG tax = 0.
-        // STCG = 400 * 20% = 80 + 4% cess = ₹83.20
+        // STCG = 400 * 20% = ₹80.00 (aligned with backend SimulationService without cess multiplier)
         val request = TradeSimulationRequestDto(
             isin = "INF879O01027",
             schemeName = "PPFCF",
@@ -156,8 +156,8 @@ class LocalValuationAndSimulationUnitTest {
         assertEquals(2500.0, result.ltcgEquity, 0.001)
         assertEquals(400.0, result.stcgEquity, 0.001)
         assertEquals(2500.0, result.sec112aExemptionApplied, 0.001)
-        assertEquals(83.20, result.estimatedTaxLiability, 0.01)
-        assertEquals(9916.80, result.postTradeNetWorth, 0.01) // 10000 - 83.20 tax liability
+        assertEquals(80.00, result.estimatedTaxLiability, 0.01)
+        assertEquals(9920.00, result.postTradeNetWorth, 0.01) // 10000 - 80.00 tax liability
     }
 
     @Test
@@ -232,5 +232,146 @@ class LocalValuationAndSimulationUnitTest {
         assertEquals(100000.0, allocations["Mid Cap"] ?: 0.0, 0.01)
         assertEquals(50000.0, allocations["Small Cap"] ?: 0.0, 0.01)
         assertNull("Overweight bucket should receive no lumpsum inflow", allocations["Large Cap"])
+    }
+
+    @Test
+    fun testLocalTradeSimulator_remainingHeadroomFromSnapshot() {
+        val today = LocalDate.of(2026, 10, 24)
+
+        // Equity Lot: 100 units @ ₹50 cost bought 500 days ago (LTCG)
+        val lot = FlatTaxLotDto(
+            isin = "INF879O01027",
+            buyDate = "2025-06-11",
+            units = 100.0,
+            taxClassification = "EQUITY",
+            costPerUnit = 50.0
+        )
+
+        // Snapshot already utilized 105,000 of exemption, leaving only 20,000 headroom
+        val taxSummary = TaxSummaryDto(
+            totalRealizedGain = 105000.0,
+            totalLtcgExempt = 105000.0,
+            totalStcgTaxable = 0.0,
+            totalTaxEstimate = 0.0,
+            exemptionHeadroomBefore = 125000.0,
+            exemptionHeadroomAfter = 20000.0
+        )
+        val plan = RebalancePlanDto(
+            sellSide = SellSidePlanDto(taxSummary = taxSummary)
+        )
+        val snapshot = SyncSnapshot(
+            syncInfo = SyncInfoDto(currentValue = 20000.0, totalInvested = 5000.0),
+            taxLots = listOf(lot),
+            rebalancePlan = plan
+        )
+
+        // Sell 100 units @ ₹100 -> Proceeds = 10,000, Cost = 5,000, LTCG = 5,000
+        // But suppose sell 100 units @ ₹100 -> Gain = 5,000. Let's test with Gain = 50,000
+        // 100 units @ ₹550 price -> Proceeds = 55,000, Cost = 5,000, LTCG = 50,000
+        val request = TradeSimulationRequestDto(
+            isin = "INF879O01027",
+            schemeName = "PPFCF",
+            units = 100.0,
+            pricePerUnit = 550.0,
+            tradeType = "DISPOSAL"
+        )
+
+        val result = LocalTradeSimulator.simulateTradeLocally(snapshot, request, today)
+
+        assertEquals(50000.0, result.grossCapitalGain, 0.001)
+        assertEquals(50000.0, result.ltcgEquity, 0.001)
+        // Under remaining headroom awareness, only 20,000 is exempt (NOT 50,000 or 125,000!)
+        assertEquals(20000.0, result.sec112aExemptionApplied, 0.001)
+        // Taxable LTCG = 50,000 - 20,000 = 30,000 * 12.5% = ₹3,750
+        assertEquals(3750.0, result.estimatedTaxLiability, 0.01)
+    }
+
+    @Test
+    fun testLocalTradeSimulator_intraSimulationLossNetting() {
+        val today = LocalDate.of(2026, 10, 24)
+
+        // Lot 1 (STCL): 50 units @ ₹120 cost bought 30 days ago -> Loss = -20/unit (-1000 total)
+        val lot1 = FlatTaxLotDto(
+            isin = "INF879O01027",
+            buyDate = "2026-09-24",
+            units = 50.0,
+            taxClassification = "EQUITY",
+            costPerUnit = 120.0
+        )
+        // Lot 2 (STCG): 50 units @ ₹70 cost bought 20 days ago -> Gain = +30/unit (+1500 total)
+        val lot2 = FlatTaxLotDto(
+            isin = "INF879O01027",
+            buyDate = "2026-10-04",
+            units = 50.0,
+            taxClassification = "EQUITY",
+            costPerUnit = 70.0
+        )
+
+        val snapshot = SyncSnapshot(
+            syncInfo = SyncInfoDto(currentValue = 10000.0, totalInvested = 9500.0),
+            taxLots = listOf(lot1, lot2)
+        )
+
+        // Sell all 100 units @ ₹100
+        val request = TradeSimulationRequestDto(
+            isin = "INF879O01027",
+            schemeName = "PPFCF",
+            units = 100.0,
+            pricePerUnit = 100.0,
+            tradeType = "DISPOSAL"
+        )
+
+        val result = LocalTradeSimulator.simulateTradeLocally(snapshot, request, today)
+
+        // Gross Gain = -1000 + 1500 = +500
+        assertEquals(500.0, result.grossCapitalGain, 0.001)
+        assertEquals(500.0, result.stcgEquity, 0.001)
+        // Tax = 500 * 20% = ₹100.00 (loss netted against gain before tax calculation)
+        assertEquals(100.0, result.estimatedTaxLiability, 0.01)
+    }
+
+    @Test
+    fun testLocalTradeSimulator_goldFloorBackstopAndDrawdownLumpsumAllocation() {
+        val goldBucket = RebalanceBucketAllocationDto(
+            bucket = "GOLD_SILVER",
+            targetPct = 15.0,
+            currentPct = 10.0 // Deficit = 5%
+        )
+        val coreBucket = RebalanceBucketAllocationDto(
+            bucket = "EQUITY_CORE",
+            targetPct = 60.0,
+            currentPct = 50.0 // Deficit = 10%
+        )
+        val liquidBucket = RebalanceBucketAllocationDto(
+            bucket = "LIQUID_BUFFER",
+            targetPct = 25.0,
+            currentPct = 20.0 // Deficit = 5%
+        )
+
+        // Case 1: GOLD_FLOOR_BACKSTOP trigger -> routes up to 50% of the Gold gap first
+        val backstopPlan = RebalancePlanDto(
+            trigger = RebalanceTriggerDto(type = "GOLD_FLOOR_BACKSTOP"),
+            buySide = BuySidePlanDto(
+                totalToInvest = 100000.0,
+                buckets = listOf(goldBucket, coreBucket, liquidBucket)
+            )
+        )
+        val backstopAlloc = LocalTradeSimulator.allocateLumpsum(100000.0, backstopPlan)
+        // Gold gap = 5% of 100,000 = 5,000. 50% fill = 2,500 priority fill.
+        // Remaining 97,500 allocated across remaining deficits (Gold 5%, Core 10%, Liquid 5% -> total 20%)
+        // Gold gets 2,500 + 97,500 * (5/20) = 2,500 + 24,375 = 26,875
+        assertTrue((backstopAlloc["GOLD_SILVER"] ?: 0.0) >= 2500.0)
+
+        // Case 2: Market Drawdown >= 10% -> LIQUID_BUFFER receives ZERO fresh lumpsum cash
+        val drawdownPlan = RebalancePlanDto(
+            drawdownContext = DrawdownContextDto(currentDrawdownPct = 12.5),
+            buySide = BuySidePlanDto(
+                buckets = listOf(goldBucket, coreBucket, liquidBucket)
+            )
+        )
+        val drawdownAlloc = LocalTradeSimulator.allocateLumpsum(100000.0, drawdownPlan)
+        assertNull("LIQUID_BUFFER must not receive fresh lumpsum cash during market drawdown >= 10%", drawdownAlloc["LIQUID_BUFFER"])
+        assertTrue((drawdownAlloc["EQUITY_CORE"] ?: 0.0) > 0.0)
+        assertTrue((drawdownAlloc["GOLD_SILVER"] ?: 0.0) > 0.0)
     }
 }
