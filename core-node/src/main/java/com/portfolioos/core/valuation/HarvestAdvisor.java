@@ -59,8 +59,9 @@ public class HarvestAdvisor {
             long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
             if (holdingDays >= rules.equityLtcgThresholdDays()) {
                 BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "HarvestAdvisor");
-                BigDecimal currentVal = lot.remainingUnits().multiply(nav);
-                BigDecimal gain = currentVal.subtract(lot.totalCostBasis());
+                BigDecimal currentVal = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
+                BigDecimal effectiveCostBasis = lot.effectiveTotalCostBasis(nav);
+                BigDecimal gain = currentVal.subtract(effectiveCostBasis);
 
                 if (gain.compareTo(BigDecimal.ZERO) > 0) {
                     totalUnrealizedLtcg = totalUnrealizedLtcg.add(gain);

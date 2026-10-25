@@ -372,12 +372,14 @@ public class FireActionRuleEngine {
             String taxRationale;
             if (fifoOldestIsLtcg) {
                 taxRationale = String.format(
-                    "Value 30 and PPFAS Flexi Cap share 5 significant stock positions (HDFCBANK, ICICIBANK, POWERGRID, COALINDIA, NTPC), creating 23.56%% structural redundancy. FIFO lot-level evaluation confirms oldest lots are long-term (held >365 days, LTCG under Sec 112A). Net estimated tax is ₹0 after applying remaining FY exemption headroom of ₹%,d.",
+                    "%s and %s share %d significant stock positions, creating %.2f%% structural redundancy. FIFO lot-level evaluation confirms oldest lots are long-term (held >365 days, LTCG under Sec 112A). Net estimated tax is ₹0 after applying remaining FY exemption headroom of ₹%,d.",
+                    fundA, fundB, commonCnt, maxOverlap,
                     (long) remainingHeadroom
                 );
             } else {
                 taxRationale = String.format(
-                    "Value 30 and PPFAS Flexi Cap share 5 significant stock positions (HDFCBANK, ICICIBANK, POWERGRID, COALINDIA, NTPC), creating 23.56%% structural redundancy. Note: oldest FIFO lots are short-term (<365 days, STCG @ 20%%); consider deferring rebalancing until lots cross 365-day LTCG threshold."
+                    "%s and %s share %d significant stock positions, creating %.2f%% structural redundancy. Note: oldest FIFO lots are short-term (<365 days, STCG @ 20%%); consider deferring rebalancing until lots cross 365-day LTCG threshold.",
+                    fundA, fundB, commonCnt, maxOverlap
                 );
             }
 
@@ -456,7 +458,7 @@ public class FireActionRuleEngine {
                 "ACTION_RECOMMENDED",
                 "MEDIUM",
                 String.format("%s is active overweight by +%.2f%% vs Nifty 50 benchmark.", topSymbol, topActiveOverweight),
-                String.format("%s holds a blended exposure of %.2f%% across your portfolio versus a Nifty 50 benchmark weight of %.2f%% (active overweight: +%.2f%%). This concentration is driven primarily by overlapping holdings in Value 30 and PPFAS Flexi Cap.", topSymbol, topWeight, topBenchmarkWeight, topActiveOverweight),
+                String.format("%s holds a blended exposure of %.2f%% across your portfolio versus a Nifty 50 benchmark weight of %.2f%% (active overweight: +%.2f%%). This concentration is driven by overlapping stock positions across your constituent funds.", topSymbol, topWeight, topBenchmarkWeight, topActiveOverweight),
                 Map.of(
                     "stock_symbol", topSymbol,
                     "blended_weight_pct", topWeight,

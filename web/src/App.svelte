@@ -541,7 +541,7 @@
 
             <!-- Nifty 500 Drawdown & Tactical Rungs Chart -->
             <DrawdownRungsChart
-              drawdownPct={Number(snapshot?.daily_brief?.nifty_500_drawdown_pct ?? -4.2)}
+              drawdownPct={-Math.abs(Number(snapshot?.rebalance_plan?.trigger?.drawdown_context?.current_drawdown_pct ?? 0))}
               liquidBufferValue={Number(snapshot?.rebalance_plan?.buckets?.find(b => b.bucket.includes('LIQUID') || b.bucket.includes('ARBITRAGE'))?.current_value ?? 0)}
               quietMode={quietMode}
             />

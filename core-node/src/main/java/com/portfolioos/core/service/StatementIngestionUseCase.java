@@ -114,7 +114,10 @@ public class StatementIngestionUseCase {
                 List<TaxEvent> combined = new ArrayList<>(eventStore.getAllEvents());
                 combined.addAll(newTaxEvents);
                 com.portfolioos.core.matcher.FifoMatcher fifoMatcher = new com.portfolioos.core.matcher.FifoMatcher();
-                com.portfolioos.core.matcher.FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(combined);
+                com.portfolioos.core.matcher.FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(
+                    combined,
+                    duckDbProjector != null ? duckDbProjector.getJan2018FmvMap() : Map.of()
+                );
                 com.portfolioos.core.reconciliation.ReconciliationGate.MultiAssetReconciliationResult recon =
                     com.portfolioos.core.reconciliation.ReconciliationGate.validateStatementPerAsset(fifoResult, declaredBalances);
 

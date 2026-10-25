@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
 public class ReportDtos {
 
@@ -139,6 +141,7 @@ public class ReportDtos {
         long holdingPeriodDays
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record BucketFundItemDto(
         String isin,
         String fundName,
@@ -155,6 +158,7 @@ public class ReportDtos {
         boolean isPreferred
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record BucketStatusDto(
         String bucket,
         String currentValue,

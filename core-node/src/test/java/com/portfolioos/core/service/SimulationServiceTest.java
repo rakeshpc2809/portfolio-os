@@ -256,4 +256,80 @@ class SimulationServiceTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> simulationService.simulateTrade(req));
         assertTrue(ex.getMessage().contains("tradeType of 'ACQUISITION' or 'DISPOSAL'"));
     }
+
+    @Test
+    void testGrandfatheredFmvDisposalSimulationUses2018Basis() {
+        TaxEvent pre2018Acq = new TaxEvent(
+            "EV_PRE_2018",
+            "INF109KC13X2",
+            "ICICI Nifty200",
+            "INF109KC13X2",
+            EventType.ACQUISITION,
+            LocalDate.of(2017, 1, 1),
+            new BigDecimal("100.0"),
+            new BigDecimal("10.0"),
+            new BigDecimal("1000.0"),
+            "CAS_IMPORT",
+            Instant.now()
+        );
+        Map<String, BigDecimal> fmvMap = Map.of("INF109KC13X2", new BigDecimal("25.0"));
+        var fifoResult = new com.portfolioos.core.matcher.FifoMatcher().processEvents(List.of(pre2018Acq), fmvMap);
+        var cachedState = new LedgerCacheService.CachedLedgerState(
+            List.of(pre2018Acq),
+            fifoResult,
+            Map.of("INF109KC13X2", new BigDecimal("30.0")),
+            "HASH_GF",
+            System.currentTimeMillis(),
+            "HEALTHY"
+        );
+        LedgerCacheService customCache = new LedgerCacheService(null) {
+            @Override public CachedLedgerState getCachedState() { return cachedState; }
+            @Override public Map<String, BigDecimal> getJan2018FmvMap() { return fmvMap; }
+        };
+        SimulationService sim = new SimulationService(customCache);
+        SimulationService.TradeSimulationRequest req = new SimulationService.TradeSimulationRequest(
+            "INF109KC13X2", "ICICI Nifty200", new BigDecimal("100.0"), new BigDecimal("30.0"), "2026-06-01", "DISPOSAL"
+        );
+        SimulationService.TradeSimulationResult res = sim.simulateTrade(req);
+        // Cost basis should be max(10, min(25, 30)) * 100 = 2500.00
+        // Realized LTCG should be (30 - 25) * 100 = 500.00 (not 2000.00!)
+        assertEquals(new BigDecimal("500.00"), res.ltcgEquity());
+    }
+
+    @Test
+    void testDebtSpecified50AASimulationTaxAndCashConservation() {
+        TaxEvent debtAcq = new TaxEvent(
+            "EV_DEBT_1",
+            "INF209K01157",
+            "Aditya Birla Sun Life Short Term Debt Fund",
+            "INF209K01157",
+            EventType.ACQUISITION,
+            LocalDate.of(2023, 6, 1),
+            new BigDecimal("100.0"),
+            new BigDecimal("10.0"),
+            new BigDecimal("1000.0"),
+            "CAS_IMPORT",
+            Instant.now()
+        );
+        var fifoResult = new com.portfolioos.core.matcher.FifoMatcher().processEvents(List.of(debtAcq));
+        var cachedState = new LedgerCacheService.CachedLedgerState(
+            List.of(debtAcq),
+            fifoResult,
+            Map.of("INF209K01157", new BigDecimal("15.0")),
+            "HASH_DEBT",
+            System.currentTimeMillis(),
+            "HEALTHY"
+        );
+        LedgerCacheService customCache = new LedgerCacheService(null) {
+            @Override public CachedLedgerState getCachedState() { return cachedState; }
+        };
+        SimulationService sim = new SimulationService(customCache);
+        SimulationService.TradeSimulationRequest req = new SimulationService.TradeSimulationRequest(
+            "INF209K01157", "Aditya Birla Sun Life Short Term Debt Fund", new BigDecimal("100.0"), new BigDecimal("15.0"), "2026-06-01", "DISPOSAL"
+        );
+        SimulationService.TradeSimulationResult res = sim.simulateTrade(req);
+        assertTrue(res.estimatedTaxLiability().compareTo(BigDecimal.ZERO) > 0, "Debt 50AA must compute non-zero estimated tax liability");
+        assertEquals(new BigDecimal("500.00"), res.slabRateGain());
+        assertEquals(res.grossTradeAmount().subtract(res.estimatedTaxLiability()), res.postTradeNetWorth());
+    }
 }

@@ -153,4 +153,8 @@ public class LedgerCacheService {
         stateHolder.set(null);
         refreshCacheInBackground();
     }
+
+    public Map<String, BigDecimal> getJan2018FmvMap() {
+        return duckDbProjector != null ? duckDbProjector.getJan2018FmvMap() : Collections.emptyMap();
+    }
 }

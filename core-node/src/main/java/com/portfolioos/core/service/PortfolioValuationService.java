@@ -870,10 +870,11 @@ public class PortfolioValuationService {
         overlapSummary.put("threshold_breached", maxOverlapPct >= OVERLAP_WARNING_THRESHOLD);
 
         Map<String, Object> response = new HashMap<>();
+        String[] meta = getEffectiveDisclosureMetadata();
         response.put("status", "OK");
         response.put("holding_coverage_type", coverageType);
-        response.put("constituent_source", CONSTITUENT_SOURCE);
-        response.put("disclosure_date", DISCLOSURE_DATE);
+        response.put("constituent_source", meta[1]);
+        response.put("disclosure_date", meta[0]);
         response.put("is_live_download", IS_LIVE_DOWNLOAD);
         response.put("pairwise_overlap", pairwise);
         response.put("pairwise_matrix", matrix);
@@ -885,6 +886,24 @@ public class PortfolioValuationService {
         return response;
     }
 
+    private String[] getEffectiveDisclosureMetadata() {
+        String effDate = DISCLOSURE_DATE;
+        String effSource = CONSTITUENT_SOURCE;
+        if (duckDbProjector != null) {
+            try (java.sql.Connection conn = duckDbProjector.getConnection();
+                 java.sql.Statement stmt = conn.createStatement();
+                 java.sql.ResultSet rs = stmt.executeQuery("SELECT MAX(disclosure_date) AS max_d, MAX(source_type) AS max_src FROM fund_holdings")) {
+                if (rs.next()) {
+                    String d = rs.getString("max_d");
+                    String s = rs.getString("max_src");
+                    if (d != null && !d.isBlank()) effDate = d;
+                    if (s != null && !s.isBlank()) effSource = s;
+                }
+            } catch (Exception ignored) {}
+        }
+        return new String[]{effDate, effSource};
+    }
+
     public Map<String, Object> getMultiFundUpSetAnalytics() {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> regFunds = (List<Map<String, Object>>) getFundRegistry().getOrDefault("funds", Collections.emptyList());
@@ -892,10 +911,11 @@ public class PortfolioValuationService {
         List<Map<String, Object>> upset = duckDbProjector.getMultiFundIntersectionAnalytics(evalFundIds);
 
         Map<String, Object> response = new HashMap<>();
+        String[] meta = getEffectiveDisclosureMetadata();
         response.put("status", "OK");
         response.put("holding_coverage_type", "FULL_PORTFOLIO");
-        response.put("constituent_source", CONSTITUENT_SOURCE);
-        response.put("disclosure_date", DISCLOSURE_DATE);
+        response.put("constituent_source", meta[1]);
+        response.put("disclosure_date", meta[0]);
         response.put("is_live_download", IS_LIVE_DOWNLOAD);
         response.put("upset_combinations", upset);
         response.put("evaluated_funds", evalFundIds);
@@ -967,11 +987,18 @@ public class PortfolioValuationService {
         // Check empirical sufficiency and fetch live Monte Carlo ruin rate & rel std dev
         List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
         boolean isProvisional = dailyReturns == null || dailyReturns.size() < 750;
-
-        FireTracker.FireSummary fire = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now());
-        double avgFailRate = (fire != null && fire.monteCarloSuccessRatePct() > 0.0)
-            ? Math.max(0.0, 100.0 - fire.monteCarloSuccessRatePct())
-            : 0.0;
+        FireSummaryResponse liveFireResp = getFireSummary();
+        FireTracker.FireSummary fire = FireTracker.calculateFireSummary(
+            openLots,
+            navMap,
+            LocalDate.now(),
+            new FireTracker.FireProfile(),
+            BigDecimal.ZERO,
+            liveFireResp.monteCarloSuccessRatePct(),
+            new BigDecimal(liveFireResp.monteCarloMedianCorpus()),
+            new BigDecimal(liveFireResp.monteCarloTenthPercentileCorpus())
+        );
+        double avgFailRate = Math.max(0.0, 100.0 - liveFireResp.monteCarloSuccessRatePct());
         double relStdDev = 0.25;
         BigDecimal currentSip = fire != null ? fire.monthlyContribution() : null;
 

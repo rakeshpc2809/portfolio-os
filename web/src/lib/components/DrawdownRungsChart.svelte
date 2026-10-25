@@ -9,46 +9,48 @@
   }
 
   let {
-    drawdownPct = -4.2,
+    drawdownPct = 0,
     liquidBufferValue = 0,
     quietMode = false
   }: Props = $props();
+
+  const normalizedDrawdown = $derived(drawdownPct > 0 ? -drawdownPct : drawdownPct);
 
   const rungs = [
     {
       level: 1,
       threshold: -10.0,
-      deployFraction: 0.3333,
-      deployLabel: '33% of Liquid Buffer',
+      deployFraction: 0.25,
+      deployLabel: '25% of Liquid Buffer',
       targetBucket: 'EQUITY_CORE',
-      desc: 'Deploy 1/3 of exit-load-free Invesco Arbitrage reserves into underweight Core Equity (ICICI LargeMidcap 250 & Parag Parikh Flexi Cap).'
+      desc: 'Deploy 25% of exit-load-free Invesco Arbitrage reserves into underweight Core Equity (ICICI LargeMidcap 250 & Parag Parikh Flexi Cap).'
     },
     {
       level: 2,
       threshold: -15.0,
-      deployFraction: 0.3333,
-      deployLabel: 'Second 33% of Buffer',
+      deployFraction: 0.50,
+      deployLabel: 'Cumulative 50% of Buffer',
       targetBucket: 'CORE & FACTOR SATELLITE',
-      desc: 'Deploy second 1/3 into Core & Satellite dips (ICICI Value 30, Edelweiss Momentum 50, Nippon Small Cap).'
+      desc: 'Deploy 50% cumulative tranche into Core & Satellite dips (ICICI Value 30, Edelweiss Momentum 50, Nippon Small Cap).'
     },
     {
       level: 3,
       threshold: -20.0,
-      deployFraction: 0.3334,
-      deployLabel: 'Final 33% (Full Buffer)',
+      deployFraction: 1.0,
+      deployLabel: '100% (Full Liquid Reserve)',
       targetBucket: 'MAX CORE COMPOUNDING',
       desc: 'Market capitulation trigger — fully deploy remaining arbitrage buffer into long-term Core index compounding.'
     }
   ];
 
   const activeRung = $derived(() => {
-    if (drawdownPct <= -20.0) return 3;
-    if (drawdownPct <= -15.0) return 2;
-    if (drawdownPct <= -10.0) return 1;
+    if (normalizedDrawdown <= -20.0) return 3;
+    if (normalizedDrawdown <= -15.0) return 2;
+    if (normalizedDrawdown <= -10.0) return 1;
     return 0; // Standing by in normal regime
   });
 
-  const clampedPos = $derived(Math.min(100, Math.max(0, (Math.abs(drawdownPct) / 20.0) * 100)));
+  const clampedPos = $derived(Math.min(100, Math.max(0, (Math.abs(normalizedDrawdown) / 20.0) * 100)));
 </script>
 
 <div class="drawdown-card obsidian-card">
@@ -87,7 +89,7 @@
         <!-- Current Drawdown Indicator Needle -->
         <div class="drawdown-needle" style="left: {clampedPos}%;">
           <div class="needle-flag mono">
-            {drawdownPct.toFixed(1)}%
+            {normalizedDrawdown.toFixed(1)}%
           </div>
           <div class="needle-line"></div>
         </div>

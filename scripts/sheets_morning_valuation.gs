@@ -406,9 +406,9 @@ function doGet(e) {
   const token = params.token || "";
 
   const scriptProps = PropertiesService.getScriptProperties();
-  const configuredToken = scriptProps.getProperty("API_AUTH_TOKEN") || "dev_secret_key_123";
+  const configuredToken = scriptProps.getProperty("API_AUTH_TOKEN");
 
-  if (token !== configuredToken) {
+  if (!configuredToken || !token || token !== configuredToken) {
     return ContentService.createTextOutput(JSON.stringify({ error: "Unauthorized" }))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -436,9 +436,9 @@ function doPost(e) {
     const token = postData.token || "";
 
     const scriptProps = PropertiesService.getScriptProperties();
-    const configuredToken = scriptProps.getProperty("API_AUTH_TOKEN") || "dev_secret_key_123";
+    const configuredToken = scriptProps.getProperty("API_AUTH_TOKEN");
 
-    if (token !== configuredToken) {
+    if (!configuredToken || !token || token !== configuredToken) {
       return ContentService.createTextOutput(JSON.stringify({ error: "Unauthorized" }))
         .setMimeType(ContentService.MimeType.JSON);
     }

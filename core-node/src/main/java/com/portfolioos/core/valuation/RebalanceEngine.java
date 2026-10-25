@@ -146,8 +146,8 @@ public class RebalanceEngine {
 
             BigDecimal nav1 = NavResolver.requireValidNav(navMap, l1, "RebalanceEngine");
             BigDecimal nav2 = NavResolver.requireValidNav(navMap, l2, "RebalanceEngine");
-            BigDecimal gainPerUnit1 = nav1.subtract(l1.costPerUnit());
-            BigDecimal gainPerUnit2 = nav2.subtract(l2.costPerUnit());
+            BigDecimal gainPerUnit1 = nav1.subtract(l1.effectiveCostPerUnit(nav1));
+            BigDecimal gainPerUnit2 = nav2.subtract(l2.effectiveCostPerUnit(nav2));
 
             if (c1 == 1) {
                 // Largest loss first
@@ -176,7 +176,7 @@ public class RebalanceEngine {
             if (nav.compareTo(BigDecimal.ZERO) > 0) {
                 unitsToSell = redemptionFromLot.divide(nav, 4, RoundingMode.HALF_UP);
             }
-            BigDecimal costBasisSlice = unitsToSell.multiply(lot.costPerUnit());
+            BigDecimal costBasisSlice = unitsToSell.multiply(lot.effectiveCostPerUnit(nav));
             BigDecimal gainSlice = redemptionFromLot.subtract(costBasisSlice);
 
             int cohort = determineCohort(lot, navMap, today, fiscalYear, rules);
@@ -364,7 +364,7 @@ public class RebalanceEngine {
 
     public static int determineCohort(Lot lot, Map<String, BigDecimal> navMap, LocalDate today, String fiscalYear, TaxRulesConfig rules) {
         BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "RebalanceEngine");
-        BigDecimal gainPerUnit = nav.subtract(lot.costPerUnit());
+        BigDecimal gainPerUnit = nav.subtract(lot.effectiveCostPerUnit(nav));
 
         // Cohort 1: Capital Loss Harvesting across all asset categories
         if (gainPerUnit.compareTo(BigDecimal.ZERO) < 0) {

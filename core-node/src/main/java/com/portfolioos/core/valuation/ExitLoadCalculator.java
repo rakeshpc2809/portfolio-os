@@ -11,8 +11,8 @@ import java.util.Map;
 
 /**
  * Computes exit-load-free units and market valuations per asset/lot.
- * Critical for capital deployment ladders (e.g. Parag Parikh Arbitrage Fund INF879O01027:
- * exit load free strictly when holding_days >= 30).
+ * Critical for capital deployment ladders (e.g. Invesco India Arbitrage Fund INF205K01KR8:
+ * exit load free when holding_days >= 15; Parag Parikh Flexi Cap INF879O01027: holding_days >= 730).
  */
 public class ExitLoadCalculator {
 

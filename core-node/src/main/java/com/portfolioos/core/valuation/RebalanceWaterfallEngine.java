@@ -208,8 +208,8 @@ public class RebalanceWaterfallEngine {
         BigDecimal unitsSold = nav.compareTo(BigDecimal.ZERO) > 0
             ? redemption.divide(nav, 4, RoundingMode.HALF_UP)
             : BigDecimal.ZERO;
-        BigDecimal costBasis = unitsSold.multiply(lot.costPerUnit());
-        BigDecimal gain = redemption.subtract(costBasis);
+        BigDecimal costBasis = unitsSold.multiply(lot.effectiveCostPerUnit(nav)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal gain = redemption.subtract(costBasis).setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal taxDrag = BigDecimal.ZERO;
         BigDecimal newExemption = unusedExemption;
@@ -271,7 +271,7 @@ public class RebalanceWaterfallEngine {
 
     private static int computeLotTaxRank(Lot l, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
         BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.computeLotTaxRank");
-        BigDecimal gain = nav.subtract(l.costPerUnit());
+        BigDecimal gain = nav.subtract(l.effectiveCostPerUnit(nav));
         if (gain.compareTo(BigDecimal.ZERO) < 0) return 0; // Loss harvest first
         AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
         long thresh = getThresholdDays(cat, rules);
@@ -301,7 +301,7 @@ public class RebalanceWaterfallEngine {
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
             List<Lot> lots = legacyLots.stream().filter(l -> {
                 BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.LegacyTier");
-                BigDecimal gain = nav.subtract(l.costPerUnit());
+                BigDecimal gain = nav.subtract(l.effectiveCostPerUnit(nav));
                 if (gain.compareTo(BigDecimal.ZERO) < 0) return true; // Always allow loss harvest
                 AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
                 long threshold = getThresholdDays(cat, rules);
@@ -387,10 +387,10 @@ public class RebalanceWaterfallEngine {
             List<Lot> eligibleCore = filterOverweightCoreLots(coreLots, navMap, today);
             return eligibleCore.stream().filter(l -> {
                 BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.LossHarvestTier");
-                return nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0;
+                return nav.subtract(l.effectiveCostPerUnit(nav)).compareTo(BigDecimal.ZERO) < 0;
             }).sorted(Comparator.comparing(l -> {
                 BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.LossHarvestTier");
-                return nav.subtract(l.costPerUnit());
+                return nav.subtract(l.effectiveCostPerUnit(nav));
             })).toList();
         }
     }
@@ -425,7 +425,7 @@ public class RebalanceWaterfallEngine {
         List<Lot> eligibleCore = filterOverweightCoreLots(coreLots, navMap, today);
         return eligibleCore.stream().filter(l -> {
             BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.selectCoreLots");
-            if (nav.subtract(l.costPerUnit()).compareTo(BigDecimal.ZERO) < 0) return false;
+            if (nav.subtract(l.effectiveCostPerUnit(nav)).compareTo(BigDecimal.ZERO) < 0) return false;
             AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
             long threshold = getThresholdDays(cat, rules);
             long holdingDays = ChronoUnit.DAYS.between(l.acquisitionDate(), today);
@@ -433,7 +433,7 @@ public class RebalanceWaterfallEngine {
             return requireLtcg ? isLtcg : !isLtcg;
         }).sorted(Comparator.comparing(l -> {
             BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.selectCoreLots");
-            return nav.subtract(l.costPerUnit());
+            return nav.subtract(l.effectiveCostPerUnit(nav));
         })).toList();
     }
 

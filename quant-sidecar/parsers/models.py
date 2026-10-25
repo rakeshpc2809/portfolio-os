@@ -37,6 +37,6 @@ class TaxEventSchema(BaseModel):
     def unit_delta(self) -> Decimal:
         if self.event_type == EventType.DISPOSAL or self.event_type == EventType.SGB_MATURITY:
             return -self.units
-        elif self.event_type == EventType.SGB_INTEREST:
+        elif self.event_type in (EventType.SGB_INTEREST, EventType.SPLIT, EventType.MERGER):
             return Decimal("0.0")
         return self.units

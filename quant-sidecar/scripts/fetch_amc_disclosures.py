@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 # Add quant sidecar to sys.path
@@ -45,10 +46,11 @@ def ingest_disclosures(core_node_url: str = "http://127.0.0.1:8080"):
         try:
             holdings = parse_amc_portfolio_disclosure(str(file_path), fund_id=isin)
             print(f"[+] Parsed {len(holdings)} holdings from {filename} ({fund_name})")
+            mtime_date = datetime.fromtimestamp(file_path.stat().st_mtime).strftime("%Y-%m-%d")
 
             payload = {
                 "fund_id": isin,
-                "disclosure_date": "2024-09-30",
+                "disclosure_date": os.getenv("DISCLOSURE_DATE", mtime_date),
                 "source_type": "FACTSHEET_POI_PARSED",
                 "holdings": holdings
             }

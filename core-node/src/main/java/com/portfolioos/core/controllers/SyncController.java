@@ -44,6 +44,10 @@ import java.util.zip.ZipOutputStream;
 public class SyncController {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SyncController.class);
+    private static final java.time.format.DateTimeFormatter ISO_FORMATTER = java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+    private static final Set<String> ALLOWED_PARQUET_TABLES = Set.of(
+        "fund_holdings", "open_lots", "benchmark_history", "nav_history"
+    );
 
     private final LedgerCacheService cacheService;
     private final com.portfolioos.core.service.PortfolioValuationService valuationService;
@@ -188,7 +192,8 @@ public class SyncController {
 
             BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot.assetId(), lot.assetName(), "SyncController.getSnapshot (lot " + lot.lotId() + ")");
             BigDecimal lotCurrentVal = lot.remainingUnits().multiply(nav);
-            BigDecimal lotGain = lotCurrentVal.subtract(lot.totalCostBasis());
+            BigDecimal effectiveCostBasis = lot.effectiveTotalCostBasis(nav);
+            BigDecimal lotGain = lotCurrentVal.subtract(effectiveCostBasis);
 
             String classification = TaxClassifier.detectTaxClassification(category);
             BigDecimal estimatedTaxDrag = TaxClassifier.computeEstimatedTaxDrag(category, taxTerm, lotGain, taxRules);
@@ -553,26 +558,36 @@ public class SyncController {
         }
     }
 
+    @PostMapping("/refresh")
+    public ResponseEntity<Map<String, Object>> refreshNavs() {
+        cacheService.invalidateCache();
+        LedgerCacheService.CachedLedgerState refreshed = cacheService.getCachedState();
+        return ResponseEntity.ok(Map.of(
+            "status", "REFRESHED",
+            "nav_count", refreshed.navMap() != null ? refreshed.navMap().size() : 0,
+            "refreshed_at", java.time.LocalDateTime.now().format(ISO_FORMATTER)
+        ));
+    }
+
     @GetMapping("/parquet")
     public ResponseEntity<byte[]> getParquetTable(@RequestParam(defaultValue = "fund_holdings") String table) {
         if (duckDbProjector == null) {
             return ResponseEntity.status(503).build();
         }
-        String cleanTable = table.replaceAll("[^a-zA-Z0-9_]", "");
+        String cleanTable = table.replaceAll("[^a-zA-Z0-9_]", "").toLowerCase(Locale.ROOT);
         if (cleanTable.isBlank()) {
             cleanTable = "fund_holdings";
+        }
+        if (!ALLOWED_PARQUET_TABLES.contains(cleanTable)) {
+            return ResponseEntity.badRequest().build();
         }
         File tempFile = null;
         try {
             tempFile = File.createTempFile("parquet_" + cleanTable + "_", ".parquet");
             if ("open_lots".equalsIgnoreCase(cleanTable)) {
-                duckDbProjector.exportQueryToParquet(
-                    "SELECT id, asset_id, asset_name, isin, event_date, TRY_CAST(units AS DOUBLE) AS units, TRY_CAST(price_per_unit AS DOUBLE) AS price_per_unit, TRY_CAST(gross_amount AS DOUBLE) AS gross_amount FROM projected_events WHERE event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS')",
-                    tempFile
-                );
-            } else {
-                duckDbProjector.exportTableToParquet(cleanTable, tempFile);
+                duckDbProjector.syncOpenLots(cacheService.getCachedState().fifoResult().openLots());
             }
+            duckDbProjector.exportTableToParquet(cleanTable, tempFile);
             byte[] bytes = Files.readAllBytes(tempFile.toPath());
             return ResponseEntity.ok()
                 .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/vnd.apache.parquet")

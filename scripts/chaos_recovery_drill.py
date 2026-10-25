@@ -118,7 +118,9 @@ def drill_sheets_recovery(sandbox: Path):
     """).fetchall()
     conn.close()
 
-    assert len(events) == 288, f"Expected 288 events, found {len(events)}!"
+    with open(SHEETS_CSV, "r", encoding="utf-8") as f:
+        expected_count = max(0, sum(1 for _ in f) - 1)
+    assert len(events) == expected_count, f"Expected {expected_count} events from CSV, found {len(events)}!"
     print(f"  ✓ Event count verified: Exactly {len(events)} transactions restored.")
 
     # 4. Hash-Chain Continuity Verification

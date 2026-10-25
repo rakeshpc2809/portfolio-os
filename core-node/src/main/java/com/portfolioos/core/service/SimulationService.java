@@ -124,11 +124,12 @@ public class SimulationService {
         simEvents.add(simEvent);
 
         FifoMatcher matcher = new FifoMatcher();
-        FifoMatcher.FifoResult simResult = matcher.processEvents(simEvents);
+        FifoMatcher.FifoResult simResult = matcher.processEvents(simEvents, cacheService.getJan2018FmvMap());
 
         BigDecimal ltcgEquity = BigDecimal.ZERO;
         BigDecimal stcgEquity = BigDecimal.ZERO;
         BigDecimal ltcgGoldInternational = BigDecimal.ZERO;
+        BigDecimal ltcgDebtLegacy = BigDecimal.ZERO;
         BigDecimal stcgSlabRateGain = BigDecimal.ZERO;
         BigDecimal totalGain = BigDecimal.ZERO;
 
@@ -161,8 +162,11 @@ public class SimulationService {
                             }
                         }
                         case DEBT_SPECIFIED_50AA -> {
-                            // Specified debt under Sec 50AA is always short term and taxed at SLAB_RATE
-                            stcgSlabRateGain = stcgSlabRateGain.add(gain);
+                            if (term == TaxTerm.LONG_TERM) {
+                                ltcgDebtLegacy = ltcgDebtLegacy.add(gain);
+                            } else {
+                                stcgSlabRateGain = stcgSlabRateGain.add(gain);
+                            }
                         }
                         default -> throw new IllegalStateException("Unhandled AssetCategory for tax simulation: " + category);
                     }
@@ -186,8 +190,9 @@ public class SimulationService {
         BigDecimal ltcgEquityTax = taxableLtcgEquity.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
         BigDecimal stcgEquityTax = stcgEquity.max(BigDecimal.ZERO).multiply(rules.equityStcgRate()).setScale(2, RoundingMode.HALF_UP);
         BigDecimal ltcgGoldTax = ltcgGoldInternational.max(BigDecimal.ZERO).multiply(rules.goldInternationalLtcgRate()).setScale(2, RoundingMode.HALF_UP);
-        
-        BigDecimal estimatedTax = ltcgEquityTax.add(stcgEquityTax).add(ltcgGoldTax);
+        BigDecimal ltcgDebtTax = ltcgDebtLegacy.max(BigDecimal.ZERO).multiply(rules.debtLegacyLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal slabTax = stcgSlabRateGain.max(BigDecimal.ZERO).multiply(rules.slabRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal estimatedTax = ltcgEquityTax.add(stcgEquityTax).add(ltcgGoldTax).add(ltcgDebtTax).add(slabTax);
 
         // Compute post-trade net worth & XIRR
         BigDecimal postInvested = BigDecimal.ZERO;
@@ -197,6 +202,9 @@ public class SimulationService {
             postInvested = postInvested.add(lot.remainingUnits().multiply(lot.costPerUnit()));
             BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "SimulationService.simulateTrade");
             postCurrentVal = postCurrentVal.add(lot.remainingUnits().multiply(nav));
+        }
+        if (type == EventType.DISPOSAL) {
+            postCurrentVal = postCurrentVal.add(grossAmount.subtract(estimatedTax).max(BigDecimal.ZERO));
         }
 
         List<CashFlow> cashFlows = new ArrayList<>();

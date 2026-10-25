@@ -1,5 +1,7 @@
 package com.portfolioos.core.dtos;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -9,6 +11,7 @@ import java.util.Map;
 
 public class RebalancePlanDtos {
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record GoldSilverContextDto(
         double goldSilverRatio,
         String signal,
@@ -36,6 +39,7 @@ public class RebalancePlanDtos {
         }
     }
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ReconstitutionContextDto(
         String nextReconstitutionDate,
         long daysToReconstitution,
@@ -43,6 +47,7 @@ public class RebalancePlanDtos {
         String executionRecommendation
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record BeerSpreadContextDto(
         double gsec10yYieldPct,
         double nifty50Pe,
@@ -74,6 +79,7 @@ public class RebalancePlanDtos {
         }
     }
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RebalancePlanDto(
         String planId,
         String generatedAt,
@@ -110,6 +116,7 @@ public class RebalancePlanDtos {
         }
     }
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RebalanceTriggerDto(
         String type, // DRAWDOWN, DRIFT, SCHEDULED, GOLD_FLOOR_BACKSTOP, MANUAL_LUMPSUM
         String legacyTriggerType, // INDUCED (for DRAWDOWN/DRIFT), SCHEDULED, MANUAL_LUMPSUM
@@ -140,6 +147,7 @@ public class RebalancePlanDtos {
         }
     }
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record DrawdownContextDto(
         double currentDrawdownPct,
         BigDecimal rollingHighValue,
@@ -150,6 +158,7 @@ public class RebalancePlanDtos {
         double nextTierDistancePct
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record SellSidePlanDto(
         BigDecimal totalRequired,
         List<WaterfallTierDto> waterfall,
@@ -245,6 +254,7 @@ public class RebalancePlanDtos {
         }
     }
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ConsolidatedSellOrderDto(
         String fundId,
         String fundName,
@@ -279,6 +289,7 @@ public class RebalancePlanDtos {
         }
     }
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record WaterfallTierDto(
         String tier,
         String tierLabel,
@@ -288,6 +299,7 @@ public class RebalancePlanDtos {
         List<RebalanceLotImpactDto> lots
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RebalanceLotImpactDto(
         String lotId,
         String fundId,
@@ -302,6 +314,7 @@ public class RebalancePlanDtos {
         LotTaxImpactDto taxImpact
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record LotTaxImpactDto(
         String regime, // SEC_112A_EXEMPT, SEC_112A_TAXABLE_12_5, SLAB_RATE_STCG
         BigDecimal exemptionApplied,
@@ -309,6 +322,7 @@ public class RebalancePlanDtos {
         BigDecimal taxAmount
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record TaxSummaryDto(
         BigDecimal totalRealizedGain,
         BigDecimal totalLtcgExempt,
@@ -342,12 +356,14 @@ public class RebalancePlanDtos {
         }
     }
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record BuySidePlanDto(
         BigDecimal totalToInvest,
         boolean isManualLumpsum,
         List<RebalanceBucketAllocationDto> buckets
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RebalanceBucketAllocationDto(
         String bucket,
         double targetPct,
@@ -357,6 +373,7 @@ public class RebalancePlanDtos {
         List<FundAllocationDto> fundBreakdown
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record FundAllocationDto(
         String fundId,
         String fundName,
@@ -371,12 +388,14 @@ public class RebalancePlanDtos {
         }
     }
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ReasoningNarrativeDto(
         String headline,
         List<String> paragraphs,
         String generatedFromTemplateVersion
     ) {}
 
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ManualLumpsumMetaDto(
         BigDecimal enteredAmount,
         String enteredDate,

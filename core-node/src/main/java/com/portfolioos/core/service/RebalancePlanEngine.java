@@ -21,7 +21,14 @@ import java.util.*;
 
 public class RebalancePlanEngine {
 
-    private static RebalanceTriggerEvaluator defaultEvaluator = new RebalanceTriggerEvaluator(new TriggerHistoryRepository());
+    private static volatile RebalanceTriggerEvaluator defaultEvaluator;
+
+    private static synchronized RebalanceTriggerEvaluator getDefaultEvaluator() {
+        if (defaultEvaluator == null) {
+            defaultEvaluator = new RebalanceTriggerEvaluator(new TriggerHistoryRepository());
+        }
+        return defaultEvaluator;
+    }
 
     public static void setTriggerEvaluator(RebalanceTriggerEvaluator evaluator) {
         if (evaluator != null) {
@@ -53,7 +60,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPlan(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, defaultEvaluator
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, getDefaultEvaluator()
         );
     }
 
@@ -72,7 +79,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPlan(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, defaultEvaluator
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, getDefaultEvaluator()
         );
     }
 
@@ -129,7 +136,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPreviewPlan(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, defaultEvaluator
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, false, getDefaultEvaluator()
         );
     }
 
@@ -148,7 +155,7 @@ public class RebalancePlanEngine {
     ) {
         return buildPreviewPlan(
             openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh,
-            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, defaultEvaluator
+            customTargets, fiscalYear, requestedTriggerType, manualLumpsumAmount, includeRebalance, getDefaultEvaluator()
         );
     }
 
@@ -230,7 +237,7 @@ public class RebalancePlanEngine {
 
         boolean isLumpsum = "MANUAL_LUMPSUM".equalsIgnoreCase(requestedTriggerType);
 
-        RebalanceTriggerEvaluator evaluator = (triggerEvaluator != null) ? triggerEvaluator : defaultEvaluator;
+        RebalanceTriggerEvaluator evaluator = (triggerEvaluator != null) ? triggerEvaluator : getDefaultEvaluator();
         RebalanceTriggerEvaluator.TriggerResolution resolution;
 
         if (isLumpsum || !recordExecution) {

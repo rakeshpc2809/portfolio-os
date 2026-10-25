@@ -773,7 +773,7 @@ fun HoldingsView(
     val alphaStr = benchmarkAnalytics?.let { "%+.2f%%".format(it.alpha) } ?: "--"
     val betaStr = benchmarkAnalytics?.let { "%.2f".format(it.beta) } ?: "--"
     val sharpeStr = benchmarkAnalytics?.let { "%.2f".format(it.sharpeRatio) } ?: "--"
-    val trackErrStr = benchmarkAnalytics?.let { "%.2f%%".format(it.trackingError * 100) } ?: "--"
+    val trackErrStr = benchmarkAnalytics?.let { "%.2f%%".format(it.trackingError) } ?: "--"
     val benchLabel = benchmarkAnalytics?.benchmarkName ?: "vs Nifty 50 TRI"
     var briefDismissed by remember { mutableStateOf(false) }
 

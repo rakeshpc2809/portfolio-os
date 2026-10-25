@@ -435,15 +435,15 @@ def main():
 
     expected_registry = extract_expected_numbers(snapshot)
 
+    b_map = {b["bucket"]: b for b in snapshot["buckets"]}
+    core_b = b_map.get("CORE", snapshot["buckets"][0])
+    sat_b = b_map.get("SATELLITE", snapshot["buckets"][1])
+    gs_b = b_map.get("GOLD_SILVER", snapshot["buckets"][2])
+    liq_b = b_map.get("LIQUID_BUFFER", snapshot["buckets"][3])
+
     # 2. Invoke phi4-mini or simulate adversarial failures
     if "--verify-only" in sys.argv:
         print("[*] MODE: --verify-only execution requested. Constructing canonical verified brief...")
-        b_map = {b["bucket"]: b for b in snapshot["buckets"]}
-        core_b = b_map.get("CORE", snapshot["buckets"][0])
-        sat_b = b_map.get("SATELLITE", snapshot["buckets"][1])
-        gs_b = b_map.get("GOLD_SILVER", snapshot["buckets"][2])
-        liq_b = b_map.get("LIQUID_BUFFER", snapshot["buckets"][3])
-
         narrative = (
             f"**Executive Health**:\n- Net worth: {snapshot['net_worth']['display']}\n- Day change: {snapshot['day_change']['display']}\n- Overall XIRR: {snapshot['overall_xirr']['display']}\n\n"
             f"**Rebalance Corridors**:\n- CORE: Target pct: {core_b['target_pct']['display']}, Drift pct: {core_b['drift_pct']['display']}\n"
@@ -460,12 +460,6 @@ def main():
         corrupted_ltcg = ltcg_str.replace("0", "", 1) if "0" in ltcg_str else "₹9,999.00"
         print(f"[*] TEST MODE: Simulating model dropping a digit in LTCG ({ltcg_str} -> {corrupted_ltcg})...")
         
-        b_map = {b["bucket"]: b for b in snapshot["buckets"]}
-        core_b = b_map.get("CORE", snapshot["buckets"][0])
-        sat_b = b_map.get("SATELLITE", snapshot["buckets"][1])
-        gs_b = b_map.get("GOLD_SILVER", snapshot["buckets"][2])
-        liq_b = b_map.get("LIQUID_BUFFER", snapshot["buckets"][3])
-
         narrative = (
             f"**Executive Health**:\n- Net worth: {snapshot['net_worth']['display']}\n- Day change: {snapshot['day_change']['display']}\n- Overall XIRR: {snapshot['overall_xirr']['display']}\n\n"
             f"**Rebalance Corridors**:\n- CORE: Target pct: {core_b['target_pct']['display']}, Drift pct: {core_b['drift_pct']['display']}\n"
@@ -477,12 +471,6 @@ def main():
         success = True
         telemetry = {"eval_tok_per_sec": 18.5}
     elif "--simulate-bucket-swap" in sys.argv:
-        b_map = {b["bucket"]: b for b in snapshot["buckets"]}
-        core_b = b_map.get("CORE", snapshot["buckets"][0])
-        sat_b = b_map.get("SATELLITE", snapshot["buckets"][1])
-        gs_b = b_map.get("GOLD_SILVER", snapshot["buckets"][2])
-        liq_b = b_map.get("LIQUID_BUFFER", snapshot["buckets"][3])
-
         print(f"[*] TEST MODE: Simulating model swapping CORE ({core_b['target_pct']['display']} / {core_b['drift_pct']['display']}) with SATELLITE ({sat_b['target_pct']['display']} / {sat_b['drift_pct']['display']})...")
         narrative = (
             f"**Executive Health**:\n- Net worth: {snapshot['net_worth']['display']}\n- Day change: {snapshot['day_change']['display']}\n- Overall XIRR: {snapshot['overall_xirr']['display']}\n\n"
@@ -492,6 +480,8 @@ def main():
             f"- LIQUID BUFFER: Target pct: {liq_b['target_pct']['display']}, Drift pct: {liq_b['drift_pct']['display']}\n\n"
             f"**Tax & Retirement**:\n- Remaining Section 112A LTCG allowance: {snapshot['ltcg_budget']['remaining_allowance']['display']}\n- FIRE progress: {snapshot['fire_tracker']['progress_pct']['display']}\n- FIRE runway: {snapshot['fire_tracker']['projected_years_to_fi']['display']}"
         )
+        success = True
+        telemetry = {"eval_tok_per_sec": 18.5}
     elif "--deterministic" in sys.argv or "--plain" in sys.argv:
         print("[*] Generating deterministic grounded executive brief...")
         narrative = (

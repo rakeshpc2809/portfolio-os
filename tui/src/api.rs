@@ -187,11 +187,16 @@ pub struct OverlapResponse {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct HrpAudit {
+    #[serde(default = "default_hrp_status")]
     pub status: String,
     pub trading_days: Option<i32>,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     pub allocations: Option<Vec<HrpAllocation>>,
+}
+
+fn default_hrp_status() -> String {
+    "SUCCESS".to_string()
 }
 
 #[derive(Debug, Deserialize, Clone)]

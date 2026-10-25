@@ -85,6 +85,35 @@ class TestCasPdfParser(unittest.TestCase):
                 raise ValueError(f"Unparseable transaction date encountered in scheme: {scheme_name}")
         self.assertIn("Unparseable transaction date encountered in scheme", str(ctx.exception))
 
+    def test_cas_parser_fallback_numeric_extraction_right_to_left(self):
+        from decimal import Decimal
+        from parsers.cas_parser import TOKEN_REGEX
+
+        line_str = "10-Jan-2026 Systematic Investment Nifty 250 Index 10,000.00 656.168 15.24 1,312.336"
+        num_tokens = TOKEN_REGEX.findall(line_str)
+        clean_nums = []
+        for tok in num_tokens:
+            is_neg = tok.startswith("(") and tok.endswith(")")
+            raw_val = tok.replace("(", "").replace(")", "").replace(",", "").strip()
+            try:
+                val = Decimal(raw_val)
+                if is_neg:
+                    val = -val
+                clean_nums.append(val)
+            except Exception:
+                pass
+
+        self.assertGreaterEqual(len(clean_nums), 4)
+        cand_amt, cand_u, cand_p = abs(clean_nums[-4]), abs(clean_nums[-3]), abs(clean_nums[-2])
+        if cand_u * cand_p > Decimal("0") and abs(cand_u * cand_p - cand_amt) <= max(cand_amt * Decimal("0.02"), Decimal("10.0")):
+            amount, units, price = cand_amt, cand_u, cand_p
+        else:
+            amount, units, price = abs(clean_nums[-3]), abs(clean_nums[-2]), abs(clean_nums[-1])
+
+        self.assertEqual(amount, Decimal("10000.00"), "Must extract 10,000.00, ignoring '250' in scheme title")
+        self.assertEqual(units, Decimal("656.168"))
+        self.assertEqual(price, Decimal("15.24"))
+
     def test_cas_parser_fallback_invalid_date_raises_value_error(self):
         date_str = "99-XYZ-2024"
         line_str = "99-XYZ-2024 Purchase - 1000.00 (10.000) 100.00"

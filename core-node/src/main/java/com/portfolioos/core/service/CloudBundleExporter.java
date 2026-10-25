@@ -30,11 +30,14 @@ public class CloudBundleExporter {
     public CloudBundleExporter(
         PortfolioValuationService valuationService,
         ObjectMapper objectMapper,
-        @Value("${portfolio.cloud.sync-secret-key:dev_secret_key_123}") String syncSecretKey
+        @Value("${portfolio.cloud.sync-secret-key:${CLOUD_SYNC_SECRET_KEY:${API_AUTH_TOKEN:}}}") String syncSecretKey
     ) {
         this.valuationService = valuationService;
         this.objectMapper = objectMapper.copy().setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
-        this.syncSecretKey = syncSecretKey;
+        if (syncSecretKey == null || syncSecretKey.isBlank()) {
+            throw new IllegalStateException("SECURITY CRITICAL: portfolio.cloud.sync-secret-key or API_AUTH_TOKEN must be configured for CloudBundleExporter.");
+        }
+        this.syncSecretKey = syncSecretKey.trim();
     }
 
     /**

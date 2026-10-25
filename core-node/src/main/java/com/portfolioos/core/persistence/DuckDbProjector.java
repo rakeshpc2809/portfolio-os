@@ -1,5 +1,6 @@
 package com.portfolioos.core.persistence;
 
+import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.TaxEvent;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -152,16 +153,27 @@ public class DuckDbProjector implements AutoCloseable {
                 stmt.execute("ALTER TABLE fund_holdings ADD COLUMN IF NOT EXISTS source_type VARCHAR DEFAULT 'NSE_INDEX_CONSTITUENTS'");
             } catch (SQLException ignored) {}
 
+            // Create open_lots table synced from post-FIFO remaining lots for DuckDB-Wasm / Parquet export
+            try (Statement checkStmt = conn.createStatement();
+                 ResultSet rs = checkStmt.executeQuery("SELECT table_type FROM information_schema.tables WHERE table_name = 'open_lots'")) {
+                if (rs.next() && "VIEW".equalsIgnoreCase(rs.getString(1))) {
+                    try (Statement dropStmt = conn.createStatement()) {
+                        dropStmt.execute("DROP VIEW open_lots");
+                    }
+                }
+            } catch (SQLException ignored) {}
             stmt.execute(
-                "CREATE OR REPLACE VIEW open_lots AS " +
-                "SELECT id, asset_id, asset_name, isin, event_date, " +
-                "TRY_CAST(units AS DOUBLE) AS units, " +
-                "TRY_CAST(price_per_unit AS DOUBLE) AS price_per_unit, " +
-                "TRY_CAST(gross_amount AS DOUBLE) AS gross_amount " +
-                "FROM projected_events " +
-                "WHERE event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS')"
+                "CREATE TABLE IF NOT EXISTS open_lots (" +
+                "  id VARCHAR, " +
+                "  asset_id VARCHAR, " +
+                "  asset_name VARCHAR, " +
+                "  isin VARCHAR, " +
+                "  event_date VARCHAR, " +
+                "  units DOUBLE, " +
+                "  price_per_unit DOUBLE, " +
+                "  gross_amount DOUBLE" +
+                ")"
             );
-
             seedStandardConstituents();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize DuckDB schema", e);
@@ -226,6 +238,41 @@ public class DuckDbProjector implements AutoCloseable {
         }
     }
 
+    public synchronized void syncOpenLots(List<Lot> openLots) {
+        String deleteSql = "DELETE FROM open_lots";
+        String insertSql = "INSERT INTO open_lots (id, asset_id, asset_name, isin, event_date, units, price_per_unit, gross_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try (Statement delStmt = conn.createStatement();
+                 PreparedStatement insStmt = conn.prepareStatement(insertSql)) {
+                delStmt.execute(deleteSql);
+                if (openLots != null) {
+                    for (Lot lot : openLots) {
+                        if (lot.remainingUnits().compareTo(BigDecimal.ZERO) <= 0) continue;
+                        insStmt.setString(1, lot.lotId());
+                        insStmt.setString(2, lot.assetId());
+                        insStmt.setString(3, lot.assetName());
+                        insStmt.setString(4, lot.assetId());
+                        insStmt.setString(5, lot.acquisitionDate() != null ? lot.acquisitionDate().toString() : "");
+                        insStmt.setDouble(6, lot.remainingUnits().doubleValue());
+                        insStmt.setDouble(7, lot.costPerUnit().doubleValue());
+                        insStmt.setDouble(8, lot.totalCostBasis().doubleValue());
+                        insStmt.addBatch();
+                    }
+                    insStmt.executeBatch();
+                }
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to sync open_lots to DuckDB", e);
+        }
+    }
+
     public void saveBenchmarkLevels(String benchmarkId, Map<String, Double> dateToLevel) {
         if (dateToLevel == null || dateToLevel.isEmpty()) return;
         String sql = "INSERT OR REPLACE INTO benchmark_history (benchmark_id, nav_date, level) VALUES (?, ?, ?)";
@@ -284,7 +331,11 @@ public class DuckDbProjector implements AutoCloseable {
                 ),
                 unit_changes AS (
                     SELECT asset_id, event_date,
-                           SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(units AS DOUBLE) ELSE -CAST(units AS DOUBLE) END) AS change_units
+                           SUM(CASE 
+                               WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS', 'DIVIDEND_REINVEST') THEN CAST(units AS DOUBLE) 
+                               WHEN event_type IN ('DISPOSAL', 'SGB_MATURITY') THEN -CAST(units AS DOUBLE) 
+                               ELSE 0.0 
+                           END) AS change_units
                     FROM projected_events
                     GROUP BY asset_id, event_date
                 ),
@@ -803,8 +854,8 @@ public class DuckDbProjector implements AutoCloseable {
                         d.nav_date,
                         pe.asset_id,
                         SUM(CASE 
-                                WHEN pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT') THEN CAST(pe.units AS DOUBLE)
-                                WHEN pe.event_type = 'DISPOSAL' THEN -CAST(pe.units AS DOUBLE)
+                                WHEN pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS', 'DIVIDEND_REINVEST') THEN CAST(pe.units AS DOUBLE)
+                                WHEN pe.event_type IN ('DISPOSAL', 'SGB_MATURITY') THEN -CAST(pe.units AS DOUBLE)
                                 ELSE 0.0 
                             END) AS active_units,
                         (
@@ -832,8 +883,8 @@ public class DuckDbProjector implements AutoCloseable {
                     SELECT 
                         d.nav_date,
                         SUM(CASE 
-                                WHEN pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT') THEN CAST(pe.gross_amount AS DOUBLE)
-                                WHEN pe.event_type = 'DISPOSAL' THEN -CAST(pe.gross_amount AS DOUBLE)
+                                WHEN pe.event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'DIVIDEND_REINVEST') THEN CAST(pe.gross_amount AS DOUBLE)
+                                WHEN pe.event_type IN ('DISPOSAL', 'SGB_MATURITY') THEN -CAST(pe.gross_amount AS DOUBLE)
                                 ELSE 0.0 
                             END) AS total_invested
                     FROM daily_dates d
@@ -883,7 +934,11 @@ public class DuckDbProjector implements AutoCloseable {
                 unit_changes AS (
                     SELECT asset_id,
                            event_date,
-                           SUM(CASE WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS') THEN CAST(units AS DOUBLE) ELSE -CAST(units AS DOUBLE) END) AS change_units
+                           SUM(CASE 
+                               WHEN event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS', 'DIVIDEND_REINVEST') THEN CAST(units AS DOUBLE) 
+                               WHEN event_type IN ('DISPOSAL', 'SGB_MATURITY') THEN -CAST(units AS DOUBLE) 
+                               ELSE 0.0 
+                           END) AS change_units
                     FROM projected_events
                     GROUP BY asset_id, event_date
                 ),

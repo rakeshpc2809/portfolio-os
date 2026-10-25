@@ -157,6 +157,32 @@ def main() -> int:
             sh = gc.open_by_key(sheet_id)
             print(f"[INFO] Connected to Google Sheet: '{sh.title}'")
 
+            # 1a. Sync 'holdings_snapshot' tab
+            holdings = snapshot.get("holdings", [])
+            if holdings:
+                try:
+                    ws_holdings = sh.worksheet("holdings_snapshot")
+                except gspread.exceptions.WorksheetNotFound:
+                    ws_holdings = sh.add_worksheet(title="holdings_snapshot", rows=len(holdings) + 20, cols=12)
+                h_fields = [
+                    "isin", "fund_name", "asset_bucket", "total_units", "avg_cost",
+                    "current_nav", "current_value", "invested_value", "exit_load_free_units"
+                ]
+                h_rows = [h_fields] + [[str(h.get(c, "") or "") for c in h_fields] for h in holdings]
+                ws_holdings.clear()
+                ws_holdings.update(h_rows)
+
+            # 1b. Sync 'system_state' tab
+            sync_info = snapshot.get("sync_info", {})
+            if sync_info:
+                try:
+                    ws_state = sh.worksheet("system_state")
+                except gspread.exceptions.WorksheetNotFound:
+                    ws_state = sh.add_worksheet(title="system_state", rows=len(sync_info) + 20, cols=4)
+                s_rows = [["key", "value"]] + [[str(k), str(v)] for k, v in sync_info.items()]
+                ws_state.clear()
+                ws_state.update(s_rows)
+
             # 1. Sync 'ledger_events' tab (Append-only zero-PII disaster recovery log)
             if events:
                 try:

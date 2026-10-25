@@ -19,7 +19,7 @@ public class RebalanceController {
     }
 
     @org.springframework.beans.factory.annotation.Autowired
-    public RebalanceController(PortfolioValuationService valuationService, @org.springframework.beans.factory.annotation.Autowired(required = false) SyncController syncController) {
+    public RebalanceController(PortfolioValuationService valuationService, SyncController syncController) {
         this.valuationService = valuationService;
         this.syncController = syncController;
     }
@@ -32,6 +32,9 @@ public class RebalanceController {
     public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> simulateLumpsum(
         @RequestBody java.util.Map<String, Object> req
     ) {
+        if (syncController == null) {
+            throw new IllegalStateException("SyncController dependency is not initialized.");
+        }
         return syncController.simulateLumpsum(req);
     }
 

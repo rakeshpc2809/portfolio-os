@@ -424,16 +424,23 @@ def poll_gmail_via_imap(
                                 )
                                 return results, fetch_rta_allotment_headers(mail)
                             except requests.RequestException as req_err:
-                                logger.warning(
-                                    f"Core Node statement ingestion rejected '{decoded_filename}' (UID: {uid_str}): {req_err}. "
-                                    f"Marking as processed to avoid repeated failed ingestion attempts."
-                                )
-                                conn.execute(
-                                    "INSERT INTO ingested_cas_emails (message_id, received_at, processed_at, file_name) VALUES (?, ?, ?, ?)",
-                                    (clean_msg_id, received_iso, now_iso, f"SKIPPED_UNSUPPORTED_{decoded_filename}")
-                                )
-                                conn.commit()
-                                pdf_found = True
+                                status_code = getattr(getattr(req_err, "response", None), "status_code", None)
+                                if status_code in (400, 415):
+                                    logger.warning(
+                                        f"Core Node rejected unsupported attachment '{decoded_filename}' (HTTP {status_code}, UID: {uid_str}): {req_err}. "
+                                        f"Marking as skipped."
+                                    )
+                                    conn.execute(
+                                        "INSERT INTO ingested_cas_emails (message_id, received_at, processed_at, file_name) VALUES (?, ?, ?, ?)",
+                                        (clean_msg_id, received_iso, now_iso, f"SKIPPED_UNSUPPORTED_{decoded_filename}")
+                                    )
+                                    conn.commit()
+                                    pdf_found = True
+                                else:
+                                    logger.error(
+                                        f"Core Node statement ingestion failed for '{decoded_filename}' (HTTP {status_code}, UID: {uid_str}): {req_err}. "
+                                        f"Will retry on next polling cycle."
+                                    )
                             finally:
                                 secure_shred(tmp_target)
 
@@ -557,4 +564,4 @@ if __name__ == "__main__":
                 json.dump({"error": str(e), "timestamp": datetime.now(timezone.utc).isoformat()}, f)
         except Exception:
             pass
-        sys.exit(0)
+        sys.exit(1)

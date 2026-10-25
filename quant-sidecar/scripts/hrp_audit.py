@@ -132,7 +132,10 @@ json_path = repo_root / "data" / "hrp_audit.json"
 json_path.parent.mkdir(parents=True, exist_ok=True)
 
 audit_payload = {
+    "status": "SUCCESS" if n_obs >= 252 else "PROVISIONAL",
     "audit_as_of": max_date,
+    "start_date": min_date,
+    "end_date": max_date,
     "alignment_window": {
         "start": min_date,
         "end": max_date,

@@ -143,13 +143,13 @@ cockpit-dev:
 # Check and lint all frontend JS and Python code
 lint:
     biome check core-node/src/main/resources/static/
-    ruff check quant-sidecar/ tui/
+    ruff check quant-sidecar/ scripts/
 
 # Auto-format and fix all frontend JS and Python code
 format:
     biome format --write core-node/src/main/resources/static/
-    ruff format quant-sidecar/ tui/
-    ruff check quant-sidecar/ tui/ --fix
+    ruff format quant-sidecar/ scripts/
+    ruff check quant-sidecar/ scripts/ --fix
 
 # -------------------------------------------------------------
 # Full Stack Systemd Service Controls (systemctl --user)

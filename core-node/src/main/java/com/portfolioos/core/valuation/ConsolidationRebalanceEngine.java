@@ -93,7 +93,7 @@ public class ConsolidationRebalanceEngine {
 
             for (Lot lot : lots) {
                 BigDecimal units = lot.remainingUnits();
-                BigDecimal cost = lot.totalCostBasis();
+                BigDecimal cost = lot.effectiveTotalCostBasis(nav);
                 BigDecimal lotVal = units.multiply(nav);
                 BigDecimal lotGain = lotVal.subtract(cost);
 

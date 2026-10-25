@@ -58,9 +58,11 @@ object LocalTradeSimulator {
             .sortedBy { it.buyDate }
 
         var remainingUnitsToSell = request.units
+        var actualUnitsSold = 0.0
         var totalCostBasisSold = 0.0
         var ltcgEquity = 0.0
         var stcgEquity = 0.0
+        var ltcgNonEquity = 0.0
         var slabRateGain = 0.0
 
         for (lot in matchingLots) {
@@ -73,6 +75,7 @@ object LocalTradeSimulator {
 
             totalCostBasisSold += costForSlice
             remainingUnitsToSell -= unitsFromLot
+            actualUnitsSold += unitsFromLot
 
             // Check if lot is long-term as of evaluationDate
             val buyDate = try {
@@ -81,26 +84,33 @@ object LocalTradeSimulator {
                 evaluationDate
             }
             val holdingDays = max(0L, ChronoUnit.DAYS.between(buyDate, evaluationDate))
-            val isDebt = lot.taxClassification.contains("DEBT", ignoreCase = true) ||
-                    lot.taxClassification.contains("UNLISTED", ignoreCase = true)
-            val isLongTerm = if (isDebt) holdingDays >= 730L else holdingDays >= 365L
+            val upperClass = lot.taxClassification.uppercase()
+            val isSpecifiedDebt = upperClass.contains("DEBT") || upperClass.contains("50AA")
+            val isGoldOrIntl = upperClass.contains("GOLD") || upperClass.contains("SILVER") ||
+                    upperClass.contains("INTERNATIONAL") || upperClass.contains("UNLISTED")
 
-            if (isDebt) {
+            if (isSpecifiedDebt) {
                 slabRateGain += gainForSlice
-            } else if (isLongTerm) {
+            } else if (isGoldOrIntl) {
+                if (holdingDays >= 730L) {
+                    ltcgNonEquity += gainForSlice
+                } else {
+                    slabRateGain += gainForSlice
+                }
+            } else if (holdingDays >= 365L) {
                 ltcgEquity += gainForSlice
             } else {
                 stcgEquity += gainForSlice
             }
         }
 
-        val grossProceeds = request.units * request.pricePerUnit
-        val grossGain = (ltcgEquity + stcgEquity + slabRateGain)
+        val grossProceeds = actualUnitsSold * request.pricePerUnit
+        val grossGain = (ltcgEquity + stcgEquity + ltcgNonEquity + slabRateGain)
 
         // Tax calculation with Section 112A ₹1.25L exemption
         val exemptionApplied = if (ltcgEquity > 0.0) min(ltcgEquity, LTCG_EXEMPTION_LIMIT) else 0.0
         val taxableLtcg = max(0.0, ltcgEquity - exemptionApplied)
-        val ltcgTax = taxableLtcg * LTCG_EQUITY_TAX_RATE
+        val ltcgTax = (taxableLtcg + max(0.0, ltcgNonEquity)) * LTCG_EQUITY_TAX_RATE
 
         val taxableStcg = max(0.0, stcgEquity)
         val stcgTax = taxableStcg * STCG_EQUITY_TAX_RATE
@@ -111,14 +121,14 @@ object LocalTradeSimulator {
         val baseTax = ltcgTax + stcgTax + slabTax
         val totalTaxWithCess = baseTax * CESS_MULTIPLIER
 
-        val postNetWorth = max(0.0, currentNetWorth - grossProceeds)
+        val postNetWorth = max(0.0, currentNetWorth - totalTaxWithCess)
         val postInvested = max(0.0, currentInvested - totalCostBasisSold)
 
         return TradeSimulationResultDto(
             isin = request.isin,
             schemeName = request.schemeName,
             tradeType = "DISPOSAL",
-            units = request.units,
+            units = actualUnitsSold,
             pricePerUnit = request.pricePerUnit,
             grossTradeAmount = grossProceeds,
             grossCapitalGain = grossGain,

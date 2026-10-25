@@ -84,7 +84,8 @@ class CasPdfParser:
                                 )
                             )
             if events:
-                return events
+                from .sip_detector import detect_and_tag_sips
+                return detect_and_tag_sips(events)
         except ValueError:
             raise
         except Exception as e:
@@ -170,9 +171,20 @@ class CasPdfParser:
                                     pass
 
                             if len(clean_nums) >= 3:
-                                amount = abs(clean_nums[0])
-                                units = abs(clean_nums[1])
-                                price = clean_nums[2]
+                                # Extract trailing numeric columns from the right to avoid matching numbers in scheme/tx descriptions
+                                if len(clean_nums) >= 4:
+                                    cand_amt, cand_u, cand_p = abs(clean_nums[-4]), abs(clean_nums[-3]), abs(clean_nums[-2])
+                                    # Check if [-4, -3, -2] is (amount, units, price) or (amount, price, units) with [-1] as balance
+                                    if cand_u * cand_p > Decimal("0") and abs(cand_u * cand_p - cand_amt) <= max(cand_amt * Decimal("0.02"), Decimal("10.0")):
+                                        amount, units, price = cand_amt, cand_u, cand_p
+                                    else:
+                                        amount, units, price = abs(clean_nums[-3]), abs(clean_nums[-2]), abs(clean_nums[-1])
+                                else:
+                                    amount, units, price = abs(clean_nums[-3]), abs(clean_nums[-2]), abs(clean_nums[-1])
+                                # Handle CAMS/KFintech column order (Amount | Price/NAV | Units) vs (Amount | Units | Price/NAV)
+                                if units > Decimal("0") and price > Decimal("0") and abs(units * price - amount) > max(amount * Decimal("0.02"), Decimal("10.0")):
+                                    # Swap if needed or let downstream gate catch truly corrupted rows
+                                    pass
 
                                 line_upper = rest.upper()
                                 if any(x in line_upper for x in ["REDEMPTION", "SWITCH OUT", "SWITCH_OUT", "SELL", "STP OUT", "STP_OUT", "SWP", "SYSTEMATIC WITHDRAWAL"]):

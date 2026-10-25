@@ -98,6 +98,14 @@ export interface RebalancePlanDto {
     trigger_type: string;
     reason_code: string;
     reason_label: string;
+    drawdown_context?: {
+      current_drawdown_pct?: number;
+      active_tier?: number;
+      deployment_rungs_pct?: number;
+      arbitrage_total_value?: number | string;
+      arbitrage_exit_load_free_value?: number | string;
+      recommended_deployment_amount?: number | string;
+    };
   };
   summary?: {
     net_worth: number;
@@ -455,12 +463,29 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
       }))
     : normalizedBuckets;
 
+  const rawPlan = snapshotRes?.rebalance_plan || {};
+  const rawTaxSummary = rawPlan?.sell_side?.tax_summary || rawPlan?.sellSide?.taxSummary || {};
+  const rawTrigger = rawPlan?.trigger || {};
   const rebalancePlan: RebalancePlanDto = {
-    ...(snapshotRes?.rebalance_plan || {}),
-    orders: snapshotRes?.rebalance_plan?.orders || snapshotRes?.rebalance_plan?.sell_side?.orders || [],
+    ...rawPlan,
+    trigger: {
+      ...rawTrigger,
+      trigger_type: rawTrigger.trigger_type || rawTrigger.type || 'SCHEDULED',
+      reason_code: rawTrigger.reason_code || rawTrigger.reasonCode || 'IN_BAND',
+      reason_label: rawTrigger.reason_label || rawTrigger.reasonLabel || 'All Buckets Within Target Bands'
+    },
+    summary: {
+      net_worth: currentNetWorth,
+      total_invested: totalInvested,
+      ltcg_exempt_gain: Number(rawTaxSummary.total_ltcg_exempt ?? rawTaxSummary.totalLtcgExempt ?? 0),
+      stcg_taxable_gain: Number(rawTaxSummary.total_stcg_taxable ?? rawTaxSummary.totalStcgTaxable ?? 0),
+      projected_tax: Number(rawTaxSummary.total_tax_estimate ?? rawTaxSummary.totalTaxEstimate ?? 0),
+    },
+    orders: rawPlan.orders || rawPlan?.sell_side?.orders || rawPlan?.sellSide?.orders || [],
     buckets: normalizedBuckets,
-    buy_side: snapshotRes?.rebalance_plan?.buy_side ? {
-      ...snapshotRes.rebalance_plan.buy_side,
+    lumpsum_allocations: rawPlan.lumpsum_allocations || rawPlan?.buy_side?.buckets || rawPlan?.buySide?.buckets || [],
+    buy_side: rawPlan?.buy_side ? {
+      ...rawPlan.buy_side,
       buckets: normalizedBuyBuckets
     } : undefined
   };
@@ -511,17 +536,6 @@ export async function fetchParquetTable(table: string = 'fund_holdings'): Promis
   const resp = await fetch(`/api/v1/sync/parquet?table=${encodeURIComponent(table)}`, { headers });
   if (!resp.ok) {
     throw new Error(`Failed to fetch parquet table ${table}: ${resp.statusText}`);
-  }
-  return resp.arrayBuffer();
-}
-
-export async function fetchParquetBundle(): Promise<ArrayBuffer> {
-  const token = getAuthToken();
-  const headers = new Headers();
-  if (token) headers.set('X-Api-Auth-Token', token);
-  const resp = await fetch('/api/v1/sync/parquet-bundle', { headers });
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch parquet bundle: ${resp.statusText}`);
   }
   return resp.arrayBuffer();
 }

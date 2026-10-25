@@ -128,4 +128,30 @@ class SyncControllerTest {
         assertFalse(content.contains("buildPreviewPlan(\n            openLots, matchedLots, navMap, LocalDate.now(), totalCurrentVal, rollingHigh,"),
             "Site 2 must not pass rollingHigh into benchmark parameter slot");
     }
+
+    @Test
+    void testDisallowedParquetTableReturns400BadRequest() {
+        ResponseEntity<byte[]> response = syncController.getParquetTable("sqlite_master");
+        assertEquals(400, response.getStatusCode().value(), "Arbitrary table queries like sqlite_master must return HTTP 400 Bad Request");
+    }
+
+    @Test
+    void testRefreshNavsReturns200Ok() {
+        ResponseEntity<Map<String, Object>> response = syncController.refreshNavs();
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertEquals("REFRESHED", response.getBody().get("status"));
+        assertTrue(response.getBody().containsKey("refreshed_at"));
+    }
+
+    @Test
+    void testSnapshotTaxSummaryContract() {
+        ResponseEntity<UnidirectionalSyncSnapshot> response = syncController.getSnapshot("2026-27", null);
+        assertNotNull(response);
+        assertNotNull(response.getBody());
+        RebalancePlanDto plan = response.getBody().rebalancePlan();
+        assertNotNull(plan);
+        assertNotNull(plan.sellSide());
+        assertNotNull(plan.sellSide().taxSummary(), "sell_side.tax_summary must be present in rebalance plan");
+    }
 }

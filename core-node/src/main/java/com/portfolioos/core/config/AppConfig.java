@@ -2,8 +2,11 @@ package com.portfolioos.core.config;
 
 import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.persistence.SqliteEventStore;
+import com.portfolioos.core.persistence.TriggerHistoryRepository;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.rpc.QuantSidecarClient;
+import com.portfolioos.core.service.RebalancePlanEngine;
+import com.portfolioos.core.service.RebalanceTriggerEvaluator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,6 +19,20 @@ public class AppConfig {
         @Value("${sqlite.path:data/tax_ledger.db}") String dbPath
     ) {
         return new SqliteEventStore(DbPathResolver.resolveDatabasePath(dbPath, "SQLITE_PATH"));
+    }
+
+    @Bean(destroyMethod = "close")
+    public TriggerHistoryRepository triggerHistoryRepository(
+        @Value("${sqlite.path:data/tax_ledger.db}") String dbPath
+    ) {
+        return new TriggerHistoryRepository(DbPathResolver.resolveDatabasePath(dbPath, "SQLITE_PATH"));
+    }
+
+    @Bean
+    public RebalanceTriggerEvaluator rebalanceTriggerEvaluator(TriggerHistoryRepository repository) {
+        RebalanceTriggerEvaluator evaluator = new RebalanceTriggerEvaluator(repository);
+        RebalancePlanEngine.setTriggerEvaluator(evaluator);
+        return evaluator;
     }
 
     @Bean
