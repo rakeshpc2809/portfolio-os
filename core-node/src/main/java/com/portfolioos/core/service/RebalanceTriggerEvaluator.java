@@ -235,15 +235,21 @@ public class RebalanceTriggerEvaluator {
         }
 
         // Priority 4: GOLD_FLOOR_BACKSTOP (Buy-only, exempt from 30-day sell cooldown)
-        if ("NONE".equals(triggerType) && !sellTriggerEvaluated) {
+        if ("NONE".equals(triggerType)) {
             double goldUnderweightPts = goldTargetWeightPct - goldCurrentWeightPct;
             if (goldIdleActive && goldUnderweightPts >= PortfolioConstants.GOLD_FLOOR_UNDERWEIGHT_PTS) {
                 triggerType = "GOLD_FLOOR_BACKSTOP";
-                reasonCode = "GOLD_FLOOR_BACKSTOP_TRIGGERED";
-                reasonLabel = String.format("Gold/Silver Floor Backstop Triggered (Idle %d months, %.1f pts underweight)",
-                    monthsSinceLastGoldBuy > 9000 ? 6 : monthsSinceLastGoldBuy, goldUnderweightPts);
                 hasSellSide = false;
                 hasGoldBuy = true;
+                if (!sellTriggerEvaluated) {
+                    reasonCode = "GOLD_FLOOR_BACKSTOP_TRIGGERED";
+                    reasonLabel = String.format("Gold/Silver Floor Backstop Triggered (Idle %d months, %.1f pts underweight)",
+                        monthsSinceLastGoldBuy > 9000 ? 6 : monthsSinceLastGoldBuy, goldUnderweightPts);
+                } else {
+                    // Preserve sell cooldown reasonCode (e.g. DRIFT_BLOCKED_BY_COOLDOWN) while noting the backstop
+                    reasonLabel = String.format("%s; Buy-only Gold/Silver Floor Backstop Triggered (Idle %d months, %.1f pts underweight)",
+                        reasonLabel, monthsSinceLastGoldBuy > 9000 ? 6 : monthsSinceLastGoldBuy, goldUnderweightPts);
+                }
             }
         }
 

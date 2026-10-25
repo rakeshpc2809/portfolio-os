@@ -502,6 +502,8 @@ public class RebalancePlanEngine {
             List<RebalanceLotImpactDto> soldCoreLots = new ArrayList<>();
             soldCoreAmount = BigDecimal.ZERO;
 
+            BigDecimal dtoHeadroom = headroomBefore;
+
             if (!allSteps.isEmpty()) {
                 for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep step : allSteps) {
                     Lot origLot = null;
@@ -526,9 +528,9 @@ public class RebalancePlanEngine {
                     BigDecimal taxable = BigDecimal.ZERO;
 
                     if (isLongTerm) {
-                        exempt = step.realizedGain().min(currentHeadroom);
+                        exempt = step.realizedGain().min(dtoHeadroom);
                         taxable = step.realizedGain().subtract(exempt).max(BigDecimal.ZERO);
-                        currentHeadroom = currentHeadroom.subtract(exempt).max(BigDecimal.ZERO);
+                        dtoHeadroom = dtoHeadroom.subtract(exempt).max(BigDecimal.ZERO);
                         totalLtcgExempt = totalLtcgExempt.add(exempt);
                     } else {
                         taxable = step.realizedGain();

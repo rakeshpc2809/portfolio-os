@@ -941,5 +941,54 @@ class RebalancePlanEngineTest {
         assertTrue(coreBuyBucket.amountAllocated().compareTo(BigDecimal.ZERO) > 0,
             "Fresh lumpsum paycheck must flow straight into cheap Equity Core during a crash");
     }
+
+    @Test
+    @DisplayName("F4 Test: Exemption headroom must NOT be double-decremented across steps and DTO tax regimes")
+    void testExemptionHeadroomNotDoubleDecrementedAcrossStepsAndDtos() {
+        BigDecimal nav = new BigDecimal("100.00");
+        LocalDate today = LocalDate.of(2026, 8, 26);
+
+        // Core fund lots: 3 lots with 25,000 gain each (total gain = 75,000)
+        // Headroom before rebalance = 125,000 INR
+        // Total LTCG gain (75k) is well within 125k headroom, so all 3 lots MUST be SEC_112A_EXEMPT with 0 tax!
+        Lot lot1 = new Lot("lot-1", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(800), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("50.00"), new BigDecimal("25000.00"), false, null);
+        Lot lot2 = new Lot("lot-2", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(800), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("50.00"), new BigDecimal("25000.00"), false, null);
+        Lot lot3 = new Lot("lot-3", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(800), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("50.00"), new BigDecimal("25000.00"), false, null);
+
+        List<BucketEngine.BucketTarget> targets = List.of(
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("50.00"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("50.00"), new BigDecimal("5.00"))
+        );
+
+        Map<String, BigDecimal> navMap = Map.of("INF109KC12U0", nav);
+        BigDecimal corpus = new BigDecimal("300000.00");
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            List.of(lot1, lot2, lot3), Collections.emptyList(), navMap, today,
+            corpus, corpus, targets, "2026-27", null, null, false, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.sellSide());
+        assertNotNull(plan.sellSide().taxSummary());
+        assertEquals(0, BigDecimal.ZERO.compareTo(plan.sellSide().taxSummary().totalTaxEstimate()),
+            "Total tax estimate must be exactly zero when all LTCG gains are within Section 112A headroom");
+
+        List<RebalanceLotImpactDto> lotImpacts = plan.sellSide().waterfall().stream()
+            .flatMap(t -> t.lots().stream())
+            .toList();
+        assertEquals(2, lotImpacts.size(), "Both trimmed lots must be present in lot impacts");
+
+        for (RebalanceLotImpactDto impact : lotImpacts) {
+            assertNotNull(impact.taxImpact());
+            assertEquals("SEC_112A_EXEMPT", impact.taxImpact().regime(),
+                "Lot impact tax regime must be SEC_112A_EXEMPT when gains are within headroom");
+            assertEquals(0, BigDecimal.ZERO.compareTo(impact.taxImpact().taxAmount()),
+                "Tax amount must be 0 for exempt lots; headroom must not be double-decremented!");
+        }
+    }
 }
 

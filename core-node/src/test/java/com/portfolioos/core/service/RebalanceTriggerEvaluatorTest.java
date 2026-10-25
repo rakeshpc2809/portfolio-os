@@ -215,4 +215,49 @@ class RebalanceTriggerEvaluatorTest {
         assertTrue(ex.getMessage().contains("CRITICAL VALUATION ERROR"));
         assertTrue(ex.getMessage().contains("INF109KC12U0"));
     }
+
+    @Test
+    @DisplayName("F2 Test: GOLD_FLOOR_BACKSTOP fires when drift sell trigger is blocked by active 30-day sell cooldown")
+    void testGoldFloorBackstopFiresEvenWhenDriftBlockedByCooldown() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        LocalDate lastSellDate = today.minusDays(10); // 10 days ago -> 30-day sell cooldown is ACTIVE!
+
+        // Record prior sell to activate sell cooldown
+        repository.recordExecution("plan-prior-sell", "DRIFT", "CORE_DRIFT_TRIM", lastSellDate.atStartOfDay(), true, false, "{}");
+
+        // Portfolio setup with:
+        // 1. Satellite bucket severely drifted (35% target + 5% band -> actual 45% -> DRIFT trigger)
+        // 2. Gold/Silver bucket at 5% (Target = 10% under v2.3 rules -> 5 pts underweight >= 2 pt threshold)
+        // 3. No Gold purchases recorded (idle >= 6 months)
+        Lot satLot = new Lot("lot-sat", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund",
+            today.minusDays(400), new BigDecimal("4500"), new BigDecimal("4500"), new BigDecimal("100.00"), new BigDecimal("450000.00"), false, null);
+        Lot coreLot = new Lot("lot-core", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(400), new BigDecimal("4500"), new BigDecimal("4500"), new BigDecimal("100.00"), new BigDecimal("450000.00"), false, null);
+        Lot goldLot = new Lot("lot-gold", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds",
+            today.minusDays(400), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("100.00"), new BigDecimal("50000.00"), false, null);
+        Lot arbLot = new Lot("lot-arb", "INF205K01KR8", "Invesco India Arbitrage Fund",
+            today.minusDays(400), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("100.00"), new BigDecimal("50000.00"), false, null);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC13X2", new BigDecimal("100.00"),
+            "INF109KC12U0", new BigDecimal("100.00"),
+            "INF247L01BM8", new BigDecimal("100.00"),
+            "INF205K01KR8", new BigDecimal("100.00")
+        );
+
+        RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
+            List.of(satLot, coreLot, goldLot, arbLot), navMap, new BigDecimal("1000.00"), new BigDecimal("1000.00"), null, null, today
+        );
+
+        assertEquals("GOLD_FLOOR_BACKSTOP", res.triggerType(),
+            "Buy-only Gold Floor Backstop must fire when sell drift is suppressed by cooldown (Invariant 4: backstop is exempt from sell cooldown)");
+        assertEquals("DRIFT_BLOCKED_BY_COOLDOWN", res.reasonCode(),
+            "Suppressed drift reasonCode must be retained so sell audit trail is not erased");
+        assertTrue(res.reasonLabel().contains("Buy-only Gold/Silver Floor Backstop Triggered"),
+            "Label must mention the backstop firing");
+        assertTrue(res.reasonLabel().contains("Bucket drift detected"),
+            "Label must mention the suppressed drift");
+        assertFalse(res.hasSellSide());
+        assertTrue(res.hasGoldBuy());
+    }
 }
