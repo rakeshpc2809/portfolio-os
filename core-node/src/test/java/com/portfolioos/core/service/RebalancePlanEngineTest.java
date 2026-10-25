@@ -814,5 +814,132 @@ class RebalancePlanEngineTest {
         assertEquals("SEC_112A_EXEMPT", order.taxClassification());
         assertTrue(order.summaryLabel().contains("2 Lots · LTCG Exempt"));
     }
+
+    @Test
+    @DisplayName("Architectural Invariant: Drawdown Rung 3 deploys 100% of Arbitrage Buffer undampened into Core Equity")
+    void testEndToEndDrawdownRungDeployWithoutDampener() {
+        LocalDate today = LocalDate.of(2026, 9, 1);
+        LocalDate acqDate = LocalDate.of(2024, 1, 1);
+
+        // Portfolio ₹10,00,000 (10 Lakhs):
+        // Core (50%): ₹5,00,000 in Parag Parikh Flexi Cap Fund
+        // Satellite (30%): ₹3,00,000 in Motilal Large/Midcap
+        // Gold (10%): ₹1,00,000 in Nippon Gold ETF
+        // Arbitrage Buffer (10%): ₹1,00,000 in Invesco India Arbitrage Fund
+        BigDecimal nav = new BigDecimal("100.00");
+        Lot coreLot = new Lot("lot-1", "INF879O01027", "Parag Parikh Flexi Cap Fund Direct Growth", acqDate, new BigDecimal("5000"), new BigDecimal("5000"), nav, new BigDecimal("500000.00"), false, null);
+        Lot satLot = new Lot("lot-2", "INF204K01K15", "Motilal Oswal Large and Midcap Fund Direct Growth", acqDate, new BigDecimal("3000"), new BigDecimal("3000"), nav, new BigDecimal("300000.00"), false, null);
+        Lot goldLot = new Lot("lot-3", "INF204KB14I2", "Nippon India ETF Gold BeES", acqDate, new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+        Lot arbLot = new Lot("lot-4", "INF205K01QU7", "Invesco India Arbitrage Fund Direct Growth", acqDate, new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+
+        List<Lot> openLots = List.of(coreLot, satLot, goldLot, arbLot);
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF879O01027", nav,
+            "INF204K01K15", nav,
+            "INF204KB14I2", nav,
+            "INF205K01QU7", nav
+        );
+
+        // Benchmark (Nifty 500) has crashed by 20% (Rung 3)
+        BigDecimal currentBench = new BigDecimal("8000.00");
+        BigDecimal highBench = new BigDecimal("10000.00"); // 20.0% DD
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            openLots, Collections.emptyList(), navMap, today,
+            currentBench, highBench, null, "2026-27", null, null, evaluator
+        );
+
+        assertNotNull(plan);
+        assertEquals("DRAWDOWN", plan.trigger().type());
+        assertEquals("DRAWDOWN_TIER_20", plan.trigger().reasonCode());
+
+        // Verify Sell Side: Exactly ₹100,000.00 from ARBITRAGE_BUFFER tier (undampened, 100% of buffer)
+        assertNotNull(plan.sellSide());
+        RebalancePlanDtos.WaterfallTierDto arbTier = plan.sellSide().waterfall().stream()
+            .filter(t -> "ARBITRAGE_BUFFER".equals(t.tier()))
+            .findFirst().orElseThrow(() -> new AssertionError("Expected ARBITRAGE_BUFFER tier"));
+        assertEquals(new BigDecimal("100000.00"), arbTier.sold(),
+            "Drawdown Rung 3 must drain exactly 100% of Arbitrage Buffer (₹100,000), bypassing FundTrendDampenerCalculator!");
+        assertNull(arbTier.skippedReason());
+        assertFalse(arbTier.lots().isEmpty());
+        assertEquals("INF205K01QU7", arbTier.lots().get(0).fundId());
+
+        // Zero core or legacy sales needed to fund drawdown deployment
+        assertEquals(0, BigDecimal.ZERO.compareTo(
+            plan.sellSide().waterfall().stream().filter(t -> "LEGACY_FUND".equals(t.tier())).findFirst().orElseThrow().sold()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(
+            plan.sellSide().waterfall().stream().filter(t -> "CORE_FUND".equals(t.tier())).findFirst().orElseThrow().sold()));
+
+        // Verify Buy Side: All ₹100,000 proceeds from Arbitrage route strictly into Equity Core
+        assertNotNull(plan.buySide());
+        assertEquals(0, new BigDecimal("100000.00").compareTo(plan.buySide().totalToInvest()));
+
+        RebalanceBucketAllocationDto arbBuyBucket = plan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.LIQUID_BUFFER.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+        assertEquals(0, BigDecimal.ZERO.compareTo(arbBuyBucket.amountAllocated()),
+            "Arbitrage buffer shortfall must be 0 — zero rupees routed back into Arbitrage during market crash!");
+        assertEquals(0.0, arbBuyBucket.targetPct(), "Dynamic LIQUID_BUFFER target must shift to 0.0% during Rung 3");
+        assertEquals(0.0, arbBuyBucket.postRebalancePct(), "Post allocation percentage for LIQUID_BUFFER must be 0.0%");
+
+        RebalanceBucketAllocationDto coreBuyBucket = plan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.EQUITY_CORE.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+        assertEquals(0, new BigDecimal("100000.00").compareTo(coreBuyBucket.amountAllocated()),
+            "Full ₹100,000 deployed buffer must route straight into EQUITY_CORE");
+        assertEquals(60.0, coreBuyBucket.targetPct(), "Dynamic EQUITY_CORE target must shift to 60.0% during Rung 3");
+        assertEquals(60.0, coreBuyBucket.postRebalancePct(), "Post allocation percentage for EQUITY_CORE must equal 60.0%");
+
+        // Verify narrative explicitly mentions 100% drawdown deployment
+        assertNotNull(plan.reasoningNarrative());
+        assertTrue(plan.reasoningNarrative().headline().contains("Deploying 100% of Arbitrage Buffer into Equity Core"));
+    }
+
+    @Test
+    @DisplayName("Architectural Invariant: Manual Lump-Sum during -15% drawdown routes to Equity, NOT Arbitrage buffer")
+    void testManualLumpsumDuringDrawdownRoutesToEquityNotArbitrage() {
+        LocalDate today = LocalDate.of(2026, 9, 1);
+        LocalDate acqDate = LocalDate.of(2024, 1, 1);
+
+        BigDecimal nav = new BigDecimal("100.00");
+        Lot coreLot = new Lot("lot-1", "INF879O01027", "Parag Parikh Flexi Cap Fund Direct Growth", acqDate, new BigDecimal("5000"), new BigDecimal("5000"), nav, new BigDecimal("500000.00"), false, null);
+        Lot satLot = new Lot("lot-2", "INF204K01K15", "Motilal Oswal Large and Midcap Fund Direct Growth", acqDate, new BigDecimal("3000"), new BigDecimal("3000"), nav, new BigDecimal("300000.00"), false, null);
+        Lot goldLot = new Lot("lot-3", "INF204KB14I2", "Nippon India ETF Gold BeES", acqDate, new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+        Lot arbLot = new Lot("lot-4", "INF205K01QU7", "Invesco India Arbitrage Fund Direct Growth", acqDate, new BigDecimal("500"), new BigDecimal("500"), nav, new BigDecimal("50000.00"), false, null);
+
+        List<Lot> openLots = List.of(coreLot, satLot, goldLot, arbLot);
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF879O01027", nav,
+            "INF204K01K15", nav,
+            "INF204KB14I2", nav,
+            "INF205K01QU7", nav
+        );
+
+        // 15% drawdown (Rung 2)
+        BigDecimal currentBench = new BigDecimal("8500.00");
+        BigDecimal highBench = new BigDecimal("10000.00"); // 15.0% DD
+
+        BigDecimal freshLumpsum = new BigDecimal("50000.00");
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            openLots, Collections.emptyList(), navMap, today,
+            currentBench, highBench, null, "2026-27", "MANUAL_LUMPSUM", freshLumpsum, false, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.buySide());
+        assertEquals(0, freshLumpsum.compareTo(plan.buySide().totalToInvest()));
+
+        RebalanceBucketAllocationDto arbBuyBucket = plan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.LIQUID_BUFFER.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+        assertEquals(0, BigDecimal.ZERO.compareTo(arbBuyBucket.amountAllocated()),
+            "During -15% crash, Arbitrage target is 5.0% (already met by ₹50k holding); fresh lumpsum must NOT refill Arbitrage!");
+
+        RebalanceBucketAllocationDto coreBuyBucket = plan.buySide().buckets().stream()
+            .filter(b -> BucketEngine.Bucket.EQUITY_CORE.name().equals(b.bucket()))
+            .findFirst().orElseThrow();
+        assertTrue(coreBuyBucket.amountAllocated().compareTo(BigDecimal.ZERO) > 0,
+            "Fresh lumpsum paycheck must flow straight into cheap Equity Core during a crash");
+    }
 }
 

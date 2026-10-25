@@ -218,7 +218,7 @@ public class RebalancePlanEngine {
         String generatedAt = today.atStartOfDay().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
         // 1. Point-in-Time Bucket Targets
-        List<BucketEngine.BucketTarget> activeTargets = (customTargets != null && !customTargets.isEmpty())
+        List<BucketEngine.BucketTarget> baseTargets = (customTargets != null && !customTargets.isEmpty())
             ? customTargets : BucketConfigLoader.getActiveBucketTargets(today);
         BucketConfigLoader.BucketTargetVersion activeVersion = BucketConfigLoader.getActiveVersion(today);
 
@@ -264,6 +264,27 @@ public class RebalancePlanEngine {
             resolution.drawdownContext()
         );
 
+        // Derive Dynamic Regime-Shifted Targets
+        double ddPct = (resolution != null && resolution.drawdownContext() != null)
+            ? resolution.drawdownContext().currentDrawdownPct() : 0.0;
+
+        BigDecimal liquidCurVal = BigDecimal.ZERO;
+        if (openLots != null) {
+            for (Lot lot : openLots) {
+                BucketEngine.Bucket b = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
+                BucketEngine.Bucket mappedB = resolveTargetBucket(b, baseTargets);
+                if (mappedB == BucketEngine.Bucket.LIQUID_BUFFER || mappedB == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE) {
+                    BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.liquidVal");
+                    liquidCurVal = liquidCurVal.add(lot.remainingUnits().multiply(nav));
+                }
+            }
+        }
+        BigDecimal currentLiquidPct = liveCorpus.compareTo(BigDecimal.ZERO) > 0
+            ? liquidCurVal.multiply(new BigDecimal("100")).divide(liveCorpus, 2, RoundingMode.HALF_UP)
+            : BigDecimal.ZERO;
+
+        List<BucketEngine.BucketTarget> activeTargets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, ddPct, currentLiquidPct);
+
         // Exemption status before trade
         ExemptionTracker.ExemptionStatus exBefore = ExemptionTracker.calculateExemptionStatus(matchedLots != null ? matchedLots : List.of(), fiscalYear);
         BigDecimal headroomBefore = new BigDecimal(exBefore.exemptionRemaining());
@@ -271,6 +292,7 @@ public class RebalancePlanEngine {
         // 3. Sell Side Sourcing Logic
         BigDecimal totalPool;
         SellSidePlanDto sellSide = null;
+        BigDecimal soldArbitrageAmount = BigDecimal.ZERO;
         BigDecimal soldLegacyAmount = BigDecimal.ZERO;
         BigDecimal soldCoreAmount = BigDecimal.ZERO;
         Map<BucketEngine.Bucket, BigDecimal> bucketSoldAmounts = new HashMap<>();
@@ -356,7 +378,17 @@ public class RebalancePlanEngine {
                     }
                     if (curVal.compareTo(targetVal) > 0) {
                         BigDecimal excessVal = curVal.subtract(targetVal);
-                        BigDecimal dampenedTrim = FundTrendDampenerCalculator.calculateDampenedTrim(excessVal, targetVal.doubleValue());
+                        boolean isLiquid = (target.bucket() == BucketEngine.Bucket.LIQUID_BUFFER || target.bucket() == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
+                        BigDecimal dampenedTrim;
+                        if (isLiquid && ("DRAWDOWN".equalsIgnoreCase(resolvedType) || ddPct >= 10.0)) {
+                            // BYPASS FundTrendDampenerCalculator for LIQUID_BUFFER during DRAWDOWN triggers:
+                            // Deploy the exact rule-based excess (25%, 50%, or 100% of buffer) with zero volatility dampening!
+                            dampenedTrim = excessVal;
+                        } else if (targetVal.compareTo(BigDecimal.ZERO) <= 0) {
+                            dampenedTrim = excessVal;
+                        } else {
+                            dampenedTrim = FundTrendDampenerCalculator.calculateDampenedTrim(excessVal, targetVal.doubleValue());
+                        }
                         if (dampenedTrim.compareTo(BigDecimal.ZERO) > 0) {
                             bucketTrims.put(target.bucket(), dampenedTrim);
                             poolNeeded = poolNeeded.add(dampenedTrim);
@@ -379,11 +411,22 @@ public class RebalancePlanEngine {
                     }
                 }
             }
+            Map<BucketEngine.Bucket, BigDecimal> orderedTrims = new java.util.LinkedHashMap<>();
             if (totalLegacyValue.compareTo(BigDecimal.ZERO) > 0) {
-                Map<BucketEngine.Bucket, BigDecimal> orderedTrims = new java.util.LinkedHashMap<>();
                 orderedTrims.put(BucketEngine.Bucket.LEGACY_HOLDINGS, totalLegacyValue.setScale(2, RoundingMode.HALF_UP));
-                orderedTrims.putAll(bucketTrims);
-                bucketTrims = orderedTrims;
+            }
+            if (bucketTrims.containsKey(BucketEngine.Bucket.LIQUID_BUFFER)) {
+                orderedTrims.put(BucketEngine.Bucket.LIQUID_BUFFER, bucketTrims.get(BucketEngine.Bucket.LIQUID_BUFFER));
+            } else if (bucketTrims.containsKey(BucketEngine.Bucket.LIQUIDITY_ARBITRAGE)) {
+                orderedTrims.put(BucketEngine.Bucket.LIQUIDITY_ARBITRAGE, bucketTrims.get(BucketEngine.Bucket.LIQUIDITY_ARBITRAGE));
+            }
+            for (Map.Entry<BucketEngine.Bucket, BigDecimal> entry : bucketTrims.entrySet()) {
+                if (!orderedTrims.containsKey(entry.getKey())) {
+                    orderedTrims.put(entry.getKey(), entry.getValue());
+                }
+            }
+            bucketTrims = orderedTrims;
+            if (totalLegacyValue.compareTo(BigDecimal.ZERO) > 0) {
                 poolNeeded = poolNeeded.add(totalLegacyValue.setScale(2, RoundingMode.HALF_UP));
             }
 
@@ -395,16 +438,6 @@ public class RebalancePlanEngine {
 
             List<WaterfallTierDto> waterfallTiers = new ArrayList<>();
             BigDecimal poolRemaining = poolNeeded;
-
-            // Tier 1: Arbitrage Buffer
-            waterfallTiers.add(new WaterfallTierDto(
-                "ARBITRAGE_BUFFER",
-                "Arbitrage Buffer",
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                "FULLY_DEPLOYED",
-                List.of()
-            ));
 
             boolean isUrgent = false;
             if (resolution != null && resolution.drawdownContext() != null) {
@@ -462,9 +495,11 @@ public class RebalancePlanEngine {
             BigDecimal totalLtcgExempt = BigDecimal.ZERO;
             BigDecimal totalStcgTaxable = BigDecimal.ZERO;
 
+            List<RebalanceLotImpactDto> soldArbitrageLots = new ArrayList<>();
+            soldArbitrageAmount = BigDecimal.ZERO;
             List<RebalanceLotImpactDto> soldLegacyLots = new ArrayList<>();
-            List<RebalanceLotImpactDto> soldCoreLots = new ArrayList<>();
             soldLegacyAmount = BigDecimal.ZERO;
+            List<RebalanceLotImpactDto> soldCoreLots = new ArrayList<>();
             soldCoreAmount = BigDecimal.ZERO;
 
             if (!allSteps.isEmpty()) {
@@ -520,28 +555,40 @@ public class RebalancePlanEngine {
                         new LotTaxImpactDto(regime, exempt, taxable, step.taxDrag())
                     );
 
-                    if (step.tier() == com.portfolioos.core.valuation.WaterfallTier.LEGACY_FUND) {
+                    BucketEngine.Bucket rawBucket = origLot != null ? BucketEngine.classifyAssetToBucket(origLot.assetId(), origLot.assetName()) : null;
+                    BucketEngine.Bucket lotBucket = resolveTargetBucket(rawBucket, activeTargets);
+                    boolean isArbitrageLot = (lotBucket == BucketEngine.Bucket.LIQUID_BUFFER || lotBucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
+
+                    if (isArbitrageLot) {
+                        soldArbitrageLots.add(lotImpact);
+                        soldArbitrageAmount = soldArbitrageAmount.add(step.proceeds());
+                        bucketSoldAmounts.put(lotBucket, bucketSoldAmounts.getOrDefault(lotBucket, BigDecimal.ZERO).add(step.proceeds()));
+                    } else if (step.tier() == com.portfolioos.core.valuation.WaterfallTier.LEGACY_FUND) {
                         soldLegacyLots.add(lotImpact);
                         soldLegacyAmount = soldLegacyAmount.add(step.proceeds());
                     } else {
                         soldCoreLots.add(lotImpact);
                         soldCoreAmount = soldCoreAmount.add(step.proceeds());
-                        if (origLot == null) {
-                            throw new IllegalStateException("RebalancePlanEngine: WaterfallStep references lotId '" +
-                                step.lotId() + "' for asset '" + step.assetId() + "' which does not exist in openLots");
-                        }
-                        BucketEngine.Bucket rawBucket = BucketEngine.classifyAssetToBucket(origLot.assetId(), origLot.assetName());
-                        BucketEngine.Bucket lotBucket = resolveTargetBucket(rawBucket, activeTargets);
                         bucketSoldAmounts.put(lotBucket, bucketSoldAmounts.getOrDefault(lotBucket, BigDecimal.ZERO).add(step.proceeds()));
                     }
                 }
             }
 
+            // Tier 1: Arbitrage Buffer
+            waterfallTiers.add(new WaterfallTierDto(
+                "ARBITRAGE_BUFFER",
+                "Arbitrage Buffer",
+                liquidCurVal,
+                soldArbitrageAmount,
+                soldArbitrageAmount.compareTo(BigDecimal.ZERO) == 0 ? (liquidCurVal.compareTo(BigDecimal.ZERO) == 0 ? "FULLY_DEPLOYED" : "NO_TRIGGER_ACTIVE") : null,
+                soldArbitrageLots
+            ));
+
             // Tier 2: Legacy Fund Lots
             waterfallTiers.add(new WaterfallTierDto(
                 "LEGACY_FUND",
                 "Legacy Fund Lots",
-                soldLegacyAmount,
+                totalLegacyValue,
                 soldLegacyAmount,
                 soldLegacyAmount.compareTo(BigDecimal.ZERO) == 0 ? "NO_TRIMMABLE_LOTS" : null,
                 soldLegacyLots
@@ -553,7 +600,7 @@ public class RebalancePlanEngine {
                 "Core Fund Lots",
                 soldCoreAmount,
                 soldCoreAmount,
-                soldCoreAmount.compareTo(BigDecimal.ZERO) == 0 ? (soldLegacyAmount.compareTo(BigDecimal.ZERO) > 0 ? "COVERED_BY_PRIOR_TIERS" : "NO_TRIMMABLE_LOTS") : null,
+                soldCoreAmount.compareTo(BigDecimal.ZERO) == 0 ? ((soldArbitrageAmount.compareTo(BigDecimal.ZERO) > 0 || soldLegacyAmount.compareTo(BigDecimal.ZERO) > 0) ? "COVERED_BY_PRIOR_TIERS" : "NO_TRIMMABLE_LOTS") : null,
                 soldCoreLots
             ));
 
@@ -566,7 +613,7 @@ public class RebalancePlanEngine {
                 headroomBefore.subtract(totalLtcgExempt).max(BigDecimal.ZERO)
             );
 
-            BigDecimal actualSoldAmount = soldLegacyAmount.add(soldCoreAmount);
+            BigDecimal actualSoldAmount = soldArbitrageAmount.add(soldLegacyAmount).add(soldCoreAmount);
             if (!isLumpsum) {
                 totalPool = actualSoldAmount;
             } else {
@@ -581,7 +628,7 @@ public class RebalancePlanEngine {
         BigDecimal postCorpus = liveCorpus.add(freshCash);
 
         BucketEngine.RebalanceEngineResult bucketResult = BucketEngine.evaluateRebalance(
-            openLots, matchedLots, navMap, today, benchmarkCurrent, benchmarkRollingHigh, activeTargets, fiscalYear
+            openLots, matchedLots, navMap, today, benchmarkCurrent, benchmarkRollingHigh, baseTargets, fiscalYear
         );
 
         Map<BucketEngine.Bucket, BucketEngine.BucketStatus> statusMap = new HashMap<>();
@@ -619,9 +666,18 @@ public class RebalancePlanEngine {
             BigDecimal gVal = statusMap.containsKey(BucketEngine.Bucket.GOLD_SILVER) ? statusMap.get(BucketEngine.Bucket.GOLD_SILVER).currentValue() : BigDecimal.ZERO;
             BigDecimal aVal = statusMap.containsKey(BucketEngine.Bucket.LIQUID_BUFFER) ? statusMap.get(BucketEngine.Bucket.LIQUID_BUFFER).currentValue() : BigDecimal.ZERO;
             BigDecimal cVal = statusMap.containsKey(BucketEngine.Bucket.EQUITY_CORE) ? statusMap.get(BucketEngine.Bucket.EQUITY_CORE).currentValue().subtract(coreTrimProceeds) : BigDecimal.ZERO;
+            BigDecimal aTgtPct = new BigDecimal("10.0");
+            BigDecimal cTgtPct = new BigDecimal("50.0");
+            for (BucketEngine.BucketTarget t : activeTargets) {
+                if (t.bucket() == BucketEngine.Bucket.LIQUID_BUFFER || t.bucket() == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE) {
+                    aTgtPct = t.targetPct();
+                } else if (t.bucket() == BucketEngine.Bucket.EQUITY_CORE) {
+                    cTgtPct = t.targetPct();
+                }
+            }
             BigDecimal gTgt = postActiveCorpus.multiply(new BigDecimal("0.10")).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal aTgt = postActiveCorpus.multiply(new BigDecimal("0.10")).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal cTgt = postActiveCorpus.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal aTgt = postActiveCorpus.multiply(aTgtPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            BigDecimal cTgt = postActiveCorpus.multiply(cTgtPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
             coreWaterfallAlloc = com.portfolioos.core.valuation.RebalanceWaterfallEngine.routeTrimProceeds(
                 coreTrimProceeds, gVal, gTgt, aVal, aTgt, cVal, cTgt, postActiveCorpus
             );
@@ -726,7 +782,7 @@ public class RebalancePlanEngine {
             paragraphs.add("Notice: Drawdown protection is currently INACTIVE (no live benchmark index data source configured). Portfolio is operating under DRIFT & SCHEDULED rebalance rules.");
         }
         String headline;
-        double ddPct = resolution.drawdownContext().currentDrawdownPct();
+        ddPct = resolution.drawdownContext().currentDrawdownPct();
         BigDecimal high = resolution.drawdownContext().rollingHighValue();
 
         ManualLumpsumMetaDto manualLumpsumMeta = null;
@@ -754,6 +810,23 @@ public class RebalancePlanEngine {
                 headline = String.format("No Rebalance Required — %s", resolution.reasonLabel());
                 paragraphs.add(String.format("Current portfolio status: %s.", resolution.reasonLabel()));
                 paragraphs.add("No asset sales or rebalance capital pooling are required at this time.");
+            }
+            paragraphs.add(String.format("Target allocations reference Config Version %s (effective from %s).", activeVersion.versionId(), activeVersion.effectiveFrom()));
+        } else if ("DRAWDOWN".equalsIgnoreCase(resolvedType)) {
+            headline = String.format("Drawdown Deployment Triggered — Deploying %s of Arbitrage Buffer into Equity Core",
+                ddPct >= 20.0 ? "100%" : (ddPct >= 15.0 ? "50%" : "25%"));
+            paragraphs.add(String.format("Triggered by %s (Nifty 500 drawdown at %.1f%% from 52-week peak).", reasonLabel, ddPct));
+            double dynamicLiquidTargetPct = activeTargets.stream()
+                .filter(t -> t.bucket() == BucketEngine.Bucket.LIQUID_BUFFER || t.bucket() == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE)
+                .findFirst().map(t -> t.targetPct().doubleValue()).orElse(0.0);
+            paragraphs.add(String.format("Drawdown Rung active: target for Arbitrage Buffer shifted to %.1f%%, deploying ₹%,d into core equity.",
+                dynamicLiquidTargetPct, soldArbitrageAmount.longValue()));
+            if (sellSide != null && sellSide.taxSummary() != null) {
+                TaxSummaryDto ts = sellSide.taxSummary();
+                paragraphs.add(String.format("Redeeming dry powder lots realized ₹%,d total gain (₹%,d LTCG exempt under Sec 112A, ₹%,d STCG taxable).",
+                    ts.totalRealizedGain().longValue(), ts.totalLtcgExempt().longValue(), ts.totalStcgTaxable().longValue()));
+                paragraphs.add(String.format("Total estimated tax for this deployment: ₹%,d. Remaining FY exemption headroom: ₹%,d.",
+                    ts.totalTaxEstimate().longValue(), ts.exemptionHeadroomAfter().longValue()));
             }
             paragraphs.add(String.format("Target allocations reference Config Version %s (effective from %s).", activeVersion.versionId(), activeVersion.effectiveFrom()));
         } else {

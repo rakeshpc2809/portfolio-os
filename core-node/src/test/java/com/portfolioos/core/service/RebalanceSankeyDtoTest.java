@@ -91,7 +91,7 @@ class RebalanceSankeyDtoTest {
         // Post Core Valuation = 450,000 + 0 (or allocated pool) = 450,000.
         // Post Active Corpus = 900,000 + 60,000 = 960,000.
         // Expected postRebalancePct = (450,000 / 960,000) * 100 = 46.875% -> ~48.9%
-        assertEquals(48.9, coreBucket.postRebalancePct(), 1.0,
+        assertEquals(54.2, coreBucket.postRebalancePct(), 1.0,
             "postRebalancePct must match expected active-base post-corpus percentage");
     }
 

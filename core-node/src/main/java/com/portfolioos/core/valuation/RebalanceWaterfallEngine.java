@@ -81,27 +81,37 @@ public class RebalanceWaterfallEngine {
         List<Lot> legacyLots = new ArrayList<>();
         List<Lot> coreLots = new ArrayList<>();
 
-        for (Lot lot : openLots) {
-            if (FundTierClassifier.isLegacyFund(lot.assetId(), activeAssetIds)) {
-                legacyLots.add(lot);
-            } else {
-                BucketEngine.Bucket lotBucket = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
-                boolean isSatellite = (bucket == BucketEngine.Bucket.EQUITY_SATELLITE ||
-                                       bucket == BucketEngine.Bucket.SATELLITE_VALUE ||
-                                       bucket == BucketEngine.Bucket.SATELLITE_MOMENTUM ||
-                                       bucket == BucketEngine.Bucket.SATELLITE_SMALLCAP) &&
-                                      (lotBucket == BucketEngine.Bucket.EQUITY_SATELLITE ||
-                                       lotBucket == BucketEngine.Bucket.SATELLITE_VALUE ||
-                                       lotBucket == BucketEngine.Bucket.SATELLITE_MOMENTUM ||
-                                       lotBucket == BucketEngine.Bucket.SATELLITE_SMALLCAP);
-                boolean isCore = (bucket == BucketEngine.Bucket.EQUITY_CORE) && (lotBucket == BucketEngine.Bucket.EQUITY_CORE);
-                boolean isGold = (bucket == BucketEngine.Bucket.GOLD_SILVER || bucket == BucketEngine.Bucket.HEDGE_COMMODITY) &&
-                                 (lotBucket == BucketEngine.Bucket.GOLD_SILVER || lotBucket == BucketEngine.Bucket.HEDGE_COMMODITY);
-                boolean isLiquid = (bucket == BucketEngine.Bucket.LIQUID_BUFFER || bucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE) &&
-                                   (lotBucket == BucketEngine.Bucket.LIQUID_BUFFER || lotBucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
+        boolean isLiquidBucket = (bucket == BucketEngine.Bucket.LIQUID_BUFFER || bucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
 
-                if (bucket == null || lotBucket == bucket || isSatellite || isCore || isGold || isLiquid) {
+        for (Lot lot : openLots) {
+            BucketEngine.Bucket lotBucket = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
+            boolean isLiquid = (lotBucket == BucketEngine.Bucket.LIQUID_BUFFER || lotBucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
+
+            if (isLiquidBucket) {
+                // When trimming LIQUID_BUFFER (dry powder drawdown deployment), strictly trim liquid buffer lots
+                if (isLiquid) {
                     coreLots.add(lot);
+                }
+            } else {
+                // Equity and other bucket trims: prioritize legacy lots first
+                if (!isLiquid && FundTierClassifier.isLegacyFund(lot.assetId(), activeAssetIds)) {
+                    legacyLots.add(lot);
+                } else {
+                    boolean isSatellite = (bucket == BucketEngine.Bucket.EQUITY_SATELLITE ||
+                                           bucket == BucketEngine.Bucket.SATELLITE_VALUE ||
+                                           bucket == BucketEngine.Bucket.SATELLITE_MOMENTUM ||
+                                           bucket == BucketEngine.Bucket.SATELLITE_SMALLCAP) &&
+                                          (lotBucket == BucketEngine.Bucket.EQUITY_SATELLITE ||
+                                           lotBucket == BucketEngine.Bucket.SATELLITE_VALUE ||
+                                           lotBucket == BucketEngine.Bucket.SATELLITE_MOMENTUM ||
+                                           lotBucket == BucketEngine.Bucket.SATELLITE_SMALLCAP);
+                    boolean isCore = (bucket == BucketEngine.Bucket.EQUITY_CORE) && (lotBucket == BucketEngine.Bucket.EQUITY_CORE);
+                    boolean isGold = (bucket == BucketEngine.Bucket.GOLD_SILVER || bucket == BucketEngine.Bucket.HEDGE_COMMODITY) &&
+                                     (lotBucket == BucketEngine.Bucket.GOLD_SILVER || lotBucket == BucketEngine.Bucket.HEDGE_COMMODITY);
+
+                    if (bucket == null || lotBucket == bucket || isSatellite || isCore || isGold) {
+                        coreLots.add(lot);
+                    }
                 }
             }
         }
@@ -115,7 +125,7 @@ public class RebalanceWaterfallEngine {
         Map<String, BigDecimal> legacySchemeTrimmedMap = new HashMap<>();
 
         List<WaterfallTierStrategy> strategiesToRun = new ArrayList<>(REGULAR_STRATEGIES);
-        if (urgent) {
+        if (urgent || isLiquidBucket) {
             strategiesToRun.add(URGENT_STCG_STRATEGY);
         }
 
@@ -134,7 +144,7 @@ public class RebalanceWaterfallEngine {
                     lotTarget = lotTarget.min(schemeCapRemaining);
                 }
 
-                LotProcessResult res = processLot(strategy.tier(), lot, navMap, lotTarget, unusedExemption, rules, today, urgent);
+                LotProcessResult res = processLot(strategy.tier(), lot, navMap, lotTarget, unusedExemption, rules, today, urgent, isLiquidBucket);
                 if (res != null && res.proceeds().compareTo(BigDecimal.ZERO) > 0) {
                     steps.add(res.step());
                     satisfiedAmount = satisfiedAmount.add(res.proceeds());
@@ -184,7 +194,8 @@ public class RebalanceWaterfallEngine {
         BigDecimal unusedExemption,
         TaxRulesConfig rules,
         LocalDate today,
-        boolean urgent
+        boolean urgent,
+        boolean isLiquidBucket
     ) {
         BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "RebalanceWaterfallEngine.processLot");
         BigDecimal lotValue = lot.remainingUnits().multiply(nav);
@@ -193,14 +204,14 @@ public class RebalanceWaterfallEngine {
         long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
         int exitLoadDays = ExitLoadCalculator.getRequiredExitLoadDays(lot.assetId(), lot.assetName());
         if (!urgent && holdingDays < exitLoadDays) {
-            return null; // Never incur exit load (e.g. PPFAS < 730d) on non-urgent drift/scheduled trims
+            return null; // Never incur exit load (e.g. PPFAS < 730d, Arbitrage < 15d) on non-urgent drift/scheduled trims
         }
 
         AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
         long threshold = getThresholdDays(cat, rules);
         boolean isLtcg = threshold > 0 && holdingDays >= threshold;
 
-        if (!isLtcg && !urgent) {
+        if (!isLtcg && !urgent && !isLiquidBucket) {
             return null;
         }
 

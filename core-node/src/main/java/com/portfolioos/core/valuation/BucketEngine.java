@@ -194,6 +194,78 @@ public class BucketEngine {
         return evaluateRebalance(openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh, targets, fiscalYear, java.util.Collections.emptySet());
     }
 
+    public static List<BucketTarget> calculateRegimeShiftedTargets(
+        List<BucketTarget> baseTargets,
+        double drawdownPct,
+        BigDecimal currentLiquidPct
+    ) {
+        if (baseTargets == null || baseTargets.isEmpty()) {
+            return baseTargets;
+        }
+
+        BucketTarget liquidBase = null;
+        BucketTarget coreBase = null;
+
+        for (BucketTarget t : baseTargets) {
+            if (t.bucket() == Bucket.LIQUID_BUFFER || t.bucket() == Bucket.LIQUIDITY_ARBITRAGE) {
+                liquidBase = t;
+            } else if (t.bucket() == Bucket.EQUITY_CORE) {
+                coreBase = t;
+            }
+        }
+
+        if (liquidBase == null || coreBase == null) {
+            return baseTargets;
+        }
+
+        BigDecimal baseLiquidPct = liquidBase.targetPct();
+        BigDecimal baseCorePct = coreBase.targetPct();
+
+        BigDecimal dynamicLiquidPct;
+        BigDecimal dynamicCorePct;
+
+        if (drawdownPct >= 20.0) {
+            // Rung 3: Capitulation (deploy 100% of buffer)
+            dynamicLiquidPct = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            dynamicCorePct = baseCorePct.add(baseLiquidPct).setScale(2, RoundingMode.HALF_UP);
+        } else if (drawdownPct >= 15.0) {
+            // Rung 2: Bear Market (deploy 50% of buffer)
+            dynamicLiquidPct = baseLiquidPct.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
+            dynamicCorePct = baseCorePct.add(baseLiquidPct.multiply(new BigDecimal("0.50"))).setScale(2, RoundingMode.HALF_UP);
+        } else if (drawdownPct >= 10.0) {
+            // Rung 1: Correction (deploy 25% of buffer)
+            dynamicLiquidPct = baseLiquidPct.multiply(new BigDecimal("0.75")).setScale(2, RoundingMode.HALF_UP);
+            dynamicCorePct = baseCorePct.add(baseLiquidPct.multiply(new BigDecimal("0.25"))).setScale(2, RoundingMode.HALF_UP);
+        } else if (drawdownPct >= 5.0) {
+            // Hold Zone (Hysteresis between -5% and -10%): freeze liquid buffer at current % if below base target
+            BigDecimal curLiquid = currentLiquidPct != null ? currentLiquidPct.max(BigDecimal.ZERO) : baseLiquidPct;
+            if (curLiquid.compareTo(baseLiquidPct) < 0) {
+                dynamicLiquidPct = curLiquid.setScale(2, RoundingMode.HALF_UP);
+                BigDecimal delta = baseLiquidPct.subtract(dynamicLiquidPct);
+                dynamicCorePct = baseCorePct.add(delta).setScale(2, RoundingMode.HALF_UP);
+            } else {
+                dynamicLiquidPct = baseLiquidPct;
+                dynamicCorePct = baseCorePct;
+            }
+        } else {
+            // Normal / Recovery (above -5% drawdown): Ladder reset, standard base targets
+            dynamicLiquidPct = baseLiquidPct;
+            dynamicCorePct = baseCorePct;
+        }
+
+        List<BucketTarget> shifted = new ArrayList<>();
+        for (BucketTarget t : baseTargets) {
+            if (t.bucket() == liquidBase.bucket()) {
+                shifted.add(new BucketTarget(t.bucket(), dynamicLiquidPct, t.bandPct()));
+            } else if (t.bucket() == coreBase.bucket()) {
+                shifted.add(new BucketTarget(t.bucket(), dynamicCorePct, t.bandPct()));
+            } else {
+                shifted.add(t);
+            }
+        }
+        return shifted;
+    }
+
     public static RebalanceEngineResult evaluateRebalance(
         List<Lot> openLots,
         List<MatchedLot> matchedLots,
@@ -237,8 +309,39 @@ public class BucketEngine {
             }
         }
 
+        List<Bucket> bucketsToEvaluate = new ArrayList<>();
+        List<BucketTarget> targetList = (targets != null && !targets.isEmpty()) ? targets : DEFAULT_TARGETS;
+        for (BucketTarget t : targetList) {
+            if (!bucketsToEvaluate.contains(t.bucket())) {
+                bucketsToEvaluate.add(t.bucket());
+            }
+        }
+        if (!bucketsToEvaluate.contains(Bucket.LEGACY_HOLDINGS)) {
+            bucketsToEvaluate.add(Bucket.LEGACY_HOLDINGS);
+        }
+
+        BigDecimal totalActiveValue = BigDecimal.ZERO;
+        for (Bucket bucket : bucketsToEvaluate) {
+            if (bucket != Bucket.LEGACY_HOLDINGS) {
+                totalActiveValue = totalActiveValue.add(bucketValues.getOrDefault(bucket, BigDecimal.ZERO));
+            }
+        }
+
+        // Drawdown trigger - delegates to unified PortfolioConstants disarm logic
+        double ddPctVal = PortfolioConstants.calculateDrawdownPct(benchmarkCurrent, benchmarkRollingHigh);
+        BigDecimal drawdownPct = BigDecimal.valueOf(ddPctVal).setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal liquidVal = bucketValues.getOrDefault(Bucket.LIQUID_BUFFER, BigDecimal.ZERO)
+            .max(bucketValues.getOrDefault(Bucket.LIQUIDITY_ARBITRAGE, BigDecimal.ZERO));
+        BigDecimal currentLiquidPct = totalActiveValue.compareTo(BigDecimal.ZERO) > 0
+            ? liquidVal.multiply(new BigDecimal("100")).divide(totalActiveValue, 2, RoundingMode.HALF_UP)
+            : BigDecimal.ZERO;
+
+        // Apply Regime-Conditional Target Shift
+        List<BucketTarget> effectiveTargets = calculateRegimeShiftedTargets(targetList, ddPctVal, currentLiquidPct);
+
         Map<Bucket, BucketTarget> targetMap = new HashMap<>();
-        for (BucketTarget t : targets) {
+        for (BucketTarget t : effectiveTargets) {
             targetMap.put(t.bucket(), t);
         }
 
@@ -248,27 +351,6 @@ public class BucketEngine {
         int month = currentDate.getMonthValue();
         int day = currentDate.getDayOfMonth();
         boolean isCalendarReviewDate = (month == 3 && day >= 10 && day <= 20) || (month == 9 && day >= 10 && day <= 20);
-
-        List<Bucket> bucketsToEvaluate = new ArrayList<>();
-        if (targets != null && !targets.isEmpty()) {
-            for (BucketTarget t : targets) {
-                if (!bucketsToEvaluate.contains(t.bucket())) {
-                    bucketsToEvaluate.add(t.bucket());
-                }
-            }
-            if (!bucketsToEvaluate.contains(Bucket.LEGACY_HOLDINGS)) {
-                bucketsToEvaluate.add(Bucket.LEGACY_HOLDINGS);
-            }
-        } else {
-            bucketsToEvaluate = List.of(Bucket.values());
-        }
-
-        BigDecimal totalActiveValue = BigDecimal.ZERO;
-        for (Bucket bucket : bucketsToEvaluate) {
-            if (bucket != Bucket.LEGACY_HOLDINGS) {
-                totalActiveValue = totalActiveValue.add(bucketValues.getOrDefault(bucket, BigDecimal.ZERO));
-            }
-        }
 
         for (Bucket bucket : bucketsToEvaluate) {
             BigDecimal curVal = bucketValues.getOrDefault(bucket, BigDecimal.ZERO);
@@ -333,10 +415,6 @@ public class BucketEngine {
             ));
         }
 
-        // Drawdown trigger - delegates to unified PortfolioConstants disarm logic
-        double ddPctVal = PortfolioConstants.calculateDrawdownPct(benchmarkCurrent, benchmarkRollingHigh);
-        BigDecimal drawdownPct = BigDecimal.valueOf(ddPctVal).setScale(2, RoundingMode.HALF_UP);
-
         List<Integer> activeRungs = new ArrayList<>();
         BigDecimal deployPct = BigDecimal.ZERO;
 
@@ -364,13 +442,32 @@ public class BucketEngine {
         BigDecimal exemptionRemaining = new BigDecimal(exStatus.exemptionRemaining());
 
         if (drawdownTriggerFired) {
-            BigDecimal liquidVal = bucketValues.get(Bucket.LIQUID_BUFFER);
             BigDecimal deployAmount = liquidVal.multiply(deployPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
             if (deployAmount.compareTo(BigDecimal.ZERO) > 0) {
+                Map<String, List<Lot>> liquidAssets = bucketAssetLots.get(Bucket.LIQUID_BUFFER);
+                if (liquidAssets == null || liquidAssets.isEmpty()) {
+                    liquidAssets = bucketAssetLots.get(Bucket.LIQUIDITY_ARBITRAGE);
+                }
+                String arbAssetId = (liquidAssets != null && !liquidAssets.isEmpty()) ? liquidAssets.keySet().iterator().next() : "INVESCO_ARBITRAGE";
+                String arbAssetName = (liquidAssets != null && !liquidAssets.isEmpty() && liquidAssets.containsKey(arbAssetId) && !liquidAssets.get(arbAssetId).isEmpty())
+                    ? liquidAssets.get(arbAssetId).get(0).assetName() : "Invesco India Arbitrage Fund";
+
+                recommendations.add(new RebalanceRecommendation(
+                    arbAssetId,
+                    arbAssetName,
+                    Bucket.LIQUID_BUFFER,
+                    "SELL",
+                    deployAmount,
+                    "MARKET_DRAWDOWN",
+                    BigDecimal.ZERO,
+                    "Drain exit-load-free arbitrage buffer during " + drawdownPct + "% market drawdown (Rung deploy: " + deployPct + "%)"
+                ));
+
                 Map<String, List<Lot>> coreAssets = bucketAssetLots.get(Bucket.EQUITY_CORE);
-                String targetAsset = !coreAssets.isEmpty() ? coreAssets.keySet().iterator().next() : "EQUITY_CORE_INDEX";
-                String assetName = !coreAssets.isEmpty() ? coreAssets.get(targetAsset).get(0).assetName() : "LargeMidcap 250 Index Fund";
+                String targetAsset = (coreAssets != null && !coreAssets.isEmpty()) ? coreAssets.keySet().iterator().next() : "EQUITY_CORE_INDEX";
+                String assetName = (coreAssets != null && !coreAssets.isEmpty() && coreAssets.containsKey(targetAsset) && !coreAssets.get(targetAsset).isEmpty())
+                    ? coreAssets.get(targetAsset).get(0).assetName() : "LargeMidcap 250 Index Fund";
 
                 recommendations.add(new RebalanceRecommendation(
                     targetAsset,
@@ -386,6 +483,17 @@ public class BucketEngine {
         }
 
         for (BucketStatus status : bucketStatuses) {
+            // When drawdown is active or in hold zone, liquid buffer is intentionally drained; never emit conflicting drift buy/sell
+            if (status.bucket() == Bucket.LIQUID_BUFFER || status.bucket() == Bucket.LIQUIDITY_ARBITRAGE) {
+                if (drawdownTriggerFired || ddPctVal >= 5.0) {
+                    continue;
+                }
+            }
+            // When drawdown is active, core equity was already funded via deployAmount; skip duplicate BUY
+            if (drawdownTriggerFired && status.bucket() == Bucket.EQUITY_CORE) {
+                continue;
+            }
+
             if (status.isDrifted()) {
                 BigDecimal targetValue = totalPortfolioValue.multiply(status.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
                 BigDecimal diffValue = status.currentValue().subtract(targetValue);
