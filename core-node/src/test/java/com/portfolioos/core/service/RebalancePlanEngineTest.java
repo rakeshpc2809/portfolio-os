@@ -1100,5 +1100,131 @@ class RebalancePlanEngineTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(impact.taxImpact().taxAmount()),
             "Loss lot taxAmount must be 0.00");
     }
+
+    @Test
+    @DisplayName("F3: Active bucket with in-band drift (<= bandPct) must NOT be trimmed on non-drawdown trigger")
+    void testF3SubBandExcessNotTrimmedWhenDriftWithinBand() {
+        BigDecimal nav = new BigDecimal("100.00");
+        LocalDate today = LocalDate.of(2026, 3, 15); // Calendar reconstitution window
+
+        // Total corpus = 100,000 INR
+        // Targets: Core = 80% (band = 5.0%), Gold = 20% (band = 5.0%)
+        // Current: Core has 82,000 INR (82.0%), Gold has 18,000 INR (18.0%)
+        // Drift for Core = +2.0 pts <= 5.0 bandPct -> In-band!
+        Lot coreLot = new Lot("lot-core", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(400), new BigDecimal("820"), new BigDecimal("820"), new BigDecimal("50.00"), new BigDecimal("41000.00"), false, null);
+        Lot goldLot = new Lot("lot-gold", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds",
+            today.minusDays(400), new BigDecimal("180"), new BigDecimal("180"), new BigDecimal("50.00"), new BigDecimal("9000.00"), false, null);
+
+        List<BucketEngine.BucketTarget> targets = List.of(
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("80.00"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("20.00"), new BigDecimal("5.00"))
+        );
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", nav,
+            "INF247L01BM8", nav
+        );
+        BigDecimal corpus = new BigDecimal("100000.00");
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            List.of(coreLot, goldLot), Collections.emptyList(), navMap, today,
+            corpus, corpus, targets, "2026-27", null, null, false, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.sellSide());
+        // Under F3 band gating, Core's +2.0 pt drift is inside the 5.0 pt band, so NO trim should be emitted!
+        assertEquals(0, BigDecimal.ZERO.compareTo(plan.sellSide().totalRequired()),
+            "Active bucket within drift band (+2.0% <= 5.0%) must NOT be trimmed on scheduled/drift evaluation");
+    }
+
+    @Test
+    @DisplayName("F3: sellSideActiveCorpus excludes LEGACY_HOLDINGS for uniform target valuation parity with BucketEngine")
+    void testF3ActiveCorpusDenominatorExcludesLegacyHoldings() {
+        BigDecimal nav = new BigDecimal("100.00");
+        LocalDate today = LocalDate.of(2026, 8, 26);
+
+        // Legacy holding: 50,000 INR
+        Lot legacyLot = new Lot("lot-legacy", "INF247L01BQ9", "Motilal Oswal Nifty Microcap 250 Index Fund",
+            today.minusDays(400), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("80.00"), new BigDecimal("40000.00"), false, null);
+
+        // Core holding: 50,000 INR (100% of active corpus of 50,000 INR)
+        Lot coreLot = new Lot("lot-core", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(400), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("80.00"), new BigDecimal("40000.00"), false, null);
+
+        // Active Targets: Core = 80%, Gold = 20%
+        // Active corpus = 50,000 INR. Core target = 80% * 50,000 = 40,000 INR.
+        // Current Core = 50,000 INR -> Weight = 100%, Target = 80% -> Drift = +20 pts (> 5 pt band -> Trim excess)
+        // If liveCorpus (100,000) was erroneously used, target would be 80,000 INR (> curVal 50,000), making Core look underweight!
+        List<BucketEngine.BucketTarget> targets = List.of(
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("80.00"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("20.00"), new BigDecimal("5.00"))
+        );
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF247L01BQ9", nav,
+            "INF109KC12U0", nav
+        );
+        BigDecimal totalCorpus = new BigDecimal("100000.00");
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            List.of(legacyLot, coreLot), Collections.emptyList(), navMap, today,
+            totalCorpus, totalCorpus, targets, "2026-27", null, null, false, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.sellSide());
+
+        // Step 0 liquidates the legacy holding unconditionally (50,000)
+        // Core excess above 40,000 targetVal is 10,000, dampened by FundTrendDampener
+        assertTrue(plan.sellSide().totalRequired().compareTo(new BigDecimal("50000.00")) > 0,
+            "Total trim must include 50,000 legacy liquidation PLUS dampened excess from Core (sized against active corpus)");
+    }
+
+    @Test
+    @DisplayName("F5: Statutory loss netting under Income-tax Act, 2025 Section 108 clamps totalStcgTaxable to zero (never negative)")
+    void testF5ShortTermLossNettingClampsTaxableToZero() {
+        BigDecimal nav = new BigDecimal("100.00");
+        LocalDate today = LocalDate.of(2026, 8, 26);
+
+        // Arbitrage lot with short-term capital loss:
+        // Acquired 30 days ago (< 365d -> STCG/STCL)
+        // NAV = 100.00, Cost = 120.00 -> Realized Loss = -20.00/unit (-2,000 total loss)
+        Lot stclArbLot = new Lot("lot-arb-stcl", "INF209K011R0", "Aditya Birla Sun Life Arbitrage Fund",
+            today.minusDays(30), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("120.00"), new BigDecimal("12000.00"), false, null);
+
+        // Core lot: 90,000
+        Lot coreLot = new Lot("lot-core", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(400), new BigDecimal("900"), new BigDecimal("900"), new BigDecimal("100.00"), new BigDecimal("90000.00"), false, null);
+
+        // Targets: Arbitrage = 5%, Core = 95%. Current Arbitrage = 10,000 (10%), Target = 5,000 (5%). Excess = 5,000
+        List<BucketEngine.BucketTarget> targets = List.of(
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.LIQUID_BUFFER, new BigDecimal("5.00"), new BigDecimal("1.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("95.00"), new BigDecimal("5.00"))
+        );
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF209K011R0", nav,
+            "INF109KC12U0", nav
+        );
+        BigDecimal corpus = new BigDecimal("100000.00");
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            List.of(stclArbLot, coreLot), Collections.emptyList(), navMap, today,
+            corpus, corpus, targets, "2026-27", null, null, false, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.sellSide());
+        assertNotNull(plan.sellSide().taxSummary());
+
+        // At HEAD, totalStcgTaxable became negative (-1000.00 or -2000.00).
+        // Under F5 and ITA 2025 Sec 108/111, totalStcgTaxable MUST be clamped to 0.00!
+        assertEquals(0, BigDecimal.ZERO.compareTo(plan.sellSide().taxSummary().totalStcgTaxable()),
+            "totalStcgTaxable must be clamped to exactly 0.00 when short-term loss exceeds short-term gain");
+        assertTrue(plan.sellSide().taxSummary().totalRealizedGain().compareTo(BigDecimal.ZERO) < 0,
+            "totalRealizedGain accurately reflects the realized loss");
+    }
 }
 

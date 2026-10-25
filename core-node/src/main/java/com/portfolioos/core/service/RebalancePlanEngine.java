@@ -271,18 +271,23 @@ public class RebalancePlanEngine {
             ? resolution.drawdownContext().currentDrawdownPct() : 0.0;
 
         BigDecimal liquidCurVal = BigDecimal.ZERO;
+        BigDecimal sellSideActiveCorpus = BigDecimal.ZERO;
         if (openLots != null) {
             for (Lot lot : openLots) {
                 BucketEngine.Bucket b = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
+                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.activeCorpus");
+                BigDecimal lotVal = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
+                if (b != BucketEngine.Bucket.LEGACY_HOLDINGS) {
+                    sellSideActiveCorpus = sellSideActiveCorpus.add(lotVal);
+                }
                 BucketEngine.Bucket mappedB = resolveTargetBucket(b, baseTargets);
                 if (mappedB == BucketEngine.Bucket.LIQUID_BUFFER || mappedB == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE) {
-                    BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.liquidVal");
-                    liquidCurVal = liquidCurVal.add(lot.remainingUnits().multiply(nav));
+                    liquidCurVal = liquidCurVal.add(lotVal);
                 }
             }
         }
-        BigDecimal currentLiquidPct = liveCorpus.compareTo(BigDecimal.ZERO) > 0
-            ? liquidCurVal.multiply(new BigDecimal("100")).divide(liveCorpus, 2, RoundingMode.HALF_UP)
+        BigDecimal currentLiquidPct = sellSideActiveCorpus.compareTo(BigDecimal.ZERO) > 0
+            ? liquidCurVal.multiply(new BigDecimal("100")).divide(sellSideActiveCorpus, 2, RoundingMode.HALF_UP)
             : BigDecimal.ZERO;
 
         List<BucketEngine.BucketTarget> activeTargets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, ddPct, currentLiquidPct);
@@ -362,10 +367,11 @@ public class RebalancePlanEngine {
             Map<BucketEngine.Bucket, BigDecimal> bucketTrims = new java.util.LinkedHashMap<>();
             BigDecimal totalDeficit = BigDecimal.ZERO;
 
-            if (activeTargets != null) {
+            if (activeTargets != null && sellSideActiveCorpus.compareTo(BigDecimal.ZERO) > 0) {
                 for (BucketEngine.BucketTarget target : activeTargets) {
                     BigDecimal targetPct = target.targetPct();
-                    BigDecimal targetVal = liveCorpus.multiply(targetPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                    BigDecimal bandPct = target.bandPct() != null ? target.bandPct() : new BigDecimal("5.0");
+                    BigDecimal targetVal = sellSideActiveCorpus.multiply(targetPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
                     BigDecimal curVal = BigDecimal.ZERO;
                     if (openLots != null) {
@@ -380,9 +386,17 @@ public class RebalancePlanEngine {
                     }
                     if (curVal.compareTo(targetVal) > 0) {
                         BigDecimal excessVal = curVal.subtract(targetVal);
+                        BigDecimal curWeightPct = curVal.multiply(new BigDecimal("100")).divide(sellSideActiveCorpus, 4, RoundingMode.HALF_UP);
+                        BigDecimal driftPts = curWeightPct.subtract(targetPct);
                         boolean isLiquid = (target.bucket() == BucketEngine.Bucket.LIQUID_BUFFER || target.bucket() == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
+                        boolean isDrawdownLiquidDeploy = isLiquid && ("DRAWDOWN".equalsIgnoreCase(resolvedType) || ddPct >= 10.0);
+                        // F3: Only trim an active bucket if it breached its drift band (or is a Drawdown Rung liquid buffer deployment)
+                        if (!isDrawdownLiquidDeploy && driftPts.compareTo(bandPct) <= 0) {
+                            continue;
+                        }
+
                         BigDecimal dampenedTrim;
-                        if (isLiquid && ("DRAWDOWN".equalsIgnoreCase(resolvedType) || ddPct >= 10.0)) {
+                        if (isDrawdownLiquidDeploy) {
                             // BYPASS FundTrendDampenerCalculator for LIQUID_BUFFER during DRAWDOWN triggers:
                             // Deploy the exact rule-based excess (25%, 50%, or 100% of buffer) with zero volatility dampening!
                             dampenedTrim = excessVal;
@@ -495,7 +509,10 @@ public class RebalancePlanEngine {
 
             BigDecimal totalGain = BigDecimal.ZERO;
             BigDecimal totalLtcgExempt = BigDecimal.ZERO;
-            BigDecimal totalStcgTaxable = BigDecimal.ZERO;
+            BigDecimal grossStcg = BigDecimal.ZERO;
+            BigDecimal grossStcl = BigDecimal.ZERO;
+            BigDecimal grossTaxableLtcg = BigDecimal.ZERO;
+            BigDecimal grossLtcl = BigDecimal.ZERO;
 
             List<RebalanceLotImpactDto> soldArbitrageLots = new ArrayList<>();
             soldArbitrageAmount = BigDecimal.ZERO;
@@ -503,8 +520,6 @@ public class RebalancePlanEngine {
             soldLegacyAmount = BigDecimal.ZERO;
             List<RebalanceLotImpactDto> soldCoreLots = new ArrayList<>();
             soldCoreAmount = BigDecimal.ZERO;
-
-            BigDecimal dtoHeadroom = headroomBefore;
 
             if (!allSteps.isEmpty()) {
                 for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep step : allSteps) {
@@ -522,49 +537,39 @@ public class RebalancePlanEngine {
                         throw new IllegalStateException("CRITICAL REBALANCE AUDIT FAILURE: Lot " + step.lotId() + " (" + step.assetId() + ") missing original lot metadata or acquisition date in open lots pool");
                     }
                     long holdingDays = ChronoUnit.DAYS.between(origLot.acquisitionDate(), today);
-
                     BigDecimal costBasis = step.proceeds().subtract(step.realizedGain()).max(BigDecimal.ZERO);
-                    boolean isLongTerm = "LONG_TERM".equals(step.taxTerm());
-                    AssetCategory cat = origLot != null ? TaxClassifier.detectCategory(origLot.assetId(), origLot.assetName()) : AssetCategory.EQUITY;
-                    boolean isEquityLtcg = isLongTerm && cat == AssetCategory.EQUITY;
 
-                    BigDecimal exempt = BigDecimal.ZERO;
-                    BigDecimal taxable = BigDecimal.ZERO;
-
-                    if (isEquityLtcg) {
-                        if (step.realizedGain().compareTo(BigDecimal.ZERO) > 0) {
-                            exempt = step.realizedGain().min(dtoHeadroom);
-                            taxable = step.realizedGain().subtract(exempt).max(BigDecimal.ZERO);
-                            dtoHeadroom = dtoHeadroom.subtract(exempt).max(BigDecimal.ZERO);
-                            totalLtcgExempt = totalLtcgExempt.add(exempt);
-                        } else {
-                            taxable = BigDecimal.ZERO;
-                        }
-                    } else if (isLongTerm) {
-                        // Non-equity LTCG (e.g. Gold FoF, Debt, International) -> No Sec 112A exemption
-                        taxable = step.realizedGain().max(BigDecimal.ZERO);
-                    } else {
-                        taxable = step.realizedGain();
-                        totalStcgTaxable = totalStcgTaxable.add(taxable);
-                    }
+                    // F4 Single Source of Truth: Read tax metadata directly from WaterfallStep
+                    String regime = step.taxRegime();
+                    BigDecimal exempt = step.exemptionApplied();
+                    BigDecimal taxable = step.taxableAmount();
 
                     totalGain = totalGain.add(step.realizedGain());
+                    if (exempt != null && exempt.compareTo(BigDecimal.ZERO) > 0) {
+                        totalLtcgExempt = totalLtcgExempt.add(exempt);
+                    }
 
-                    String regime;
-                    if (isEquityLtcg) {
-                        regime = (step.realizedGain().compareTo(BigDecimal.ZERO) <= 0 || (exempt.compareTo(BigDecimal.ZERO) > 0 && taxable.compareTo(BigDecimal.ZERO) == 0))
-                            ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5";
-                    } else if (isLongTerm) {
-                        regime = "SEC_112A_TAXABLE_12_5";
+                    // Income-tax Act, 2025 Section 108 & 111 Statutory Loss Accumulation
+                    boolean isLongTerm = "LONG_TERM".equals(step.taxTerm());
+                    if (step.realizedGain().compareTo(BigDecimal.ZERO) < 0) {
+                        if (isLongTerm) {
+                            grossLtcl = grossLtcl.add(step.realizedGain().abs());
+                        } else {
+                            grossStcl = grossStcl.add(step.realizedGain().abs());
+                        }
                     } else {
-                        regime = "SLAB_RATE_STCG";
+                        if (isLongTerm) {
+                            grossTaxableLtcg = grossTaxableLtcg.add(taxable != null ? taxable : BigDecimal.ZERO);
+                        } else {
+                            grossStcg = grossStcg.add(taxable != null ? taxable : step.realizedGain());
+                        }
                     }
 
                     RebalanceLotImpactDto lotImpact = new RebalanceLotImpactDto(
                         step.lotId(),
                         step.assetId(),
                         step.assetName(),
-                        (origLot != null && origLot.acquisitionDate() != null) ? origLot.acquisitionDate().toString() : today.toString(),
+                        origLot.acquisitionDate().toString(),
                         holdingDays,
                         step.unitsSold(),
                         costBasis,
@@ -622,6 +627,12 @@ public class RebalancePlanEngine {
                 soldCoreAmount.compareTo(BigDecimal.ZERO) == 0 ? ((soldArbitrageAmount.compareTo(BigDecimal.ZERO) > 0 || soldLegacyAmount.compareTo(BigDecimal.ZERO) > 0) ? "COVERED_BY_PRIOR_TIERS" : "NO_TRIMMABLE_LOTS") : null,
                 soldCoreLots
             ));
+
+            // Income-tax Act, 2025 Section 108 (intra-head set-off) & Section 111 (carry-forward of losses):
+            // STCL offsets STCG first, then remaining STCL offsets taxable LTCG.
+            // Clamps totalStcgTaxable to ZERO so it is never negative!
+            BigDecimal netStcg = grossStcg.subtract(grossStcl);
+            BigDecimal totalStcgTaxable = netStcg.max(BigDecimal.ZERO);
 
             TaxSummaryDto taxSummary = new TaxSummaryDto(
                 totalGain,

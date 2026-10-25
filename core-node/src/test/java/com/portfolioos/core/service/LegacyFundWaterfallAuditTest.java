@@ -276,12 +276,12 @@ class LegacyFundWaterfallAuditTest {
         System.out.println("Newer Legacy Lot (2024-02-01) Sold: ₹" + legacyTier.sold());
         System.out.println("Old Core Lot (2023-05-10) Sold: ₹" + coreTier.sold());
 
-        // FIX VERIFIED (v2.3 Invariant 4):
-        // Legacy Lot trimmed FIRST 100% (₹50,000). Core excess drift trim executes unconditionally (₹214,500).
+        // FIX VERIFIED (v2.3 Invariant 4 & F3 activeCorpus denominator):
+        // Legacy Lot trimmed FIRST 100% (₹50,000). Core excess drift trim executes against active corpus (510k * 40% = 204k target -> 306k excess * 0.75 = ₹229,500).
         assertEquals(new BigDecimal("50000.00"), legacyTier.sold(),
             "FIX VERIFIED: Legacy lot was prioritized first despite 2023 Core lot having an earlier acquisition date.");
-        assertEquals(new BigDecimal("214500.00"), coreTier.sold(),
-            "FIX VERIFIED: Old Core lot supplied its dampened excess drift trim (₹214,500).");
+        assertEquals(new BigDecimal("229500.00"), coreTier.sold(),
+            "FIX VERIFIED: Old Core lot supplied its dampened excess drift trim against active corpus (₹229,500).");
     }
 
     @Test

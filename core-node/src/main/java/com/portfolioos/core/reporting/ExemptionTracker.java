@@ -67,11 +67,12 @@ public class ExemptionTracker {
             }
         }
 
-        // STCL offsets STCG first
+        // Income-tax Act, 2025 Section 108 (intra-head set-off, formerly Sec 70) and Section 111 (carry-forward):
+        // 1. STCL offsets STCG first
         BigDecimal netStcg = gST.subtract(lST).max(BigDecimal.ZERO);
         BigDecimal remainingStcl = lST.subtract(gST).max(BigDecimal.ZERO);
 
-        // LTCL offsets LTCG, remaining STCL offsets LTCG
+        // 2. LTCL offsets LTCG; remaining STCL offsets LTCG
         BigDecimal netLtcgBeforeExemption = gLT.subtract(lLT).subtract(remainingStcl).max(BigDecimal.ZERO);
 
         TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);

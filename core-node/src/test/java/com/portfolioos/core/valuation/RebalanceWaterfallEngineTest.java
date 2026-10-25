@@ -2,6 +2,7 @@ package com.portfolioos.core.valuation;
 
 import com.portfolioos.core.model.Lot;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -253,5 +254,82 @@ class RebalanceWaterfallEngineTest {
         assertEquals(1, result.steps().size());
         assertEquals("INF174KA1TY2", result.steps().get(0).assetId(), "Kotak Equal Weight must be trimmed when eligible as legacy lot");
         assertEquals(0, new BigDecimal("5000.00").compareTo(result.steps().get(0).proceeds()));
+    }
+
+    @Test
+    @DisplayName("F1: Scheme with older gain lot blocks cherry-picking newer loss lot under Section 45(2A) RTA FIFO")
+    void testF1SchemeWithOlderGainBlocksNewerLossHarvest() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        // Scheme INF109KC12U0:
+        // Lot 1 (Older, 700 days ago, LTCG): Cost = 10.00, NAV = 15.00 -> +5.00 Gain per unit
+        Lot olderGainLot = new Lot("L1-GAIN", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(700), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10.00"), new BigDecimal("1000.00"), false, BigDecimal.ZERO);
+
+        // Lot 2 (Newer, 30 days ago, STCL): Cost = 18.00, NAV = 15.00 -> -3.00 Loss per unit
+        Lot newerLossLot = new Lot("L2-LOSS", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(30), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("18.00"), new BigDecimal("1800.00"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", new BigDecimal("15.00")
+        );
+
+        // Trim 1,500 INR (100 units). Under RTA FIFO, the RTA will liquidate Lot 1 (the oldest lot).
+        // LossHarvestTierStrategy must NOT select Lot 2 out of order ahead of Lot 1!
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("1500.00"),
+            List.of(olderGainLot, newerLossLot),
+            navMap,
+            new BigDecimal("125000.00"),
+            false,
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(result);
+        assertEquals(1, result.steps().size(), "Only 1 lot should be redeemed for 1,500 proceeds");
+        RebalanceWaterfallEngine.WaterfallStep step = result.steps().get(0);
+        assertEquals("L1-GAIN", step.lotId(), "RTA FIFO must liquidate the oldest lot (L1-GAIN), not cherry-pick newer loss lot (L2-LOSS)");
+        assertEquals(WaterfallTier.LTCG_WITHIN_EXEMPTION, step.tier(), "L1-GAIN must be redeemed under LTCG tier, not LOSS_HARVEST");
+        assertEquals(new BigDecimal("500.00"), step.realizedGain(), "Realized gain must be +500.00 from L1-GAIN");
+    }
+
+    @Test
+    @DisplayName("F1: Same-scheme LTCG lots must be consumed in strict chronological FIFO order, not sorted by gain per unit")
+    void testF1SameSchemeLtcgLotsConsumedInFifoOrder() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        // Scheme INF109KC12U0:
+        // Lot 1 (Older, 800 days ago, LTCG): Cost = 10.00, NAV = 20.00 -> +10.00 Gain per unit (higher gain)
+        Lot olderLot = new Lot("L1-OLD", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(800), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10.00"), new BigDecimal("1000.00"), false, BigDecimal.ZERO);
+
+        // Lot 2 (Newer, 400 days ago, LTCG): Cost = 18.00, NAV = 20.00 -> +2.00 Gain per unit (lower gain)
+        Lot newerLot = new Lot("L2-NEW", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(400), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("18.00"), new BigDecimal("1800.00"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", new BigDecimal("20.00")
+        );
+
+        // Trim 1,000 INR (50 units).
+        // At HEAD, selectCoreLots sorted by (nav - cost) ASC, so it consumed L2-NEW (+2/unit) before L1-OLD (+10/unit).
+        // Under F1, RTA FIFO strictly mandates consuming L1-OLD first!
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("1000.00"),
+            List.of(olderLot, newerLot),
+            navMap,
+            new BigDecimal("125000.00"),
+            false,
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(result);
+        assertEquals(1, result.steps().size());
+        RebalanceWaterfallEngine.WaterfallStep step = result.steps().get(0);
+        assertEquals("L1-OLD", step.lotId(), "RTA FIFO strictly consumes oldest lot L1-OLD first, ignoring intra-scheme gain ratios");
+        assertEquals(new BigDecimal("50.0000"), step.unitsSold());
+        assertEquals(new BigDecimal("1000.00"), step.proceeds());
     }
 }
