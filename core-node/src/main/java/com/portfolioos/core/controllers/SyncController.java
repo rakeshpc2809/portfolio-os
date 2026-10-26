@@ -54,6 +54,7 @@ public class SyncController {
     private final DuckDbProjector duckDbProjector;
     private final QuantSidecarClient quantSidecarClient;
     private final com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter;
+    private final com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository;
 
     @Autowired
     public SyncController(
@@ -61,13 +62,25 @@ public class SyncController {
         com.portfolioos.core.service.PortfolioValuationService valuationService,
         DuckDbProjector duckDbProjector,
         QuantSidecarClient quantSidecarClient,
-        com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter
+        com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter,
+        @Autowired(required = false) com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository
     ) {
         this.cacheService = cacheService;
         this.valuationService = valuationService;
         this.duckDbProjector = duckDbProjector;
         this.quantSidecarClient = quantSidecarClient;
         this.cloudBundleExporter = cloudBundleExporter;
+        this.triggerHistoryRepository = triggerHistoryRepository != null ? triggerHistoryRepository : new com.portfolioos.core.persistence.TriggerHistoryRepository();
+    }
+
+    public SyncController(
+        LedgerCacheService cacheService,
+        com.portfolioos.core.service.PortfolioValuationService valuationService,
+        DuckDbProjector duckDbProjector,
+        QuantSidecarClient quantSidecarClient,
+        com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter
+    ) {
+        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, cloudBundleExporter, null);
     }
 
     public SyncController(
@@ -76,7 +89,7 @@ public class SyncController {
         DuckDbProjector duckDbProjector,
         QuantSidecarClient quantSidecarClient
     ) {
-        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, null);
+        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, null, null);
     }
 
     private static String detectFineBucket(String assetName) {
@@ -489,6 +502,10 @@ public class SyncController {
             openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
         );
+
+        // F12: Confirm execution snapshot persistence
+        com.portfolioos.core.service.RebalancePlanEngine.confirmPlanExecution(plan, triggerHistoryRepository);
+
         return ResponseEntity.ok(plan);
     }
 

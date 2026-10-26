@@ -25,14 +25,24 @@ public final class PortfolioConstants {
 
     public static final double DEFAULT_CORE_DRIFT_THRESHOLD_PCT = 5.0;
     public static final double DEFAULT_GOLD_DRIFT_THRESHOLD_PCT = 5.0;
+    public static final double URGENT_DRIFT_THRESHOLD_PCT = 10.0;
+    public static final double CORE_INTERNAL_RATIO_BAND = 0.06;
 
     public static double calculateDrawdownPct(java.math.BigDecimal currentVal, java.math.BigDecimal rollingHigh) {
-        if (rollingHigh == null || rollingHigh.compareTo(java.math.BigDecimal.ZERO) <= 0 || currentVal == null) {
+        if (rollingHigh == null || rollingHigh.compareTo(java.math.BigDecimal.ZERO) <= 0 || currentVal == null || currentVal.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            return 0.0;
+        }
+        if (currentVal.compareTo(rollingHigh) >= 0) {
             return 0.0;
         }
         return rollingHigh.subtract(currentVal)
-            .divide(rollingHigh, 4, java.math.RoundingMode.HALF_UP)
-            .doubleValue() * 100.0;
+            .multiply(new java.math.BigDecimal("100"))
+            .divide(rollingHigh, 2, java.math.RoundingMode.HALF_UP)
+            .doubleValue();
+    }
+
+    public static boolean isUrgentRebalance(double drawdownPct, double absDriftPct) {
+        return drawdownPct >= DRAWDOWN_TIER_2_PCT || absDriftPct >= URGENT_DRIFT_THRESHOLD_PCT;
     }
 
     public static String deriveTriggerType(double drawdownPct) {

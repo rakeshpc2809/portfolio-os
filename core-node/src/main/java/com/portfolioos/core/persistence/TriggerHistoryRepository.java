@@ -144,6 +144,52 @@ public class TriggerHistoryRepository {
         }
     }
 
+    public int getMaxFiredDrawdownTierWithinDays(java.time.LocalDate today, int days) {
+        String cutoff = today.minusDays(days).atStartOfDay().format(ISO_FORMATTER);
+        String sql = "SELECT reason_code, trigger_type FROM rebalance_trigger_history " +
+                     "WHERE has_sell_side = 1 AND fired_at >= ?";
+        int maxTier = 0;
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, cutoff);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String reason = rs.getString("reason_code");
+                    String type = rs.getString("trigger_type");
+                    if ("DRAWDOWN".equalsIgnoreCase(type) || (reason != null && reason.toUpperCase().contains("DRAWDOWN"))) {
+                        if (reason != null && reason.contains("20")) {
+                            maxTier = Math.max(maxTier, 20);
+                        } else if (reason != null && reason.contains("15")) {
+                            maxTier = Math.max(maxTier, 15);
+                        } else if (reason != null && reason.contains("10")) {
+                            maxTier = Math.max(maxTier, 10);
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to query max fired drawdown tier", e);
+        }
+        return maxTier;
+    }
+
+    public Optional<String> getExecutedPlanSnapshot(String planId) {
+        String sql = "SELECT details_json FROM rebalance_trigger_history WHERE plan_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, planId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    String json = rs.getString(1);
+                    return Optional.ofNullable(json);
+                }
+            }
+            return Optional.empty();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to query executed plan snapshot", e);
+        }
+    }
+
     public int getRecordCount() {
         String sql = "SELECT COUNT(*) FROM rebalance_trigger_history";
         try (Connection conn = getConnection();

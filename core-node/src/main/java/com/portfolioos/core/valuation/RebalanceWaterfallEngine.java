@@ -53,7 +53,8 @@ public class RebalanceWaterfallEngine {
     private static final List<WaterfallTierStrategy> REGULAR_STRATEGIES = List.of(
         new LegacyTierStrategy(),
         new LossHarvestTierStrategy(),
-        new CoreLtcgTierStrategy()
+        new CoreLtcgWithinExemptionTierStrategy(),
+        new CoreLtcgBeyondExemptionTierStrategy()
     );
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RebalanceWaterfallEngine.class);
@@ -127,6 +128,9 @@ public class RebalanceWaterfallEngine {
         }
         Map<String, BigDecimal> legacySchemeTrimmedMap = new HashMap<>();
 
+        List<Lot> workingLegacyLots = new ArrayList<>(legacyLots);
+        List<Lot> workingCoreLots = new ArrayList<>(coreLots);
+
         List<WaterfallTierStrategy> strategiesToRun = new ArrayList<>(REGULAR_STRATEGIES);
         if (urgent || isLiquidBucket) {
             strategiesToRun.add(URGENT_STCG_STRATEGY);
@@ -134,20 +138,25 @@ public class RebalanceWaterfallEngine {
 
         for (WaterfallTierStrategy strategy : strategiesToRun) {
             if (remainingTarget.compareTo(BigDecimal.ZERO) <= 0) break;
-            List<Lot> candidateLots = strategy.selectLots(legacyLots, coreLots, navMap, today, rules);
+            List<Lot> candidateLots = strategy.selectLots(workingLegacyLots, workingCoreLots, navMap, today, rules);
             for (Lot lot : candidateLots) {
                 if (remainingTarget.compareTo(BigDecimal.ZERO) <= 0) break;
 
+                Lot currentLot = findWorkingLot(lot.lotId(), workingLegacyLots, workingCoreLots);
+                if (currentLot == null || currentLot.remainingUnits().compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+
                 BigDecimal lotTarget = remainingTarget;
                 if (strategy.tier() == WaterfallTier.LEGACY_FUND) {
-                    BigDecimal schemeTotal = legacySchemeValueMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
-                    BigDecimal alreadyTrimmed = legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO);
+                    BigDecimal schemeTotal = legacySchemeValueMap.getOrDefault(currentLot.assetId(), BigDecimal.ZERO);
+                    BigDecimal alreadyTrimmed = legacySchemeTrimmedMap.getOrDefault(currentLot.assetId(), BigDecimal.ZERO);
                     BigDecimal schemeCapRemaining = schemeTotal.subtract(alreadyTrimmed).max(BigDecimal.ZERO);
                     if (schemeCapRemaining.compareTo(BigDecimal.ZERO) <= 0) continue;
                     lotTarget = lotTarget.min(schemeCapRemaining);
                 }
 
-                LotProcessResult res = processLot(strategy.tier(), lot, navMap, lotTarget, unusedExemption, rules, today, urgent, isLiquidBucket);
+                LotProcessResult res = processLot(strategy.tier(), currentLot, navMap, lotTarget, unusedExemption, rules, today, urgent, isLiquidBucket);
                 if (res != null && res.proceeds().compareTo(BigDecimal.ZERO) > 0) {
                     steps.add(res.step());
                     satisfiedAmount = satisfiedAmount.add(res.proceeds());
@@ -155,9 +164,10 @@ public class RebalanceWaterfallEngine {
                     unusedExemption = res.newUnusedExemption();
                     totalTaxDrag = totalTaxDrag.add(res.taxDrag());
                     if (strategy.tier() == WaterfallTier.LEGACY_FUND) {
-                        legacySchemeTrimmedMap.put(lot.assetId(),
-                            legacySchemeTrimmedMap.getOrDefault(lot.assetId(), BigDecimal.ZERO).add(res.proceeds()));
+                        legacySchemeTrimmedMap.put(currentLot.assetId(),
+                            legacySchemeTrimmedMap.getOrDefault(currentLot.assetId(), BigDecimal.ZERO).add(res.proceeds()));
                     }
+                    deductWorkingUnits(currentLot.lotId(), res.step().unitsSold(), workingLegacyLots, workingCoreLots);
                 }
             }
         }
@@ -180,6 +190,43 @@ public class RebalanceWaterfallEngine {
             totalTaxDrag.setScale(2, RoundingMode.HALF_UP),
             exemptionConsumed.setScale(2, RoundingMode.HALF_UP)
         );
+    }
+
+    private static Lot findWorkingLot(String lotId, List<Lot> legacy, List<Lot> core) {
+        for (Lot l : legacy) {
+            if (l.lotId().equals(lotId)) return l;
+        }
+        for (Lot l : core) {
+            if (l.lotId().equals(lotId)) return l;
+        }
+        return null;
+    }
+
+    private static void deductWorkingUnits(String lotId, BigDecimal unitsSold, List<Lot> legacy, List<Lot> core) {
+        for (int i = 0; i < legacy.size(); i++) {
+            Lot l = legacy.get(i);
+            if (l.lotId().equals(lotId)) {
+                BigDecimal newUnits = l.remainingUnits().subtract(unitsSold);
+                if (newUnits.compareTo(BigDecimal.ZERO) <= 0) {
+                    legacy.remove(i);
+                } else {
+                    legacy.set(i, l.withRemainingUnitsAndCost(newUnits, l.costPerUnit(), l.costPerUnit().multiply(newUnits).setScale(2, RoundingMode.HALF_UP)));
+                }
+                return;
+            }
+        }
+        for (int i = 0; i < core.size(); i++) {
+            Lot l = core.get(i);
+            if (l.lotId().equals(lotId)) {
+                BigDecimal newUnits = l.remainingUnits().subtract(unitsSold);
+                if (newUnits.compareTo(BigDecimal.ZERO) <= 0) {
+                    core.remove(i);
+                } else {
+                    core.set(i, l.withRemainingUnitsAndCost(newUnits, l.costPerUnit(), l.costPerUnit().multiply(newUnits).setScale(2, RoundingMode.HALF_UP)));
+                }
+                return;
+            }
+        }
     }
 
     private record LotProcessResult(
@@ -213,8 +260,14 @@ public class RebalanceWaterfallEngine {
         AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
         long threshold = getThresholdDays(cat, rules);
         boolean isLtcg = threshold > 0 && holdingDays >= threshold;
+        boolean isLossLot = nav.subtract(lot.effectiveCostPerUnit(nav)).compareTo(BigDecimal.ZERO) < 0;
 
-        if (!isLtcg && !urgent && !isLiquidBucket) {
+        // F5: Short-term loss lots are always eligible in LOSS_HARVEST / LEGACY_FUND tiers even when !urgent
+        if (!isLtcg && !isLossLot && !urgent && !isLiquidBucket) {
+            return null;
+        }
+
+        if (tier == WaterfallTier.LTCG_WITHIN_EXEMPTION && (unusedExemption == null || unusedExemption.compareTo(BigDecimal.ZERO) <= 0 || cat != AssetCategory.EQUITY)) {
             return null;
         }
 
@@ -225,6 +278,17 @@ public class RebalanceWaterfallEngine {
         BigDecimal costBasis = unitsSold.multiply(lot.effectiveCostPerUnit(nav)).setScale(2, RoundingMode.HALF_UP);
         BigDecimal gain = redemption.subtract(costBasis).setScale(2, RoundingMode.HALF_UP);
 
+        // F6: Cap LTCG_WITHIN_EXEMPTION strictly at unusedExemption; remainder of lot will be processed by LTCG_BEYOND_EXEMPTION
+        if (tier == WaterfallTier.LTCG_WITHIN_EXEMPTION && gain.compareTo(unusedExemption) > 0 && gain.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal exemptFraction = unusedExemption.divide(gain, 8, RoundingMode.HALF_UP);
+            redemption = redemption.multiply(exemptFraction).setScale(2, RoundingMode.HALF_UP);
+            unitsSold = nav.compareTo(BigDecimal.ZERO) > 0
+                ? redemption.divide(nav, 4, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+            costBasis = unitsSold.multiply(lot.effectiveCostPerUnit(nav)).setScale(2, RoundingMode.HALF_UP);
+            gain = unusedExemption.setScale(2, RoundingMode.HALF_UP);
+        }
+
         BigDecimal taxDrag = BigDecimal.ZERO;
         BigDecimal newExemption = unusedExemption;
         BigDecimal exempt = BigDecimal.ZERO;
@@ -233,7 +297,11 @@ public class RebalanceWaterfallEngine {
 
         if (gain.compareTo(BigDecimal.ZERO) > 0) {
             if (isLtcg) {
-                if (cat == AssetCategory.EQUITY) {
+                if (tier == WaterfallTier.LTCG_BEYOND_EXEMPTION) {
+                    taxable = gain;
+                    taxDrag = taxable.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+                    regime = "SEC_112A_TAXABLE_12_5";
+                } else if (cat == AssetCategory.EQUITY) {
                     exempt = gain.min(newExemption);
                     taxable = gain.subtract(exempt);
                     newExemption = newExemption.subtract(exempt).max(BigDecimal.ZERO);
@@ -477,9 +545,19 @@ public class RebalanceWaterfallEngine {
         }
     }
 
-    private static class CoreLtcgTierStrategy implements WaterfallTierStrategy {
+    private static class CoreLtcgWithinExemptionTierStrategy implements WaterfallTierStrategy {
         @Override
         public WaterfallTier tier() { return WaterfallTier.LTCG_WITHIN_EXEMPTION; }
+
+        @Override
+        public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
+            return selectCoreLotsByHoldingCondition(coreLots, navMap, today, rules, true);
+        }
+    }
+
+    private static class CoreLtcgBeyondExemptionTierStrategy implements WaterfallTierStrategy {
+        @Override
+        public WaterfallTier tier() { return WaterfallTier.LTCG_BEYOND_EXEMPTION; }
 
         @Override
         public List<Lot> selectLots(List<Lot> legacyLots, List<Lot> coreLots, Map<String, BigDecimal> navMap, LocalDate today, TaxRulesConfig rules) {
@@ -516,7 +594,10 @@ public class RebalanceWaterfallEngine {
             schemeLots.sort(Comparator.comparing(Lot::acquisitionDate).thenComparing(Lot::lotId));
             for (Lot l : schemeLots) {
                 BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.selectCoreLots");
-                if (nav.subtract(l.effectiveCostPerUnit(nav)).compareTo(BigDecimal.ZERO) < 0) continue;
+                if (nav.subtract(l.effectiveCostPerUnit(nav)).compareTo(BigDecimal.ZERO) < 0) {
+                    // F1 Residual: Never skip over an unsold older loss lot to sell a newer gain lot in the same scheme!
+                    break;
+                }
                 AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
                 long threshold = getThresholdDays(cat, rules);
                 long holdingDays = ChronoUnit.DAYS.between(l.acquisitionDate(), today);

@@ -77,13 +77,9 @@ public class RebalanceTriggerEvaluator {
         // 2. Compute Drawdown Context
         BigDecimal high = (benchmarkRollingHigh != null && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0) ? benchmarkRollingHigh : BigDecimal.ZERO;
         BigDecimal curr = (benchmarkCurrent != null && benchmarkCurrent.compareTo(BigDecimal.ZERO) > 0) ? benchmarkCurrent : BigDecimal.ZERO;
-        double ddPct = 0.0;
+        double ddPct = PortfolioConstants.calculateDrawdownPct(curr, high);
 
-        if (curr.compareTo(BigDecimal.ZERO) > 0 && high.compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal diff = high.subtract(curr).max(BigDecimal.ZERO);
-            ddPct = diff.divide(high, 4, RoundingMode.HALF_UP).doubleValue() * 100.0;
-            ddPct = Math.max(0.0, Math.round(ddPct * 10.0) / 10.0);
-        } else {
+        if (curr.compareTo(BigDecimal.ZERO) <= 0 || high.compareTo(BigDecimal.ZERO) <= 0) {
             System.err.println("WARNING: Real Nifty benchmark market data unavailable (benchmarkCurrent/benchmarkRollingHigh is null). Drawdown Trigger Disarmed (0.00% DD).");
         }
 
@@ -110,14 +106,45 @@ public class RebalanceTriggerEvaluator {
         long daysSinceLastSell = lastSellOpt.map(dt -> ChronoUnit.DAYS.between(dt.toLocalDate(), today)).orElse(9999L);
         boolean sellCooldownActive = daysSinceLastSell < PortfolioConstants.REBALANCE_COOLDOWN_DAYS;
 
+        // F8: Drawdown Rung Escalation vs Cooldown
+        int currentRung = "TIER_20".equals(armedTier) ? 20 : ("TIER_15".equals(armedTier) ? 15 : ("TIER_10".equals(armedTier) ? 10 : 0));
+        int maxFiredRungInCooldown = repository.getMaxFiredDrawdownTierWithinDays(today, (int) PortfolioConstants.REBALANCE_COOLDOWN_DAYS);
+        boolean drawdownEscalated = currentRung > maxFiredRungInCooldown;
+
         Optional<LocalDateTime> lastGoldBuyOpt = repository.getLastGoldBuyDate();
         long monthsSinceLastGoldBuy = lastGoldBuyOpt.map(dt -> ChronoUnit.MONTHS.between(dt.toLocalDate(), today)).orElse(9999L);
         boolean goldIdleActive = monthsSinceLastGoldBuy >= PortfolioConstants.GOLD_FLOOR_IDLE_MONTHS;
 
         // 4. Canonical Bucket Drift Evaluation (matches Web App and BucketEngine)
         List<String> driftedBuckets = new ArrayList<>();
+
+        // F11: Config-driven targets and bands from activeVersion
+        BucketConfigLoader.BucketTargetVersion ver = activeVersion != null ? activeVersion : BucketConfigLoader.getActiveVersion(today);
+        double coreTargetPct = 50.0;
+        double coreBandPct = 5.0;
+        double targetLmRatio = 0.60;
         double goldCurrentWeightPct = 0.0;
         double goldTargetWeightPct = 10.0;
+        double goldTriggerDriftPct = 12.0;
+
+        if (ver != null && ver.targets() != null) {
+            for (BucketConfigLoader.BucketTargetConfig tc : ver.targets()) {
+                if ("EQUITY_CORE".equalsIgnoreCase(tc.bucket()) || "CORE".equalsIgnoreCase(tc.bucket())) {
+                    coreTargetPct = tc.targetPct();
+                    coreBandPct = tc.bandPct();
+                    if (tc.preferredFunds() != null) {
+                        for (BucketConfigLoader.PreferredFundConfig pfc : tc.preferredFunds()) {
+                            if ("INF109KC12U0".equalsIgnoreCase(pfc.fundId()) || (pfc.fundName() != null && pfc.fundName().toUpperCase().contains("LARGEMIDCAP"))) {
+                                targetLmRatio = pfc.allocationWeight();
+                            }
+                        }
+                    }
+                } else if ("GOLD_SILVER".equalsIgnoreCase(tc.bucket()) || "HEDGE_COMMODITY".equalsIgnoreCase(tc.bucket()) || "COMMODITY".equalsIgnoreCase(tc.bucket())) {
+                    goldTargetWeightPct = tc.targetPct();
+                    goldTriggerDriftPct = tc.triggerDriftPct() > 0 ? tc.triggerDriftPct() : tc.bandPct();
+                }
+            }
+        }
 
         if (liveCorpus.compareTo(BigDecimal.ZERO) > 0) {
             List<BucketEngine.BucketTarget> engineTargets = (customTargets != null && !customTargets.isEmpty())
@@ -156,12 +183,16 @@ public class RebalanceTriggerEvaluator {
             BigDecimal effectiveCorpus = activeCorpus.compareTo(BigDecimal.ZERO) > 0 ? activeCorpus : liveCorpus;
             if (coreTotalVal.compareTo(BigDecimal.ZERO) > 0 && effectiveCorpus.compareTo(BigDecimal.ZERO) > 0) {
                 double coreWeightPct = (coreTotalVal.doubleValue() / effectiveCorpus.doubleValue()) * 100.0;
-                if (coreWeightPct > 65.0 || coreWeightPct < 35.0) {
+                double coreUpper = coreTargetPct + (3 * coreBandPct);
+                double coreLower = Math.max(0.0, coreTargetPct - (3 * coreBandPct));
+                if (coreWeightPct > coreUpper || coreWeightPct < coreLower) {
                     driftedBuckets.add("CORE_AGGREGATE_BREACH");
                     coreAggregateBreached = true;
                 }
                 double largeMidRatio = largeMidVal.doubleValue() / coreTotalVal.doubleValue();
-                if (largeMidRatio > 0.66 || largeMidRatio < 0.54) {
+                double lmRatioUpper = targetLmRatio + PortfolioConstants.CORE_INTERNAL_RATIO_BAND;
+                double lmRatioLower = targetLmRatio - PortfolioConstants.CORE_INTERNAL_RATIO_BAND;
+                if (largeMidRatio > lmRatioUpper || largeMidRatio < lmRatioLower) {
                     driftedBuckets.add("CORE_INTERNAL_CIRCUIT_BREAKER");
                 }
             }
@@ -198,7 +229,7 @@ public class RebalanceTriggerEvaluator {
         // Priority 1: DRAWDOWN
         if (!"NONE".equals(armedTier)) {
             sellTriggerEvaluated = true;
-            if (sellCooldownActive) {
+            if (sellCooldownActive && !drawdownEscalated) {
                 reasonCode = "DRAWDOWN_BLOCKED_BY_COOLDOWN";
                 reasonLabel = String.format("Drawdown tier %s crossed but sell rebalance is on 30-day cooldown (%d days since last sell)", armedTier, daysSinceLastSell);
             } else {

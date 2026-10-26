@@ -1226,5 +1226,54 @@ class RebalancePlanEngineTest {
         assertTrue(plan.sellSide().taxSummary().totalRealizedGain().compareTo(BigDecimal.ZERO) < 0,
             "totalRealizedGain accurately reflects the realized loss");
     }
+
+    @Test
+    @DisplayName("F5 Unit Test: Section 70 Netting — STCL offsets Slab STCG first (30%), then Equity STCG (20%)")
+    void testSection70NettingStclOffsetsHighestTaxedStcgFirst() {
+        com.portfolioos.core.rules.TaxRulesConfig rules = com.portfolioos.core.rules.TaxRulesLoader.loadRules("2026-27");
+
+        RebalancePlanEngine.Section70NettingResult res = RebalancePlanEngine.applySection70Netting(
+            new BigDecimal("20000.00"), // grossStcgEquity (20%)
+            new BigDecimal("10000.00"), // grossStcgSlab (30%)
+            new BigDecimal("15000.00"), // grossStcl
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            new BigDecimal("125000.00"),
+            rules
+        );
+
+        // STCL (15,000) completely wipes out Slab STCG (10,000), and remaining 5,000 offsets Equity STCG (20,000 -> 15,000)
+        assertEquals(new BigDecimal("0.00"), res.netTaxableStcgSlab());
+        assertEquals(new BigDecimal("15000.00"), res.netTaxableStcgEquity());
+        // Tax = 15,000 * 20% = 3,000
+        assertEquals(new BigDecimal("3000.00"), res.totalNetTaxEstimate());
+    }
+
+    @Test
+    @DisplayName("F5 Unit Test: Section 70 Netting — LTCL offsets taxable LTCG above Section 112A exemption headroom")
+    void testSection70NettingLtclOffsetsLtcgPreservingExemption() {
+        com.portfolioos.core.rules.TaxRulesConfig rules = com.portfolioos.core.rules.TaxRulesLoader.loadRules("2026-27");
+
+        RebalancePlanEngine.Section70NettingResult res = RebalancePlanEngine.applySection70Netting(
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            new BigDecimal("200000.00"), // grossLtcgEquity
+            new BigDecimal("30000.00"),  // grossLtcgNonEquity (e.g. Gold FoF, no Sec 112A exemption)
+            new BigDecimal("50000.00"),  // grossLtcl
+            new BigDecimal("125000.00"), // headroom = ₹1.25L
+            rules
+        );
+
+        // LTCL (50,000) offsets Non-Equity LTCG first (30,000 -> 0), remaining 20,000 offsets Equity LTCG (200,000 -> 180,000)
+        assertEquals(new BigDecimal("0.00"), res.netTaxableLtcgNonEquity());
+        // From 180,000 Equity LTCG, 125,000 is absorbed by exemption
+        assertEquals(new BigDecimal("125000.00"), res.ltcgExemptionUsed());
+        assertEquals(new BigDecimal("55000.00"), res.netTaxableLtcgEquity());
+        assertEquals(new BigDecimal("0.00"), res.remainingHeadroomAfter());
+        // Tax = 55,000 * 12.5% = 6,875.00
+        assertEquals(new BigDecimal("6875.00"), res.totalNetTaxEstimate());
+    }
 }
 

@@ -101,10 +101,10 @@ class LegacyFundWaterfallAuditTest {
             "INF174KA1TY2", new BigDecimal("100.00")
         );
 
-        // Trigger DRIFT on 260,000 corpus -> 5% pool = ₹13,000
+        // Trigger non-urgent DRIFT (7% drift > 5% band, < 10% urgent threshold)
         List<BucketEngine.BucketTarget> customTargets = List.of(
-            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("40.00"), new BigDecimal("5.00")),
-            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_SATELLITE, new BigDecimal("60.00"), new BigDecimal("5.00"))
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("93.00"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_SATELLITE, new BigDecimal("7.00"), new BigDecimal("5.00"))
         );
 
         RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(

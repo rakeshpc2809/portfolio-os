@@ -17,12 +17,17 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class SyncControllerTest {
 
     private SyncController syncController;
+    private LedgerCacheService mockCacheService;
+    private com.portfolioos.core.service.PortfolioValuationService valuationService;
+    private com.portfolioos.core.persistence.DuckDbProjector mockDuckDb;
+    private com.portfolioos.core.rpc.QuantSidecarClient mockQuantSidecar;
 
     @BeforeEach
     void setUp() {
@@ -56,21 +61,21 @@ class SyncControllerTest {
             "HEALTHY"
         );
 
-        LedgerCacheService mockCacheService = new LedgerCacheService(null) {
+        mockCacheService = new LedgerCacheService(null) {
             @Override
             public CachedLedgerState getCachedState() {
                 return cachedState;
             }
         };
 
-        com.portfolioos.core.persistence.DuckDbProjector mockDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
+        mockDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
             @Override
             public Map<String, NavHistorySeriesEntry> getNavHistorySeriesWithDates(java.util.Set<String> heldIsins) {
                 return java.util.Collections.emptyMap();
             }
         };
-        com.portfolioos.core.rpc.QuantSidecarClient mockQuantSidecar = new com.portfolioos.core.rpc.QuantSidecarClient("localhost", 9999);
-        com.portfolioos.core.service.PortfolioValuationService valuationService = 
+        mockQuantSidecar = new com.portfolioos.core.rpc.QuantSidecarClient("localhost", 9999);
+        valuationService = 
             new com.portfolioos.core.service.PortfolioValuationService(mockCacheService, mockDuckDb, mockQuantSidecar);
 
         syncController = new SyncController(mockCacheService, valuationService, mockDuckDb, mockQuantSidecar);
@@ -175,5 +180,30 @@ class SyncControllerTest {
         assertNotNull(response);
         assertNotNull(response.getBody());
         assertNotNull(response.getBody().trigger());
+    }
+
+    @Test
+    void testF12ConfirmRebalanceExecutionPersistsPlanSnapshot() {
+        com.portfolioos.core.persistence.TriggerHistoryRepository memoryRepo =
+            new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
+        memoryRepo.clearAll();
+
+        SyncController controller = new SyncController(
+            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null, memoryRepo
+        );
+
+        ResponseEntity<RebalancePlanDto> response = controller.confirmRebalanceExecution(Map.of("trigger", "SCHEDULED"));
+        assertNotNull(response);
+        assertNotNull(response.getBody());
+        RebalancePlanDto plan = response.getBody();
+        assertNotNull(plan.planId());
+
+        assertEquals(1, memoryRepo.getRecordCount(), "confirmRebalanceExecution MUST record 1 execution in TriggerHistoryRepository");
+        Optional<String> snapshotOpt = memoryRepo.getExecutedPlanSnapshot(plan.planId());
+        assertTrue(snapshotOpt.isPresent(), "Executed plan snapshot JSON must be retrievable by planId");
+        assertTrue(snapshotOpt.get().contains(plan.planId()), "Snapshot JSON must contain the serialized planId");
+        assertTrue(snapshotOpt.get().contains("SCHEDULED"), "Snapshot JSON must contain trigger metadata");
+
+        memoryRepo.close();
     }
 }

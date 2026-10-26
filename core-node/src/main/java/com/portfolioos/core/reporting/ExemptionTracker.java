@@ -103,4 +103,19 @@ public class ExemptionTracker {
     public static Pair<LocalDate, LocalDate> getFiscalYearBounds(String fiscalYear) {
         return TaxRulesLoader.getFiscalYearBounds(fiscalYear);
     }
+
+    public static com.portfolioos.core.service.RebalancePlanEngine.Section70NettingResult applySection70Netting(
+        BigDecimal grossStcgEquity,
+        BigDecimal grossStcgSlab,
+        BigDecimal grossStcl,
+        BigDecimal grossLtcgEquity,
+        BigDecimal grossLtcgNonEquity,
+        BigDecimal grossLtcl,
+        BigDecimal availableExemptionHeadroom,
+        TaxRulesConfig rules
+    ) {
+        return com.portfolioos.core.service.RebalancePlanEngine.applySection70Netting(
+            grossStcgEquity, grossStcgSlab, grossStcl, grossLtcgEquity, grossLtcgNonEquity, grossLtcl, availableExemptionHeadroom, rules
+        );
+    }
 }

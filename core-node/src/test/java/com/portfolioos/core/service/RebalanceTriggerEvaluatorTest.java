@@ -1,5 +1,6 @@
 package com.portfolioos.core.service;
 
+import com.portfolioos.core.common.PortfolioConstants;
 import com.portfolioos.core.dtos.RebalancePlanDtos.RebalanceTriggerDto;
 import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.persistence.TriggerHistoryRepository;
@@ -259,5 +260,73 @@ class RebalanceTriggerEvaluatorTest {
             "Label must mention the suppressed drift");
         assertFalse(res.hasSellSide());
         assertTrue(res.hasGoldBuy());
+    }
+
+    @Test
+    @DisplayName("F8: Deeper drawdown rung escalation bypasses active 30-day sell cooldown")
+    void testDrawdownEscalationBypassesSellCooldown() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        LocalDate lastSellDate = today.minusDays(10); // 10 days ago (< 30 days)
+
+        // Step 1: Record a prior 10% drawdown execution 10 days ago
+        repository.recordExecution("plan-dd-10", "DRAWDOWN", "DRAWDOWN_TIER_10", lastSellDate.atStartOfDay(), true, true, "{}");
+
+        // Step 2: Market drops deeper to 15% drawdown (curr = 8500, high = 10000 -> 15.00% DD)
+        RebalanceTriggerEvaluator.TriggerResolution resEscalated = evaluator.getCurrentStatus(
+            Collections.emptyList(), Collections.emptyMap(),
+            new BigDecimal("8500.00"), new BigDecimal("10000.00"),
+            null, null, today
+        );
+
+        // F8 Invariant: Rung 15 > Rung 10, so cooldown is bypassed and DRAWDOWN_TIER_15 fires!
+        assertEquals("DRAWDOWN", resEscalated.triggerType(), "Drawdown tier escalation (10% -> 15%) must bypass 30-day sell cooldown");
+        assertEquals("DRAWDOWN_TIER_15", resEscalated.reasonCode());
+        assertTrue(resEscalated.hasSellSide());
+        assertTrue(resEscalated.hasGoldBuy());
+
+        // Step 3: Record the 15% execution
+        repository.recordExecution("plan-dd-15", "DRAWDOWN", "DRAWDOWN_TIER_15", today.atStartOfDay(), true, true, "{}");
+
+        // Step 4: 2 days later, market is still at 15% drawdown (same rung, not escalated)
+        LocalDate twoDaysLater = today.plusDays(2);
+        RebalanceTriggerEvaluator.TriggerResolution resBlocked = evaluator.getCurrentStatus(
+            Collections.emptyList(), Collections.emptyMap(),
+            new BigDecimal("8500.00"), new BigDecimal("10000.00"),
+            null, null, twoDaysLater
+        );
+
+        // Same rung (15 == 15, not deeper) is strictly blocked by 30-day cooldown
+        assertEquals("NONE", resBlocked.triggerType());
+        assertEquals("DRAWDOWN_BLOCKED_BY_COOLDOWN", resBlocked.reasonCode());
+        assertFalse(resBlocked.hasSellSide());
+
+        // Step 5: Market crashes deeper to 20% drawdown (curr = 8000, high = 10000 -> 20.00% DD)
+        RebalanceTriggerEvaluator.TriggerResolution resCapitulation = evaluator.getCurrentStatus(
+            Collections.emptyList(), Collections.emptyMap(),
+            new BigDecimal("8000.00"), new BigDecimal("10000.00"),
+            null, null, twoDaysLater
+        );
+
+        // Rung 20 > Rung 15, so cooldown is bypassed AGAIN for tier 20!
+        assertEquals("DRAWDOWN", resCapitulation.triggerType(), "Drawdown tier escalation (15% -> 20%) must bypass 30-day sell cooldown");
+        assertEquals("DRAWDOWN_TIER_20", resCapitulation.reasonCode());
+        assertTrue(resCapitulation.hasSellSide());
+    }
+
+    @Test
+    @DisplayName("F10: PortfolioConstants.calculateDrawdownPct clamps negative drawdowns and rounds to 2 decimals HALF_UP")
+    void testDrawdownCalculationClampingAndRounding() {
+        // currentVal >= rollingHigh -> strictly 0.0
+        assertEquals(0.0, PortfolioConstants.calculateDrawdownPct(new BigDecimal("10500.00"), new BigDecimal("10000.00")));
+        assertEquals(0.0, PortfolioConstants.calculateDrawdownPct(new BigDecimal("10000.00"), new BigDecimal("10000.00")));
+
+        // Null / negative benchmark disarm
+        assertEquals(0.0, PortfolioConstants.calculateDrawdownPct(null, new BigDecimal("10000.00")));
+        assertEquals(0.0, PortfolioConstants.calculateDrawdownPct(new BigDecimal("9000.00"), null));
+        assertEquals(0.0, PortfolioConstants.calculateDrawdownPct(BigDecimal.ZERO, new BigDecimal("10000.00")));
+
+        // Exact 2-decimal HALF_UP rounding
+        // 10000 - 8999 = 1001 -> 1001/10000 = 10.01%
+        assertEquals(10.01, PortfolioConstants.calculateDrawdownPct(new BigDecimal("8999.00"), new BigDecimal("10000.00")));
     }
 }

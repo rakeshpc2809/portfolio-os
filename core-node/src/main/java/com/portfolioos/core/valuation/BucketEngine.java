@@ -7,6 +7,7 @@ import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.model.TaxTerm;
 import com.portfolioos.core.reporting.ExemptionTracker;
+import com.portfolioos.core.rules.BucketConfigLoader;
 import com.portfolioos.core.rules.TaxRulesConfig;
 import com.portfolioos.core.rules.TaxRulesLoader;
 
@@ -16,6 +17,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -279,11 +281,11 @@ public class BucketEngine {
     ) {
         BigDecimal totalPortfolioValue = BigDecimal.ZERO;
         Map<Bucket, BigDecimal> bucketValues = new HashMap<>();
-        Map<Bucket, Map<String, List<Lot>>> bucketAssetLots = new HashMap<>();
+        Map<Bucket, Map<String, List<Lot>>> bucketAssetLots = new LinkedHashMap<>();
 
         for (Bucket b : Bucket.values()) {
             bucketValues.put(b, BigDecimal.ZERO);
-            bucketAssetLots.put(b, new HashMap<>());
+            bucketAssetLots.put(b, new LinkedHashMap<>());
         }
         if (openLots != null) {
             for (Lot lot : openLots) {
@@ -441,14 +443,26 @@ public class BucketEngine {
         ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots != null ? matchedLots : List.of(), fiscalYear);
         BigDecimal exemptionRemaining = new BigDecimal(exStatus.exemptionRemaining());
 
+        BigDecimal arbExitLoadFreeVal = BigDecimal.ZERO;
+        Map<String, List<Lot>> liquidAssets = bucketAssetLots.get(Bucket.LIQUID_BUFFER);
+        if (liquidAssets == null || liquidAssets.isEmpty()) {
+            liquidAssets = bucketAssetLots.get(Bucket.LIQUIDITY_ARBITRAGE);
+        }
+        if (liquidAssets != null) {
+            for (Map.Entry<String, List<Lot>> entry : liquidAssets.entrySet()) {
+                String aId = entry.getKey();
+                List<Lot> aLots = entry.getValue();
+                if (aLots.isEmpty()) continue;
+                BigDecimal nav = NavResolver.requireValidNav(navMap, aLots.get(0), "BucketEngine.exitLoadFree");
+                ExitLoadCalculator.ExitLoadSummary summary = ExitLoadCalculator.calculateForAsset(aId, aLots.get(0).assetName(), aLots, nav, currentDate);
+                arbExitLoadFreeVal = arbExitLoadFreeVal.add(summary.exitLoadFreeValue());
+            }
+        }
+
         if (drawdownTriggerFired) {
-            BigDecimal deployAmount = liquidVal.multiply(deployPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            BigDecimal deployAmount = arbExitLoadFreeVal.multiply(deployPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
             if (deployAmount.compareTo(BigDecimal.ZERO) > 0) {
-                Map<String, List<Lot>> liquidAssets = bucketAssetLots.get(Bucket.LIQUID_BUFFER);
-                if (liquidAssets == null || liquidAssets.isEmpty()) {
-                    liquidAssets = bucketAssetLots.get(Bucket.LIQUIDITY_ARBITRAGE);
-                }
                 String arbAssetId = (liquidAssets != null && !liquidAssets.isEmpty()) ? liquidAssets.keySet().iterator().next() : "INVESCO_ARBITRAGE";
                 String arbAssetName = (liquidAssets != null && !liquidAssets.isEmpty() && liquidAssets.containsKey(arbAssetId) && !liquidAssets.get(arbAssetId).isEmpty())
                     ? liquidAssets.get(arbAssetId).get(0).assetName() : "Invesco India Arbitrage Fund";
@@ -464,21 +478,48 @@ public class BucketEngine {
                     "Drain exit-load-free arbitrage buffer during " + drawdownPct + "% market drawdown (Rung deploy: " + deployPct + "%)"
                 ));
 
-                Map<String, List<Lot>> coreAssets = bucketAssetLots.get(Bucket.EQUITY_CORE);
-                String targetAsset = (coreAssets != null && !coreAssets.isEmpty()) ? coreAssets.keySet().iterator().next() : "EQUITY_CORE_INDEX";
-                String assetName = (coreAssets != null && !coreAssets.isEmpty() && coreAssets.containsKey(targetAsset) && !coreAssets.get(targetAsset).isEmpty())
-                    ? coreAssets.get(targetAsset).get(0).assetName() : "LargeMidcap 250 Index Fund";
+                List<BucketConfigLoader.PreferredFundConfig> corePreferred = getPreferredFundsForBucket(Bucket.EQUITY_CORE, currentDate);
+                if (!corePreferred.isEmpty()) {
+                    BigDecimal remDeploy = deployAmount;
+                    for (int i = 0; i < corePreferred.size(); i++) {
+                        BucketConfigLoader.PreferredFundConfig pfc = corePreferred.get(i);
+                        BigDecimal fundDeploy;
+                        if (i == corePreferred.size() - 1) {
+                            fundDeploy = remDeploy;
+                        } else {
+                            fundDeploy = deployAmount.multiply(BigDecimal.valueOf(pfc.allocationWeight())).setScale(2, RoundingMode.HALF_UP);
+                            remDeploy = remDeploy.subtract(fundDeploy);
+                        }
+                        if (fundDeploy.compareTo(BigDecimal.ZERO) > 0) {
+                            recommendations.add(new RebalanceRecommendation(
+                                pfc.fundId(),
+                                pfc.fundName(),
+                                Bucket.EQUITY_CORE,
+                                "BUY",
+                                fundDeploy,
+                                "MARKET_DRAWDOWN",
+                                BigDecimal.ZERO,
+                                "Deploy buffer during " + drawdownPct + "% market drawdown (Preferred fund weight: " + Math.round(pfc.allocationWeight() * 100) + "%)"
+                            ));
+                        }
+                    }
+                } else {
+                    Map<String, List<Lot>> coreAssets = bucketAssetLots.get(Bucket.EQUITY_CORE);
+                    String targetAsset = (coreAssets != null && !coreAssets.isEmpty()) ? coreAssets.keySet().iterator().next() : "EQUITY_CORE_INDEX";
+                    String assetName = (coreAssets != null && !coreAssets.isEmpty() && coreAssets.containsKey(targetAsset) && !coreAssets.get(targetAsset).isEmpty())
+                        ? coreAssets.get(targetAsset).get(0).assetName() : "LargeMidcap 250 Index Fund";
 
-                recommendations.add(new RebalanceRecommendation(
-                    targetAsset,
-                    assetName,
-                    Bucket.EQUITY_CORE,
-                    "BUY",
-                    deployAmount,
-                    "MARKET_DRAWDOWN",
-                    BigDecimal.ZERO,
-                    "Deploy buffer during " + drawdownPct + "% market drawdown (Rungs: 10%, 15%, 20%)"
-                ));
+                    recommendations.add(new RebalanceRecommendation(
+                        targetAsset,
+                        assetName,
+                        Bucket.EQUITY_CORE,
+                        "BUY",
+                        deployAmount,
+                        "MARKET_DRAWDOWN",
+                        BigDecimal.ZERO,
+                        "Deploy buffer during " + drawdownPct + "% market drawdown (Rungs: 10%, 15%, 20%)"
+                    ));
+                }
             }
         }
 
@@ -508,8 +549,10 @@ public class BucketEngine {
                     }
 
                     if (!flatBucketLots.isEmpty()) {
-                        boolean urgent = drawdownStatus.drawdownPct().compareTo(new BigDecimal("15.0")) >= 0
-                            || status.driftPct().abs().compareTo(new BigDecimal("10.0")) >= 0;
+                        boolean urgent = PortfolioConstants.isUrgentRebalance(
+                            drawdownStatus.drawdownPct().doubleValue(),
+                            status.driftPct().abs().doubleValue()
+                        );
 
                         RebalanceWaterfallEngine.WaterfallResult waterfallResult =
                             RebalanceWaterfallEngine.buildTrimWaterfall(
@@ -565,21 +608,49 @@ public class BucketEngine {
                         }
                     }
                 } else if (diffValue.compareTo(BigDecimal.ZERO) < 0) {
-                    Map<String, List<Lot>> bucketLots = bucketAssetLots.get(status.bucket());
-                    String firstAssetId = !bucketLots.isEmpty() ? bucketLots.keySet().iterator().next() : "BUY_" + status.bucket().name();
-                    String assetName = (!bucketLots.isEmpty() && bucketLots.containsKey(firstAssetId)) 
-                        ? bucketLots.get(firstAssetId).get(0).assetName() : "Core Holding for " + status.bucket().name();
+                    BigDecimal totalBuyAmount = diffValue.abs();
+                    List<BucketConfigLoader.PreferredFundConfig> preferredFunds = getPreferredFundsForBucket(status.bucket(), currentDate);
+                    if (!preferredFunds.isEmpty()) {
+                        BigDecimal remBuy = totalBuyAmount;
+                        for (int i = 0; i < preferredFunds.size(); i++) {
+                            BucketConfigLoader.PreferredFundConfig pfc = preferredFunds.get(i);
+                            BigDecimal fundBuyAmount;
+                            if (i == preferredFunds.size() - 1) {
+                                fundBuyAmount = remBuy;
+                            } else {
+                                fundBuyAmount = totalBuyAmount.multiply(BigDecimal.valueOf(pfc.allocationWeight())).setScale(2, RoundingMode.HALF_UP);
+                                remBuy = remBuy.subtract(fundBuyAmount);
+                            }
+                            if (fundBuyAmount.compareTo(BigDecimal.ZERO) > 0) {
+                                recommendations.add(new RebalanceRecommendation(
+                                    pfc.fundId(),
+                                    pfc.fundName(),
+                                    status.bucket(),
+                                    "BUY",
+                                    fundBuyAmount,
+                                    isCalendarReviewDate ? "CALENDAR" : "DRIFT_ALERT",
+                                    BigDecimal.ZERO,
+                                    "No tax on purchases (Preferred fund weight: " + Math.round(pfc.allocationWeight() * 100) + "%)"
+                                ));
+                            }
+                        }
+                    } else {
+                        Map<String, List<Lot>> bucketLots = bucketAssetLots.get(status.bucket());
+                        String firstAssetId = !bucketLots.isEmpty() ? bucketLots.keySet().iterator().next() : "BUY_" + status.bucket().name();
+                        String assetName = (!bucketLots.isEmpty() && bucketLots.containsKey(firstAssetId)) 
+                            ? bucketLots.get(firstAssetId).get(0).assetName() : "Core Holding for " + status.bucket().name();
 
-                    recommendations.add(new RebalanceRecommendation(
-                        firstAssetId,
-                        assetName,
-                        status.bucket(),
-                        "BUY",
-                        diffValue.abs(),
-                        isCalendarReviewDate ? "CALENDAR" : "DRIFT_ALERT",
-                        BigDecimal.ZERO,
-                        "No tax on purchases"
-                    ));
+                        recommendations.add(new RebalanceRecommendation(
+                            firstAssetId,
+                            assetName,
+                            status.bucket(),
+                            "BUY",
+                            totalBuyAmount,
+                            isCalendarReviewDate ? "CALENDAR" : "DRIFT_ALERT",
+                            BigDecimal.ZERO,
+                            "No tax on purchases"
+                        ));
+                    }
                 }
             }
         }
@@ -587,5 +658,22 @@ public class BucketEngine {
         return new RebalanceEngineResult(
             bucketStatuses, recommendations, drawdownStatus, calendarTriggerFired, drawdownTriggerFired
         );
+    }
+
+    private static List<BucketConfigLoader.PreferredFundConfig> getPreferredFundsForBucket(Bucket bucket, LocalDate date) {
+        BucketConfigLoader.BucketTargetVersion version = BucketConfigLoader.getActiveVersion(date != null ? date : LocalDate.now());
+        if (version != null && version.targets() != null) {
+            for (BucketConfigLoader.BucketTargetConfig tc : version.targets()) {
+                if (tc.bucket() != null && (tc.bucket().equalsIgnoreCase(bucket.name()) || 
+                    ("EQUITY_CORE".equalsIgnoreCase(bucket.name()) && "CORE".equalsIgnoreCase(tc.strategy())) ||
+                    ("EQUITY_SATELLITE".equalsIgnoreCase(bucket.name()) && "SATELLITE".equalsIgnoreCase(tc.strategy())) ||
+                    ("LIQUID_BUFFER".equalsIgnoreCase(bucket.name()) && ("LIQUIDITY_ARBITRAGE".equalsIgnoreCase(tc.bucket()) || "ARBITRAGE".equalsIgnoreCase(tc.strategy()))))) {
+                    if (tc.preferredFunds() != null && !tc.preferredFunds().isEmpty()) {
+                        return tc.preferredFunds();
+                    }
+                }
+            }
+        }
+        return List.of();
     }
 }
