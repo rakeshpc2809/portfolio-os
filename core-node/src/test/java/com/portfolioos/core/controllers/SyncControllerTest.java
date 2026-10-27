@@ -206,4 +206,46 @@ class SyncControllerTest {
 
         memoryRepo.close();
     }
+
+    @Test
+    void testF12ConfirmExecutionDigestValidationAndMismatch() {
+        com.portfolioos.core.persistence.TriggerHistoryRepository memoryRepo =
+            new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
+        memoryRepo.clearAll();
+
+        SyncController controller = new SyncController(
+            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null, memoryRepo
+        );
+
+        // 1. First preview a plan to obtain its valid digest
+        ResponseEntity<RebalancePlanDto> preview = controller.getRebalancePlan("SCHEDULED");
+        assertNotNull(preview.getBody());
+        RebalancePlanDto previewPlan = preview.getBody();
+        String validDigest = previewPlan.planDigest();
+        assertNotNull(validDigest);
+        assertFalse(validDigest.isBlank());
+
+        // 2. Confirm execution with approved planId and correct digest -> 200 OK
+        String approvedPlanId = "APPROVED-PLAN-UUID-12345";
+        ResponseEntity<RebalancePlanDto> successRes = controller.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "planId", approvedPlanId,
+            "digest", validDigest
+        ));
+        assertEquals(200, successRes.getStatusCode().value());
+        assertNotNull(successRes.getBody());
+        assertEquals(approvedPlanId, successRes.getBody().planId(), "Confirmed plan MUST carry the approved planId");
+        Optional<String> snapshotOpt = memoryRepo.getExecutedPlanSnapshot(approvedPlanId);
+        assertTrue(snapshotOpt.isPresent(), "Snapshot MUST be persisted under the approved planId");
+
+        // 3. Confirm execution with tampered/stale digest -> 409 Conflict
+        ResponseEntity<RebalancePlanDto> conflictRes = controller.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "planId", "APPROVED-PLAN-UUID-TAMPERED",
+            "digest", "deadbeef00000000badc0ffee"
+        ));
+        assertEquals(409, conflictRes.getStatusCode().value(), "Tampered/stale digest MUST be rejected with HTTP 409 Conflict");
+
+        memoryRepo.close();
+    }
 }

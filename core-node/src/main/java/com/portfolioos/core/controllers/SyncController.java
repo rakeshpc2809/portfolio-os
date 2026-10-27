@@ -503,6 +503,19 @@ public class SyncController {
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
         );
 
+        // F12: Verify plan digest and bind approved planId
+        String approvedDigest = req != null && req.containsKey("digest") ? req.get("digest").toString() : null;
+        if (approvedDigest != null && !approvedDigest.isBlank()) {
+            if (!approvedDigest.equalsIgnoreCase(plan.planDigest())) {
+                return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT).build();
+            }
+        }
+
+        String approvedPlanId = req != null && req.containsKey("planId") ? req.get("planId").toString() : null;
+        if (approvedPlanId != null && !approvedPlanId.isBlank()) {
+            plan = plan.withPlanId(approvedPlanId);
+        }
+
         // F12: Confirm execution snapshot persistence
         com.portfolioos.core.service.RebalancePlanEngine.confirmPlanExecution(plan, triggerHistoryRepository);
 

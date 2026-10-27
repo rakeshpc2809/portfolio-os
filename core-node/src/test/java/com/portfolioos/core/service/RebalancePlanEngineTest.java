@@ -1042,8 +1042,8 @@ class RebalancePlanEngineTest {
         assertFalse(lotImpacts.isEmpty());
 
         for (RebalanceLotImpactDto impact : lotImpacts) {
-            assertEquals("SEC_112A_TAXABLE_12_5", impact.taxImpact().regime(),
-                "Non-equity LTCG regime must be SEC_112A_TAXABLE_12_5 (or taxable), never SEC_112A_EXEMPT");
+            assertEquals("SEC_112_TAXABLE_12_5", impact.taxImpact().regime(),
+                "Non-equity LTCG regime must be SEC_112_TAXABLE_12_5 under Section 112, never SEC_112A_EXEMPT");
             assertEquals(0, BigDecimal.ZERO.compareTo(impact.taxImpact().exemptionApplied()),
                 "Non-equity LTCG exemptionApplied must be exactly zero");
             assertEquals(impact.realizedGain(), impact.taxImpact().taxableAmount(),

@@ -120,7 +120,7 @@ class RebalanceSankeyDtoTest {
                         totalSoldLots = totalSoldLots.add(lot.saleProceeds());
                         assertNotNull(lot.taxImpact());
                         assertNotNull(lot.taxImpact().regime());
-                        assertTrue(List.of("SEC_112A_EXEMPT", "SEC_112A_TAXABLE_12_5", "SLAB_RATE_STCG").contains(lot.taxImpact().regime()));
+                        assertTrue(List.of("SEC_112A_EXEMPT", "SEC_112A_TAXABLE_12_5", "SEC_112_TAXABLE_12_5", "SLAB_RATE_STCG").contains(lot.taxImpact().regime()));
                     }
                 }
             }

@@ -62,8 +62,9 @@ public class RebalancePlanEngine {
         remStcl = remStcl.subtract(offsetStcgEq);
 
         // 2. LTCL + remaining STCL offset LTCG.
-        // Harvest Gating (F5): Offset non-equity LTCG (12.5% with no Sec 112A exemption) and Equity LTCG above the ₹1.25L exemption first,
-        // before eating into Equity LTCG that would be 0%-taxed under Sec 112A!
+        // Statutory Loss Netting (ITA 2025 Sec 108 / ITA 1961 Sec 70):
+        // Losses are set off against gross LTCG before the statutory Section 112A threshold is applied on remaining net gains.
+        // Non-equity LTCG (12.5% without exemption under Sec 112) is offset first, followed by Equity LTCG.
         BigDecimal remLongTermOffset = (grossLtcl != null ? grossLtcl.max(BigDecimal.ZERO) : BigDecimal.ZERO).add(remStcl);
         BigDecimal gLtcgNonEq = grossLtcgNonEquity != null ? grossLtcgNonEquity.max(BigDecimal.ZERO) : BigDecimal.ZERO;
         BigDecimal offsetNonEqLtcg = remLongTermOffset.min(gLtcgNonEq);
@@ -101,6 +102,21 @@ public class RebalancePlanEngine {
             String reasonCode = plan.trigger() != null ? plan.trigger().reasonCode() : "CONFIRMED_EXECUTION";
             boolean hasSellSide = plan.sellSide() != null && plan.sellSide().totalRequired() != null && plan.sellSide().totalRequired().compareTo(BigDecimal.ZERO) > 0;
             boolean hasGoldBuy = plan.buySide() != null && plan.buySide().buckets() != null && plan.buySide().buckets().stream().anyMatch(b -> (b.bucket().contains("GOLD") || b.bucket().contains("COMMODITY")) && b.amountAllocated() != null && b.amountAllocated().compareTo(BigDecimal.ZERO) > 0);
+            int drawdownTier = 0;
+            if (plan.trigger() != null) {
+                String rc = plan.trigger().reasonCode();
+                if (rc != null) {
+                    if (rc.contains("20")) drawdownTier = 20;
+                    else if (rc.contains("15")) drawdownTier = 15;
+                    else if (rc.contains("10")) drawdownTier = 10;
+                }
+                if (drawdownTier == 0 && plan.trigger().drawdownContext() != null) {
+                    String armed = plan.trigger().drawdownContext().armedTier();
+                    if ("TIER_20".equals(armed)) drawdownTier = 20;
+                    else if ("TIER_15".equals(armed)) drawdownTier = 15;
+                    else if ("TIER_10".equals(armed)) drawdownTier = 10;
+                }
+            }
             String detailsJson = "";
             try {
                 com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -115,7 +131,8 @@ public class RebalancePlanEngine {
                 LocalDateTime.now(),
                 hasSellSide,
                 hasGoldBuy,
-                detailsJson
+                detailsJson,
+                drawdownTier
             );
         }
         return plan;
@@ -562,6 +579,7 @@ public class RebalancePlanEngine {
 
         double currentDd = (resolution != null && resolution.drawdownContext() != null)
             ? resolution.drawdownContext().currentDrawdownPct() : 0.0;
+        // F9 Policy Decision: Rebalance plan engine urgency is strictly confined to drawdown >= 15%.
         boolean isUrgent = PortfolioConstants.isUrgentRebalance(currentDd, maxAbsDrift);
 
         List<com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep> allSteps = new ArrayList<>();

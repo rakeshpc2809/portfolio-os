@@ -297,21 +297,23 @@ public class RebalanceWaterfallEngine {
 
         if (gain.compareTo(BigDecimal.ZERO) > 0) {
             if (isLtcg) {
-                if (tier == WaterfallTier.LTCG_BEYOND_EXEMPTION) {
-                    taxable = gain;
-                    taxDrag = taxable.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
-                    regime = "SEC_112A_TAXABLE_12_5";
-                } else if (cat == AssetCategory.EQUITY) {
-                    exempt = gain.min(newExemption);
-                    taxable = gain.subtract(exempt);
-                    newExemption = newExemption.subtract(exempt).max(BigDecimal.ZERO);
-                    taxDrag = taxable.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
-                    regime = taxable.compareTo(BigDecimal.ZERO) == 0 ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5";
+                if (cat == AssetCategory.EQUITY) {
+                    if (tier == WaterfallTier.LTCG_BEYOND_EXEMPTION) {
+                        taxable = gain;
+                        taxDrag = taxable.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+                        regime = "SEC_112A_TAXABLE_12_5";
+                    } else {
+                        exempt = gain.min(newExemption);
+                        taxable = gain.subtract(exempt);
+                        newExemption = newExemption.subtract(exempt).max(BigDecimal.ZERO);
+                        taxDrag = taxable.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+                        regime = taxable.compareTo(BigDecimal.ZERO) == 0 ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5";
+                    }
                 } else {
-                    // Tier 3: Gold/Silver FoF (>730d) or Grandfathered Debt LTCG taxed at 12.5% without Sec 112A exemption
+                    // Non-equity LTCG (Gold/Silver FoF >730d or Grandfathered Debt) taxed at 12.5% without Sec 112A exemption under Sec 112
                     taxable = gain;
                     taxDrag = gain.multiply(rules.goldInternationalLtcgRate()).setScale(2, RoundingMode.HALF_UP);
-                    regime = "SEC_112A_TAXABLE_12_5";
+                    regime = "SEC_112_TAXABLE_12_5";
                 }
             } else {
                 // Tier 5 (Equity STCG @ 20%) vs Tier 6 (Sec 50AA / Gold FoF STCG @ 30% Slab Rate)
@@ -323,7 +325,7 @@ public class RebalanceWaterfallEngine {
         } else {
             // Loss lot
             if (isLtcg) {
-                regime = (cat == AssetCategory.EQUITY) ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5";
+                regime = (cat == AssetCategory.EQUITY) ? "SEC_112A_EXEMPT" : "SEC_112_TAXABLE_12_5";
             } else {
                 regime = "SLAB_RATE_STCG";
             }

@@ -137,10 +137,10 @@ When a user requests a rebalance plan (e.g. via `GET /sync/rebalance/plan?trigge
 ### 3.4. RebalanceTriggerEvaluator
 * **Source**: [`RebalanceTriggerEvaluator.java`](file:///home/rakeshpc/.gemini/antigravity/worktrees/portfolio-os/generate_portfolio_os_docs/core-node/src/main/java/com/portfolioos/core/service/RebalanceTriggerEvaluator.java#L136-L216)
 * **Logic**: Enforces strict trigger priority ordering:
-  1. `DRAWDOWN`: Triggered when Nifty 500 market drawdown crosses 10%, 15%, or 20%. Subject to 30-day sell cooldown ([`L147`](file:///home/rakeshpc/.gemini/antigravity/worktrees/portfolio-os/generate_portfolio_os_docs/core-node/src/main/java/com/portfolioos/core/service/RebalanceTriggerEvaluator.java#L147)).
+  1. `DRAWDOWN`: Triggered when Nifty 500 market drawdown crosses 10%, 15%, or 20%. Subject to 30-day sell cooldown. **Drawdown Escalation Exception (F8)**: If a deeper drawdown rung is breached during cooldown (e.g. 10% -> 15% or 15% -> 20%), the escalation bypasses the 30-day cooldown to deploy liquid arbitrage buffer into equity core during severe market dislocations.
   2. `DRIFT`: Triggered when bucket weight allocation exceeds drift threshold. Subject to 30-day sell cooldown.
   3. `SCHEDULED`: March/September reconstitution window. Subject to 30-day sell cooldown.
-  4. `GOLD_FLOOR_BACKSTOP`: Buy-side only. Triggered when gold bucket has been idle for >= 6 months AND is >= 2.0 percentage points underweight. **Exempt from 30-day sell cooldown** ([`L191-L200`](file:///home/rakeshpc/.gemini/antigravity/worktrees/portfolio-os/generate_portfolio_os_docs/core-node/src/main/java/com/portfolioos/core/service/RebalanceTriggerEvaluator.java#L191-L200)).
+  4. `GOLD_FLOOR_BACKSTOP`: Buy-side only. Triggered when gold bucket has been idle for >= 6 months AND is >= 2.0 percentage points underweight. **Exempt from 30-day sell cooldown** (Invariant 4).
 
 ### 3.5. XirrEngine
 * **Source**: [`XirrEngine.java`](file:///home/rakeshpc/.gemini/antigravity/worktrees/portfolio-os/generate_portfolio_os_docs/core-node/src/main/java/com/portfolioos/core/xirr/XirrEngine.java#L13-L120)

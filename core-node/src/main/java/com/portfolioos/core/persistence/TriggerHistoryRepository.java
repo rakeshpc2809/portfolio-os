@@ -75,9 +75,15 @@ public class TriggerHistoryRepository {
                 "  fired_at TEXT NOT NULL," +
                 "  has_sell_side INTEGER NOT NULL," +
                 "  has_gold_buy INTEGER NOT NULL," +
-                "  details_json TEXT" +
+                "  details_json TEXT," +
+                "  drawdown_tier INTEGER DEFAULT 0" +
                 ")"
             );
+            try {
+                stmt.execute("ALTER TABLE rebalance_trigger_history ADD COLUMN drawdown_tier INTEGER DEFAULT 0");
+            } catch (SQLException ignored) {
+                // Column already exists
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize rebalance_trigger_history schema", e);
         }
@@ -90,11 +96,12 @@ public class TriggerHistoryRepository {
         LocalDateTime firedAt,
         boolean hasSellSide,
         boolean hasGoldBuy,
-        String detailsJson
+        String detailsJson,
+        int drawdownTier
     ) {
         String sql = "INSERT OR REPLACE INTO rebalance_trigger_history " +
-                     "(plan_id, trigger_type, reason_code, fired_at, has_sell_side, has_gold_buy, details_json) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?)";
+                     "(plan_id, trigger_type, reason_code, fired_at, has_sell_side, has_gold_buy, details_json, drawdown_tier) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, planId);
@@ -104,10 +111,29 @@ public class TriggerHistoryRepository {
             stmt.setInt(5, hasSellSide ? 1 : 0);
             stmt.setInt(6, hasGoldBuy ? 1 : 0);
             stmt.setString(7, detailsJson != null ? detailsJson : "");
+            stmt.setInt(8, drawdownTier);
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to record trigger execution", e);
         }
+    }
+
+    public void recordExecution(
+        String planId,
+        String triggerType,
+        String reasonCode,
+        LocalDateTime firedAt,
+        boolean hasSellSide,
+        boolean hasGoldBuy,
+        String detailsJson
+    ) {
+        int tier = 0;
+        if (reasonCode != null) {
+            if (reasonCode.contains("20")) tier = 20;
+            else if (reasonCode.contains("15")) tier = 15;
+            else if (reasonCode.contains("10")) tier = 10;
+        }
+        recordExecution(planId, triggerType, reasonCode, firedAt, hasSellSide, hasGoldBuy, detailsJson, tier);
     }
 
     public Optional<LocalDateTime> getLastSellSideFiringDate() {
@@ -146,31 +172,20 @@ public class TriggerHistoryRepository {
 
     public int getMaxFiredDrawdownTierWithinDays(java.time.LocalDate today, int days) {
         String cutoff = today.minusDays(days).atStartOfDay().format(ISO_FORMATTER);
-        String sql = "SELECT reason_code, trigger_type FROM rebalance_trigger_history " +
+        String sql = "SELECT COALESCE(MAX(drawdown_tier), 0) FROM rebalance_trigger_history " +
                      "WHERE has_sell_side = 1 AND fired_at >= ?";
-        int maxTier = 0;
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, cutoff);
             try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    String reason = rs.getString("reason_code");
-                    String type = rs.getString("trigger_type");
-                    if ("DRAWDOWN".equalsIgnoreCase(type) || (reason != null && reason.toUpperCase().contains("DRAWDOWN"))) {
-                        if (reason != null && reason.contains("20")) {
-                            maxTier = Math.max(maxTier, 20);
-                        } else if (reason != null && reason.contains("15")) {
-                            maxTier = Math.max(maxTier, 15);
-                        } else if (reason != null && reason.contains("10")) {
-                            maxTier = Math.max(maxTier, 10);
-                        }
-                    }
+                if (rs.next()) {
+                    return rs.getInt(1);
                 }
             }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to query max fired drawdown tier", e);
         }
-        return maxTier;
+        return 0;
     }
 
     public Optional<String> getExecutedPlanSnapshot(String planId) {

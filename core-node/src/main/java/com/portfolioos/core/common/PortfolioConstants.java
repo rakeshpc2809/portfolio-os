@@ -42,7 +42,9 @@ public final class PortfolioConstants {
     }
 
     public static boolean isUrgentRebalance(double drawdownPct, double absDriftPct) {
-        return drawdownPct >= DRAWDOWN_TIER_2_PCT || absDriftPct >= URGENT_DRIFT_THRESHOLD_PCT;
+        // Urgency strictly gates on deep market drawdown (>= 15%), never on drift alone,
+        // preventing premature realization of STCG (20%) or exit load penalties during normal rallies.
+        return drawdownPct >= DRAWDOWN_TIER_2_PCT;
     }
 
     public static String deriveTriggerType(double drawdownPct) {

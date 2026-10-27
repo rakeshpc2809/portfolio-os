@@ -125,7 +125,6 @@ public class RebalanceTriggerEvaluator {
         double targetLmRatio = 0.60;
         double goldCurrentWeightPct = 0.0;
         double goldTargetWeightPct = 10.0;
-        double goldTriggerDriftPct = 12.0;
 
         if (ver != null && ver.targets() != null) {
             for (BucketConfigLoader.BucketTargetConfig tc : ver.targets()) {
@@ -141,7 +140,6 @@ public class RebalanceTriggerEvaluator {
                     }
                 } else if ("GOLD_SILVER".equalsIgnoreCase(tc.bucket()) || "HEDGE_COMMODITY".equalsIgnoreCase(tc.bucket()) || "COMMODITY".equalsIgnoreCase(tc.bucket())) {
                     goldTargetWeightPct = tc.targetPct();
-                    goldTriggerDriftPct = tc.triggerDriftPct() > 0 ? tc.triggerDriftPct() : tc.bandPct();
                 }
             }
         }
@@ -322,6 +320,13 @@ public class RebalanceTriggerEvaluator {
 
         if (!"NONE".equals(resolution.triggerType())) {
             LocalDate today = currentDate != null ? currentDate : LocalDate.now();
+            int drawdownTier = 0;
+            if ("DRAWDOWN".equalsIgnoreCase(resolution.triggerType())) {
+                String armed = resolution.drawdownContext() != null ? resolution.drawdownContext().armedTier() : null;
+                if ("TIER_20".equals(armed)) drawdownTier = 20;
+                else if ("TIER_15".equals(armed)) drawdownTier = 15;
+                else if ("TIER_10".equals(armed)) drawdownTier = 10;
+            }
             repository.recordExecution(
                 planId,
                 resolution.triggerType(),
@@ -329,7 +334,8 @@ public class RebalanceTriggerEvaluator {
                 today.atStartOfDay(),
                 resolution.hasSellSide(),
                 resolution.hasGoldBuy(),
-                "{\"driftedBuckets\":" + resolution.driftedBuckets() + "}"
+                "{\"driftedBuckets\":" + resolution.driftedBuckets() + "}",
+                drawdownTier
             );
         }
 
