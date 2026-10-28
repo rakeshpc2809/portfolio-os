@@ -108,4 +108,50 @@ class DuckDbProjectorNetWorthAccountingTest {
         assertEquals(100000.00, pointJun2.invested(), 0.001,
             "Final state: Net active capital change across rebalance trade pair (-88,121 sale proceeds + 88,121 buy gross amount) must equal EXACTLY 0.00");
     }
+
+    @Test
+    void testProjectEventsInvalidatesDailyTrendCache() throws Exception {
+        java.nio.file.Path tempDir = java.nio.file.Files.createTempDirectory("duckdb-trend-cache-test");
+        java.nio.file.Path dbPath = tempDir.resolve("cache_test.duckdb");
+
+        try (DuckDbProjector projector = new DuckDbProjector(dbPath.toString())) {
+            TaxEvent e1 = new TaxEvent(
+                "evt-cache-1", "asset_1", "Equity Fund", "asset_1",
+                EventType.ACQUISITION, LocalDate.parse("2026-01-01"),
+                new BigDecimal("1000.00"), new BigDecimal("100.00"), new BigDecimal("100000.00"),
+                "doc-initial", Instant.parse("2026-01-01T10:00:00Z")
+            );
+            projector.projectEvents(List.of(e1));
+
+            // Prime the cache
+            List<NetWorthPoint> initialTrend = projector.getDailyNetWorthTrend();
+            assertEquals(1, initialTrend.size());
+            assertEquals(100000.00, initialTrend.get(0).invested(), 0.01);
+
+            // Project a second event without closing/reopening projector
+            TaxEvent e2 = new TaxEvent(
+                "evt-cache-2", "asset_1", "Equity Fund", "asset_1",
+                EventType.ACQUISITION, LocalDate.parse("2026-01-02"),
+                new BigDecimal("500.00"), new BigDecimal("100.00"), new BigDecimal("50000.00"),
+                "doc-second", Instant.parse("2026-01-02T10:00:00Z")
+            );
+            projector.projectEvents(List.of(e2));
+
+            // Verify cache was invalidated and now contains 2 points with updated invested capital
+            List<NetWorthPoint> updatedTrend = projector.getDailyNetWorthTrend();
+            assertEquals(2, updatedTrend.size(), "Cached trend must be invalidated after projectEvents");
+            NetWorthPoint pointJan2 = updatedTrend.stream()
+                .filter(p -> p.date().equals("2026-01-02"))
+                .findFirst()
+                .orElseThrow();
+            assertEquals(150000.00, pointJan2.invested(), 0.01);
+        } finally {
+            try {
+                java.nio.file.Files.walk(tempDir)
+                    .sorted(java.util.Comparator.reverseOrder())
+                    .map(java.nio.file.Path::toFile)
+                    .forEach(java.io.File::delete);
+            } catch (Exception ignored) {}
+        }
+    }
 }
