@@ -12,12 +12,16 @@ This bundled asset replaced brittle runtime scrapers (`NseIndexConstituentDownlo
 All constituent holdings carry an effective disclosure date of **`2026-03-31`** (end of Q4 FY 2025-26).
 
 ### A. Factsheet Holdings (`FACTSHEET_POI_PARSED` — 67 rows)
-Directly extracted from official monthly portfolio disclosure workbooks published by the respective Asset Management Companies (AMCs):
+Extracted directly from official monthly portfolio disclosure workbooks published by the respective Asset Management Companies (AMCs). 
 
-| ISIN | Fund Name | Row Count | Source Document | Publisher / AMC | Disclosure Date |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `INF204K01K15` | **Nippon India Small Cap Fund** | 38 | `data/factsheets/nippon_smallcap_full.xlsx` | Nippon Life India Asset Management Ltd. | 2026-03-31 |
-| `INF879O01027` | **Parag Parikh Flexi Cap Fund** | 29 | `data/factsheets/ppfas_flexicap_full.xlsx` | PPFAS Mutual Fund | 2026-03-31 |
+> **Local Source Notice**: The source `.xlsx` workbooks reside in the local development directory `data/factsheets/` (which is excluded from Git via `.gitignore` to prevent tracking binary vendor artifacts). Their authenticity can be verified against the SHA-256 checksums and official AMC disclosure portals below:
+
+| ISIN | Fund Name | Row Count | Local Workbook | File Size | SHA-256 Checksum | Official AMC Portal |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `INF204K01K15` | **Nippon India Small Cap Fund** | 38 | `data/factsheets/nippon_smallcap_full.xlsx` | 6,731 bytes | `7f21d3617b7f1dc29f989b121fb444b2d9004887d387e9b1979b5d3c5864c834` | [Nippon Life India AMC Disclosures](https://mf.nipponindiaim.com) |
+| `INF879O01027` | **Parag Parikh Flexi Cap Fund** | 29 | `data/factsheets/ppfas_flexicap_full.xlsx` | 6,244 bytes | `6554ed1611fd69520a9a28735e09d90a362b0e35e0b50a7e0854eb2aa514e658` | [PPFAS AMC Monthly Portfolios](https://amc.ppfas.com) |
+
+*Retrieval Timestamp*: 2026-08-08 16:50 IST (Nippon), 2026-08-08 16:40 IST (PPFAS).
 
 ### B. Index Constituents (`NSE_INDEX_CONSTITUENTS` — 160 rows)
 Top 10 to 20 constituent stock weightages for passive index funds and ETFs, extracted from official National Stock Exchange of India (NSE) index weightage disclosures published on **2026-03-31** (semi-annual index reconstitution):
@@ -39,6 +43,8 @@ Top 10 to 20 constituent stock weightages for passive index funds and ETFs, extr
 | `INF247L01BQ9` | Motilal Oswal Nifty Microcap 250 Index Fund | 10 | Nifty Microcap 250 |
 | `INF754K01TN5` | Edelweiss Nifty500 Multicap Mom Qual 50 Index Fund | 10 | Nifty500 Multicap 50:25:25 |
 
+> **Top-N Lower-Bound Characteristic**: For all 14 passive index schemes, the static dataset captures the top 10 to 20 constituent stock holdings representing the majority of index capitalization. Pairwise overlap and aggregate portfolio stock concentration percentages derived from index holdings represent verified **mathematical lower bounds**. Tail-end holdings with minuscule weights (< 1%) are omitted to conserve storage and query execution budgets.
+
 ### C. Unverified Manual Estimates (`MANUAL_ESTIMATE_UNVERIFIED` — 60 rows)
 Top 10 approximate holdings for specialized sectoral and international funds where automated RTA feeds were unavailable:
 
@@ -53,13 +59,16 @@ Top 10 approximate holdings for specialized sectoral and international funds whe
 
 ---
 
-## 3. Architecture & Strict Audited Isolation
+## 3. Architecture & Fail-Closed Provenance Defaults
 Portfolio overlap and stock concentration calculations reside in `DuckDbProjector.java`, coordinated through `PortfolioValuationService.java` and exposed by `ReportController.java`.
 
-1. **Audited-Only Isolation by Default**:
-   In `ReportController.java` (`getPortfolioConcentrations`), `includeUnverified` defaults to `false`. In `DuckDbProjector.getPortfolioStockConcentrations()`, any fund with `source_type == "MANUAL_ESTIMATE_UNVERIFIED"` is completely skipped from stock aggregations unless explicitly opted in by the user (`includeUnverified = true`).
-2. **Deterministic Point Assertions**:
+1. **Fail-Closed Default (`source_type = "UNKNOWN"`)**:
+   Any fund with zero rows in `fund_holdings` strictly defaults to `source_type = "UNKNOWN"`. Only `FACTSHEET_POI_PARSED` and `NSE_INDEX_CONSTITUENTS` are recognized as audited. Funds with `UNKNOWN` or `MANUAL_ESTIMATE_UNVERIFIED` provenance are classified as unverified AUM and skipped by default in audited-only mode.
+2. **Audited-Only Isolation by Default**:
+   In `ReportController.java` (`getPortfolioConcentrations`), `includeUnverified` defaults to `false`. In `DuckDbProjector.getPortfolioStockConcentrations()`, unverified funds are excluded from top stock concentration aggregations unless explicitly opted in by the user (`includeUnverified = true`).
+3. **Deterministic Point Assertions**:
    `PortfolioOverlapAuditTest.testStockConcentrationsAuditedOnlyVsIncludeUnverified` asserts that unverified funds are excluded from audited telemetry (e.g. ₹2,50,000 audited AUM vs ₹12,50,000 total equity AUM).
+   `PortfolioOverlapAuditTest.testNewlyHeldFundWithNoHoldingsDefaultsToUnknownAndIsExcludedFromAuditedMetrics` verifies that an unseeded fund cannot inflate audited AUM.
 
 ---
 
@@ -69,6 +78,6 @@ When `fund_constituents.json` was missing due to `.gitignore` directory suppress
 * **Line 75 (`testPairwiseOverlapExactMathematicalValues`)**:
   `expected: <23.56> but was: <0.0>`. With `fund_holdings` empty, the inner join on common stock symbols produced zero rows, resulting in 0.0% overlap.
 * **Line 155 (`testPairwiseOverlapProvenanceTags`)**:
-  `expected: <FACTSHEET_POI_PARSED> but was: <NSE_INDEX_CONSTITUENTS>`. In `DuckDbProjector.getPairwiseFundOverlap()`, `String srcA = "NSE_INDEX_CONSTITUENTS"` is the fallback default when `SELECT MAX(source_type)` returns `NULL`.
+  `expected: <FACTSHEET_POI_PARSED> but was: <NSE_INDEX_CONSTITUENTS>`. In earlier revisions, `DuckDbProjector.getPairwiseFundOverlap()` defaulted `srcA` to `"NSE_INDEX_CONSTITUENTS"` when `SELECT MAX(source_type)` returned `NULL`. Now resolved with `UNKNOWN` fail-closed default.
 * **Line 126 (`testStockConcentrationsAuditedOnlyVsIncludeUnverified`)**:
-  `expected: <250000.0> but was: <1250000.0>`. In `DuckDbProjector.getPortfolioStockConcentrations()`, `String srcType = "NSE_INDEX_CONSTITUENTS"` is the default fallback when `SELECT MAX(source_type)` returns `NULL`. Consequently, all funds (including the ₹10L unverified Tata Small Cap) were treated as audited NSE index funds (`isUnverified = false`), erroneously summing all ₹12,50,000 into `totalAuditedValuation`.
+  `expected: <250000.0> but was: <1250000.0>`. In earlier revisions, `DuckDbProjector.getPortfolioStockConcentrations()` defaulted `srcType` to `"NSE_INDEX_CONSTITUENTS"` when `metaSql` returned `NULL`, treating unverified funds as audited. Now resolved by checking `isAudited` against allowed types.
