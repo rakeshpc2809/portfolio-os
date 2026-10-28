@@ -162,4 +162,36 @@ class PortfolioOverlapAuditTest {
         assertEquals("NSE_INDEX_CONSTITUENTS", unverifiedPair.get("source_type_b"));
         assertEquals(true, unverifiedPair.get("is_unverified_estimate"));
     }
+
+    @Test
+    @DisplayName("Fail-Closed Provenance: Fund with no holdings defaults to UNKNOWN, flagged unverified, and excluded from audited AUM")
+    void testNewlyHeldFundWithNoHoldingsDefaultsToUnknownAndIsExcludedFromAuditedMetrics() {
+        String unknownFundId = "INF999K01XX0"; // Non-existent fund with 0 rows in fund_holdings
+
+        // 1. Pairwise Overlap check
+        Map<String, Object> pairwise = projector.getPairwiseFundOverlap(unknownFundId, "INF109KC13X2");
+        assertEquals("UNKNOWN", pairwise.get("source_type_a"), "Fund with no constituent rows must default to UNKNOWN");
+        assertEquals("NSE_INDEX_CONSTITUENTS", pairwise.get("source_type_b"));
+        assertEquals(true, pairwise.get("is_unverified_estimate"), "Pair involving UNKNOWN fund must be flagged as unverified estimate");
+        assertEquals(0.0, ((Number) pairwise.get("overlap_percentage")).doubleValue(), 0.01);
+        assertEquals(0, ((Number) pairwise.get("common_stock_count")).intValue());
+
+        // 2. Concentration & Telemetry check
+        Map<String, Double> fundValuations = new HashMap<>();
+        fundValuations.put("INF109KC13X2", 100000.0);  // Value 30 (Audited Index, 1L AUM)
+        fundValuations.put(unknownFundId, 500000.0);    // Newly held fund with no holdings (5L AUM)
+
+        // Audited-only mode (Default: includeUnverified = false)
+        Map<String, Object> auditedResult = projector.getPortfolioStockConcentrations(fundValuations, false);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> auditedTelemetry = (Map<String, Object>) auditedResult.get("coverage_telemetry");
+
+        assertNotNull(auditedTelemetry);
+        assertEquals(600000.0, ((Number) auditedTelemetry.get("total_equity_aum")).doubleValue(), 0.01);
+        assertEquals(100000.0, ((Number) auditedTelemetry.get("audited_aum")).doubleValue(), 0.01,
+            "Audited AUM must NOT be inflated by UNKNOWN fund; must remain exactly 100,000.00");
+        assertEquals(500000.0, ((Number) auditedTelemetry.get("unverified_aum")).doubleValue(), 0.01,
+            "UNKNOWN fund AUM must be categorized as unverified AUM");
+        assertEquals(16.7, ((Number) auditedTelemetry.get("audited_coverage_pct")).doubleValue(), 0.1);
+    }
 }

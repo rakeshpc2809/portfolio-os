@@ -273,6 +273,10 @@
             </label>
           </div>
 
+          <div class="provenance-lowerbound-hint">
+            <span>ℹ️ Lower-bound estimate: Passive index schemes reflect top 10–20 constituent stocks. Full portfolio overlap may be marginally higher across minor tail holdings.</span>
+          </div>
+
           {#if filteredPairs.length === 0}
             <div class="empty-state">
               <p>No pairwise overlap records match current search or filters.</p>
@@ -381,6 +385,9 @@
               <p>No stock concentration records available.</p>
             </div>
           {:else}
+            <div class="provenance-lowerbound-hint">
+              <span>ℹ️ Lower-bound estimate: Passive index schemes reflect top 10–20 constituent stocks. Tail-end exposures (&lt;1%) are excluded from the lookthrough baseline.</span>
+            </div>
             <div class="table-container">
               <table class="data-table">
                 <thead>
@@ -762,6 +769,19 @@
     background: var(--surface-glass, rgba(255, 255, 255, 0.02));
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
+  }
+
+  .provenance-lowerbound-hint {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 0.35rem 0.65rem;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
   }
 
   .search-box {

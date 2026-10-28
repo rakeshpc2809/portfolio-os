@@ -1069,8 +1069,8 @@ public class DuckDbProjector implements AutoCloseable {
 
         String dateA = "";
         String dateB = "";
-        String srcA = "NSE_INDEX_CONSTITUENTS";
-        String srcB = "NSE_INDEX_CONSTITUENTS";
+        String srcA = "UNKNOWN";
+        String srcB = "UNKNOWN";
 
         try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(metaSql)) {
@@ -1082,8 +1082,8 @@ public class DuckDbProjector implements AutoCloseable {
                 if (rs.next()) {
                     dateA = rs.getString("date_a") != null ? rs.getString("date_a") : "";
                     dateB = rs.getString("date_b") != null ? rs.getString("date_b") : "";
-                    srcA = rs.getString("src_a") != null ? rs.getString("src_a") : "NSE_INDEX_CONSTITUENTS";
-                    srcB = rs.getString("src_b") != null ? rs.getString("src_b") : "NSE_INDEX_CONSTITUENTS";
+                    srcA = rs.getString("src_a") != null ? rs.getString("src_a") : "UNKNOWN";
+                    srcB = rs.getString("src_b") != null ? rs.getString("src_b") : "UNKNOWN";
                 }
             }
         } catch (Exception ignored) {}
@@ -1128,7 +1128,9 @@ public class DuckDbProjector implements AutoCloseable {
 
         commonStocks.sort((x, y) -> Double.compare(((Number) y.get("overlap_pct")).doubleValue(), ((Number) x.get("overlap_pct")).doubleValue()));
 
-        boolean isUnverified = "MANUAL_ESTIMATE_UNVERIFIED".equals(srcA) || "MANUAL_ESTIMATE_UNVERIFIED".equals(srcB);
+        boolean isAuditedA = "FACTSHEET_POI_PARSED".equals(srcA) || "NSE_INDEX_CONSTITUENTS".equals(srcA);
+        boolean isAuditedB = "FACTSHEET_POI_PARSED".equals(srcB) || "NSE_INDEX_CONSTITUENTS".equals(srcB);
+        boolean isUnverified = !isAuditedA || !isAuditedB;
 
         result.put("fund_a", fundA);
         result.put("fund_b", fundB);
@@ -1164,7 +1166,7 @@ public class DuckDbProjector implements AutoCloseable {
             double valuation = entry.getValue();
 
             String metaSql = "SELECT MAX(source_type) AS src FROM fund_holdings WHERE fund_id = ?";
-            String srcType = "NSE_INDEX_CONSTITUENTS";
+            String srcType = "UNKNOWN";
             try (Connection conn = getConnection();
                  PreparedStatement pstmt = conn.prepareStatement(metaSql)) {
                 pstmt.setString(1, fundId);
@@ -1175,14 +1177,14 @@ public class DuckDbProjector implements AutoCloseable {
                 }
             } catch (Exception ignored) {}
 
-            boolean isUnverified = "MANUAL_ESTIMATE_UNVERIFIED".equals(srcType);
-            if (isUnverified) {
+            boolean isAudited = "FACTSHEET_POI_PARSED".equals(srcType) || "NSE_INDEX_CONSTITUENTS".equals(srcType);
+            if (isAudited) {
+                totalAuditedValuation += valuation;
+            } else {
                 totalUnverifiedValuation += valuation;
                 if (!includeUnverified) {
-                    continue; // Skip unverified funds in Audited-Only default mode
+                    continue; // Skip unverified/unknown funds in Audited-Only default mode
                 }
-            } else {
-                totalAuditedValuation += valuation;
             }
 
             String sql = "WITH latest AS (SELECT MAX(disclosure_date) AS max_d FROM fund_holdings WHERE fund_id = ?) " +
@@ -1200,8 +1202,8 @@ public class DuckDbProjector implements AutoCloseable {
                         double weight = rs.getDouble("weight_pct");
                         double rupeeContrib = (weight / 100.0) * valuation;
                         stockRupeeMap.put(symbol, stockRupeeMap.getOrDefault(symbol, 0.0) + rupeeContrib);
-                        if (isUnverified) {
-                            stockSourceMap.put(symbol, "MANUAL_ESTIMATE_UNVERIFIED");
+                        if (!isAudited) {
+                            stockSourceMap.put(symbol, srcType);
                         }
                     }
                 }
@@ -1234,7 +1236,8 @@ public class DuckDbProjector implements AutoCloseable {
                 item.put("stock_symbol", symbol);
                 item.put("rupee_exposure", Math.round(rupees));
                 item.put("portfolio_percentage", Math.round(portfolioPct * 100.0) / 100.0);
-                item.put("is_audited", !"MANUAL_ESTIMATE_UNVERIFIED".equals(stockSourceMap.get(symbol)));
+                boolean isStockAudited = !"MANUAL_ESTIMATE_UNVERIFIED".equals(stockSourceMap.get(symbol)) && !"UNKNOWN".equals(stockSourceMap.get(symbol));
+                item.put("is_audited", isStockAudited);
                 concentrations.add(item);
             }
         }
