@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 import java.io.File;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -92,6 +93,13 @@ public class TriggerHistoryRepository {
             if (!hasColumn) {
                 stmt.execute("ALTER TABLE rebalance_trigger_history ADD COLUMN drawdown_tier INTEGER DEFAULT 0");
             }
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS active_drawdown_baseline (" +
+                "  id INTEGER PRIMARY KEY CHECK (id = 1)," +
+                "  baseline_value TEXT NOT NULL," +
+                "  recorded_at TEXT NOT NULL" +
+                ")"
+            );
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize rebalance_trigger_history schema", e);
         }
@@ -126,6 +134,7 @@ public class TriggerHistoryRepository {
         }
     }
 
+    @Deprecated
     public void recordExecution(
         String planId,
         String triggerType,
@@ -227,10 +236,51 @@ public class TriggerHistoryRepository {
         }
     }
 
+    public Optional<BigDecimal> getActiveDrawdownArbitrageBaseline() {
+        String sql = "SELECT baseline_value FROM active_drawdown_baseline WHERE id = 1";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                String val = rs.getString(1);
+                if (val != null && !val.isBlank()) {
+                    return Optional.of(new BigDecimal(val));
+                }
+            }
+            return Optional.empty();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to query active drawdown baseline", e);
+        }
+    }
+
+    public void setActiveDrawdownArbitrageBaseline(BigDecimal baseline) {
+        if (baseline == null) return;
+        String sql = "INSERT OR REPLACE INTO active_drawdown_baseline (id, baseline_value, recorded_at) VALUES (1, ?, ?)";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, baseline.toPlainString());
+            stmt.setString(2, LocalDateTime.now().format(ISO_FORMATTER));
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to persist active drawdown baseline", e);
+        }
+    }
+
+    public void clearActiveDrawdownArbitrageBaseline() {
+        String sql = "DELETE FROM active_drawdown_baseline WHERE id = 1";
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to clear active drawdown baseline", e);
+        }
+    }
+
     public void clearAll() {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute("DELETE FROM rebalance_trigger_history");
+            stmt.execute("DELETE FROM active_drawdown_baseline");
         } catch (SQLException e) {
             throw new RuntimeException("Failed to clear trigger history", e);
         }

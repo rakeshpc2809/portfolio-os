@@ -13,15 +13,17 @@ public class RebalanceController {
 
     private final PortfolioValuationService valuationService;
     private final SyncController syncController;
-
-    public RebalanceController(PortfolioValuationService valuationService) {
-        this(valuationService, null);
-    }
+    private final com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository;
 
     @org.springframework.beans.factory.annotation.Autowired
-    public RebalanceController(PortfolioValuationService valuationService, SyncController syncController) {
+    public RebalanceController(
+        PortfolioValuationService valuationService,
+        SyncController syncController,
+        com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository
+    ) {
         this.valuationService = valuationService;
         this.syncController = syncController;
+        this.triggerHistoryRepository = triggerHistoryRepository;
     }
 
     private String resolveFy(String fy) {

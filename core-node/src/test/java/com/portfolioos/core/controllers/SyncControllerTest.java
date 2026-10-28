@@ -6,6 +6,7 @@ import com.portfolioos.core.matcher.FifoMatcher;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.service.LedgerCacheService;
+import com.portfolioos.core.service.PortfolioValuationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
@@ -73,6 +74,10 @@ class SyncControllerTest {
             public Map<String, NavHistorySeriesEntry> getNavHistorySeriesWithDates(java.util.Set<String> heldIsins) {
                 return java.util.Collections.emptyMap();
             }
+            @Override
+            public BenchmarkLevelMetrics getBenchmarkLevelMetrics(String benchmarkId) {
+                return new BenchmarkLevelMetrics(25000.0, 25000.0);
+            }
         };
         mockQuantSidecar = new com.portfolioos.core.rpc.QuantSidecarClient("localhost", 9999);
         valuationService = 
@@ -82,30 +87,39 @@ class SyncControllerTest {
     }
 
     @Test
-    void testSite1SnapshotDisarmsDrawdownWhenBenchmarkNull() {
-        ResponseEntity<UnidirectionalSyncSnapshot> response = syncController.getSnapshot("2026-27", null);
-        assertNotNull(response);
-        assertNotNull(response.getBody());
+    void testSite1SnapshotFailsLoudlyWhenBenchmarkNull() {
+        com.portfolioos.core.persistence.DuckDbProjector emptyDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
+            @Override
+            public BenchmarkLevelMetrics getBenchmarkLevelMetrics(String benchmarkId) {
+                return null;
+            }
+        };
+        PortfolioValuationService emptyValService = new PortfolioValuationService(mockCacheService, emptyDuckDb, mockQuantSidecar);
+        SyncController controller = new SyncController(mockCacheService, emptyValService, emptyDuckDb, mockQuantSidecar);
 
-        RebalancePlanDto plan = response.getBody().rebalancePlan();
-        assertNotNull(plan);
-        assertEquals("NONE", plan.trigger().drawdownContext().armedTier(),
-            "Site 1 /getSnapshot must disarm drawdown to NONE when no live benchmark market feed is wired");
-        assertEquals(0.0, plan.trigger().drawdownContext().currentDrawdownPct(),
-            "Site 1 /getSnapshot must report 0.0% drawdown when benchmark is null");
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            controller.getSnapshot("2026-27", null)
+        );
+        assertTrue(ex.getMessage().contains("CRITICAL BENCHMARK FAILURE"),
+            "Site 1 /getSnapshot must fail loudly with CRITICAL BENCHMARK FAILURE when benchmark feed is missing");
     }
 
     @Test
-    void testSite2RebalancePlanDisarmsDrawdownWhenBenchmarkNull() {
-        ResponseEntity<RebalancePlanDto> response = syncController.getRebalancePlan("INDUCED");
-        assertNotNull(response);
-        assertNotNull(response.getBody());
+    void testSite2RebalancePlanFailsLoudlyWhenBenchmarkNull() {
+        com.portfolioos.core.persistence.DuckDbProjector emptyDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
+            @Override
+            public BenchmarkLevelMetrics getBenchmarkLevelMetrics(String benchmarkId) {
+                return null;
+            }
+        };
+        PortfolioValuationService emptyValService = new PortfolioValuationService(mockCacheService, emptyDuckDb, mockQuantSidecar);
+        SyncController controller = new SyncController(mockCacheService, emptyValService, emptyDuckDb, mockQuantSidecar);
 
-        RebalancePlanDto plan = response.getBody();
-        assertEquals("NONE", plan.trigger().drawdownContext().armedTier(),
-            "Site 2 /getRebalancePlan must disarm drawdown to NONE when no live benchmark market feed is wired");
-        assertEquals(0.0, plan.trigger().drawdownContext().currentDrawdownPct(),
-            "Site 2 /getRebalancePlan must report 0.0% drawdown when benchmark is null");
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            controller.getRebalancePlan("INDUCED")
+        );
+        assertTrue(ex.getMessage().contains("CRITICAL BENCHMARK FAILURE"),
+            "Site 2 /getRebalancePlan must fail loudly with CRITICAL BENCHMARK FAILURE when benchmark feed is missing");
     }
 
     @Test

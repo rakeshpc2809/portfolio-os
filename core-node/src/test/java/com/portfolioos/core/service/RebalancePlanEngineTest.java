@@ -1275,5 +1275,72 @@ class RebalancePlanEngineTest {
         // Tax = 55,000 * 12.5% = 6,875.00
         assertEquals(new BigDecimal("6875.00"), res.totalNetTaxEstimate());
     }
+
+    @Test
+    @DisplayName("F5: SellSidePlanDto lot-level tax drags sum exactly to summary.projected_tax with Section 70 loss offset")
+    void testSellSidePlanLotTaxMatchesSummaryProjectedTax() {
+        BigDecimal navCore = new BigDecimal("150.00");
+        BigDecimal navLegacy = new BigDecimal("100.00");
+        LocalDate today = LocalDate.of(2026, 8, 10);
+
+        // Core overweight lot with LTCG gain
+        Lot coreLot = new Lot("lot-core", "INF879O01027", "Parag Parikh Flexi Cap Fund", today.minusDays(400),
+            new BigDecimal("20000"), new BigDecimal("20000"), new BigDecimal("100"), new BigDecimal("2000000.00"), false, null);
+
+        // Legacy lot with loss (-50,000)
+        Lot legacyLossLot = new Lot("lot-leg-loss", "INF209K01157", "Aditya Birla Frontline Equity Fund", today.minusDays(400),
+            new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("150"), new BigDecimal("150000.00"), false, null);
+
+        // Legacy lot with gain (+100,000)
+        Lot legacyGainLot = new Lot("lot-leg-gain", "INF209K01157", "Aditya Birla Frontline Equity Fund", today.minusDays(500),
+            new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("50"), new BigDecimal("50000.00"), false, null);
+
+        List<Lot> openLots = List.of(coreLot, legacyLossLot, legacyGainLot);
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF879O01027", navCore,
+            "INF209K01157", navLegacy
+        );
+
+        TriggerHistoryRepository mockRepo = org.mockito.Mockito.mock(TriggerHistoryRepository.class);
+        RebalanceTriggerEvaluator evaluator = new RebalanceTriggerEvaluator(mockRepo);
+
+        RebalancePlanDtos.RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            openLots, java.util.Collections.emptyList(), navMap, today,
+            new BigDecimal("25000.00"), new BigDecimal("25000.00"), null, "2026-27", null, null, evaluator
+        );
+
+        assertNotNull(plan);
+        assertNotNull(plan.sellSide());
+        assertNotNull(plan.sellSide().taxSummary());
+
+        BigDecimal summaryTax = plan.sellSide().taxSummary().totalTaxEstimate();
+        assertNotNull(summaryTax);
+
+        BigDecimal sumLotTax = BigDecimal.ZERO;
+        for (RebalancePlanDtos.WaterfallTierDto tier : plan.sellSide().waterfall()) {
+            if (tier.lots() != null) {
+                for (RebalancePlanDtos.RebalanceLotImpactDto lot : tier.lots()) {
+                    if (lot.taxImpact() != null && lot.taxImpact().taxAmount() != null) {
+                        sumLotTax = sumLotTax.add(lot.taxImpact().taxAmount());
+                    }
+                }
+            }
+        }
+
+        assertEquals(0, summaryTax.compareTo(sumLotTax),
+            "Sum of lot-level tax drags must match summary totalTaxEstimate bit-for-bit");
+
+        BigDecimal sumOrderTax = BigDecimal.ZERO;
+        if (plan.sellSide().orders() != null) {
+            for (RebalancePlanDtos.ConsolidatedSellOrderDto order : plan.sellSide().orders()) {
+                if (order.totalTaxAmount() != null) {
+                    sumOrderTax = sumOrderTax.add(order.totalTaxAmount());
+                }
+            }
+        }
+
+        assertEquals(0, summaryTax.compareTo(sumOrderTax),
+            "Sum of consolidated order tax amounts must match summary totalTaxEstimate bit-for-bit");
+    }
 }
 

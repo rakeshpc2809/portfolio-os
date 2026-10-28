@@ -61,25 +61,42 @@ class RebalanceTriggerEvaluatorTest {
     }
 
     @Test
-    @DisplayName("Drawdown Protection: Null benchmark params strictly disarm Drawdown trigger (0.00% DD)")
-    void testNullBenchmarkDisarmsDrawdown() {
+    @DisplayName("Fail-Loud Invariant: RebalanceTriggerEvaluator throws IllegalStateException on null or non-positive benchmark inputs")
+    void testNullBenchmarkThrowsException() {
         List<Lot> openLots = List.of(
             new Lot("l1", "INF109KC12U0", "ICICI LargeMidcap 250", LocalDate.of(2025, 1, 1),
                 new BigDecimal("1000"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100000"), false, BigDecimal.ZERO)
         );
         Map<String, BigDecimal> navMap = Map.of("INF109KC12U0", new BigDecimal("150"));
 
-        RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
-            openLots, navMap,
-            null, null, // Null benchmark inputs
-            null, null, LocalDate.of(2026, 8, 1)
+        IllegalStateException exNullBoth = assertThrows(IllegalStateException.class, () ->
+            evaluator.getCurrentStatus(
+                openLots, navMap,
+                null, null,
+                null, null, LocalDate.of(2026, 8, 1)
+            )
         );
+        assertTrue(exNullBoth.getMessage().contains("CRITICAL BENCHMARK FAILURE"));
 
-        assertNotNull(res);
-        assertNotNull(res.drawdownContext());
-        assertEquals(0.0, res.drawdownContext().currentDrawdownPct(), "Null benchmark inputs MUST produce exactly 0.00% drawdown");
-        assertEquals("NONE", res.drawdownContext().armedTier(), "Null benchmark inputs MUST result in armedTier = NONE");
-        assertNotEquals("DRAWDOWN", res.triggerType(), "DRAWDOWN trigger MUST NOT fire when benchmark inputs are null");
+        IllegalStateException exNullHigh = assertThrows(IllegalStateException.class, () ->
+            evaluator.getCurrentStatus(
+                openLots, navMap,
+                new BigDecimal("25000.00"), null,
+                null, null, LocalDate.of(2026, 8, 1)
+            )
+        );
+        assertTrue(exNullHigh.getMessage().contains("CRITICAL BENCHMARK FAILURE"));
+        assertTrue(exNullHigh.getMessage().contains("52-week peak"));
+
+        IllegalStateException exZeroCurr = assertThrows(IllegalStateException.class, () ->
+            evaluator.getCurrentStatus(
+                openLots, navMap,
+                BigDecimal.ZERO, new BigDecimal("25000.00"),
+                null, null, LocalDate.of(2026, 8, 1)
+            )
+        );
+        assertTrue(exZeroCurr.getMessage().contains("CRITICAL BENCHMARK FAILURE"));
+        assertTrue(exZeroCurr.getMessage().contains("live level"));
     }
 
     @Test
@@ -320,10 +337,21 @@ class RebalanceTriggerEvaluatorTest {
         assertEquals(0.0, PortfolioConstants.calculateDrawdownPct(new BigDecimal("10500.00"), new BigDecimal("10000.00")));
         assertEquals(0.0, PortfolioConstants.calculateDrawdownPct(new BigDecimal("10000.00"), new BigDecimal("10000.00")));
 
-        // Null / negative benchmark disarm
+        // Null / negative benchmark disarm in raw calculator
         assertEquals(0.0, PortfolioConstants.calculateDrawdownPct(null, new BigDecimal("10000.00")));
         assertEquals(0.0, PortfolioConstants.calculateDrawdownPct(new BigDecimal("9000.00"), null));
         assertEquals(0.0, PortfolioConstants.calculateDrawdownPct(BigDecimal.ZERO, new BigDecimal("10000.00")));
+
+        // requireValidDrawdownPct fail-loud checks
+        assertThrows(IllegalStateException.class, () ->
+            PortfolioConstants.requireValidDrawdownPct(null, new BigDecimal("10000.00"), "Nifty 500 TRI"));
+        assertThrows(IllegalStateException.class, () ->
+            PortfolioConstants.requireValidDrawdownPct(new BigDecimal("9000.00"), null, "Nifty 500 TRI"));
+        assertThrows(IllegalStateException.class, () ->
+            PortfolioConstants.requireValidDrawdownPct(BigDecimal.ZERO, new BigDecimal("10000.00"), "Nifty 500 TRI"));
+        assertThrows(IllegalStateException.class, () ->
+            PortfolioConstants.requireValidDrawdownPct(new BigDecimal("9000.00"), BigDecimal.ZERO, "Nifty 500 TRI"));
+        assertEquals(10.0, PortfolioConstants.requireValidDrawdownPct(new BigDecimal("9000.00"), new BigDecimal("10000.00"), "Nifty 500 TRI"));
 
         // Exact 2-decimal HALF_UP rounding
         // 10000 - 8999 = 1001 -> 1001/10000 = 10.01%

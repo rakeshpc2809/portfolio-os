@@ -42,6 +42,10 @@ public class RebalanceTriggerEvaluator {
         this.repository = repository;
     }
 
+    public TriggerHistoryRepository getRepository() {
+        return repository;
+    }
+
     public TriggerResolution getCurrentStatus(
         List<Lot> openLots,
         Map<String, BigDecimal> navMap,
@@ -75,13 +79,9 @@ public class RebalanceTriggerEvaluator {
         }
 
         // 2. Compute Drawdown Context
-        BigDecimal high = (benchmarkRollingHigh != null && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0) ? benchmarkRollingHigh : BigDecimal.ZERO;
-        BigDecimal curr = (benchmarkCurrent != null && benchmarkCurrent.compareTo(BigDecimal.ZERO) > 0) ? benchmarkCurrent : BigDecimal.ZERO;
-        double ddPct = PortfolioConstants.calculateDrawdownPct(curr, high);
-
-        if (curr.compareTo(BigDecimal.ZERO) <= 0 || high.compareTo(BigDecimal.ZERO) <= 0) {
-            System.err.println("WARNING: Real Nifty benchmark market data unavailable (benchmarkCurrent/benchmarkRollingHigh is null). Drawdown Trigger Disarmed (0.00% DD).");
-        }
+        double ddPct = PortfolioConstants.requireValidDrawdownPct(benchmarkCurrent, benchmarkRollingHigh, "Nifty 500 TRI Benchmark");
+        BigDecimal high = benchmarkRollingHigh;
+        BigDecimal curr = benchmarkCurrent;
 
         String armedTier = ddPct >= PortfolioConstants.DRAWDOWN_TIER_3_PCT ? "TIER_20"
             : (ddPct >= PortfolioConstants.DRAWDOWN_TIER_2_PCT ? "TIER_15"

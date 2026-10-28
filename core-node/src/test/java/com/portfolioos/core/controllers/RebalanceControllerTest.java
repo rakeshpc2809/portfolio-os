@@ -24,7 +24,8 @@ class RebalanceControllerTest {
     @DisplayName("P4.3 Test 3a: RebalanceController endpoints delegate to PortfolioValuationService and return 200 OK")
     void testRebalanceControllerEndpoints() {
         PortfolioValuationService valuationService = Mockito.mock(PortfolioValuationService.class);
-        RebalanceController controller = new RebalanceController(valuationService);
+        com.portfolioos.core.persistence.TriggerHistoryRepository mockRepo = Mockito.mock(com.portfolioos.core.persistence.TriggerHistoryRepository.class);
+        RebalanceController controller = new RebalanceController(valuationService, null, mockRepo);
 
         // 1. /api/v1/rebalance/bucket
         BucketRebalanceResponse mockBucketResp = Mockito.mock(BucketRebalanceResponse.class);
