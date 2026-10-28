@@ -134,6 +134,7 @@ public class TriggerHistoryRepository {
         }
     }
 
+    @Deprecated
     public void recordExecution(
         String planId,
         String triggerType,

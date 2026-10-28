@@ -472,7 +472,7 @@ public class SyncController {
         BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
 
         com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(
-            triggerHistoryRepository != null ? triggerHistoryRepository : new com.portfolioos.core.persistence.TriggerHistoryRepository()
+            triggerHistoryRepository
         );
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
             openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
@@ -503,7 +503,7 @@ public class SyncController {
         BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
 
         com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(
-            triggerHistoryRepository != null ? triggerHistoryRepository : new com.portfolioos.core.persistence.TriggerHistoryRepository()
+            triggerHistoryRepository
         );
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
             openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
