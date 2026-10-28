@@ -46,10 +46,6 @@ public final class PortfolioConstants {
         return drawdownPct >= DRAWDOWN_TIER_2_PCT;
     }
 
-    @Deprecated
-    public static boolean isUrgentRebalance(double drawdownPct, double absDriftPct) {
-        return isUrgentRebalance(drawdownPct);
-    }
 
     public static String deriveTriggerType(double drawdownPct) {
         return drawdownPct >= DRAWDOWN_TIER_1_PCT ? "DRAWDOWN" : "SCHEDULED";

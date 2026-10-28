@@ -96,8 +96,13 @@ public class RebalancePlanEngine {
     }
 
     public static RebalancePlanDto confirmPlanExecution(RebalancePlanDto plan, TriggerHistoryRepository repository) {
-        if (plan != null && repository != null) {
-            String planId = plan.planId();
+        if (plan == null) {
+            return null;
+        }
+        if (repository == null) {
+            throw new IllegalStateException("TriggerHistoryRepository cannot be null when confirming plan execution");
+        }
+        String planId = plan.planId();
             String triggerType = plan.trigger() != null ? plan.trigger().type() : "SCHEDULED";
             String reasonCode = plan.trigger() != null ? plan.trigger().reasonCode() : "CONFIRMED_EXECUTION";
             boolean hasSellSide = plan.sellSide() != null && plan.sellSide().totalRequired() != null && plan.sellSide().totalRequired().compareTo(BigDecimal.ZERO) > 0;
@@ -126,7 +131,6 @@ public class RebalancePlanEngine {
                 detailsJson,
                 drawdownTier
             );
-        }
         return plan;
     }
 

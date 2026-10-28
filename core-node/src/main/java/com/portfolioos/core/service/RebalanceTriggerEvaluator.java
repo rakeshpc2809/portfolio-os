@@ -102,16 +102,16 @@ public class RebalanceTriggerEvaluator {
         );
 
         // 3. Query Cooldown & Gold Idle State from Repository (PURE READ)
-        Optional<LocalDateTime> lastSellOpt = repository.getLastSellSideFiringDate();
+        Optional<LocalDateTime> lastSellOpt = repository != null ? repository.getLastSellSideFiringDate() : Optional.empty();
         long daysSinceLastSell = lastSellOpt.map(dt -> ChronoUnit.DAYS.between(dt.toLocalDate(), today)).orElse(9999L);
         boolean sellCooldownActive = daysSinceLastSell < PortfolioConstants.REBALANCE_COOLDOWN_DAYS;
 
         // F8: Drawdown Rung Escalation vs Cooldown
         int currentRung = "TIER_20".equals(armedTier) ? 20 : ("TIER_15".equals(armedTier) ? 15 : ("TIER_10".equals(armedTier) ? 10 : 0));
-        int maxFiredRungInCooldown = repository.getMaxFiredDrawdownTierWithinDays(today, (int) PortfolioConstants.REBALANCE_COOLDOWN_DAYS);
+        int maxFiredRungInCooldown = repository != null ? repository.getMaxFiredDrawdownTierWithinDays(today, (int) PortfolioConstants.REBALANCE_COOLDOWN_DAYS) : 0;
         boolean drawdownEscalated = currentRung > maxFiredRungInCooldown;
 
-        Optional<LocalDateTime> lastGoldBuyOpt = repository.getLastGoldBuyDate();
+        Optional<LocalDateTime> lastGoldBuyOpt = repository != null ? repository.getLastGoldBuyDate() : Optional.empty();
         long monthsSinceLastGoldBuy = lastGoldBuyOpt.map(dt -> ChronoUnit.MONTHS.between(dt.toLocalDate(), today)).orElse(9999L);
         boolean goldIdleActive = monthsSinceLastGoldBuy >= PortfolioConstants.GOLD_FLOOR_IDLE_MONTHS;
 
@@ -319,6 +319,9 @@ public class RebalanceTriggerEvaluator {
         );
 
         if (!"NONE".equals(resolution.triggerType())) {
+            if (repository == null) {
+                throw new IllegalStateException("TriggerHistoryRepository cannot be null when recording trigger execution");
+            }
             LocalDate today = currentDate != null ? currentDate : LocalDate.now();
             int drawdownTier = 0;
             if ("DRAWDOWN".equalsIgnoreCase(resolution.triggerType())) {

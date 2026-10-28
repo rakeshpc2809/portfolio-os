@@ -70,7 +70,7 @@ public class SyncController {
         this.duckDbProjector = duckDbProjector;
         this.quantSidecarClient = quantSidecarClient;
         this.cloudBundleExporter = cloudBundleExporter;
-        this.triggerHistoryRepository = triggerHistoryRepository != null ? triggerHistoryRepository : new com.portfolioos.core.persistence.TriggerHistoryRepository();
+        this.triggerHistoryRepository = triggerHistoryRepository;
     }
 
     public SyncController(
@@ -520,6 +520,11 @@ public class SyncController {
         String approvedPlanId = req != null && req.containsKey("planId") && req.get("planId") != null ? req.get("planId").toString().trim() : null;
         if (approvedPlanId != null && !approvedPlanId.isBlank()) {
             plan = plan.withPlanId(approvedPlanId);
+        }
+
+        if (triggerHistoryRepository == null) {
+            log.error("Cannot confirm rebalance execution: TriggerHistoryRepository is not configured");
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
 
         // F12: Confirm execution snapshot persistence - records trigger and snapshot EXACTLY ONCE under approved planId

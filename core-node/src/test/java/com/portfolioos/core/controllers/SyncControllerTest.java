@@ -266,6 +266,19 @@ class SyncControllerTest {
         Optional<String> snapshotOpt = memoryRepo.getExecutedPlanSnapshot(approvedPlanId);
         assertTrue(snapshotOpt.isPresent(), "Snapshot MUST be persisted under the approved planId");
 
+        // 5. If TriggerHistoryRepository is null, controller MUST return 500 Internal Server Error
+        SyncController controllerWithoutRepo = new SyncController(
+            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null, null
+        );
+        ResponseEntity<RebalancePlanDto> previewWithoutRepo = controllerWithoutRepo.getRebalancePlan("SCHEDULED");
+        assertNotNull(previewWithoutRepo.getBody());
+        String digestWithoutRepo = previewWithoutRepo.getBody().planDigest();
+        ResponseEntity<RebalancePlanDto> error500Res = controllerWithoutRepo.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "digest", digestWithoutRepo
+        ));
+        assertEquals(500, error500Res.getStatusCode().value(), "Null repository must fail with HTTP 500 Internal Server Error");
+
         memoryRepo.close();
     }
 }
