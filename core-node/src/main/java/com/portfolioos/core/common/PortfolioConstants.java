@@ -40,6 +40,16 @@ public final class PortfolioConstants {
             .doubleValue();
     }
 
+    public static double requireValidDrawdownPct(java.math.BigDecimal currentVal, java.math.BigDecimal rollingHigh, String benchmarkContext) {
+        if (rollingHigh == null || rollingHigh.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalStateException("CRITICAL BENCHMARK FAILURE: Missing or invalid 52-week peak for " + benchmarkContext);
+        }
+        if (currentVal == null || currentVal.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new IllegalStateException("CRITICAL BENCHMARK FAILURE: Missing or invalid live level for " + benchmarkContext);
+        }
+        return calculateDrawdownPct(currentVal, rollingHigh);
+    }
+
     public static boolean isUrgentRebalance(double drawdownPct) {
         // Urgency strictly gates on deep market drawdown (>= 15%), never on drift alone,
         // preventing premature realization of STCG (20%) or exit load penalties during normal rallies.
