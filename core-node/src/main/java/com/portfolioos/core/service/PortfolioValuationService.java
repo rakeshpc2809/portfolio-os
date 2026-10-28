@@ -306,7 +306,7 @@ public class PortfolioValuationService {
             List<OpenLotDto> lotDtos = new ArrayList<>();
             for (Lot lot : lots) {
                 BigDecimal lotCurrentVal = lot.remainingUnits().multiply(currentNav);
-                BigDecimal lotGain = lotCurrentVal.subtract(lot.totalCostBasis());
+                BigDecimal lotGain = lotCurrentVal.subtract(lot.effectiveTotalCostBasis(currentNav));
                 assetInvested = assetInvested.add(lot.totalCostBasis());
                 assetCurrentVal = assetCurrentVal.add(lotCurrentVal);
 

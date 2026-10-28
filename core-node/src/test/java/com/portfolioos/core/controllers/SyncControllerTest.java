@@ -17,12 +17,17 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class SyncControllerTest {
 
     private SyncController syncController;
+    private LedgerCacheService mockCacheService;
+    private com.portfolioos.core.service.PortfolioValuationService valuationService;
+    private com.portfolioos.core.persistence.DuckDbProjector mockDuckDb;
+    private com.portfolioos.core.rpc.QuantSidecarClient mockQuantSidecar;
 
     @BeforeEach
     void setUp() {
@@ -56,21 +61,21 @@ class SyncControllerTest {
             "HEALTHY"
         );
 
-        LedgerCacheService mockCacheService = new LedgerCacheService(null) {
+        mockCacheService = new LedgerCacheService(null) {
             @Override
             public CachedLedgerState getCachedState() {
                 return cachedState;
             }
         };
 
-        com.portfolioos.core.persistence.DuckDbProjector mockDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
+        mockDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
             @Override
             public Map<String, NavHistorySeriesEntry> getNavHistorySeriesWithDates(java.util.Set<String> heldIsins) {
                 return java.util.Collections.emptyMap();
             }
         };
-        com.portfolioos.core.rpc.QuantSidecarClient mockQuantSidecar = new com.portfolioos.core.rpc.QuantSidecarClient("localhost", 9999);
-        com.portfolioos.core.service.PortfolioValuationService valuationService = 
+        mockQuantSidecar = new com.portfolioos.core.rpc.QuantSidecarClient("localhost", 9999);
+        valuationService = 
             new com.portfolioos.core.service.PortfolioValuationService(mockCacheService, mockDuckDb, mockQuantSidecar);
 
         syncController = new SyncController(mockCacheService, valuationService, mockDuckDb, mockQuantSidecar);
@@ -153,5 +158,127 @@ class SyncControllerTest {
         assertNotNull(plan);
         assertNotNull(plan.sellSide());
         assertNotNull(plan.sellSide().taxSummary(), "sell_side.tax_summary must be present in rebalance plan");
+    }
+
+    @Test
+    void testDefaultTriggerEvaluationDoesNotForceDriftWhenRequestedTriggerIsNull() {
+        // When trigger parameter is null, SyncController must pass null derivedTriggerType so RebalanceTriggerEvaluator rules apply
+        ResponseEntity<UnidirectionalSyncSnapshot> response = syncController.getSnapshot("2026-27", null);
+        assertNotNull(response);
+        assertNotNull(response.getBody());
+        RebalancePlanDto plan = response.getBody().rebalancePlan();
+        assertNotNull(plan);
+        assertNotNull(plan.trigger());
+        // Since benchmark is null, it should NOT force a hardcoded DRIFT override if resolution were NONE
+        assertNotNull(plan.trigger().type());
+    }
+
+    @Test
+    void testGetRebalancePlanIgnoresInducedDefaultValue() {
+        // When trigger is "INDUCED" or omitted, effectiveTrigger is null and evaluator runs
+        ResponseEntity<RebalancePlanDto> response = syncController.getRebalancePlan("INDUCED");
+        assertNotNull(response);
+        assertNotNull(response.getBody());
+        assertNotNull(response.getBody().trigger());
+    }
+
+    @Test
+    void testF12ConfirmRebalanceExecutionPersistsPlanSnapshot() {
+        com.portfolioos.core.persistence.TriggerHistoryRepository memoryRepo =
+            new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
+        memoryRepo.clearAll();
+
+        SyncController controller = new SyncController(
+            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null, memoryRepo
+        );
+
+        ResponseEntity<RebalancePlanDto> preview = controller.getRebalancePlan("SCHEDULED");
+        assertNotNull(preview.getBody());
+        String digest = preview.getBody().planDigest();
+
+        ResponseEntity<RebalancePlanDto> response = controller.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "digest", digest
+        ));
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        RebalancePlanDto plan = response.getBody();
+        assertNotNull(plan.planId());
+
+        assertEquals(1, memoryRepo.getRecordCount(), "confirmRebalanceExecution MUST record 1 execution in TriggerHistoryRepository");
+        Optional<String> snapshotOpt = memoryRepo.getExecutedPlanSnapshot(plan.planId());
+        assertTrue(snapshotOpt.isPresent(), "Executed plan snapshot JSON must be retrievable by planId");
+        assertTrue(snapshotOpt.get().contains(plan.planId()), "Snapshot JSON must contain the serialized planId");
+        assertTrue(snapshotOpt.get().contains("SCHEDULED"), "Snapshot JSON must contain trigger metadata");
+
+        memoryRepo.close();
+    }
+
+    @Test
+    void testF12ConfirmExecutionDigestValidationAndMismatch() {
+        com.portfolioos.core.persistence.TriggerHistoryRepository memoryRepo =
+            new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
+        memoryRepo.clearAll();
+
+        SyncController controller = new SyncController(
+            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null, memoryRepo
+        );
+
+        // 1. First preview a plan to obtain its valid digest
+        ResponseEntity<RebalancePlanDto> preview = controller.getRebalancePlan("SCHEDULED");
+        assertNotNull(preview.getBody());
+        RebalancePlanDto previewPlan = preview.getBody();
+        String validDigest = previewPlan.planDigest();
+        assertNotNull(validDigest);
+        assertFalse(validDigest.isBlank());
+
+        // 2. Attempt confirm execution with tampered/stale digest -> 409 Conflict
+        ResponseEntity<RebalancePlanDto> conflictRes = controller.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "planId", "APPROVED-PLAN-UUID-TAMPERED",
+            "digest", "deadbeef00000000badc0ffee"
+        ));
+        assertEquals(409, conflictRes.getStatusCode().value(), "Tampered/stale digest MUST be rejected with HTTP 409 Conflict");
+        assertEquals(0, memoryRepo.getRecordCount(), "Rejected confirm MUST NOT record trigger execution or burn cooldown!");
+        assertTrue(memoryRepo.getExecutedPlanSnapshot("APPROVED-PLAN-UUID-TAMPERED").isEmpty(), "No snapshot must be persisted on rejection");
+        assertTrue(memoryRepo.getLastSellSideFiringDate().isEmpty(), "Cooldown must remain completely untouched on rejection");
+
+        // 3. Attempt confirm execution with missing digest -> 409 Conflict
+        ResponseEntity<RebalancePlanDto> missingDigestRes = controller.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "planId", "APPROVED-PLAN-UUID-NO-DIGEST"
+        ));
+        assertEquals(409, missingDigestRes.getStatusCode().value(), "Missing digest MUST be rejected with HTTP 409 Conflict");
+        assertEquals(0, memoryRepo.getRecordCount(), "Missing digest rejection MUST NOT write any row to trigger history");
+
+        // 4. Confirm execution with approved planId and correct digest -> 200 OK
+        String approvedPlanId = "APPROVED-PLAN-UUID-12345";
+        ResponseEntity<RebalancePlanDto> successRes = controller.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "planId", approvedPlanId,
+            "digest", validDigest
+        ));
+        assertEquals(200, successRes.getStatusCode().value());
+        assertNotNull(successRes.getBody());
+        assertEquals(approvedPlanId, successRes.getBody().planId(), "Confirmed plan MUST carry the approved planId");
+        assertEquals(1, memoryRepo.getRecordCount(), "Successful confirm MUST record trigger execution EXACTLY ONCE (no double-write)");
+        Optional<String> snapshotOpt = memoryRepo.getExecutedPlanSnapshot(approvedPlanId);
+        assertTrue(snapshotOpt.isPresent(), "Snapshot MUST be persisted under the approved planId");
+
+        // 5. If TriggerHistoryRepository is null, controller MUST return 500 Internal Server Error
+        SyncController controllerWithoutRepo = new SyncController(
+            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null, null
+        );
+        ResponseEntity<RebalancePlanDto> previewWithoutRepo = controllerWithoutRepo.getRebalancePlan("SCHEDULED");
+        assertNotNull(previewWithoutRepo.getBody());
+        String digestWithoutRepo = previewWithoutRepo.getBody().planDigest();
+        ResponseEntity<RebalancePlanDto> error500Res = controllerWithoutRepo.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "digest", digestWithoutRepo
+        ));
+        assertEquals(500, error500Res.getStatusCode().value(), "Null repository must fail with HTTP 500 Internal Server Error");
+
+        memoryRepo.close();
     }
 }

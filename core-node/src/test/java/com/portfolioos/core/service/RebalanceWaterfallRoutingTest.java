@@ -278,7 +278,36 @@ class RebalanceWaterfallRoutingTest {
 
         assertNotNull(res);
         assertTrue(res.sellCooldownActive(), "Sell cooldown must be active on Day 10 (10 days since Day 0 sell)");
-        assertEquals("DRIFT_BLOCKED_BY_COOLDOWN", res.reasonCode(), "Small Cap ceiling breach must be suppressed with DRIFT_BLOCKED_BY_COOLDOWN on Day 10");
-        assertEquals("NONE", res.triggerType(), "Trigger type must be NONE when sell rebalance is blocked by active cooldown");
+        assertEquals("DRIFT_BLOCKED_BY_COOLDOWN", res.reasonCode(), "Small Cap ceiling breach suppression reason must be preserved");
+        assertEquals("GOLD_FLOOR_BACKSTOP", res.triggerType(), "Buy-only Gold backstop fires despite sell cooldown (Invariant 4)");
+        assertFalse(res.hasSellSide(), "Sell side must be suppressed during 30-day cooldown");
+        assertTrue(res.hasGoldBuy(), "Gold buy side must be enabled for backstop");
+    }
+
+    @Test
+    @DisplayName("Fixture 7b: Cooldown cross-cycle — drift suppressed with triggerType=NONE when Gold is not underweight")
+    void testCooldownSuppressesAllWhenGoldBalanced() {
+        LocalDate day0 = LocalDate.of(2026, 8, 1);
+        LocalDate day10 = LocalDate.of(2026, 8, 11);
+
+        repository.recordExecution("plan-floor-sell", "DRIFT", "ARBITRAGE_FLOOR_BREACH", day0.atStartOfDay(), true, false, "{}");
+
+        // Small Cap: 130,000 (breach), Gold: 150,000 (15% target - balanced), Core: 720,000
+        Lot scLot = new Lot("lot-sc", "INF204K01K15", "Nippon Small Cap", day10.minusDays(400), new BigDecimal("1300"), new BigDecimal("1300"), new BigDecimal("100.00"), new BigDecimal("130000.00"), false, null);
+        Lot goldLot = new Lot("lot-gold", "INF247L01BM8", "Motilal Gold FoF", day10.minusDays(400), new BigDecimal("1500"), new BigDecimal("1500"), new BigDecimal("100.00"), new BigDecimal("150000.00"), false, null);
+        Lot coreLot = new Lot("lot-core", "INF109KC12U0", "ICICI LargeMidcap", day10.minusDays(400), new BigDecimal("7200"), new BigDecimal("7200"), new BigDecimal("100.00"), new BigDecimal("720000.00"), false, null);
+
+        RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
+            List.of(scLot, goldLot, coreLot), Map.of(
+                "INF204K01K15", new BigDecimal("100.00"),
+                "INF247L01BM8", new BigDecimal("100.00"),
+                "INF109KC12U0", new BigDecimal("100.00")
+            ), new BigDecimal("1000.00"), new BigDecimal("1000.00"), null, null, day10
+        );
+
+        assertNotNull(res);
+        assertTrue(res.sellCooldownActive());
+        assertEquals("DRIFT_BLOCKED_BY_COOLDOWN", res.reasonCode());
+        assertEquals("NONE", res.triggerType(), "When Gold is balanced, triggerType must be NONE");
     }
 }

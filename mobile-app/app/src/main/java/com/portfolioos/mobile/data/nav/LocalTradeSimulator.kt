@@ -16,7 +16,6 @@ object LocalTradeSimulator {
     private const val LTCG_EQUITY_TAX_RATE = 0.125     // 12.5%
     private const val STCG_EQUITY_TAX_RATE = 0.20      // 20%
     private const val DEBT_SLAB_TAX_RATE = 0.30        // 30% nominal slab
-    private const val CESS_MULTIPLIER = 1.04           // 4% Health & Education Cess
 
     /**
      * Executes an on-device FIFO trade simulation against local snapshot tax lots.
@@ -60,10 +59,15 @@ object LocalTradeSimulator {
         var remainingUnitsToSell = request.units
         var actualUnitsSold = 0.0
         var totalCostBasisSold = 0.0
-        var ltcgEquity = 0.0
-        var stcgEquity = 0.0
-        var ltcgNonEquity = 0.0
-        var slabRateGain = 0.0
+
+        var grossLtcgEquity = 0.0
+        var grossLtclEquity = 0.0
+        var grossStcgEquity = 0.0
+        var grossStclEquity = 0.0
+        var grossLtcgNonEquity = 0.0
+        var grossLtclNonEquity = 0.0
+        var grossSlabGain = 0.0
+        var grossSlabLoss = 0.0
 
         for (lot in matchingLots) {
             if (remainingUnitsToSell <= 0.0) break
@@ -103,41 +107,60 @@ object LocalTradeSimulator {
             if (isSpecifiedDebt) {
                 val isLegacyDebt = buyDate.isBefore(LocalDate.of(2023, 4, 1))
                 if (isLegacyDebt && holdingDays >= 730L) {
-                    ltcgNonEquity += gainForSlice
+                    if (gainForSlice >= 0.0) grossLtcgNonEquity += gainForSlice else grossLtclNonEquity += -gainForSlice
                 } else {
-                    slabRateGain += gainForSlice
+                    if (gainForSlice >= 0.0) grossSlabGain += gainForSlice else grossSlabLoss += -gainForSlice
                 }
             } else if (isGoldOrIntl) {
                 if (holdingDays >= 730L) {
-                    ltcgNonEquity += gainForSlice
+                    if (gainForSlice >= 0.0) grossLtcgNonEquity += gainForSlice else grossLtclNonEquity += -gainForSlice
                 } else {
-                    slabRateGain += gainForSlice
+                    if (gainForSlice >= 0.0) grossSlabGain += gainForSlice else grossSlabLoss += -gainForSlice
                 }
             } else if (holdingDays >= 365L) {
-                ltcgEquity += gainForSlice
+                if (gainForSlice >= 0.0) grossLtcgEquity += gainForSlice else grossLtclEquity += -gainForSlice
             } else {
-                stcgEquity += gainForSlice
+                if (gainForSlice >= 0.0) grossStcgEquity += gainForSlice else grossStclEquity += -gainForSlice
             }
         }
 
         val grossProceeds = actualUnitsSold * request.pricePerUnit
-        val grossGain = (ltcgEquity + stcgEquity + ltcgNonEquity + slabRateGain)
+        val netLtcgEquity = grossLtcgEquity - grossLtclEquity
+        val netStcgEquity = grossStcgEquity - grossStclEquity
+        val netLtcgNonEquity = grossLtcgNonEquity - grossLtclNonEquity
+        val netSlabGain = grossSlabGain - grossSlabLoss
+        val grossGain = netLtcgEquity + netStcgEquity + netLtcgNonEquity + netSlabGain
 
-        // Tax calculation with Section 112A ₹1.25L exemption
-        val exemptionApplied = if (ltcgEquity > 0.0) min(ltcgEquity, LTCG_EXEMPTION_LIMIT) else 0.0
-        val taxableLtcg = max(0.0, ltcgEquity - exemptionApplied)
-        val ltcgTax = (taxableLtcg + max(0.0, ltcgNonEquity)) * LTCG_EQUITY_TAX_RATE
+        // Read remaining FY exemption headroom from snapshot instead of resetting to 1.25L
+        val remainingHeadroom = snapshot.rebalancePlan?.sellSide?.taxSummary?.let { ts ->
+            if (ts.exemptionHeadroomAfter < LTCG_EXEMPTION_LIMIT || ts.totalLtcgExempt > 0.0) {
+                ts.exemptionHeadroomAfter
+            } else {
+                (ts.exemptionHeadroomBefore - ts.totalLtcgExempt).coerceAtLeast(0.0)
+            }
+        } ?: LTCG_EXEMPTION_LIMIT
 
-        val taxableStcg = max(0.0, stcgEquity)
+        // Income-tax Act, 2025 Section 108 Intra-head loss set-off:
+        // STCL sets off against STCG first
+        val taxableStcg = max(0.0, netStcgEquity)
+        val unabsorbedStcl = max(0.0, -netStcgEquity)
+
+        // LTCL sets off against LTCG; remaining unabsorbed STCL sets off against LTCG
+        val netLtcgEquityBeforeExemption = max(0.0, grossLtcgEquity - grossLtclEquity - unabsorbedStcl)
+
+        // Section 112A exemption applies to net equity LTCG up to remaining FY headroom
+        val exemptionApplied = if (netLtcgEquityBeforeExemption > 0.0) min(netLtcgEquityBeforeExemption, remainingHeadroom) else 0.0
+        val taxableLtcgEquity = max(0.0, netLtcgEquityBeforeExemption - exemptionApplied)
+
+        val taxableLtcgNonEquity = max(0.0, netLtcgNonEquity)
+        val ltcgTax = (taxableLtcgEquity + taxableLtcgNonEquity) * LTCG_EQUITY_TAX_RATE
         val stcgTax = taxableStcg * STCG_EQUITY_TAX_RATE
+        val slabTax = max(0.0, netSlabGain) * DEBT_SLAB_TAX_RATE
 
-        val taxableSlab = max(0.0, slabRateGain)
-        val slabTax = taxableSlab * DEBT_SLAB_TAX_RATE
+        // Cess alignment: Aligned directly with SimulationService without secondary 1.04 multiplication
+        val estimatedTaxLiability = ltcgTax + stcgTax + slabTax
 
-        val baseTax = ltcgTax + stcgTax + slabTax
-        val totalTaxWithCess = baseTax * CESS_MULTIPLIER
-
-        val postNetWorth = max(0.0, currentNetWorth - totalTaxWithCess)
+        val postNetWorth = max(0.0, currentNetWorth - estimatedTaxLiability)
         val postInvested = max(0.0, currentInvested - totalCostBasisSold)
 
         return TradeSimulationResultDto(
@@ -148,20 +171,21 @@ object LocalTradeSimulator {
             pricePerUnit = request.pricePerUnit,
             grossTradeAmount = grossProceeds,
             grossCapitalGain = grossGain,
-            ltcgEquity = ltcgEquity,
-            stcgEquity = stcgEquity,
-            slabRateGain = slabRateGain,
+            ltcgEquity = netLtcgEquity,
+            stcgEquity = netStcgEquity,
+            slabRateGain = netSlabGain,
             sec112aExemptionApplied = exemptionApplied,
-            estimatedTaxLiability = totalTaxWithCess,
+            estimatedTaxLiability = estimatedTaxLiability,
             postTradeNetWorth = postNetWorth,
             postTradeInvestedCost = postInvested,
             postTradeXirr = currentXirr,
-            taxSummaryNotice = "Simulated Sell (FIFO): Realized ₹${grossGain} gain with ₹${totalTaxWithCess} tax liability."
+            taxSummaryNotice = "Simulated Sell (FIFO): Realized ₹${grossGain} gain with ₹${estimatedTaxLiability} tax liability."
         )
     }
 
     /**
      * Allocates available lumpsum cash across underweight asset buckets.
+     * Enforces GOLD_FLOOR_BACKSTOP priority fill and drawdown regime-shifted protection.
      */
     fun allocateLumpsum(
         availableCash: Double,
@@ -170,23 +194,67 @@ object LocalTradeSimulator {
         val buckets = rebalancePlan?.buySide?.buckets ?: emptyList()
         if (availableCash <= 0.0 || buckets.isEmpty()) return emptyMap()
 
-        val underweights = buckets.mapNotNull { b ->
+        var remainingCash = availableCash
+        val allocations = mutableMapOf<String, Double>()
+
+        val triggerType = rebalancePlan?.trigger?.type
+        val drawdownPct = rebalancePlan?.drawdownContext?.currentDrawdownPct
+            ?: rebalancePlan?.trigger?.drawdownContext?.currentDrawdownPct ?: 0.0
+
+        // 1. Gold Floor Backstop: When trigger is GOLD_FLOOR_BACKSTOP, route up to 50% of the Gold gap first
+        if ("GOLD_FLOOR_BACKSTOP".equals(triggerType, ignoreCase = true)) {
+            val goldBucket = buckets.firstOrNull {
+                it.bucket.contains("GOLD", ignoreCase = true) ||
+                it.bucket.contains("COMMODITY", ignoreCase = true) ||
+                it.bucket.contains("HEDGE", ignoreCase = true)
+            }
+            if (goldBucket != null) {
+                val goldGapPct = max(0.0, goldBucket.targetPct - goldBucket.currentPct)
+                if (goldGapPct > 0.0) {
+                    val baseCorpus = rebalancePlan?.buySide?.totalToInvest?.takeIf { it > 0.0 } ?: availableCash
+                    val goldTargetAmount = (goldGapPct / 100.0) * baseCorpus
+                    val backstopFill = min(remainingCash, goldTargetAmount * 0.50).takeIf { it > 0.0 } ?: min(remainingCash, availableCash * 0.50)
+                    allocations[goldBucket.bucket] = backstopFill
+                    remainingCash -= backstopFill
+                }
+            }
+        }
+
+        if (remainingCash <= 0.0) return allocations
+
+        // 2. Drawdown Regime-Shifted Target Awareness:
+        // During market crash (drawdown >= 10%), never route fresh lumpsum cash into LIQUID_BUFFER / ARBITRAGE!
+        val effectiveBuckets = if (drawdownPct >= 10.0) {
+            buckets.filterNot {
+                it.bucket.contains("LIQUID", ignoreCase = true) ||
+                it.bucket.contains("ARBITRAGE", ignoreCase = true)
+            }
+        } else {
+            buckets
+        }
+
+        val underweights = effectiveBuckets.mapNotNull { b ->
             val deficit = b.targetPct - b.currentPct
             if (deficit > 0.0) b.bucket to deficit else null
         }
 
         if (underweights.isEmpty()) {
-            // If no deficit, allocate strictly by target percentages
-            val totalTarget = buckets.sumOf { it.targetPct }
-            if (totalTarget <= 0.0) return emptyMap()
-            return buckets.associate { b ->
-                b.bucket to (availableCash * (b.targetPct / totalTarget))
+            val totalTarget = effectiveBuckets.sumOf { it.targetPct }
+            if (totalTarget > 0.0) {
+                for (b in effectiveBuckets) {
+                    val share = remainingCash * (b.targetPct / totalTarget)
+                    allocations[b.bucket] = (allocations[b.bucket] ?: 0.0) + share
+                }
             }
+            return allocations
         }
 
         val totalDeficit = underweights.sumOf { it.second }
-        return underweights.associate { (bucket, deficit) ->
-            bucket to (availableCash * (deficit / totalDeficit))
+        for ((bucket, deficit) in underweights) {
+            val share = remainingCash * (deficit / totalDeficit)
+            allocations[bucket] = (allocations[bucket] ?: 0.0) + share
         }
+
+        return allocations
     }
 }

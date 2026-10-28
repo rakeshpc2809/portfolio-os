@@ -54,6 +54,7 @@ public class SyncController {
     private final DuckDbProjector duckDbProjector;
     private final QuantSidecarClient quantSidecarClient;
     private final com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter;
+    private final com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository;
 
     @Autowired
     public SyncController(
@@ -61,13 +62,25 @@ public class SyncController {
         com.portfolioos.core.service.PortfolioValuationService valuationService,
         DuckDbProjector duckDbProjector,
         QuantSidecarClient quantSidecarClient,
-        com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter
+        com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter,
+        @Autowired(required = false) com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository
     ) {
         this.cacheService = cacheService;
         this.valuationService = valuationService;
         this.duckDbProjector = duckDbProjector;
         this.quantSidecarClient = quantSidecarClient;
         this.cloudBundleExporter = cloudBundleExporter;
+        this.triggerHistoryRepository = triggerHistoryRepository;
+    }
+
+    public SyncController(
+        LedgerCacheService cacheService,
+        com.portfolioos.core.service.PortfolioValuationService valuationService,
+        DuckDbProjector duckDbProjector,
+        QuantSidecarClient quantSidecarClient,
+        com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter
+    ) {
+        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, cloudBundleExporter, null);
     }
 
     public SyncController(
@@ -76,7 +89,7 @@ public class SyncController {
         DuckDbProjector duckDbProjector,
         QuantSidecarClient quantSidecarClient
     ) {
-        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, null);
+        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, null, null);
     }
 
     private static String detectFineBucket(String assetName) {
@@ -303,7 +316,10 @@ public class SyncController {
 
         for (Lot lot : openLots) {
             long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
-            long daysToLtcg = Math.max(0L, 365L - holdingDays);
+            AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
+            boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
+            long thresholdDays = (cat == AssetCategory.EQUITY || isListed) ? 365L : 730L;
+            long daysToLtcg = Math.max(0L, thresholdDays - holdingDays);
             if (daysToLtcg > 0 && daysToLtcg <= 120 && daysToLtcg < minDaysToLtcg) {
                 minDaysToLtcg = daysToLtcg;
                 maturingLot = lot;
@@ -381,7 +397,7 @@ public class SyncController {
         if (requestedTrigger != null && !requestedTrigger.isBlank()) {
             derivedTriggerType = requestedTrigger.toUpperCase();
         } else {
-            derivedTriggerType = "DRIFT";
+            derivedTriggerType = null;
         }
 
         DuckDbProjector.BenchmarkLevelMetrics benchMetrics = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
@@ -442,8 +458,9 @@ public class SyncController {
 
     @GetMapping("/rebalance/plan")
     public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> getRebalancePlan(
-        @RequestParam(value = "trigger", required = false, defaultValue = "INDUCED") String triggerType
+        @RequestParam(value = "trigger", required = false) String triggerType
     ) {
+        String effectiveTrigger = (triggerType != null && !triggerType.isBlank() && !"INDUCED".equalsIgnoreCase(triggerType)) ? triggerType : null;
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
         List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
@@ -454,9 +471,12 @@ public class SyncController {
         BigDecimal benchCurrent = bench != null && bench.currentLevel() != null ? BigDecimal.valueOf(bench.currentLevel()) : null;
         BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
 
+        com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(
+            triggerHistoryRepository != null ? triggerHistoryRepository : new com.portfolioos.core.persistence.TriggerHistoryRepository()
+        );
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
             openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, effectiveTrigger, null, evaluator
         );
         return ResponseEntity.ok(plan);
     }
@@ -470,7 +490,8 @@ public class SyncController {
     public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> confirmRebalanceExecution(
         @RequestBody(required = false) Map<String, Object> req
     ) {
-        String triggerType = req != null && req.containsKey("trigger") ? req.get("trigger").toString() : "SCHEDULED";
+        String triggerType = req != null && req.containsKey("trigger") && req.get("trigger") != null ? req.get("trigger").toString() : null;
+        String effectiveTrigger = (triggerType != null && !triggerType.isBlank() && !"INDUCED".equalsIgnoreCase(triggerType)) ? triggerType : null;
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
         List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
@@ -481,10 +502,34 @@ public class SyncController {
         BigDecimal benchCurrent = bench != null && bench.currentLevel() != null ? BigDecimal.valueOf(bench.currentLevel()) : null;
         BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
 
-        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
-            openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
+        com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(
+            triggerHistoryRepository != null ? triggerHistoryRepository : new com.portfolioos.core.persistence.TriggerHistoryRepository()
         );
+        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
+            openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, effectiveTrigger, null, evaluator
+        );
+
+        // F12: Validate plan digest - MANDATORY on confirmed execution.
+        // A missing, blank, or mismatched digest rejects execution with 409 Conflict without side effects.
+        String approvedDigest = req != null && req.containsKey("digest") && req.get("digest") != null ? req.get("digest").toString().trim() : null;
+        if (approvedDigest == null || approvedDigest.isBlank() || !approvedDigest.equalsIgnoreCase(plan.planDigest())) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT).build();
+        }
+
+        String approvedPlanId = req != null && req.containsKey("planId") && req.get("planId") != null ? req.get("planId").toString().trim() : null;
+        if (approvedPlanId != null && !approvedPlanId.isBlank()) {
+            plan = plan.withPlanId(approvedPlanId);
+        }
+
+        if (triggerHistoryRepository == null) {
+            log.error("Cannot confirm rebalance execution: TriggerHistoryRepository is not configured");
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+
+        // F12: Confirm execution snapshot persistence - records trigger and snapshot EXACTLY ONCE under approved planId
+        com.portfolioos.core.service.RebalancePlanEngine.confirmPlanExecution(plan, triggerHistoryRepository);
+
         return ResponseEntity.ok(plan);
     }
 
@@ -615,10 +660,8 @@ public class SyncController {
                 // 1. open_lots.parquet (PII stripped - no folio_no)
                 File openLotsFile = File.createTempFile("open_lots_", ".parquet");
                 tempFiles.add(openLotsFile);
-                duckDbProjector.exportQueryToParquet(
-                    "SELECT id, asset_id, asset_name, isin, event_date, TRY_CAST(units AS DOUBLE) AS units, TRY_CAST(price_per_unit AS DOUBLE) AS price_per_unit, TRY_CAST(gross_amount AS DOUBLE) AS gross_amount FROM projected_events WHERE event_type IN ('ACQUISITION', 'SIP_INSTALMENT', 'BONUS')",
-                    openLotsFile
-                );
+                duckDbProjector.syncOpenLots(cacheService.getCachedState().fifoResult().openLots());
+                duckDbProjector.exportTableToParquet("open_lots", openLotsFile);
                 zos.putNextEntry(new ZipEntry("open_lots.parquet"));
                 zos.write(Files.readAllBytes(openLotsFile.toPath()));
                 zos.closeEntry();

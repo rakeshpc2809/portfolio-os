@@ -2,6 +2,7 @@ package com.portfolioos.core.valuation;
 
 import com.portfolioos.core.model.Lot;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -253,5 +254,226 @@ class RebalanceWaterfallEngineTest {
         assertEquals(1, result.steps().size());
         assertEquals("INF174KA1TY2", result.steps().get(0).assetId(), "Kotak Equal Weight must be trimmed when eligible as legacy lot");
         assertEquals(0, new BigDecimal("5000.00").compareTo(result.steps().get(0).proceeds()));
+    }
+
+    @Test
+    @DisplayName("F1: Scheme with older gain lot blocks cherry-picking newer loss lot under Section 45(2A) RTA FIFO")
+    void testF1SchemeWithOlderGainBlocksNewerLossHarvest() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        // Scheme INF109KC12U0:
+        // Lot 1 (Older, 700 days ago, LTCG): Cost = 10.00, NAV = 15.00 -> +5.00 Gain per unit
+        Lot olderGainLot = new Lot("L1-GAIN", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(700), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10.00"), new BigDecimal("1000.00"), false, BigDecimal.ZERO);
+
+        // Lot 2 (Newer, 400 days ago, LTCG loss): Cost = 18.00, NAV = 15.00 -> -3.00 Loss per unit
+        Lot newerLossLot = new Lot("L2-LOSS", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(400), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("18.00"), new BigDecimal("1800.00"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", new BigDecimal("15.00")
+        );
+
+        // Trim 1,500 INR (100 units). Under RTA FIFO, the RTA will liquidate Lot 1 (the oldest lot).
+        // LossHarvestTierStrategy must NOT select Lot 2 out of order ahead of Lot 1!
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("1500.00"),
+            List.of(olderGainLot, newerLossLot),
+            navMap,
+            new BigDecimal("125000.00"),
+            false,
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(result);
+        assertEquals(1, result.steps().size(), "Only 1 lot should be redeemed for 1,500 proceeds");
+        RebalanceWaterfallEngine.WaterfallStep step = result.steps().get(0);
+        assertEquals("L1-GAIN", step.lotId(), "RTA FIFO must liquidate the oldest lot (L1-GAIN), not cherry-pick newer loss lot (L2-LOSS)");
+        assertEquals(WaterfallTier.LTCG_WITHIN_EXEMPTION, step.tier(), "L1-GAIN must be redeemed under LTCG tier, not LOSS_HARVEST");
+        assertEquals(new BigDecimal("500.00"), step.realizedGain(), "Realized gain must be +500.00 from L1-GAIN");
+    }
+
+    @Test
+    @DisplayName("F1: Same-scheme LTCG lots must be consumed in strict chronological FIFO order, not sorted by gain per unit")
+    void testF1SameSchemeLtcgLotsConsumedInFifoOrder() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        // Scheme INF109KC12U0:
+        // Lot 1 (Older, 800 days ago, LTCG): Cost = 10.00, NAV = 20.00 -> +10.00 Gain per unit (higher gain)
+        Lot olderLot = new Lot("L1-OLD", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(800), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10.00"), new BigDecimal("1000.00"), false, BigDecimal.ZERO);
+
+        // Lot 2 (Newer, 400 days ago, LTCG): Cost = 18.00, NAV = 20.00 -> +2.00 Gain per unit (lower gain)
+        Lot newerLot = new Lot("L2-NEW", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(400), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("18.00"), new BigDecimal("1800.00"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", new BigDecimal("20.00")
+        );
+
+        // Trim 1,000 INR (50 units).
+        // At HEAD, selectCoreLots sorted by (nav - cost) ASC, so it consumed L2-NEW (+2/unit) before L1-OLD (+10/unit).
+        // Under F1, RTA FIFO strictly mandates consuming L1-OLD first!
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("1000.00"),
+            List.of(olderLot, newerLot),
+            navMap,
+            new BigDecimal("125000.00"),
+            false,
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(result);
+        assertEquals(1, result.steps().size());
+        RebalanceWaterfallEngine.WaterfallStep step = result.steps().get(0);
+        assertEquals("L1-OLD", step.lotId(), "RTA FIFO strictly consumes oldest lot L1-OLD first, ignoring intra-scheme gain ratios");
+        assertEquals(new BigDecimal("50.0000"), step.unitsSold());
+        assertEquals(new BigDecimal("1000.00"), step.proceeds());
+    }
+
+    @Test
+    @DisplayName("F1 Residual: Older loss lot must be consumed first by LossHarvestTierStrategy before newer LTCG gain lot in same scheme")
+    void testF1OlderLossLotConsumedFirstBeforeNewerLtcgGainLotInSameScheme() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        // Scheme INF109KC12U0:
+        // Lot 1 (Older, 600 days ago, loss lot): 100 units @ cost 30.00, NAV = 20.00 -> Loss of -10/unit
+        Lot olderLossLot = new Lot("L1-LOSS", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(600), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("30.00"), new BigDecimal("3000.00"), false, BigDecimal.ZERO);
+
+        // Lot 2 (Newer, 400 days ago, LTCG gain lot): 100 units @ cost 10.00, NAV = 20.00 -> Gain of +10/unit
+        Lot newerGainLot = new Lot("L2-GAIN", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(400), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10.00"), new BigDecimal("1000.00"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", new BigDecimal("20.00")
+        );
+
+        // Scenario 1: Trim 2,500 INR (125 units).
+        // Older L1-LOSS must be fully consumed first (100 units * 20 = 2000 INR) under LOSS_HARVEST.
+        // Then remaining 500 INR (25 units) must be consumed from L2-GAIN under LTCG_WITHIN_EXEMPTION.
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("2500.00"),
+            List.of(olderLossLot, newerGainLot),
+            navMap,
+            new BigDecimal("125000.00"),
+            false,
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(result);
+        assertEquals(2, result.steps().size(), "Must execute 2 steps across LOSS_HARVEST and LTCG tiers");
+
+        RebalanceWaterfallEngine.WaterfallStep step1 = result.steps().get(0);
+        assertEquals("L1-LOSS", step1.lotId());
+        assertEquals(WaterfallTier.LOSS_HARVEST, step1.tier());
+        assertEquals(new BigDecimal("100.0000"), step1.unitsSold());
+        assertEquals(new BigDecimal("2000.00"), step1.proceeds());
+        assertEquals(new BigDecimal("-1000.00"), step1.realizedGain());
+
+        RebalanceWaterfallEngine.WaterfallStep step2 = result.steps().get(1);
+        assertEquals("L2-GAIN", step2.lotId());
+        assertEquals(WaterfallTier.LTCG_WITHIN_EXEMPTION, step2.tier());
+        assertEquals(new BigDecimal("25.0000"), step2.unitsSold());
+        assertEquals(new BigDecimal("500.00"), step2.proceeds());
+        assertEquals(new BigDecimal("250.00"), step2.realizedGain());
+
+        // Scenario 2: Trim only 1,000 INR (50 units).
+        // L1-LOSS is partially consumed (50 units). The remaining 50 units of L1-LOSS stay unsold.
+        // L2-GAIN must NOT be touched because L1-LOSS still has remaining units!
+        RebalanceWaterfallEngine.WaterfallResult resultPartial = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("1000.00"),
+            List.of(olderLossLot, newerGainLot),
+            navMap,
+            new BigDecimal("125000.00"),
+            false,
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(resultPartial);
+        assertEquals(1, resultPartial.steps().size(), "Only L1-LOSS should be partially consumed");
+        assertEquals("L1-LOSS", resultPartial.steps().get(0).lotId());
+        assertEquals(new BigDecimal("50.0000"), resultPartial.steps().get(0).unitsSold());
+    }
+
+    @Test
+    @DisplayName("F5: Short-term loss lots are eligible for tax-loss harvesting in non-urgent runs")
+    void testF5ShortTermLossLotHarvestedWhenNotUrgent() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        // Short-term loss lot (acquired 30 days ago): Cost = 30.00, NAV = 20.00
+        Lot stclLot = new Lot("STCL-1", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(30), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("30.00"), new BigDecimal("3000.00"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", new BigDecimal("20.00")
+        );
+
+        // Trim 1,000 INR with urgent = false
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("1000.00"),
+            List.of(stclLot),
+            navMap,
+            new BigDecimal("125000.00"),
+            false, // Non-urgent run
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(result);
+        assertEquals(1, result.steps().size(), "Short-term loss lot MUST be harvested even when non-urgent");
+        RebalanceWaterfallEngine.WaterfallStep step = result.steps().get(0);
+        assertEquals("STCL-1", step.lotId());
+        assertEquals(WaterfallTier.LOSS_HARVEST, step.tier());
+        assertEquals(new BigDecimal("50.0000"), step.unitsSold());
+        assertEquals(new BigDecimal("1000.00"), step.proceeds());
+        assertEquals(new BigDecimal("-500.00"), step.realizedGain());
+    }
+
+    @Test
+    @DisplayName("F6: LTCG lot straddling unused exemption is split between LTCG_WITHIN_EXEMPTION and LTCG_BEYOND_EXEMPTION")
+    void testF6ExemptionCappingAndSplitIntoBeyondExemption() {
+        LocalDate today = LocalDate.of(2026, 8, 26);
+        // LTCG Lot: 100 units, Cost = 10.00, NAV = 30.00 -> Gain = +20/unit. Total lot value = 3,000, Total gain = 2,000
+        Lot ltcgLot = new Lot("L1-SPLIT", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+            today.minusDays(500), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10.00"), new BigDecimal("1000.00"), false, BigDecimal.ZERO);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", new BigDecimal("30.00")
+        );
+
+        // Unused exemption is only 1,000 INR. Trim target is 3,000 INR (all 100 units).
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            BucketEngine.Bucket.EQUITY_CORE,
+            new BigDecimal("3000.00"),
+            List.of(ltcgLot),
+            navMap,
+            new BigDecimal("1000.00"), // Headroom = 1,000
+            false,
+            today,
+            "2026-27"
+        );
+
+        assertNotNull(result);
+        assertEquals(2, result.steps().size(), "Lot must be split into exempt tier and beyond exemption tier");
+
+        RebalanceWaterfallEngine.WaterfallStep stepExempt = result.steps().get(0);
+        assertEquals("L1-SPLIT", stepExempt.lotId());
+        assertEquals(WaterfallTier.LTCG_WITHIN_EXEMPTION, stepExempt.tier());
+        assertEquals(new BigDecimal("1000.00"), stepExempt.realizedGain(), "Exempt slice gain must be capped at 1,000");
+        assertEquals(new BigDecimal("1000.00"), stepExempt.exemptionApplied());
+        assertEquals(new BigDecimal("0.00"), stepExempt.taxableAmount());
+
+        RebalanceWaterfallEngine.WaterfallStep stepTaxable = result.steps().get(1);
+        assertEquals("L1-SPLIT", stepTaxable.lotId());
+        assertEquals(WaterfallTier.LTCG_BEYOND_EXEMPTION, stepTaxable.tier());
+        assertEquals(new BigDecimal("1000.00"), stepTaxable.realizedGain(), "Taxable slice gain is remaining 1,000");
+        assertEquals(new BigDecimal("0.00"), stepTaxable.exemptionApplied());
+        assertEquals(new BigDecimal("1000.00"), stepTaxable.taxableAmount());
     }
 }

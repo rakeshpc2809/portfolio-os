@@ -7,7 +7,12 @@ import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.matcher.FundTierClassifier;
 import com.portfolioos.core.persistence.TriggerHistoryRepository;
 import com.portfolioos.core.reporting.ExemptionTracker;
+import com.portfolioos.core.common.PortfolioConstants;
+import com.portfolioos.core.model.AssetCategory;
+import com.portfolioos.core.matcher.TaxClassifier;
 import com.portfolioos.core.rules.BucketConfigLoader;
+import com.portfolioos.core.rules.TaxRulesConfig;
+import com.portfolioos.core.rules.TaxRulesLoader;
 import com.portfolioos.core.valuation.BucketEngine;
 import com.portfolioos.core.valuation.FundTrendDampenerCalculator;
 import com.portfolioos.core.valuation.GoldDampenerCalculator;
@@ -15,11 +20,119 @@ import com.portfolioos.core.valuation.GoldDampenerCalculator;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 public class RebalancePlanEngine {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RebalancePlanEngine.class);
+
+    public record Section70NettingResult(
+        BigDecimal netTaxableStcgEquity,
+        BigDecimal netTaxableStcgSlab,
+        BigDecimal ltcgExemptionUsed,
+        BigDecimal netTaxableLtcgEquity,
+        BigDecimal netTaxableLtcgNonEquity,
+        BigDecimal totalNetTaxEstimate,
+        BigDecimal remainingHeadroomAfter
+    ) {}
+
+    public static Section70NettingResult applySection70Netting(
+        BigDecimal grossStcgEquity,
+        BigDecimal grossStcgSlab,
+        BigDecimal grossStcl,
+        BigDecimal grossLtcgEquity,
+        BigDecimal grossLtcgNonEquity,
+        BigDecimal grossLtcl,
+        BigDecimal availableExemptionHeadroom,
+        TaxRulesConfig rules
+    ) {
+        // 1. STCL offsets highest-taxed STCG first (Slab 30%, then Equity STCG 20%)
+        BigDecimal remStcl = grossStcl != null ? grossStcl.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        BigDecimal gStcgSlab = grossStcgSlab != null ? grossStcgSlab.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        BigDecimal offsetSlab = remStcl.min(gStcgSlab);
+        BigDecimal netStcgSlab = gStcgSlab.subtract(offsetSlab);
+        remStcl = remStcl.subtract(offsetSlab);
+
+        BigDecimal gStcgEq = grossStcgEquity != null ? grossStcgEquity.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        BigDecimal offsetStcgEq = remStcl.min(gStcgEq);
+        BigDecimal netStcgEquity = gStcgEq.subtract(offsetStcgEq);
+        remStcl = remStcl.subtract(offsetStcgEq);
+
+        // 2. LTCL + remaining STCL offset LTCG.
+        // Statutory Loss Netting (ITA 2025 Sec 108 / ITA 1961 Sec 70):
+        // Losses are set off against gross LTCG before the statutory Section 112A threshold is applied on remaining net gains.
+        // Non-equity LTCG (12.5% without exemption under Sec 112) is offset first, followed by Equity LTCG.
+        BigDecimal remLongTermOffset = (grossLtcl != null ? grossLtcl.max(BigDecimal.ZERO) : BigDecimal.ZERO).add(remStcl);
+        BigDecimal gLtcgNonEq = grossLtcgNonEquity != null ? grossLtcgNonEquity.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        BigDecimal offsetNonEqLtcg = remLongTermOffset.min(gLtcgNonEq);
+        BigDecimal netLtcgNonEquity = gLtcgNonEq.subtract(offsetNonEqLtcg);
+        remLongTermOffset = remLongTermOffset.subtract(offsetNonEqLtcg);
+
+        BigDecimal gLtcgEq = grossLtcgEquity != null ? grossLtcgEquity.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        BigDecimal netEquityLtcgBeforeExemption = gLtcgEq.subtract(remLongTermOffset).max(BigDecimal.ZERO);
+        BigDecimal headroom = availableExemptionHeadroom != null ? availableExemptionHeadroom.max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        BigDecimal exemptionUsed = netEquityLtcgBeforeExemption.min(headroom).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal netTaxableLtcgEquity = netEquityLtcgBeforeExemption.subtract(exemptionUsed).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal headroomAfter = headroom.subtract(exemptionUsed).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal stcgEqTax = netStcgEquity.multiply(rules.equityStcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal stcgSlabTax = netStcgSlab.multiply(rules.slabRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal ltcgEqTax = netTaxableLtcgEquity.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal ltcgNonEqTax = netLtcgNonEquity.multiply(rules.goldInternationalLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalNetTax = stcgEqTax.add(stcgSlabTax).add(ltcgEqTax).add(ltcgNonEqTax).setScale(2, RoundingMode.HALF_UP);
+
+        return new Section70NettingResult(
+            netStcgEquity.setScale(2, RoundingMode.HALF_UP),
+            netStcgSlab.setScale(2, RoundingMode.HALF_UP),
+            exemptionUsed,
+            netTaxableLtcgEquity,
+            netLtcgNonEquity.setScale(2, RoundingMode.HALF_UP),
+            totalNetTax,
+            headroomAfter
+        );
+    }
+
+    public static RebalancePlanDto confirmPlanExecution(RebalancePlanDto plan, TriggerHistoryRepository repository) {
+        if (plan == null) {
+            return null;
+        }
+        if (repository == null) {
+            throw new IllegalStateException("TriggerHistoryRepository cannot be null when confirming plan execution");
+        }
+        String planId = plan.planId();
+            String triggerType = plan.trigger() != null ? plan.trigger().type() : "SCHEDULED";
+            String reasonCode = plan.trigger() != null ? plan.trigger().reasonCode() : "CONFIRMED_EXECUTION";
+            boolean hasSellSide = plan.sellSide() != null && plan.sellSide().totalRequired() != null && plan.sellSide().totalRequired().compareTo(BigDecimal.ZERO) > 0;
+            boolean hasGoldBuy = plan.buySide() != null && plan.buySide().buckets() != null && plan.buySide().buckets().stream().anyMatch(b -> (b.bucket().contains("GOLD") || b.bucket().contains("COMMODITY")) && b.amountAllocated() != null && b.amountAllocated().compareTo(BigDecimal.ZERO) > 0);
+            int drawdownTier = 0;
+            if ("DRAWDOWN".equalsIgnoreCase(triggerType) && plan.trigger() != null && plan.trigger().drawdownContext() != null) {
+                String armed = plan.trigger().drawdownContext().armedTier();
+                if ("TIER_20".equals(armed)) drawdownTier = 20;
+                else if ("TIER_15".equals(armed)) drawdownTier = 15;
+                else if ("TIER_10".equals(armed)) drawdownTier = 10;
+            }
+            String detailsJson = "";
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                detailsJson = mapper.writeValueAsString(plan);
+            } catch (Exception e) {
+                log.warn("Failed to serialize rebalance plan snapshot JSON for plan {}", planId, e);
+            }
+            repository.recordExecution(
+                planId,
+                triggerType,
+                reasonCode,
+                LocalDateTime.now(),
+                hasSellSide,
+                hasGoldBuy,
+                detailsJson,
+                drawdownTier
+            );
+        return plan;
+    }
 
     private static volatile RebalanceTriggerEvaluator defaultEvaluator;
 
@@ -269,18 +382,23 @@ public class RebalancePlanEngine {
             ? resolution.drawdownContext().currentDrawdownPct() : 0.0;
 
         BigDecimal liquidCurVal = BigDecimal.ZERO;
+        BigDecimal sellSideActiveCorpus = BigDecimal.ZERO;
         if (openLots != null) {
             for (Lot lot : openLots) {
                 BucketEngine.Bucket b = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
+                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.activeCorpus");
+                BigDecimal lotVal = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
+                if (b != BucketEngine.Bucket.LEGACY_HOLDINGS) {
+                    sellSideActiveCorpus = sellSideActiveCorpus.add(lotVal);
+                }
                 BucketEngine.Bucket mappedB = resolveTargetBucket(b, baseTargets);
                 if (mappedB == BucketEngine.Bucket.LIQUID_BUFFER || mappedB == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE) {
-                    BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.liquidVal");
-                    liquidCurVal = liquidCurVal.add(lot.remainingUnits().multiply(nav));
+                    liquidCurVal = liquidCurVal.add(lotVal);
                 }
             }
         }
-        BigDecimal currentLiquidPct = liveCorpus.compareTo(BigDecimal.ZERO) > 0
-            ? liquidCurVal.multiply(new BigDecimal("100")).divide(liveCorpus, 2, RoundingMode.HALF_UP)
+        BigDecimal currentLiquidPct = sellSideActiveCorpus.compareTo(BigDecimal.ZERO) > 0
+            ? liquidCurVal.multiply(new BigDecimal("100")).divide(sellSideActiveCorpus, 2, RoundingMode.HALF_UP)
             : BigDecimal.ZERO;
 
         List<BucketEngine.BucketTarget> activeTargets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, ddPct, currentLiquidPct);
@@ -359,11 +477,13 @@ public class RebalancePlanEngine {
             BigDecimal poolNeeded = BigDecimal.ZERO;
             Map<BucketEngine.Bucket, BigDecimal> bucketTrims = new java.util.LinkedHashMap<>();
             BigDecimal totalDeficit = BigDecimal.ZERO;
+            double maxAbsDrift = 0.0;
 
-            if (activeTargets != null) {
+            if (activeTargets != null && sellSideActiveCorpus.compareTo(BigDecimal.ZERO) > 0) {
                 for (BucketEngine.BucketTarget target : activeTargets) {
                     BigDecimal targetPct = target.targetPct();
-                    BigDecimal targetVal = liveCorpus.multiply(targetPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                    BigDecimal bandPct = target.bandPct() != null ? target.bandPct() : new BigDecimal("5.0");
+                    BigDecimal targetVal = sellSideActiveCorpus.multiply(targetPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
                     BigDecimal curVal = BigDecimal.ZERO;
                     if (openLots != null) {
@@ -378,240 +498,286 @@ public class RebalancePlanEngine {
                     }
                     if (curVal.compareTo(targetVal) > 0) {
                         BigDecimal excessVal = curVal.subtract(targetVal);
-                        boolean isLiquid = (target.bucket() == BucketEngine.Bucket.LIQUID_BUFFER || target.bucket() == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
-                        BigDecimal dampenedTrim;
-                        if (isLiquid && ("DRAWDOWN".equalsIgnoreCase(resolvedType) || ddPct >= 10.0)) {
-                            // BYPASS FundTrendDampenerCalculator for LIQUID_BUFFER during DRAWDOWN triggers:
-                            // Deploy the exact rule-based excess (25%, 50%, or 100% of buffer) with zero volatility dampening!
-                            dampenedTrim = excessVal;
-                        } else if (targetVal.compareTo(BigDecimal.ZERO) <= 0) {
-                            dampenedTrim = excessVal;
-                        } else {
-                            dampenedTrim = FundTrendDampenerCalculator.calculateDampenedTrim(excessVal, targetVal.doubleValue());
-                        }
-                        if (dampenedTrim.compareTo(BigDecimal.ZERO) > 0) {
-                            bucketTrims.put(target.bucket(), dampenedTrim);
-                            poolNeeded = poolNeeded.add(dampenedTrim);
-                        }
-                    } else if (curVal.compareTo(targetVal) < 0) {
-                        totalDeficit = totalDeficit.add(targetVal.subtract(curVal));
+                        BigDecimal curWeightPct = curVal.multiply(new BigDecimal("100")).divide(sellSideActiveCorpus, 4, RoundingMode.HALF_UP);
+                    BigDecimal driftPts = curWeightPct.subtract(targetPct);
+                    maxAbsDrift = Math.max(maxAbsDrift, driftPts.abs().doubleValue());
+                    boolean isLiquid = (target.bucket() == BucketEngine.Bucket.LIQUID_BUFFER || target.bucket() == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
+                    boolean isDrawdownLiquidDeploy = isLiquid && ("DRAWDOWN".equalsIgnoreCase(resolvedType) || ddPct >= 10.0);
+                    // F3: Only trim an active bucket if it breached its drift band (or is a Drawdown Rung liquid buffer deployment)
+                    if (!isDrawdownLiquidDeploy && driftPts.compareTo(bandPct) <= 0) {
+                        continue;
                     }
-                }
-            }
 
-            // Step 0: Legacy holdings liquidation runs unconditionally before everything else.
-            // All eligible LTCG and loss-making legacy lots are liquidated with no stalling at deficit/exemption limits.
-            BigDecimal totalLegacyValue = BigDecimal.ZERO;
-            if (openLots != null) {
-                for (Lot lot : openLots) {
-                    BucketEngine.Bucket b = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
-                    if (b == BucketEngine.Bucket.LEGACY_HOLDINGS) {
-                        BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.legacyVal");
-                        totalLegacyValue = totalLegacyValue.add(lot.remainingUnits().multiply(nav));
+                    BigDecimal dampenedTrim;
+                    if (isDrawdownLiquidDeploy) {
+                        // BYPASS FundTrendDampenerCalculator for LIQUID_BUFFER during DRAWDOWN triggers:
+                        // Deploy the exact rule-based excess (25%, 50%, or 100% of buffer) with zero volatility dampening!
+                        dampenedTrim = excessVal;
+                    } else if (targetVal.compareTo(BigDecimal.ZERO) <= 0) {
+                        dampenedTrim = excessVal;
+                    } else {
+                        dampenedTrim = FundTrendDampenerCalculator.calculateDampenedTrim(excessVal, targetVal.doubleValue());
                     }
+                    if (dampenedTrim.compareTo(BigDecimal.ZERO) > 0) {
+                        bucketTrims.put(target.bucket(), dampenedTrim);
+                        poolNeeded = poolNeeded.add(dampenedTrim);
+                    }
+                } else if (curVal.compareTo(targetVal) < 0) {
+                    BigDecimal curWeightPct = sellSideActiveCorpus.compareTo(BigDecimal.ZERO) > 0
+                        ? curVal.multiply(new BigDecimal("100")).divide(sellSideActiveCorpus, 4, RoundingMode.HALF_UP)
+                        : BigDecimal.ZERO;
+                    BigDecimal driftPts = curWeightPct.subtract(targetPct);
+                    maxAbsDrift = Math.max(maxAbsDrift, driftPts.abs().doubleValue());
+                    totalDeficit = totalDeficit.add(targetVal.subtract(curVal));
                 }
             }
-            Map<BucketEngine.Bucket, BigDecimal> orderedTrims = new java.util.LinkedHashMap<>();
-            if (totalLegacyValue.compareTo(BigDecimal.ZERO) > 0) {
-                orderedTrims.put(BucketEngine.Bucket.LEGACY_HOLDINGS, totalLegacyValue.setScale(2, RoundingMode.HALF_UP));
-            }
-            if (bucketTrims.containsKey(BucketEngine.Bucket.LIQUID_BUFFER)) {
-                orderedTrims.put(BucketEngine.Bucket.LIQUID_BUFFER, bucketTrims.get(BucketEngine.Bucket.LIQUID_BUFFER));
-            } else if (bucketTrims.containsKey(BucketEngine.Bucket.LIQUIDITY_ARBITRAGE)) {
-                orderedTrims.put(BucketEngine.Bucket.LIQUIDITY_ARBITRAGE, bucketTrims.get(BucketEngine.Bucket.LIQUIDITY_ARBITRAGE));
-            }
-            for (Map.Entry<BucketEngine.Bucket, BigDecimal> entry : bucketTrims.entrySet()) {
-                if (!orderedTrims.containsKey(entry.getKey())) {
-                    orderedTrims.put(entry.getKey(), entry.getValue());
+        }
+
+        // Step 0: Legacy holdings liquidation runs unconditionally before everything else.
+        // All eligible LTCG and loss-making legacy lots are liquidated with no stalling at deficit/exemption limits.
+        BigDecimal totalLegacyValue = BigDecimal.ZERO;
+        if (openLots != null) {
+            for (Lot lot : openLots) {
+                BucketEngine.Bucket b = BucketEngine.classifyAssetToBucket(lot.assetId(), lot.assetName());
+                if (b == BucketEngine.Bucket.LEGACY_HOLDINGS) {
+                    BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.legacyVal");
+                    totalLegacyValue = totalLegacyValue.add(lot.remainingUnits().multiply(nav));
                 }
             }
-            bucketTrims = orderedTrims;
-            if (totalLegacyValue.compareTo(BigDecimal.ZERO) > 0) {
-                poolNeeded = poolNeeded.add(totalLegacyValue.setScale(2, RoundingMode.HALF_UP));
+        }
+        Map<BucketEngine.Bucket, BigDecimal> orderedTrims = new java.util.LinkedHashMap<>();
+        if (totalLegacyValue.compareTo(BigDecimal.ZERO) > 0) {
+            orderedTrims.put(BucketEngine.Bucket.LEGACY_HOLDINGS, totalLegacyValue.setScale(2, RoundingMode.HALF_UP));
+        }
+        if (bucketTrims.containsKey(BucketEngine.Bucket.LIQUID_BUFFER)) {
+            orderedTrims.put(BucketEngine.Bucket.LIQUID_BUFFER, bucketTrims.get(BucketEngine.Bucket.LIQUID_BUFFER));
+        } else if (bucketTrims.containsKey(BucketEngine.Bucket.LIQUIDITY_ARBITRAGE)) {
+            orderedTrims.put(BucketEngine.Bucket.LIQUIDITY_ARBITRAGE, bucketTrims.get(BucketEngine.Bucket.LIQUIDITY_ARBITRAGE));
+        }
+        for (Map.Entry<BucketEngine.Bucket, BigDecimal> entry : bucketTrims.entrySet()) {
+            if (!orderedTrims.containsKey(entry.getKey())) {
+                orderedTrims.put(entry.getKey(), entry.getValue());
             }
+        }
+        bucketTrims = orderedTrims;
+        if (totalLegacyValue.compareTo(BigDecimal.ZERO) > 0) {
+            poolNeeded = poolNeeded.add(totalLegacyValue.setScale(2, RoundingMode.HALF_UP));
+        }
 
-            if (isLumpsum) {
-                totalPool = poolNeeded.add(manualLumpsumAmount);
-            } else {
-                totalPool = poolNeeded;
-            }
+        if (isLumpsum) {
+            totalPool = poolNeeded.add(manualLumpsumAmount);
+        } else {
+            totalPool = poolNeeded;
+        }
 
-            List<WaterfallTierDto> waterfallTiers = new ArrayList<>();
-            BigDecimal poolRemaining = poolNeeded;
+        List<WaterfallTierDto> waterfallTiers = new ArrayList<>();
+        BigDecimal poolRemaining = poolNeeded;
 
-            boolean isUrgent = false;
-            if (resolution != null && resolution.drawdownContext() != null) {
-                isUrgent = resolution.drawdownContext().currentDrawdownPct() >= 15.0;
-            }
+        double currentDd = (resolution != null && resolution.drawdownContext() != null)
+            ? resolution.drawdownContext().currentDrawdownPct() : 0.0;
+        boolean isUrgent = PortfolioConstants.isUrgentRebalance(currentDd);
 
-            List<com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep> allSteps = new ArrayList<>();
-            BigDecimal totalTaxEstimate = BigDecimal.ZERO;
-            BigDecimal currentHeadroom = headroomBefore;
+        List<com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep> allSteps = new ArrayList<>();
+        BigDecimal totalTaxEstimate = BigDecimal.ZERO;
+        BigDecimal currentHeadroom = headroomBefore;
 
-            List<Lot> workingLots = new ArrayList<>(openLots != null ? openLots : List.of());
+        List<Lot> workingLots = new ArrayList<>(openLots != null ? openLots : List.of());
 
-            for (Map.Entry<BucketEngine.Bucket, BigDecimal> entry : bucketTrims.entrySet()) {
-                BucketEngine.Bucket b = entry.getKey();
-                BigDecimal neededForBucket = entry.getValue();
+        for (Map.Entry<BucketEngine.Bucket, BigDecimal> entry : bucketTrims.entrySet()) {
+            BucketEngine.Bucket b = entry.getKey();
+            BigDecimal neededForBucket = entry.getValue();
 
-                com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallResult waterfallResult =
-                    com.portfolioos.core.valuation.RebalanceWaterfallEngine.buildTrimWaterfall(
-                        b,
-                        neededForBucket,
-                        workingLots,
-                        navMap != null ? navMap : Map.of(),
-                        currentHeadroom,
-                        isUrgent,
-                        today,
-                        fiscalYear
-                    );
+            com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallResult waterfallResult =
+                com.portfolioos.core.valuation.RebalanceWaterfallEngine.buildTrimWaterfall(
+                    b,
+                    neededForBucket,
+                    workingLots,
+                    navMap != null ? navMap : Map.of(),
+                    currentHeadroom,
+                    isUrgent,
+                    today,
+                    fiscalYear
+                );
 
-                if (waterfallResult.steps() != null) {
-                    allSteps.addAll(waterfallResult.steps());
-                    currentHeadroom = currentHeadroom.subtract(waterfallResult.ltcgExemptionConsumed()).max(BigDecimal.ZERO);
-                    totalTaxEstimate = totalTaxEstimate.add(waterfallResult.totalTaxDrag());
+            if (waterfallResult.steps() != null) {
+                allSteps.addAll(waterfallResult.steps());
+                currentHeadroom = currentHeadroom.subtract(waterfallResult.ltcgExemptionConsumed()).max(BigDecimal.ZERO);
+                totalTaxEstimate = totalTaxEstimate.add(waterfallResult.totalTaxDrag());
 
-                    for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep s : waterfallResult.steps()) {
-                        for (int i = 0; i < workingLots.size(); i++) {
-                            Lot l = workingLots.get(i);
-                            if (l.lotId().equals(s.lotId())) {
-                                BigDecimal newUnits = l.remainingUnits().subtract(s.unitsSold());
-                                if (newUnits.compareTo(BigDecimal.ZERO) <= 0) {
-                                    workingLots.remove(i);
-                                } else {
-                                    workingLots.set(i, l.withRemainingUnitsAndCost(
-                                        newUnits, l.costPerUnit(),
-                                        l.costPerUnit().multiply(newUnits).setScale(2, RoundingMode.HALF_UP)
-                                    ));
-                                }
-                                break;
+                for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep s : waterfallResult.steps()) {
+                    for (int i = 0; i < workingLots.size(); i++) {
+                        Lot l = workingLots.get(i);
+                        if (l.lotId().equals(s.lotId())) {
+                            BigDecimal newUnits = l.remainingUnits().subtract(s.unitsSold());
+                            if (newUnits.compareTo(BigDecimal.ZERO) <= 0) {
+                                workingLots.remove(i);
+                            } else {
+                                workingLots.set(i, l.withRemainingUnitsAndCost(
+                                    newUnits, l.costPerUnit(),
+                                    l.costPerUnit().multiply(newUnits).setScale(2, RoundingMode.HALF_UP)
+                                ));
                             }
+                            break;
                         }
                     }
                 }
             }
+        }
 
-            BigDecimal totalGain = BigDecimal.ZERO;
-            BigDecimal totalLtcgExempt = BigDecimal.ZERO;
-            BigDecimal totalStcgTaxable = BigDecimal.ZERO;
+        BigDecimal totalGain = BigDecimal.ZERO;
+        BigDecimal grossStcgEquity = BigDecimal.ZERO;
+        BigDecimal grossStcgSlab = BigDecimal.ZERO;
+        BigDecimal grossStcl = BigDecimal.ZERO;
+        BigDecimal grossLtcgEquity = BigDecimal.ZERO;
+        BigDecimal grossLtcgNonEquity = BigDecimal.ZERO;
+        BigDecimal grossLtcl = BigDecimal.ZERO;
 
-            List<RebalanceLotImpactDto> soldArbitrageLots = new ArrayList<>();
-            soldArbitrageAmount = BigDecimal.ZERO;
-            List<RebalanceLotImpactDto> soldLegacyLots = new ArrayList<>();
-            soldLegacyAmount = BigDecimal.ZERO;
-            List<RebalanceLotImpactDto> soldCoreLots = new ArrayList<>();
-            soldCoreAmount = BigDecimal.ZERO;
+        List<RebalanceLotImpactDto> soldArbitrageLots = new ArrayList<>();
+        soldArbitrageAmount = BigDecimal.ZERO;
+        List<RebalanceLotImpactDto> soldLegacyLots = new ArrayList<>();
+        soldLegacyAmount = BigDecimal.ZERO;
+        List<RebalanceLotImpactDto> soldCoreLots = new ArrayList<>();
+        soldCoreAmount = BigDecimal.ZERO;
 
-            if (!allSteps.isEmpty()) {
-                for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep step : allSteps) {
-                    Lot origLot = null;
-                    if (openLots != null) {
-                        for (Lot l : openLots) {
-                            if (l.lotId() != null && l.lotId().equals(step.lotId())) {
-                                origLot = l;
-                                break;
-                            }
+        if (!allSteps.isEmpty()) {
+            for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep step : allSteps) {
+                Lot origLot = null;
+                if (openLots != null) {
+                    for (Lot l : openLots) {
+                        if (l.lotId() != null && l.lotId().equals(step.lotId())) {
+                            origLot = l;
+                            break;
                         }
                     }
+                }
 
-                    if (origLot == null || origLot.acquisitionDate() == null) {
-                        throw new IllegalStateException("CRITICAL REBALANCE AUDIT FAILURE: Lot " + step.lotId() + " (" + step.assetId() + ") missing original lot metadata or acquisition date in open lots pool");
-                    }
-                    long holdingDays = ChronoUnit.DAYS.between(origLot.acquisitionDate(), today);
+                if (origLot == null || origLot.acquisitionDate() == null) {
+                    throw new IllegalStateException("CRITICAL REBALANCE AUDIT FAILURE: Lot " + step.lotId() + " (" + step.assetId() + ") missing original lot metadata or acquisition date in open lots pool");
+                }
+                long holdingDays = ChronoUnit.DAYS.between(origLot.acquisitionDate(), today);
+                BigDecimal costBasis = step.proceeds().subtract(step.realizedGain()).max(BigDecimal.ZERO);
 
-                    BigDecimal costBasis = step.proceeds().subtract(step.realizedGain()).max(BigDecimal.ZERO);
-                    boolean isLongTerm = "LONG_TERM".equals(step.taxTerm());
+                // F4 Single Source of Truth: Read tax metadata directly from WaterfallStep
+                String regime = step.taxRegime();
+                BigDecimal exempt = step.exemptionApplied();
+                BigDecimal taxable = step.taxableAmount();
 
-                    BigDecimal exempt = BigDecimal.ZERO;
-                    BigDecimal taxable = BigDecimal.ZERO;
+                totalGain = totalGain.add(step.realizedGain());
 
+                // Income-tax Act, 2025 Section 108 & 111 Statutory Loss Accumulation
+                boolean isLongTerm = "LONG_TERM".equals(step.taxTerm());
+                AssetCategory stepCat = TaxClassifier.detectCategory(step.assetId(), step.assetName());
+                if (step.realizedGain().compareTo(BigDecimal.ZERO) < 0) {
                     if (isLongTerm) {
-                        exempt = step.realizedGain().min(currentHeadroom);
-                        taxable = step.realizedGain().subtract(exempt).max(BigDecimal.ZERO);
-                        currentHeadroom = currentHeadroom.subtract(exempt).max(BigDecimal.ZERO);
-                        totalLtcgExempt = totalLtcgExempt.add(exempt);
+                        grossLtcl = grossLtcl.add(step.realizedGain().abs());
                     } else {
-                        taxable = step.realizedGain();
-                        totalStcgTaxable = totalStcgTaxable.add(taxable);
+                        grossStcl = grossStcl.add(step.realizedGain().abs());
                     }
-
-                    totalGain = totalGain.add(step.realizedGain());
-
-                    String regime = isLongTerm ?
-                        (exempt.compareTo(BigDecimal.ZERO) > 0 && taxable.compareTo(BigDecimal.ZERO) == 0 ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5") :
-                        "SLAB_RATE_STCG";
-
-                    RebalanceLotImpactDto lotImpact = new RebalanceLotImpactDto(
-                        step.lotId(),
-                        step.assetId(),
-                        step.assetName(),
-                        (origLot != null && origLot.acquisitionDate() != null) ? origLot.acquisitionDate().toString() : today.toString(),
-                        holdingDays,
-                        step.unitsSold(),
-                        costBasis,
-                        step.proceeds(),
-                        step.realizedGain(),
-                        step.taxTerm(),
-                        new LotTaxImpactDto(regime, exempt, taxable, step.taxDrag())
-                    );
-
-                    BucketEngine.Bucket rawBucket = origLot != null ? BucketEngine.classifyAssetToBucket(origLot.assetId(), origLot.assetName()) : null;
-                    BucketEngine.Bucket lotBucket = resolveTargetBucket(rawBucket, activeTargets);
-                    boolean isArbitrageLot = (lotBucket == BucketEngine.Bucket.LIQUID_BUFFER || lotBucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
-
-                    if (isArbitrageLot) {
-                        soldArbitrageLots.add(lotImpact);
-                        soldArbitrageAmount = soldArbitrageAmount.add(step.proceeds());
-                        bucketSoldAmounts.put(lotBucket, bucketSoldAmounts.getOrDefault(lotBucket, BigDecimal.ZERO).add(step.proceeds()));
-                    } else if (step.tier() == com.portfolioos.core.valuation.WaterfallTier.LEGACY_FUND) {
-                        soldLegacyLots.add(lotImpact);
-                        soldLegacyAmount = soldLegacyAmount.add(step.proceeds());
+                } else {
+                    if (isLongTerm) {
+                        if (stepCat == AssetCategory.EQUITY) {
+                            grossLtcgEquity = grossLtcgEquity.add(step.realizedGain());
+                        } else {
+                            grossLtcgNonEquity = grossLtcgNonEquity.add(step.realizedGain());
+                        }
                     } else {
-                        soldCoreLots.add(lotImpact);
-                        soldCoreAmount = soldCoreAmount.add(step.proceeds());
-                        bucketSoldAmounts.put(lotBucket, bucketSoldAmounts.getOrDefault(lotBucket, BigDecimal.ZERO).add(step.proceeds()));
+                        if (stepCat == AssetCategory.EQUITY) {
+                            grossStcgEquity = grossStcgEquity.add(step.realizedGain());
+                        } else {
+                            grossStcgSlab = grossStcgSlab.add(step.realizedGain());
+                        }
                     }
                 }
+
+                RebalanceLotImpactDto lotImpact = new RebalanceLotImpactDto(
+                    step.lotId(),
+                    step.assetId(),
+                    step.assetName(),
+                    origLot.acquisitionDate().toString(),
+                    holdingDays,
+                    step.unitsSold(),
+                    costBasis,
+                    step.proceeds(),
+                    step.realizedGain(),
+                    step.taxTerm(),
+                    new LotTaxImpactDto(regime, exempt, taxable, step.taxDrag())
+                );
+
+                BucketEngine.Bucket rawBucket = origLot != null ? BucketEngine.classifyAssetToBucket(origLot.assetId(), origLot.assetName()) : null;
+                BucketEngine.Bucket lotBucket = resolveTargetBucket(rawBucket, activeTargets);
+                boolean isArbitrageLot = (lotBucket == BucketEngine.Bucket.LIQUID_BUFFER || lotBucket == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
+
+                if (isArbitrageLot) {
+                    soldArbitrageLots.add(lotImpact);
+                    soldArbitrageAmount = soldArbitrageAmount.add(step.proceeds());
+                    bucketSoldAmounts.put(lotBucket, bucketSoldAmounts.getOrDefault(lotBucket, BigDecimal.ZERO).add(step.proceeds()));
+                } else if (step.tier() == com.portfolioos.core.valuation.WaterfallTier.LEGACY_FUND) {
+                    soldLegacyLots.add(lotImpact);
+                    soldLegacyAmount = soldLegacyAmount.add(step.proceeds());
+                } else {
+                    soldCoreLots.add(lotImpact);
+                    soldCoreAmount = soldCoreAmount.add(step.proceeds());
+                    bucketSoldAmounts.put(lotBucket, bucketSoldAmounts.getOrDefault(lotBucket, BigDecimal.ZERO).add(step.proceeds()));
+                }
             }
+        }
 
-            // Tier 1: Arbitrage Buffer
-            waterfallTiers.add(new WaterfallTierDto(
-                "ARBITRAGE_BUFFER",
-                "Arbitrage Buffer",
-                liquidCurVal,
-                soldArbitrageAmount,
-                soldArbitrageAmount.compareTo(BigDecimal.ZERO) == 0 ? (liquidCurVal.compareTo(BigDecimal.ZERO) == 0 ? "FULLY_DEPLOYED" : "NO_TRIGGER_ACTIVE") : null,
-                soldArbitrageLots
-            ));
+        // Tier 1: Arbitrage Buffer
+        waterfallTiers.add(new WaterfallTierDto(
+            "ARBITRAGE_BUFFER",
+            "Arbitrage Buffer",
+            liquidCurVal,
+            soldArbitrageAmount,
+            soldArbitrageAmount.compareTo(BigDecimal.ZERO) == 0 ? (liquidCurVal.compareTo(BigDecimal.ZERO) == 0 ? "FULLY_DEPLOYED" : "NO_TRIGGER_ACTIVE") : null,
+            soldArbitrageLots
+        ));
 
-            // Tier 2: Legacy Fund Lots
-            waterfallTiers.add(new WaterfallTierDto(
-                "LEGACY_FUND",
-                "Legacy Fund Lots",
-                totalLegacyValue,
-                soldLegacyAmount,
-                soldLegacyAmount.compareTo(BigDecimal.ZERO) == 0 ? "NO_TRIMMABLE_LOTS" : null,
-                soldLegacyLots
-            ));
+        // Tier 2: Legacy Fund Lots
+        waterfallTiers.add(new WaterfallTierDto(
+            "LEGACY_FUND",
+            "Legacy Fund Lots",
+            totalLegacyValue,
+            soldLegacyAmount,
+            soldLegacyAmount.compareTo(BigDecimal.ZERO) == 0 ? "NO_TRIMMABLE_LOTS" : null,
+            soldLegacyLots
+        ));
 
-            // Tier 3: Core Fund Lots
-            waterfallTiers.add(new WaterfallTierDto(
-                "CORE_FUND",
-                "Core Fund Lots",
-                soldCoreAmount,
-                soldCoreAmount,
-                soldCoreAmount.compareTo(BigDecimal.ZERO) == 0 ? ((soldArbitrageAmount.compareTo(BigDecimal.ZERO) > 0 || soldLegacyAmount.compareTo(BigDecimal.ZERO) > 0) ? "COVERED_BY_PRIOR_TIERS" : "NO_TRIMMABLE_LOTS") : null,
-                soldCoreLots
-            ));
+        // Tier 3: Core Fund Lots
+        waterfallTiers.add(new WaterfallTierDto(
+            "CORE_FUND",
+            "Core Fund Lots",
+            soldCoreAmount,
+            soldCoreAmount,
+            soldCoreAmount.compareTo(BigDecimal.ZERO) == 0 ? ((soldArbitrageAmount.compareTo(BigDecimal.ZERO) > 0 || soldLegacyAmount.compareTo(BigDecimal.ZERO) > 0) ? "COVERED_BY_PRIOR_TIERS" : "NO_TRIMMABLE_LOTS") : null,
+            soldCoreLots
+        ));
 
-            TaxSummaryDto taxSummary = new TaxSummaryDto(
-                totalGain,
-                totalLtcgExempt,
-                totalStcgTaxable,
-                totalTaxEstimate,
-                headroomBefore,
-                headroomBefore.subtract(totalLtcgExempt).max(BigDecimal.ZERO)
-            );
+        // Income-tax Act, 2025 Section 108 / ITA 1961 Section 70 Statutory Loss Netting
+        TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
+        Section70NettingResult nettingResult = applySection70Netting(
+            grossStcgEquity,
+            grossStcgSlab,
+            grossStcl,
+            grossLtcgEquity,
+            grossLtcgNonEquity,
+            grossLtcl,
+            headroomBefore,
+            rules
+        );
+
+        BigDecimal totalLtcgExempt = nettingResult.ltcgExemptionUsed();
+        BigDecimal totalStcgTaxable = nettingResult.netTaxableStcgEquity().add(nettingResult.netTaxableStcgSlab());
+        totalTaxEstimate = nettingResult.totalNetTaxEstimate();
+        BigDecimal exemptionHeadroomAfter = nettingResult.remainingHeadroomAfter();
+
+        TaxSummaryDto taxSummary = new TaxSummaryDto(
+            totalGain,
+            totalLtcgExempt,
+            totalStcgTaxable,
+            totalTaxEstimate,
+            headroomBefore,
+            exemptionHeadroomAfter
+        );
 
             BigDecimal actualSoldAmount = soldArbitrageAmount.add(soldLegacyAmount).add(soldCoreAmount);
             if (!isLumpsum) {

@@ -32,7 +32,7 @@ drill-recovery:
 
 # Run Android unit test suite
 test-mobile:
-    cd mobile-app && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" ./gradlew testDebugUnitTest
+    cd mobile-app && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" ./gradlew testDebugUnitTest --rerun-tasks
 
 # Build debug APK with parallel execution and build caching
 build-mobile:

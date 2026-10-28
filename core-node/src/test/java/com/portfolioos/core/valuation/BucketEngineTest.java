@@ -103,7 +103,7 @@ public class BucketEngineTest {
         // Gold: ₹1,00,000 (10%)
         Lot coreLot = new Lot("lot-1", "INF109KC12U0", "ICICI LargeMidcap 250 Index Fund", date,
             new BigDecimal("5000"), new BigDecimal("5000"), new BigDecimal("100"), new BigDecimal("500000"), false, null);
-        Lot arbLot = new Lot("lot-2", "INF205K01QU7", "Invesco India Arbitrage Fund", date,
+        Lot arbLot = new Lot("lot-2", "INF205K01QU7", "Invesco India Arbitrage Fund", date.minusDays(30),
             new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("100"), new BigDecimal("100000"), false, null);
 
         Map<String, BigDecimal> navMap = Map.of(
@@ -134,11 +134,11 @@ public class BucketEngineTest {
         assertEquals(0, new BigDecimal("100000.00").compareTo(sellArb.amount()), "Must sell 100% of arbitrage buffer (₹100,000)");
         assertEquals("MARKET_DRAWDOWN", sellArb.triggerType());
 
-        BucketEngine.RebalanceRecommendation buyCore = recs.stream()
+        BigDecimal totalCoreBuy = recs.stream()
             .filter(r -> r.bucket() == BucketEngine.Bucket.EQUITY_CORE && "BUY".equals(r.action()))
-            .findFirst().orElseThrow(() -> new AssertionError("Expected BUY recommendation for EQUITY_CORE"));
-        assertEquals(0, new BigDecimal("100000.00").compareTo(buyCore.amount()), "Must buy ₹100,000 into core equity");
-        assertEquals("MARKET_DRAWDOWN", buyCore.triggerType());
+            .map(BucketEngine.RebalanceRecommendation::amount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(0, new BigDecimal("100000.00").compareTo(totalCoreBuy), "Must buy ₹100,000 into core equity across preferred funds");
 
         // CRITICAL INVARIANT: Zero contradictory BUY LIQUID_BUFFER recommendations in the same response!
         boolean hasContradictoryBuyArb = recs.stream()

@@ -84,6 +84,12 @@ class TestArrowStreamIPC(unittest.IsolatedAsyncioTestCase):
         table = deserialize_arrow_stream(resp.body)
         self.assertTrue(table.num_rows <= 5)
 
+    def test_get_nav_arrow_stream_route_enforces_auth_dependency(self):
+        from app import app
+        route = next((r for r in app.routes if getattr(r, "path", None) == "/api/v1/analytics/nav_arrow_stream" and "GET" in getattr(r, "methods", set())), None)
+        self.assertIsNotNone(route)
+        self.assertTrue(len(route.dependencies) > 0, "GET /api/v1/analytics/nav_arrow_stream must enforce authentication dependency")
+
     async def test_post_nav_arrow_stream_endpoint(self):
         records = []
         base_nav = 50.0

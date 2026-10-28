@@ -82,6 +82,7 @@ public class RebalancePlanDtos {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RebalancePlanDto(
         String planId,
+        String planDigest,
         String generatedAt,
         RebalanceTriggerDto trigger,
         SellSidePlanDto sellSide,
@@ -99,10 +100,38 @@ public class RebalancePlanDtos {
             SellSidePlanDto sellSide,
             BuySidePlanDto buySide,
             ReasoningNarrativeDto reasoningNarrative,
+            ManualLumpsumMetaDto manualLumpsumMeta,
+            GoldSilverContextDto goldSilverContext,
+            ReconstitutionContextDto reconstitutionContext,
+            BeerSpreadContextDto beerSpreadContext
+        ) {
+            this(
+                planId,
+                computeDigest(trigger, sellSide, buySide),
+                generatedAt,
+                trigger,
+                sellSide,
+                buySide,
+                reasoningNarrative,
+                manualLumpsumMeta,
+                goldSilverContext,
+                reconstitutionContext,
+                beerSpreadContext
+            );
+        }
+
+        public RebalancePlanDto(
+            String planId,
+            String generatedAt,
+            RebalanceTriggerDto trigger,
+            SellSidePlanDto sellSide,
+            BuySidePlanDto buySide,
+            ReasoningNarrativeDto reasoningNarrative,
             ManualLumpsumMetaDto manualLumpsumMeta
         ) {
             this(
                 planId,
+                computeDigest(trigger, sellSide, buySide),
                 generatedAt,
                 trigger,
                 sellSide,
@@ -113,6 +142,60 @@ public class RebalancePlanDtos {
                 null,
                 null
             );
+        }
+
+        public RebalancePlanDto withPlanId(String newPlanId) {
+            return new RebalancePlanDto(
+                newPlanId,
+                this.planDigest,
+                this.generatedAt,
+                this.trigger,
+                this.sellSide,
+                this.buySide,
+                this.reasoningNarrative,
+                this.manualLumpsumMeta,
+                this.goldSilverContext,
+                this.reconstitutionContext,
+                this.beerSpreadContext
+            );
+        }
+
+        public static String computeDigest(RebalanceTriggerDto trigger, SellSidePlanDto sellSide, BuySidePlanDto buySide) {
+            try {
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                StringBuilder sb = new StringBuilder();
+                if (trigger != null) {
+                    sb.append(trigger.type()).append("|").append(trigger.reasonCode()).append(";");
+                }
+                if (sellSide != null) {
+                    sb.append("SELL:").append(sellSide.totalRequired()).append(";");
+                    if (sellSide.waterfall() != null) {
+                        for (WaterfallTierDto t : sellSide.waterfall()) {
+                            if (t.lots() != null) {
+                                for (RebalanceLotImpactDto l : t.lots()) {
+                                    sb.append(l.lotId()).append(":").append(l.unitsSold()).append(":").append(l.saleProceeds()).append(",");
+                                }
+                            }
+                        }
+                    }
+                }
+                if (buySide != null) {
+                    sb.append(";BUY:").append(buySide.totalToInvest()).append(";");
+                    if (buySide.buckets() != null) {
+                        for (RebalanceBucketAllocationDto b : buySide.buckets()) {
+                            sb.append(b.bucket()).append(":").append(b.amountAllocated()).append(",");
+                        }
+                    }
+                }
+                byte[] hash = md.digest(sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                StringBuilder hex = new StringBuilder();
+                for (byte b : hash) {
+                    hex.append(String.format("%02x", b));
+                }
+                return hex.toString();
+            } catch (Exception e) {
+                return "";
+            }
         }
     }
 
@@ -316,7 +399,7 @@ public class RebalancePlanDtos {
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record LotTaxImpactDto(
-        String regime, // SEC_112A_EXEMPT, SEC_112A_TAXABLE_12_5, SLAB_RATE_STCG
+        String regime, // SEC_112A_EXEMPT, SEC_112A_TAXABLE_12_5, SEC_112_TAXABLE_12_5, SLAB_RATE_STCG
         BigDecimal exemptionApplied,
         BigDecimal taxableAmount,
         BigDecimal taxAmount

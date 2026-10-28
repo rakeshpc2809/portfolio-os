@@ -203,9 +203,11 @@ public class QuantSidecarClient {
             if (isin != null && !isin.isBlank()) {
                 url += "?isin=" + java.net.URLEncoder.encode(isin.trim(), java.nio.charset.StandardCharsets.UTF_8);
             }
+            String token = resolveAuthToken();
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Accept", "application/vnd.apache.arrow.stream")
+                .header("X-Api-Auth-Token", token)
                 .timeout(Duration.ofSeconds(10))
                 .GET()
                 .build();

@@ -57,6 +57,8 @@ public class HarvestAdvisor {
             if (category != AssetCategory.EQUITY) continue;
 
             long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
+            int requiredExitLoadDays = ExitLoadCalculator.getRequiredExitLoadDays(lot.assetId(), lot.assetName());
+            if (holdingDays < requiredExitLoadDays) continue;
             if (holdingDays >= rules.equityLtcgThresholdDays()) {
                 BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "HarvestAdvisor");
                 BigDecimal currentVal = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
@@ -70,8 +72,15 @@ public class HarvestAdvisor {
             }
         }
 
-        // Sort lots by gain descending to maximize headroom utilization
-        ltcgLots.sort(Comparator.comparing(LotWithGain::gain).reversed());
+        // Enforce RTA chronological FIFO within each scheme; across different schemes, prioritize highest gain
+        ltcgLots.sort((a, b) -> {
+            if (a.lot().assetId().equalsIgnoreCase(b.lot().assetId())) {
+                int cmp = a.lot().acquisitionDate().compareTo(b.lot().acquisitionDate());
+                if (cmp != 0) return cmp;
+                return a.lot().lotId() != null && b.lot().lotId() != null ? a.lot().lotId().compareTo(b.lot().lotId()) : 0;
+            }
+            return b.gain().compareTo(a.gain());
+        });
 
         BigDecimal headroomLeft = remainingExemption;
         BigDecimal totalHarvestedGain = BigDecimal.ZERO;

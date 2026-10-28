@@ -75,9 +75,23 @@ public class TriggerHistoryRepository {
                 "  fired_at TEXT NOT NULL," +
                 "  has_sell_side INTEGER NOT NULL," +
                 "  has_gold_buy INTEGER NOT NULL," +
-                "  details_json TEXT" +
+                "  details_json TEXT," +
+                "  drawdown_tier INTEGER DEFAULT 0" +
                 ")"
             );
+            boolean hasColumn = false;
+            try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(rebalance_trigger_history)")) {
+                while (rs.next()) {
+                    String colName = rs.getString("name");
+                    if ("drawdown_tier".equalsIgnoreCase(colName)) {
+                        hasColumn = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasColumn) {
+                stmt.execute("ALTER TABLE rebalance_trigger_history ADD COLUMN drawdown_tier INTEGER DEFAULT 0");
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize rebalance_trigger_history schema", e);
         }
@@ -90,11 +104,12 @@ public class TriggerHistoryRepository {
         LocalDateTime firedAt,
         boolean hasSellSide,
         boolean hasGoldBuy,
-        String detailsJson
+        String detailsJson,
+        int drawdownTier
     ) {
         String sql = "INSERT OR REPLACE INTO rebalance_trigger_history " +
-                     "(plan_id, trigger_type, reason_code, fired_at, has_sell_side, has_gold_buy, details_json) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?)";
+                     "(plan_id, trigger_type, reason_code, fired_at, has_sell_side, has_gold_buy, details_json, drawdown_tier) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, planId);
@@ -104,10 +119,29 @@ public class TriggerHistoryRepository {
             stmt.setInt(5, hasSellSide ? 1 : 0);
             stmt.setInt(6, hasGoldBuy ? 1 : 0);
             stmt.setString(7, detailsJson != null ? detailsJson : "");
+            stmt.setInt(8, drawdownTier);
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to record trigger execution", e);
         }
+    }
+
+    public void recordExecution(
+        String planId,
+        String triggerType,
+        String reasonCode,
+        LocalDateTime firedAt,
+        boolean hasSellSide,
+        boolean hasGoldBuy,
+        String detailsJson
+    ) {
+        int tier = 0;
+        if ("DRAWDOWN".equalsIgnoreCase(triggerType) && reasonCode != null) {
+            if (reasonCode.contains("20")) tier = 20;
+            else if (reasonCode.contains("15")) tier = 15;
+            else if (reasonCode.contains("10")) tier = 10;
+        }
+        recordExecution(planId, triggerType, reasonCode, firedAt, hasSellSide, hasGoldBuy, detailsJson, tier);
     }
 
     public Optional<LocalDateTime> getLastSellSideFiringDate() {
@@ -141,6 +175,41 @@ public class TriggerHistoryRepository {
             return Optional.empty();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to query last Gold buy date", e);
+        }
+    }
+
+    public int getMaxFiredDrawdownTierWithinDays(java.time.LocalDate today, int days) {
+        String cutoff = today.minusDays(days).atStartOfDay().format(ISO_FORMATTER);
+        String sql = "SELECT COALESCE(MAX(drawdown_tier), 0) FROM rebalance_trigger_history " +
+                     "WHERE trigger_type = 'DRAWDOWN' AND has_sell_side = 1 AND fired_at >= ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, cutoff);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to query max fired drawdown tier", e);
+        }
+        return 0;
+    }
+
+    public Optional<String> getExecutedPlanSnapshot(String planId) {
+        String sql = "SELECT details_json FROM rebalance_trigger_history WHERE plan_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, planId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    String json = rs.getString(1);
+                    return Optional.ofNullable(json);
+                }
+            }
+            return Optional.empty();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to query executed plan snapshot", e);
         }
     }
 
