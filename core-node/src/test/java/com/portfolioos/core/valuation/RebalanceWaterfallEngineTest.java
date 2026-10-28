@@ -265,9 +265,9 @@ class RebalanceWaterfallEngineTest {
         Lot olderGainLot = new Lot("L1-GAIN", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
             today.minusDays(700), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10.00"), new BigDecimal("1000.00"), false, BigDecimal.ZERO);
 
-        // Lot 2 (Newer, 30 days ago, STCL): Cost = 18.00, NAV = 15.00 -> -3.00 Loss per unit
+        // Lot 2 (Newer, 400 days ago, LTCG loss): Cost = 18.00, NAV = 15.00 -> -3.00 Loss per unit
         Lot newerLossLot = new Lot("L2-LOSS", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
-            today.minusDays(30), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("18.00"), new BigDecimal("1800.00"), false, BigDecimal.ZERO);
+            today.minusDays(400), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("18.00"), new BigDecimal("1800.00"), false, BigDecimal.ZERO);
 
         Map<String, BigDecimal> navMap = Map.of(
             "INF109KC12U0", new BigDecimal("15.00")
