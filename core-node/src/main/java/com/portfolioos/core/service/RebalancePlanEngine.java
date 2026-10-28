@@ -793,8 +793,9 @@ public class RebalancePlanEngine {
         BigDecimal freshCash = isLumpsum ? (manualLumpsumAmount != null ? manualLumpsumAmount : BigDecimal.ZERO) : ((sellSide == null || sellSide.totalRequired() == null || sellSide.totalRequired().compareTo(BigDecimal.ZERO) == 0) ? totalPool : BigDecimal.ZERO);
         BigDecimal postCorpus = liveCorpus.add(freshCash);
 
+        TriggerHistoryRepository historyRepo = triggerEvaluator != null ? triggerEvaluator.getRepository() : null;
         BucketEngine.RebalanceEngineResult bucketResult = BucketEngine.evaluateRebalance(
-            openLots, matchedLots, navMap, today, benchmarkCurrent, benchmarkRollingHigh, baseTargets, fiscalYear
+            openLots, matchedLots, navMap, today, benchmarkCurrent, benchmarkRollingHigh, baseTargets, fiscalYear, historyRepo
         );
 
         Map<BucketEngine.Bucket, BucketEngine.BucketStatus> statusMap = new HashMap<>();

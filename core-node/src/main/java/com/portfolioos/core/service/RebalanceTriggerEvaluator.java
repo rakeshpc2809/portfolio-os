@@ -42,6 +42,10 @@ public class RebalanceTriggerEvaluator {
         this.repository = repository;
     }
 
+    public TriggerHistoryRepository getRepository() {
+        return repository;
+    }
+
     public TriggerResolution getCurrentStatus(
         List<Lot> openLots,
         Map<String, BigDecimal> navMap,

@@ -66,4 +66,23 @@ public class TriggerHistoryRepositoryTest {
         int updatedMaxTier = repo.getMaxFiredDrawdownTierWithinDays(java.time.LocalDate.now(), 30);
         assertEquals(2, updatedMaxTier, "After recording Tier 2, max tier within 30 days must be 2");
     }
+
+    @Test
+    @DisplayName("F7: Baseline arbitrage storage lifecycle (get, set, clear)")
+    void testActiveDrawdownArbitrageBaselineLifecycle(@TempDir Path tempDir) {
+        File dbFile = tempDir.resolve("baseline_test.db").toFile();
+        TriggerHistoryRepository repo = new TriggerHistoryRepository(dbFile.getAbsolutePath());
+
+        org.junit.jupiter.api.Assertions.assertTrue(repo.getActiveDrawdownArbitrageBaseline().isEmpty(), "Initial baseline must be empty");
+
+        java.math.BigDecimal baseline = new java.math.BigDecimal("300000.00");
+        repo.setActiveDrawdownArbitrageBaseline(baseline);
+
+        java.util.Optional<java.math.BigDecimal> retrieved = repo.getActiveDrawdownArbitrageBaseline();
+        org.junit.jupiter.api.Assertions.assertTrue(retrieved.isPresent());
+        assertEquals(0, baseline.compareTo(retrieved.get()));
+
+        repo.clearActiveDrawdownArbitrageBaseline();
+        org.junit.jupiter.api.Assertions.assertTrue(repo.getActiveDrawdownArbitrageBaseline().isEmpty(), "Cleared baseline must be empty");
+    }
 }

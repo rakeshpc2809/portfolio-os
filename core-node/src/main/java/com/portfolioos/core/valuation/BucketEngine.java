@@ -10,6 +10,7 @@ import com.portfolioos.core.reporting.ExemptionTracker;
 import com.portfolioos.core.rules.BucketConfigLoader;
 import com.portfolioos.core.rules.TaxRulesConfig;
 import com.portfolioos.core.rules.TaxRulesLoader;
+import com.portfolioos.core.persistence.TriggerHistoryRepository;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -196,6 +197,20 @@ public class BucketEngine {
         return evaluateRebalance(openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh, targets, fiscalYear, java.util.Collections.emptySet());
     }
 
+    public static RebalanceEngineResult evaluateRebalance(
+        List<Lot> openLots,
+        List<MatchedLot> matchedLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate currentDate,
+        BigDecimal benchmarkCurrent,
+        BigDecimal benchmarkRollingHigh,
+        List<BucketTarget> targets,
+        String fiscalYear,
+        TriggerHistoryRepository repository
+    ) {
+        return evaluateRebalance(openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh, targets, fiscalYear, java.util.Collections.emptySet(), repository);
+    }
+
     public static List<BucketTarget> calculateRegimeShiftedTargets(
         List<BucketTarget> baseTargets,
         double drawdownPct,
@@ -278,6 +293,23 @@ public class BucketEngine {
         List<BucketTarget> targets,
         String fiscalYear,
         java.util.Set<String> activeOrPreferredAssetIds
+    ) {
+        return evaluateRebalance(
+            openLots, matchedLots, navMap, currentDate, benchmarkCurrent, benchmarkRollingHigh, targets, fiscalYear, activeOrPreferredAssetIds, null
+        );
+    }
+
+    public static RebalanceEngineResult evaluateRebalance(
+        List<Lot> openLots,
+        List<MatchedLot> matchedLots,
+        Map<String, BigDecimal> navMap,
+        LocalDate currentDate,
+        BigDecimal benchmarkCurrent,
+        BigDecimal benchmarkRollingHigh,
+        List<BucketTarget> targets,
+        String fiscalYear,
+        java.util.Set<String> activeOrPreferredAssetIds,
+        TriggerHistoryRepository repository
     ) {
         BigDecimal totalPortfolioValue = BigDecimal.ZERO;
         Map<Bucket, BigDecimal> bucketValues = new HashMap<>();
@@ -460,67 +492,16 @@ public class BucketEngine {
         }
 
         if (drawdownTriggerFired) {
-            BigDecimal deployAmount = arbExitLoadFreeVal.multiply(deployPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
-
-            if (deployAmount.compareTo(BigDecimal.ZERO) > 0) {
-                String arbAssetId = (liquidAssets != null && !liquidAssets.isEmpty()) ? liquidAssets.keySet().iterator().next() : "INVESCO_ARBITRAGE";
-                String arbAssetName = (liquidAssets != null && !liquidAssets.isEmpty() && liquidAssets.containsKey(arbAssetId) && !liquidAssets.get(arbAssetId).isEmpty())
-                    ? liquidAssets.get(arbAssetId).get(0).assetName() : "Invesco India Arbitrage Fund";
-
-                recommendations.add(new RebalanceRecommendation(
-                    arbAssetId,
-                    arbAssetName,
-                    Bucket.LIQUID_BUFFER,
-                    "SELL",
-                    deployAmount,
-                    "MARKET_DRAWDOWN",
-                    BigDecimal.ZERO,
-                    "Drain exit-load-free arbitrage buffer during " + drawdownPct + "% market drawdown (Rung deploy: " + deployPct + "%)"
-                ));
-
-                List<BucketConfigLoader.PreferredFundConfig> corePreferred = getPreferredFundsForBucket(Bucket.EQUITY_CORE, currentDate);
-                if (!corePreferred.isEmpty()) {
-                    BigDecimal remDeploy = deployAmount;
-                    for (int i = 0; i < corePreferred.size(); i++) {
-                        BucketConfigLoader.PreferredFundConfig pfc = corePreferred.get(i);
-                        BigDecimal fundDeploy;
-                        if (i == corePreferred.size() - 1) {
-                            fundDeploy = remDeploy;
-                        } else {
-                            fundDeploy = deployAmount.multiply(BigDecimal.valueOf(pfc.allocationWeight())).setScale(2, RoundingMode.HALF_UP);
-                            remDeploy = remDeploy.subtract(fundDeploy);
-                        }
-                        if (fundDeploy.compareTo(BigDecimal.ZERO) > 0) {
-                            recommendations.add(new RebalanceRecommendation(
-                                pfc.fundId(),
-                                pfc.fundName(),
-                                Bucket.EQUITY_CORE,
-                                "BUY",
-                                fundDeploy,
-                                "MARKET_DRAWDOWN",
-                                BigDecimal.ZERO,
-                                "Deploy buffer during " + drawdownPct + "% market drawdown (Preferred fund weight: " + Math.round(pfc.allocationWeight() * 100) + "%)"
-                            ));
-                        }
-                    }
-                } else {
-                    Map<String, List<Lot>> coreAssets = bucketAssetLots.get(Bucket.EQUITY_CORE);
-                    String targetAsset = (coreAssets != null && !coreAssets.isEmpty()) ? coreAssets.keySet().iterator().next() : "EQUITY_CORE_INDEX";
-                    String assetName = (coreAssets != null && !coreAssets.isEmpty() && coreAssets.containsKey(targetAsset) && !coreAssets.get(targetAsset).isEmpty())
-                        ? coreAssets.get(targetAsset).get(0).assetName() : "LargeMidcap 250 Index Fund";
-
-                    recommendations.add(new RebalanceRecommendation(
-                        targetAsset,
-                        assetName,
-                        Bucket.EQUITY_CORE,
-                        "BUY",
-                        deployAmount,
-                        "MARKET_DRAWDOWN",
-                        BigDecimal.ZERO,
-                        "Deploy buffer during " + drawdownPct + "% market drawdown (Rungs: 10%, 15%, 20%)"
-                    ));
-                }
-            }
+            recommendations.addAll(calculateDrawdownDeploymentPlan(
+                drawdownPct,
+                arbExitLoadFreeVal,
+                liquidAssets,
+                bucketAssetLots,
+                currentDate,
+                repository
+            ));
+        } else if (drawdownPct.compareTo(new BigDecimal("5.0")) < 0 && repository != null) {
+            repository.clearActiveDrawdownArbitrageBaseline();
         }
 
         for (BucketStatus status : bucketStatuses) {
@@ -674,5 +655,116 @@ public class BucketEngine {
             }
         }
         return List.of();
+    }
+
+    public static List<RebalanceRecommendation> calculateDrawdownDeploymentPlan(
+        BigDecimal drawdownPct,
+        BigDecimal arbExitLoadFreeVal,
+        Map<String, List<Lot>> liquidAssets,
+        Map<Bucket, Map<String, List<Lot>>> bucketAssetLots,
+        LocalDate currentDate,
+        TriggerHistoryRepository triggerHistoryRepository
+    ) {
+        List<RebalanceRecommendation> recommendations = new ArrayList<>();
+        if (drawdownPct == null) {
+            return recommendations;
+        }
+
+        // Reset the baseline once the benchmark recovers above the reset threshold (>-5.0% from peak)
+        if (drawdownPct.compareTo(new BigDecimal("5.0")) < 0) {
+            if (triggerHistoryRepository != null) {
+                triggerHistoryRepository.clearActiveDrawdownArbitrageBaseline();
+            }
+            return recommendations;
+        }
+
+        BigDecimal deployPct = BigDecimal.ZERO;
+        if (drawdownPct.compareTo(new BigDecimal("20.0")) >= 0) {
+            deployPct = new BigDecimal("100.0");
+        } else if (drawdownPct.compareTo(new BigDecimal("15.0")) >= 0) {
+            deployPct = new BigDecimal("50.0");
+        } else if (drawdownPct.compareTo(new BigDecimal("10.0")) >= 0) {
+            deployPct = new BigDecimal("25.0");
+        }
+
+        if (deployPct.compareTo(BigDecimal.ZERO) <= 0) {
+            return recommendations;
+        }
+
+        BigDecimal currentExitLoadFreeArbitrageValue = arbExitLoadFreeVal != null ? arbExitLoadFreeVal : BigDecimal.ZERO;
+        BigDecimal baselineArbitrageValue = (triggerHistoryRepository != null)
+            ? triggerHistoryRepository.getActiveDrawdownArbitrageBaseline().orElse(currentExitLoadFreeArbitrageValue)
+            : currentExitLoadFreeArbitrageValue;
+
+        if (triggerHistoryRepository != null 
+            && triggerHistoryRepository.getActiveDrawdownArbitrageBaseline().isEmpty() 
+            && currentExitLoadFreeArbitrageValue.compareTo(BigDecimal.ZERO) > 0) {
+            triggerHistoryRepository.setActiveDrawdownArbitrageBaseline(baselineArbitrageValue);
+        }
+
+        BigDecimal deployAmount = baselineArbitrageValue.multiply(deployPct)
+            .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP)
+            .min(currentExitLoadFreeArbitrageValue);
+
+        if (deployAmount.compareTo(BigDecimal.ZERO) > 0) {
+            String arbAssetId = (liquidAssets != null && !liquidAssets.isEmpty()) ? liquidAssets.keySet().iterator().next() : "INVESCO_ARBITRAGE";
+            String arbAssetName = (liquidAssets != null && !liquidAssets.isEmpty() && liquidAssets.containsKey(arbAssetId) && !liquidAssets.get(arbAssetId).isEmpty())
+                ? liquidAssets.get(arbAssetId).get(0).assetName() : "Invesco India Arbitrage Fund";
+
+            recommendations.add(new RebalanceRecommendation(
+                arbAssetId,
+                arbAssetName,
+                Bucket.LIQUID_BUFFER,
+                "SELL",
+                deployAmount,
+                "MARKET_DRAWDOWN",
+                BigDecimal.ZERO,
+                "Drain exit-load-free arbitrage buffer during " + drawdownPct + "% market drawdown (Rung deploy: " + deployPct + "%)"
+            ));
+
+            List<BucketConfigLoader.PreferredFundConfig> corePreferred = getPreferredFundsForBucket(Bucket.EQUITY_CORE, currentDate);
+            if (!corePreferred.isEmpty()) {
+                BigDecimal remDeploy = deployAmount;
+                for (int i = 0; i < corePreferred.size(); i++) {
+                    BucketConfigLoader.PreferredFundConfig pfc = corePreferred.get(i);
+                    BigDecimal fundDeploy;
+                    if (i == corePreferred.size() - 1) {
+                        fundDeploy = remDeploy;
+                    } else {
+                        fundDeploy = deployAmount.multiply(BigDecimal.valueOf(pfc.allocationWeight())).setScale(2, RoundingMode.HALF_UP);
+                        remDeploy = remDeploy.subtract(fundDeploy);
+                    }
+                    if (fundDeploy.compareTo(BigDecimal.ZERO) > 0) {
+                        recommendations.add(new RebalanceRecommendation(
+                            pfc.fundId(),
+                            pfc.fundName(),
+                            Bucket.EQUITY_CORE,
+                            "BUY",
+                            fundDeploy,
+                            "MARKET_DRAWDOWN",
+                            BigDecimal.ZERO,
+                            "Deploy buffer during " + drawdownPct + "% market drawdown (Preferred fund weight: " + Math.round(pfc.allocationWeight() * 100) + "%)"
+                        ));
+                    }
+                }
+            } else {
+                Map<String, List<Lot>> coreAssets = bucketAssetLots != null ? bucketAssetLots.get(Bucket.EQUITY_CORE) : null;
+                String targetAsset = (coreAssets != null && !coreAssets.isEmpty()) ? coreAssets.keySet().iterator().next() : "EQUITY_CORE_INDEX";
+                String assetName = (coreAssets != null && !coreAssets.isEmpty() && coreAssets.containsKey(targetAsset) && !coreAssets.get(targetAsset).isEmpty())
+                    ? coreAssets.get(targetAsset).get(0).assetName() : "LargeMidcap 250 Index Fund";
+
+                recommendations.add(new RebalanceRecommendation(
+                    targetAsset,
+                    assetName,
+                    Bucket.EQUITY_CORE,
+                    "BUY",
+                    deployAmount,
+                    "MARKET_DRAWDOWN",
+                    BigDecimal.ZERO,
+                    "Deploy buffer during " + drawdownPct + "% market drawdown (Rungs: 10%, 15%, 20%)"
+                ));
+            }
+        }
+        return recommendations;
     }
 }
