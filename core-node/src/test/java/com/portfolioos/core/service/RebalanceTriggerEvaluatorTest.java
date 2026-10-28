@@ -328,5 +328,23 @@ class RebalanceTriggerEvaluatorTest {
         // Exact 2-decimal HALF_UP rounding
         // 10000 - 8999 = 1001 -> 1001/10000 = 10.01%
         assertEquals(10.01, PortfolioConstants.calculateDrawdownPct(new BigDecimal("8999.00"), new BigDecimal("10000.00")));
+
+        // Discriminating 9.96% drawdown case:
+        // high = 10000.00, curr = 9004.00 -> diff = 996.00 -> 9.96%
+        // Under old 1dp rounding (Math.round(dd * 10.0) / 10.0), 9.96% was rounded to 10.0% and spuriously armed TIER_10.
+        // Under unified 2dp rounding, 9.96% remains 9.96%, strictly < 10.00%, preventing spurious TIER_10 arming!
+        assertEquals(9.96, PortfolioConstants.calculateDrawdownPct(new BigDecimal("9004.00"), new BigDecimal("10000.00")));
+
+        com.portfolioos.core.persistence.TriggerHistoryRepository memoryRepo = new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
+        memoryRepo.recordExecution("plan-gold", "SCHEDULED", "CONFIRMED_EXECUTION", LocalDate.of(2026, 8, 25).atStartOfDay(), false, true, "{}", 0);
+        RebalanceTriggerEvaluator evaluator = new RebalanceTriggerEvaluator(memoryRepo);
+        RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
+            Collections.emptyList(), Collections.emptyMap(),
+            new BigDecimal("9004.00"), new BigDecimal("10000.00"),
+            null, null, LocalDate.of(2026, 8, 26)
+        );
+        assertEquals("NONE", res.triggerType(), "9.96% drawdown must NOT arm TIER_10 rebalance under 2dp precision");
+        assertEquals("NONE", res.drawdownContext().armedTier(), "armedTier must remain NONE at 9.96% DD");
+        assertEquals(9.96, res.drawdownContext().currentDrawdownPct());
     }
 }

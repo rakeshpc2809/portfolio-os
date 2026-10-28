@@ -192,8 +192,16 @@ class SyncControllerTest {
             mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null, memoryRepo
         );
 
-        ResponseEntity<RebalancePlanDto> response = controller.confirmRebalanceExecution(Map.of("trigger", "SCHEDULED"));
+        ResponseEntity<RebalancePlanDto> preview = controller.getRebalancePlan("SCHEDULED");
+        assertNotNull(preview.getBody());
+        String digest = preview.getBody().planDigest();
+
+        ResponseEntity<RebalancePlanDto> response = controller.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "digest", digest
+        ));
         assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
         assertNotNull(response.getBody());
         RebalancePlanDto plan = response.getBody();
         assertNotNull(plan.planId());
@@ -225,7 +233,26 @@ class SyncControllerTest {
         assertNotNull(validDigest);
         assertFalse(validDigest.isBlank());
 
-        // 2. Confirm execution with approved planId and correct digest -> 200 OK
+        // 2. Attempt confirm execution with tampered/stale digest -> 409 Conflict
+        ResponseEntity<RebalancePlanDto> conflictRes = controller.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "planId", "APPROVED-PLAN-UUID-TAMPERED",
+            "digest", "deadbeef00000000badc0ffee"
+        ));
+        assertEquals(409, conflictRes.getStatusCode().value(), "Tampered/stale digest MUST be rejected with HTTP 409 Conflict");
+        assertEquals(0, memoryRepo.getRecordCount(), "Rejected confirm MUST NOT record trigger execution or burn cooldown!");
+        assertTrue(memoryRepo.getExecutedPlanSnapshot("APPROVED-PLAN-UUID-TAMPERED").isEmpty(), "No snapshot must be persisted on rejection");
+        assertTrue(memoryRepo.getLastSellSideFiringDate().isEmpty(), "Cooldown must remain completely untouched on rejection");
+
+        // 3. Attempt confirm execution with missing digest -> 409 Conflict
+        ResponseEntity<RebalancePlanDto> missingDigestRes = controller.confirmRebalanceExecution(Map.of(
+            "trigger", "SCHEDULED",
+            "planId", "APPROVED-PLAN-UUID-NO-DIGEST"
+        ));
+        assertEquals(409, missingDigestRes.getStatusCode().value(), "Missing digest MUST be rejected with HTTP 409 Conflict");
+        assertEquals(0, memoryRepo.getRecordCount(), "Missing digest rejection MUST NOT write any row to trigger history");
+
+        // 4. Confirm execution with approved planId and correct digest -> 200 OK
         String approvedPlanId = "APPROVED-PLAN-UUID-12345";
         ResponseEntity<RebalancePlanDto> successRes = controller.confirmRebalanceExecution(Map.of(
             "trigger", "SCHEDULED",
@@ -235,16 +262,9 @@ class SyncControllerTest {
         assertEquals(200, successRes.getStatusCode().value());
         assertNotNull(successRes.getBody());
         assertEquals(approvedPlanId, successRes.getBody().planId(), "Confirmed plan MUST carry the approved planId");
+        assertEquals(1, memoryRepo.getRecordCount(), "Successful confirm MUST record trigger execution EXACTLY ONCE (no double-write)");
         Optional<String> snapshotOpt = memoryRepo.getExecutedPlanSnapshot(approvedPlanId);
         assertTrue(snapshotOpt.isPresent(), "Snapshot MUST be persisted under the approved planId");
-
-        // 3. Confirm execution with tampered/stale digest -> 409 Conflict
-        ResponseEntity<RebalancePlanDto> conflictRes = controller.confirmRebalanceExecution(Map.of(
-            "trigger", "SCHEDULED",
-            "planId", "APPROVED-PLAN-UUID-TAMPERED",
-            "digest", "deadbeef00000000badc0ffee"
-        ));
-        assertEquals(409, conflictRes.getStatusCode().value(), "Tampered/stale digest MUST be rejected with HTTP 409 Conflict");
 
         memoryRepo.close();
     }

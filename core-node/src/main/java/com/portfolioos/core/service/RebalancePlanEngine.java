@@ -103,19 +103,11 @@ public class RebalancePlanEngine {
             boolean hasSellSide = plan.sellSide() != null && plan.sellSide().totalRequired() != null && plan.sellSide().totalRequired().compareTo(BigDecimal.ZERO) > 0;
             boolean hasGoldBuy = plan.buySide() != null && plan.buySide().buckets() != null && plan.buySide().buckets().stream().anyMatch(b -> (b.bucket().contains("GOLD") || b.bucket().contains("COMMODITY")) && b.amountAllocated() != null && b.amountAllocated().compareTo(BigDecimal.ZERO) > 0);
             int drawdownTier = 0;
-            if (plan.trigger() != null) {
-                String rc = plan.trigger().reasonCode();
-                if (rc != null) {
-                    if (rc.contains("20")) drawdownTier = 20;
-                    else if (rc.contains("15")) drawdownTier = 15;
-                    else if (rc.contains("10")) drawdownTier = 10;
-                }
-                if (drawdownTier == 0 && plan.trigger().drawdownContext() != null) {
-                    String armed = plan.trigger().drawdownContext().armedTier();
-                    if ("TIER_20".equals(armed)) drawdownTier = 20;
-                    else if ("TIER_15".equals(armed)) drawdownTier = 15;
-                    else if ("TIER_10".equals(armed)) drawdownTier = 10;
-                }
+            if ("DRAWDOWN".equalsIgnoreCase(triggerType) && plan.trigger() != null && plan.trigger().drawdownContext() != null) {
+                String armed = plan.trigger().drawdownContext().armedTier();
+                if ("TIER_20".equals(armed)) drawdownTier = 20;
+                else if ("TIER_15".equals(armed)) drawdownTier = 15;
+                else if ("TIER_10".equals(armed)) drawdownTier = 10;
             }
             String detailsJson = "";
             try {
@@ -579,8 +571,7 @@ public class RebalancePlanEngine {
 
         double currentDd = (resolution != null && resolution.drawdownContext() != null)
             ? resolution.drawdownContext().currentDrawdownPct() : 0.0;
-        // F9 Policy Decision: Rebalance plan engine urgency is strictly confined to drawdown >= 15%.
-        boolean isUrgent = PortfolioConstants.isUrgentRebalance(currentDd, maxAbsDrift);
+        boolean isUrgent = PortfolioConstants.isUrgentRebalance(currentDd);
 
         List<com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep> allSteps = new ArrayList<>();
         BigDecimal totalTaxEstimate = BigDecimal.ZERO;

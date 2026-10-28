@@ -79,10 +79,18 @@ public class TriggerHistoryRepository {
                 "  drawdown_tier INTEGER DEFAULT 0" +
                 ")"
             );
-            try {
+            boolean hasColumn = false;
+            try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(rebalance_trigger_history)")) {
+                while (rs.next()) {
+                    String colName = rs.getString("name");
+                    if ("drawdown_tier".equalsIgnoreCase(colName)) {
+                        hasColumn = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasColumn) {
                 stmt.execute("ALTER TABLE rebalance_trigger_history ADD COLUMN drawdown_tier INTEGER DEFAULT 0");
-            } catch (SQLException ignored) {
-                // Column already exists
             }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize rebalance_trigger_history schema", e);
@@ -128,7 +136,7 @@ public class TriggerHistoryRepository {
         String detailsJson
     ) {
         int tier = 0;
-        if (reasonCode != null) {
+        if ("DRAWDOWN".equalsIgnoreCase(triggerType) && reasonCode != null) {
             if (reasonCode.contains("20")) tier = 20;
             else if (reasonCode.contains("15")) tier = 15;
             else if (reasonCode.contains("10")) tier = 10;
@@ -173,7 +181,7 @@ public class TriggerHistoryRepository {
     public int getMaxFiredDrawdownTierWithinDays(java.time.LocalDate today, int days) {
         String cutoff = today.minusDays(days).atStartOfDay().format(ISO_FORMATTER);
         String sql = "SELECT COALESCE(MAX(drawdown_tier), 0) FROM rebalance_trigger_history " +
-                     "WHERE has_sell_side = 1 AND fired_at >= ?";
+                     "WHERE trigger_type = 'DRAWDOWN' AND has_sell_side = 1 AND fired_at >= ?";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, cutoff);

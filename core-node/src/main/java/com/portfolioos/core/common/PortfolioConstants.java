@@ -25,7 +25,6 @@ public final class PortfolioConstants {
 
     public static final double DEFAULT_CORE_DRIFT_THRESHOLD_PCT = 5.0;
     public static final double DEFAULT_GOLD_DRIFT_THRESHOLD_PCT = 5.0;
-    public static final double URGENT_DRIFT_THRESHOLD_PCT = 10.0;
     public static final double CORE_INTERNAL_RATIO_BAND = 0.06;
 
     public static double calculateDrawdownPct(java.math.BigDecimal currentVal, java.math.BigDecimal rollingHigh) {
@@ -41,10 +40,15 @@ public final class PortfolioConstants {
             .doubleValue();
     }
 
-    public static boolean isUrgentRebalance(double drawdownPct, double absDriftPct) {
+    public static boolean isUrgentRebalance(double drawdownPct) {
         // Urgency strictly gates on deep market drawdown (>= 15%), never on drift alone,
         // preventing premature realization of STCG (20%) or exit load penalties during normal rallies.
         return drawdownPct >= DRAWDOWN_TIER_2_PCT;
+    }
+
+    @Deprecated
+    public static boolean isUrgentRebalance(double drawdownPct, double absDriftPct) {
+        return isUrgentRebalance(drawdownPct);
     }
 
     public static String deriveTriggerType(double drawdownPct) {

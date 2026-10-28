@@ -550,8 +550,7 @@ public class BucketEngine {
 
                     if (!flatBucketLots.isEmpty()) {
                         boolean urgent = PortfolioConstants.isUrgentRebalance(
-                            drawdownStatus.drawdownPct().doubleValue(),
-                            status.driftPct().abs().doubleValue()
+                            drawdownStatus.drawdownPct().doubleValue()
                         );
 
                         RebalanceWaterfallEngine.WaterfallResult waterfallResult =

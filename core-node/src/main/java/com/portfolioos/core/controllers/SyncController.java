@@ -471,9 +471,12 @@ public class SyncController {
         BigDecimal benchCurrent = bench != null && bench.currentLevel() != null ? BigDecimal.valueOf(bench.currentLevel()) : null;
         BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
 
+        com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(
+            triggerHistoryRepository != null ? triggerHistoryRepository : new com.portfolioos.core.persistence.TriggerHistoryRepository()
+        );
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
             openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, effectiveTrigger, null
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, effectiveTrigger, null, evaluator
         );
         return ResponseEntity.ok(plan);
     }
@@ -487,7 +490,8 @@ public class SyncController {
     public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> confirmRebalanceExecution(
         @RequestBody(required = false) Map<String, Object> req
     ) {
-        String triggerType = req != null && req.containsKey("trigger") ? req.get("trigger").toString() : "SCHEDULED";
+        String triggerType = req != null && req.containsKey("trigger") && req.get("trigger") != null ? req.get("trigger").toString() : null;
+        String effectiveTrigger = (triggerType != null && !triggerType.isBlank() && !"INDUCED".equalsIgnoreCase(triggerType)) ? triggerType : null;
         LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
         List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
         List<MatchedLot> matchedLots = state != null && state.fifoResult() != null ? state.fifoResult().matchedLots() : Collections.emptyList();
@@ -498,25 +502,27 @@ public class SyncController {
         BigDecimal benchCurrent = bench != null && bench.currentLevel() != null ? BigDecimal.valueOf(bench.currentLevel()) : null;
         BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
 
-        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPlan(
+        com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(
+            triggerHistoryRepository != null ? triggerHistoryRepository : new com.portfolioos.core.persistence.TriggerHistoryRepository()
+        );
+        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto plan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
             openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, triggerType, null
+            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, effectiveTrigger, null, evaluator
         );
 
-        // F12: Verify plan digest and bind approved planId
-        String approvedDigest = req != null && req.containsKey("digest") ? req.get("digest").toString() : null;
-        if (approvedDigest != null && !approvedDigest.isBlank()) {
-            if (!approvedDigest.equalsIgnoreCase(plan.planDigest())) {
-                return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT).build();
-            }
+        // F12: Validate plan digest - MANDATORY on confirmed execution.
+        // A missing, blank, or mismatched digest rejects execution with 409 Conflict without side effects.
+        String approvedDigest = req != null && req.containsKey("digest") && req.get("digest") != null ? req.get("digest").toString().trim() : null;
+        if (approvedDigest == null || approvedDigest.isBlank() || !approvedDigest.equalsIgnoreCase(plan.planDigest())) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.CONFLICT).build();
         }
 
-        String approvedPlanId = req != null && req.containsKey("planId") ? req.get("planId").toString() : null;
+        String approvedPlanId = req != null && req.containsKey("planId") && req.get("planId") != null ? req.get("planId").toString().trim() : null;
         if (approvedPlanId != null && !approvedPlanId.isBlank()) {
             plan = plan.withPlanId(approvedPlanId);
         }
 
-        // F12: Confirm execution snapshot persistence
+        // F12: Confirm execution snapshot persistence - records trigger and snapshot EXACTLY ONCE under approved planId
         com.portfolioos.core.service.RebalancePlanEngine.confirmPlanExecution(plan, triggerHistoryRepository);
 
         return ResponseEntity.ok(plan);
