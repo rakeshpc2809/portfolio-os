@@ -52,6 +52,7 @@ core-node/data/
 quant-sidecar/data/
 core-node/src/main/resources/data/*
 !core-node/src/main/resources/data/fund_constituents.json
+!core-node/src/main/resources/data/PROVENANCE.md
 home/
 *.db
 *.duckdb
