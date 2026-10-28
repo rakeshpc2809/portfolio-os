@@ -74,12 +74,7 @@ object LocalTradeSimulator {
 
             val unitsFromLot = min(remainingUnitsToSell, lot.units)
             val effectiveCostPerUnit = if (lot.grandfatheredNav != null && lot.grandfatheredNav > 0.0) {
-                val fmvFloor = max(lot.costPerUnit, lot.grandfatheredNav)
-                if (request.pricePerUnit >= lot.costPerUnit) {
-                    min(request.pricePerUnit, fmvFloor)
-                } else {
-                    lot.costPerUnit
-                }
+                max(lot.costPerUnit, min(lot.grandfatheredNav, request.pricePerUnit))
             } else {
                 lot.costPerUnit
             }
