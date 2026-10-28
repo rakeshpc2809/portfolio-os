@@ -68,11 +68,15 @@ public class TaxClassifier {
         TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
         return switch (category) {
             case DEBT_SPECIFIED_50AA -> {
-                // Section 50AA Finance Act (No. 2) 2024 Temporal Branching:
-                // Purchased Post April 1, 2023 -> Always Short-Term (Slab Rate)
+                // Dual-Act Statutory Traceability (FY 2026-27):
+                // - Income-tax Act 1961: Sec 50AA (Specified Mutual Funds post-Apr-2023 deemed STCG),
+                //   Sec 70 / 112A (per Finance No. 2 Act 2024), and Sec 112 (12.5% unindexed LTCG >= 730d)
+                // - Income-tax Act 2025: Sec 108 (Intra-head capital loss set-off and 24-month unlisted threshold)
+                // Temporal Branching:
+                // Purchased Post April 1, 2023 -> Always Short-Term (Slab Rate) per ITA 1961 Sec 50AA
                 // Purchased Pre April 1, 2023 (Legacy Debt Fund):
-                // - Sold Post July 23, 2024: > 24 months (730d) -> LTCG @ 12.5% (no indexation); else STCG
-                // - Sold Pre July 23, 2024: > 36 months (1095d) -> LTCG @ 20% (with indexation); else STCG
+                // - Sold Post July 23, 2024: >= 24 months (730d) -> LTCG @ 12.5% (no indexation per ITA 1961 Sec 112 / ITA 2025); else STCG @ slab rate
+                // - Sold Pre July 23, 2024: >= 36 months (1095d) -> LTCG @ 20% (with indexation); else STCG
                 java.time.LocalDate apr2023Cutoff = java.time.LocalDate.of(2023, 4, 1);
                 java.time.LocalDate jul2024Cutoff = java.time.LocalDate.of(2024, 7, 23);
 

@@ -100,6 +100,9 @@ object LocalTradeSimulator {
                     upperClass.contains("INTERNATIONAL") || upperClass.contains("UNLISTED")
 
             if (isSpecifiedDebt) {
+                // Dual-Act Statutory Traceability (FY 2026-27):
+                // ITA 1961 Sec 50AA (post-April 1, 2023 acquisitions deemed STCG) /
+                // Finance (No. 2) Act 2024 Sec 112 & ITA 2025 (pre-April 1, 2023 legacy debt >= 730d taxed @ 12.5% without indexation)
                 val isLegacyDebt = buyDate.isBefore(LocalDate.of(2023, 4, 1))
                 if (isLegacyDebt && holdingDays >= 730L) {
                     if (gainForSlice >= 0.0) grossLtcgNonEquity += gainForSlice else grossLtclNonEquity += -gainForSlice
@@ -135,7 +138,8 @@ object LocalTradeSimulator {
             }
         } ?: LTCG_EXEMPTION_LIMIT
 
-        // Income-tax Act, 2025 Section 108 Intra-head loss set-off:
+        // Dual-Act Statutory Basis (FY 2026-27):
+        // Income-tax Act 1961 Sec 70 (Intra-head set-off) & Sec 112A / Income-tax Act 2025 Sec 108:
         // STCL sets off against STCG first
         val taxableStcg = max(0.0, netStcgEquity)
         val unabsorbedStcl = max(0.0, -netStcgEquity)

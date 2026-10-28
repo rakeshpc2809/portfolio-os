@@ -144,6 +144,18 @@ public class RebalancePlanDtos {
             );
         }
 
+        public RebalancePlanDto(RebalanceTriggerDto trigger, BuySidePlanDto buySide) {
+            this("PLAN-" + System.currentTimeMillis(), "", trigger, null, buySide, null, null);
+        }
+
+        public RebalancePlanDto(DrawdownContextDto drawdownContext, BuySidePlanDto buySide) {
+            this(new RebalanceTriggerDto(drawdownContext), buySide);
+        }
+
+        public DrawdownContextDto drawdownContext() {
+            return trigger != null ? trigger.drawdownContext() : null;
+        }
+
         public RebalancePlanDto withPlanId(String newPlanId) {
             return new RebalancePlanDto(
                 newPlanId,
@@ -261,6 +273,14 @@ public class RebalancePlanDtos {
             );
         }
 
+        public RebalanceTriggerDto(String type) {
+            this(type, "", "", "", null);
+        }
+
+        public RebalanceTriggerDto(DrawdownContextDto drawdownContext) {
+            this("DRAWDOWN", "", "", "", drawdownContext);
+        }
+
         public boolean isInduced() {
             return "INDUCED".equals(legacyTriggerType);
         }
@@ -293,6 +313,10 @@ public class RebalancePlanDtos {
             double nextTierDistancePct
         ) {
             this(currentDrawdownPct, rollingHighValue, rollingHighDate, currentValue, armedTier, nextTier, nextTierDistancePct, "AVAILABLE");
+        }
+
+        public DrawdownContextDto(double currentDrawdownPct) {
+            this(currentDrawdownPct, BigDecimal.ZERO, null, BigDecimal.ZERO, "NONE", "TIER_10", 0.0, "AVAILABLE");
         }
 
         public static DrawdownContextDto unavailable() {
@@ -538,7 +562,11 @@ public class RebalancePlanDtos {
         BigDecimal totalToInvest,
         boolean isManualLumpsum,
         List<RebalanceBucketAllocationDto> buckets
-    ) {}
+    ) {
+        public BuySidePlanDto(BigDecimal totalToInvest, List<RebalanceBucketAllocationDto> buckets) {
+            this(totalToInvest, false, buckets);
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RebalanceBucketAllocationDto(
@@ -548,7 +576,11 @@ public class RebalancePlanDtos {
         double postRebalancePct,
         BigDecimal amountAllocated,
         List<FundAllocationDto> fundBreakdown
-    ) {}
+    ) {
+        public RebalanceBucketAllocationDto(String bucket, double targetPct, double currentPct) {
+            this(bucket, targetPct, currentPct, currentPct, BigDecimal.ZERO, List.of());
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record FundAllocationDto(

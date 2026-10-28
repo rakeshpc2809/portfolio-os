@@ -1199,4 +1199,121 @@ public class RebalancePlanEngine {
         }
         return rawBucket;
     }
+
+    /**
+     * Core Lumpsum Allocation Parity Helper.
+     * Computes lump-sum deployment amounts across portfolio buckets given an available cash corpus
+     * and an existing RebalancePlanDto, implementing the identical 2-step priority contract as
+     * mobile's LocalTradeSimulator.allocateLumpsum:
+     * 1. Gold Floor Backstop: If trigger.type() is "GOLD_FLOOR_BACKSTOP", route up to 50% of the Gold
+     *    bucket deficit first (min(remainingCash, goldTargetAmount * 0.50)).
+     * 2. Drawdown Regime Exclusion & Proportional Allocation: If drawdownPct >= 10.0, exclude LIQUID_BUFFER
+     *    and ARBITRAGE from fresh capital injection, distributing remaining cash proportionally to
+     *    underweight bucket deficits (or target weights if none are underweight).
+     *
+     * @param availableCash Cash amount available for lump-sum deployment
+     * @param rebalancePlan Existing rebalance plan containing target buckets and trigger/drawdown context
+     * @return Map of bucket name to allocated lump-sum deployment amount
+     */
+    public static Map<String, BigDecimal> allocateLumpsum(BigDecimal availableCash, RebalancePlanDto rebalancePlan) {
+        if (availableCash == null || availableCash.compareTo(BigDecimal.ZERO) <= 0 || rebalancePlan == null) {
+            return Map.of();
+        }
+        BuySidePlanDto buySide = rebalancePlan.buySide();
+        List<RebalanceBucketAllocationDto> buckets = buySide != null ? buySide.buckets() : null;
+        if (buckets == null || buckets.isEmpty()) {
+            return Map.of();
+        }
+
+        BigDecimal remainingCash = availableCash;
+        Map<String, BigDecimal> allocations = new LinkedHashMap<>();
+
+        String triggerType = rebalancePlan.trigger() != null ? rebalancePlan.trigger().type() : null;
+        double drawdownPct = 0.0;
+        if (rebalancePlan.trigger() != null && rebalancePlan.trigger().drawdownContext() != null) {
+            drawdownPct = rebalancePlan.trigger().drawdownContext().currentDrawdownPct();
+        }
+
+        // 1. Gold Floor Backstop: When trigger is GOLD_FLOOR_BACKSTOP, route up to 50% of the Gold gap first
+        if ("GOLD_FLOOR_BACKSTOP".equalsIgnoreCase(triggerType)) {
+            RebalanceBucketAllocationDto goldBucket = null;
+            for (RebalanceBucketAllocationDto b : buckets) {
+                String nameUpper = b.bucket().toUpperCase();
+                if (nameUpper.contains("GOLD") || nameUpper.contains("COMMODITY") || nameUpper.contains("HEDGE")) {
+                    goldBucket = b;
+                    break;
+                }
+            }
+            if (goldBucket != null) {
+                double goldGapPct = Math.max(0.0, goldBucket.targetPct() - goldBucket.currentPct());
+                if (goldGapPct > 0.0) {
+                    BigDecimal baseCorpus = (buySide.totalToInvest() != null && buySide.totalToInvest().compareTo(BigDecimal.ZERO) > 0)
+                        ? buySide.totalToInvest()
+                        : availableCash;
+                    BigDecimal goldTargetAmount = baseCorpus.multiply(BigDecimal.valueOf(goldGapPct / 100.0));
+                    BigDecimal halfGap = goldTargetAmount.multiply(BigDecimal.valueOf(0.50));
+                    BigDecimal backstopFill = halfGap.compareTo(BigDecimal.ZERO) > 0
+                        ? remainingCash.min(halfGap)
+                        : remainingCash.min(availableCash.multiply(BigDecimal.valueOf(0.50)));
+                    allocations.put(goldBucket.bucket(), backstopFill.setScale(2, RoundingMode.HALF_UP));
+                    remainingCash = remainingCash.subtract(backstopFill);
+                }
+            }
+        }
+
+        if (remainingCash.compareTo(BigDecimal.ZERO) <= 0) {
+            return allocations;
+        }
+
+        // 2. Drawdown Regime-Shifted Target Awareness:
+        // During market crash (drawdown >= 10%), never route fresh lumpsum cash into LIQUID_BUFFER / ARBITRAGE!
+        List<RebalanceBucketAllocationDto> effectiveBuckets = new ArrayList<>();
+        for (RebalanceBucketAllocationDto b : buckets) {
+            if (drawdownPct >= 10.0) {
+                String nameUpper = b.bucket().toUpperCase();
+                if (nameUpper.contains("LIQUID") || nameUpper.contains("ARBITRAGE")) {
+                    continue;
+                }
+            }
+            effectiveBuckets.add(b);
+        }
+
+        Map<String, Double> underweights = new LinkedHashMap<>();
+        for (RebalanceBucketAllocationDto b : effectiveBuckets) {
+            double deficit = b.targetPct() - b.currentPct();
+            if (deficit > 0.0) {
+                underweights.put(b.bucket(), deficit);
+            }
+        }
+
+        if (underweights.isEmpty()) {
+            double totalTarget = 0.0;
+            for (RebalanceBucketAllocationDto b : effectiveBuckets) {
+                totalTarget += b.targetPct();
+            }
+            if (totalTarget > 0.0) {
+                for (RebalanceBucketAllocationDto b : effectiveBuckets) {
+                    BigDecimal share = remainingCash.multiply(BigDecimal.valueOf(b.targetPct() / totalTarget));
+                    BigDecimal prev = allocations.getOrDefault(b.bucket(), BigDecimal.ZERO);
+                    allocations.put(b.bucket(), prev.add(share).setScale(2, RoundingMode.HALF_UP));
+                }
+            }
+            return allocations;
+        }
+
+        double totalDeficit = 0.0;
+        for (double deficit : underweights.values()) {
+            totalDeficit += deficit;
+        }
+
+        for (Map.Entry<String, Double> entry : underweights.entrySet()) {
+            String bucket = entry.getKey();
+            double deficit = entry.getValue();
+            BigDecimal share = remainingCash.multiply(BigDecimal.valueOf(deficit / totalDeficit));
+            BigDecimal prev = allocations.getOrDefault(bucket, BigDecimal.ZERO);
+            allocations.put(bucket, prev.add(share).setScale(2, RoundingMode.HALF_UP));
+        }
+
+        return allocations;
+    }
 }

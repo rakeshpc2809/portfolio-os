@@ -1342,5 +1342,61 @@ class RebalancePlanEngineTest {
         assertEquals(0, summaryTax.compareTo(sumOrderTax),
             "Sum of consolidated order tax amounts must match summary totalTaxEstimate bit-for-bit");
     }
+
+    @Test
+    @DisplayName("Cross-Tier Parity: allocateLumpsum respects Gold Floor Backstop and Crash Protection exclusions")
+    void testAllocateLumpsumGoldFloorBackstopAndCrashExclusionParity() {
+        // Scenario 24: allocateLumpsum Gold Floor Backstop 50% gap priority fill
+        RebalancePlanDto plan24 = new RebalancePlanDto(
+            new RebalancePlanDtos.RebalanceTriggerDto("GOLD_FLOOR_BACKSTOP"),
+            new RebalancePlanDtos.BuySidePlanDto(
+                BigDecimal.valueOf(100000.0),
+                List.of(
+                    new RebalanceBucketAllocationDto("GOLD_SILVER", 15.0, 10.0),
+                    new RebalanceBucketAllocationDto("EQUITY_CORE", 60.0, 50.0),
+                    new RebalanceBucketAllocationDto("LIQUID_BUFFER", 25.0, 20.0)
+                )
+            )
+        );
+
+        Map<String, BigDecimal> alloc24 = RebalancePlanEngine.allocateLumpsum(BigDecimal.valueOf(100000.0), plan24);
+        assertNotNull(alloc24);
+        BigDecimal goldAlloc = alloc24.getOrDefault("GOLD_SILVER", BigDecimal.ZERO);
+        assertTrue(goldAlloc.compareTo(BigDecimal.valueOf(2500.0)) >= 0,
+            "Gold must receive at least 50% gap priority fill (>= 2500)");
+        assertEquals(new BigDecimal("26875.00"), alloc24.get("GOLD_SILVER"));
+        assertEquals(new BigDecimal("48750.00"), alloc24.get("EQUITY_CORE"));
+        assertEquals(new BigDecimal("24375.00"), alloc24.get("LIQUID_BUFFER"));
+        BigDecimal sum24 = alloc24.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(0, BigDecimal.valueOf(100000.0).compareTo(sum24),
+            "Total allocated cash must conserve 100,000");
+
+        // Scenario 25: allocateLumpsum Crash Protection (drawdownPct >= 10.0%) Liquid Buffer & Arbitrage exclusion
+        RebalancePlanDto plan25 = new RebalancePlanDto(
+            new RebalancePlanDtos.DrawdownContextDto(15.0),
+            new RebalancePlanDtos.BuySidePlanDto(
+                BigDecimal.valueOf(100000.0),
+                List.of(
+                    new RebalanceBucketAllocationDto("GOLD_SILVER", 15.0, 10.0),
+                    new RebalanceBucketAllocationDto("EQUITY_CORE", 60.0, 50.0),
+                    new RebalanceBucketAllocationDto("LIQUID_BUFFER", 15.0, 10.0),
+                    new RebalanceBucketAllocationDto("ARBITRAGE", 10.0, 5.0)
+                )
+            )
+        );
+
+        Map<String, BigDecimal> alloc25 = RebalancePlanEngine.allocateLumpsum(BigDecimal.valueOf(100000.0), plan25);
+        assertNotNull(alloc25);
+        assertNull(alloc25.get("LIQUID_BUFFER"), "Liquid buffer must be excluded during 15% drawdown");
+        assertNull(alloc25.get("ARBITRAGE"), "Arbitrage must be excluded during 15% drawdown");
+        assertTrue(alloc25.get("EQUITY_CORE").compareTo(BigDecimal.ZERO) > 0, "Equity Core must receive allocation");
+        assertTrue(alloc25.get("GOLD_SILVER").compareTo(BigDecimal.ZERO) > 0, "Gold must receive allocation");
+        assertEquals(new BigDecimal("33333.33"), alloc25.get("GOLD_SILVER"));
+        assertEquals(new BigDecimal("66666.67"), alloc25.get("EQUITY_CORE"));
+        BigDecimal sum25 = alloc25.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(0, BigDecimal.valueOf(100000.0).compareTo(sum25),
+            "Total allocated cash must conserve 100,000");
+    }
 }
+
 

@@ -212,7 +212,7 @@ class LocalTradeSimulatorParityTest(
                     20000.0, 5000.0, 0.0, 1000.0 // Net STCG 5,000 @ 20% = 1,000
                 ),
 
-                // Scenario 8: STCL offsetting LTCG after wiping out STCG (Sec 70 cross-head set-off)
+                // Scenario 8: STCL offsetting LTCG after wiping out STCG (Dual-Act: ITA 1961 Sec 70 / ITA 2025 Sec 108 intra-head set-off)
                 arrayOf(
                     8,
                     "Unabsorbed STCL offsets Equity LTCG before exemption",
@@ -225,7 +225,7 @@ class LocalTradeSimulatorParityTest(
                     20000.0, 0.0, 0.0, 0.0
                 ),
 
-                // Scenario 9: LTCL offsetting Equity LTCG before Section 112A exemption
+                // Scenario 9: LTCL offsetting Equity LTCG before Section 112A exemption (Dual-Act: ITA 1961 Sec 70 & 112A / ITA 2025 Sec 108)
                 arrayOf(
                     9,
                     "LTCL offsets Equity LTCG before Section 112A exemption",
@@ -372,10 +372,10 @@ class LocalTradeSimulatorParityTest(
                     20000.0, 10000.0, 10000.0, 0.0 // Only 200 units sold, 20k proceeds, 10k exempt gain, 0 tax
                 ),
 
-                // Scenario 21: Legacy Pre-Apr-2023 Debt Fund LTCG (>= 730d @ 12.5%)
+                // Scenario 21: Legacy Pre-Apr-2023 Debt Fund LTCG (>= 730d @ 12.5% rate under ITA 1961 Sec 50AA & 112 per Finance No. 2 Act 2024 / ITA 2025)
                 arrayOf(
                     21,
-                    "Legacy Pre-Apr-2023 Debt Fund LTCG (>= 730d @ 12.5% rate)",
+                    "Legacy Pre-Apr-2023 Debt Fund LTCG (>= 730d @ 12.5% rate per ITA 1961 Sec 50AA & 112 / ITA 2025)",
                     makeSnapshot(listOf(
                         lot("INF209K01157", "2022-01-15", 1000.0, "DEBT_SPECIFIED_50AA", 100.0)
                     )),
@@ -384,10 +384,10 @@ class LocalTradeSimulatorParityTest(
                     150000.0, 50000.0, 0.0, 6250.0 // 50,000 gain @ 12.5% = 6,250
                 ),
 
-                // Scenario 22: Legacy Pre-Apr-2023 Debt Fund STCG (< 730d @ 30% slab)
+                // Scenario 22: Legacy Pre-Apr-2023 Debt Fund STCG (< 730d falls back to 30% slab rate under ITA 1961 Sec 50AA / ITA 2025)
                 arrayOf(
                     22,
-                    "Legacy Pre-Apr-2023 Debt Fund STCG (< 730d falls back to 30% slab rate)",
+                    "Legacy Pre-Apr-2023 Debt Fund STCG (< 730d falls back to 30% slab rate per ITA 1961 Sec 50AA / ITA 2025)",
                     makeSnapshot(listOf(
                         lot("INF209K01157", "2023-01-15", 1000.0, "DEBT_SPECIFIED_50AA", 100.0)
                     )),
