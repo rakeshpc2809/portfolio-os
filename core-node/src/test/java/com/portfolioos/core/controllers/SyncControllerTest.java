@@ -9,6 +9,7 @@ import com.portfolioos.core.service.LedgerCacheService;
 import com.portfolioos.core.service.PortfolioValuationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import java.io.File;
@@ -87,7 +88,7 @@ class SyncControllerTest {
     }
 
     @Test
-    void testSite1SnapshotFailsLoudlyWhenBenchmarkNull() {
+    void testSite1SnapshotGracefullyDegradesDrawdownStatusWhenBenchmarkNull() {
         com.portfolioos.core.persistence.DuckDbProjector emptyDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
             @Override
             public BenchmarkLevelMetrics getBenchmarkLevelMetrics(String benchmarkId) {
@@ -97,11 +98,18 @@ class SyncControllerTest {
         PortfolioValuationService emptyValService = new PortfolioValuationService(mockCacheService, emptyDuckDb, mockQuantSidecar);
         SyncController controller = new SyncController(mockCacheService, emptyValService, emptyDuckDb, mockQuantSidecar);
 
-        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
-            controller.getSnapshot("2026-27", null)
-        );
-        assertTrue(ex.getMessage().contains("CRITICAL BENCHMARK FAILURE"),
-            "Site 1 /getSnapshot must fail loudly with CRITICAL BENCHMARK FAILURE when benchmark feed is missing");
+        ResponseEntity<UnidirectionalSyncSnapshot> response = controller.getSnapshot("2026-27", null);
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        UnidirectionalSyncSnapshot snapshot = response.getBody();
+        assertNotNull(snapshot);
+        assertNotNull(snapshot.syncInfo());
+        assertEquals("UNAVAILABLE", snapshot.syncInfo().drawdownStatus());
+        assertFalse(snapshot.holdings().isEmpty());
+        assertFalse(snapshot.taxLots().isEmpty());
+        assertNotNull(snapshot.rebalancePlan());
+        assertNotNull(snapshot.rebalancePlan().trigger());
+        assertNotNull(snapshot.rebalancePlan().trigger().drawdownContext());
+        assertEquals("UNAVAILABLE", snapshot.rebalancePlan().trigger().drawdownContext().status());
     }
 
     @Test

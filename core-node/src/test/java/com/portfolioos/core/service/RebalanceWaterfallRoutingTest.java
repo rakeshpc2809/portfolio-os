@@ -236,14 +236,14 @@ class RebalanceWaterfallRoutingTest {
         LocalDate today = LocalDate.of(2026, 8, 26);
 
         // Gold Floor Backstop trigger (BUY-only action)
-        repository.recordExecution("plan-buy-1", "GOLD_FLOOR_BACKSTOP", "GOLD_FLOOR_BACKSTOP_TRIGGERED", today.atStartOfDay(), false, true, "{}");
+        repository.recordExecution("plan-buy-1", "GOLD_FLOOR_BACKSTOP", "GOLD_FLOOR_BACKSTOP_TRIGGERED", today.atStartOfDay(), false, true, "{}", 0);
 
         // Verify sell cooldown remains INACTIVE (0 sell executions recorded)
         Optional<java.time.LocalDateTime> lastSellOpt = repository.getLastSellSideFiringDate();
         assertTrue(lastSellOpt.isEmpty(), "BUY-only execution must NOT set last sell side firing date");
 
         // Sell execution (DRIFT trigger with SELL action)
-        repository.recordExecution("plan-sell-1", "DRIFT", "DRIFT_THRESHOLD_EXCEEDED", today.atStartOfDay(), true, true, "{}");
+        repository.recordExecution("plan-sell-1", "DRIFT", "DRIFT_THRESHOLD_EXCEEDED", today.atStartOfDay(), true, true, "{}", 0);
 
         // Verify sell cooldown is now ACTIVE
         Optional<java.time.LocalDateTime> lastSellAfter = repository.getLastSellSideFiringDate();
@@ -257,7 +257,7 @@ class RebalanceWaterfallRoutingTest {
         LocalDate day10 = LocalDate.of(2026, 8, 11);
 
         // Day 0: Arbitrage sell execution to fund floor breach
-        repository.recordExecution("plan-floor-sell", "DRIFT", "ARBITRAGE_FLOOR_BREACH", day0.atStartOfDay(), true, false, "{}");
+        repository.recordExecution("plan-floor-sell", "DRIFT", "ARBITRAGE_FLOOR_BREACH", day0.atStartOfDay(), true, false, "{}", 0);
 
         // Day 10 (10 days later): Small Cap ceiling breach (13%)
         // Total Corpus = 1,000,000. Small Cap = 130,000 (13% > 11.5% ceiling), Gold = 100,000 (10%), Core = 770,000 (77%)
@@ -290,7 +290,7 @@ class RebalanceWaterfallRoutingTest {
         LocalDate day0 = LocalDate.of(2026, 8, 1);
         LocalDate day10 = LocalDate.of(2026, 8, 11);
 
-        repository.recordExecution("plan-floor-sell", "DRIFT", "ARBITRAGE_FLOOR_BREACH", day0.atStartOfDay(), true, false, "{}");
+        repository.recordExecution("plan-floor-sell", "DRIFT", "ARBITRAGE_FLOOR_BREACH", day0.atStartOfDay(), true, false, "{}", 0);
 
         // Small Cap: 130,000 (breach), Gold: 150,000 (15% target - balanced), Core: 720,000
         Lot scLot = new Lot("lot-sc", "INF204K01K15", "Nippon Small Cap", day10.minusDays(400), new BigDecimal("1300"), new BigDecimal("1300"), new BigDecimal("100.00"), new BigDecimal("130000.00"), false, null);

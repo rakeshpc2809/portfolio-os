@@ -103,7 +103,7 @@ class RebalanceTriggerEvaluatorTest {
     @DisplayName("30-day sell cooldown blocks DRAWDOWN sell plan")
     void testSellCooldownBlocksDrawdown() {
         LocalDate firstDate = LocalDate.of(2026, 8, 1);
-        repository.recordExecution("plan-1", "DRAWDOWN", "DRAWDOWN_TIER_20", firstDate.atStartOfDay(), true, true, "");
+        repository.recordExecution("plan-1", "DRAWDOWN", "DRAWDOWN_TIER_20", firstDate.atStartOfDay(), true, true, "", 20);
 
         LocalDate testDate = LocalDate.of(2026, 8, 10); // 9 days later (< 30 days)
         RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
@@ -122,12 +122,12 @@ class RebalanceTriggerEvaluatorTest {
     @DisplayName("GOLD_FLOOR_BACKSTOP co-fires despite active 30-day sell cooldown")
     void testGoldFloorBackstopBypassesSellCooldown() {
         LocalDate lastSellDate = LocalDate.of(2026, 8, 1);
-        repository.recordExecution("plan-1", "DRAWDOWN", "DRAWDOWN_TIER_20", lastSellDate.atStartOfDay(), true, false, "");
+        repository.recordExecution("plan-1", "DRAWDOWN", "DRAWDOWN_TIER_20", lastSellDate.atStartOfDay(), true, false, "", 20);
 
         LocalDate testDate = LocalDate.of(2026, 8, 10); // 9 days after sell (< 30 days)
         // Gold idle for 7 months (> 6 months)
         LocalDate lastGoldBuyDate = testDate.minusMonths(7);
-        repository.recordExecution("plan-gold-old", "DRIFT", "DRIFT", lastGoldBuyDate.atStartOfDay(), false, true, "");
+        repository.recordExecution("plan-gold-old", "DRIFT", "DRIFT", lastGoldBuyDate.atStartOfDay(), false, true, "", 0);
 
         RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
             Collections.emptyList(), Collections.emptyMap(),
@@ -146,19 +146,19 @@ class RebalanceTriggerEvaluatorTest {
     @DisplayName("getLastGoldBuyDate contract queries has_gold_buy = 1 across all trigger types and ignores has_gold_buy = 0")
     void testLastGoldBuyDateQueryContract() {
         LocalDateTime t1 = LocalDateTime.of(2026, 1, 1, 10, 0);
-        repository.recordExecution("p1", "DRIFT", "DRIFT", t1, true, true, "");
+        repository.recordExecution("p1", "DRIFT", "DRIFT", t1, true, true, "", 0);
 
         assertTrue(repository.getLastGoldBuyDate().isPresent());
         assertEquals(t1, repository.getLastGoldBuyDate().get());
 
         LocalDateTime t2 = LocalDateTime.of(2026, 5, 1, 10, 0);
-        repository.recordExecution("p2", "DRAWDOWN", "DRAWDOWN_TIER_15", t2, true, true, "");
+        repository.recordExecution("p2", "DRAWDOWN", "DRAWDOWN_TIER_15", t2, true, true, "", 15);
 
         assertEquals(t2, repository.getLastGoldBuyDate().get(), "getLastGoldBuyDate must return latest timestamp where has_gold_buy = 1");
 
         // Add later row t3 with has_gold_buy = 0
         LocalDateTime t3 = LocalDateTime.of(2026, 6, 1, 10, 0);
-        repository.recordExecution("p3", "DRAWDOWN", "DRAWDOWN_TIER_20", t3, true, false, "");
+        repository.recordExecution("p3", "DRAWDOWN", "DRAWDOWN_TIER_20", t3, true, false, "", 20);
 
         // Must STILL return t2 (May 1), proving WHERE has_gold_buy = 1 filter is load-bearing!
         assertEquals(t2, repository.getLastGoldBuyDate().get(), "Must ignore later row t3 because has_gold_buy = 0");
@@ -241,7 +241,7 @@ class RebalanceTriggerEvaluatorTest {
         LocalDate lastSellDate = today.minusDays(10); // 10 days ago -> 30-day sell cooldown is ACTIVE!
 
         // Record prior sell to activate sell cooldown
-        repository.recordExecution("plan-prior-sell", "DRIFT", "CORE_DRIFT_TRIM", lastSellDate.atStartOfDay(), true, false, "{}");
+        repository.recordExecution("plan-prior-sell", "DRIFT", "CORE_DRIFT_TRIM", lastSellDate.atStartOfDay(), true, false, "{}", 0);
 
         // Portfolio setup with:
         // 1. Satellite bucket severely drifted (35% target + 5% band -> actual 45% -> DRIFT trigger)
@@ -286,7 +286,7 @@ class RebalanceTriggerEvaluatorTest {
         LocalDate lastSellDate = today.minusDays(10); // 10 days ago (< 30 days)
 
         // Step 1: Record a prior 10% drawdown execution 10 days ago
-        repository.recordExecution("plan-dd-10", "DRAWDOWN", "DRAWDOWN_TIER_10", lastSellDate.atStartOfDay(), true, true, "{}");
+        repository.recordExecution("plan-dd-10", "DRAWDOWN", "DRAWDOWN_TIER_10", lastSellDate.atStartOfDay(), true, true, "{}", 10);
 
         // Step 2: Market drops deeper to 15% drawdown (curr = 8500, high = 10000 -> 15.00% DD)
         RebalanceTriggerEvaluator.TriggerResolution resEscalated = evaluator.getCurrentStatus(
@@ -302,7 +302,7 @@ class RebalanceTriggerEvaluatorTest {
         assertTrue(resEscalated.hasGoldBuy());
 
         // Step 3: Record the 15% execution
-        repository.recordExecution("plan-dd-15", "DRAWDOWN", "DRAWDOWN_TIER_15", today.atStartOfDay(), true, true, "{}");
+        repository.recordExecution("plan-dd-15", "DRAWDOWN", "DRAWDOWN_TIER_15", today.atStartOfDay(), true, true, "{}", 15);
 
         // Step 4: 2 days later, market is still at 15% drawdown (same rung, not escalated)
         LocalDate twoDaysLater = today.plusDays(2);

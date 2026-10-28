@@ -404,10 +404,21 @@ public class SyncController {
         BigDecimal benchCurrent = benchMetrics != null && benchMetrics.currentLevel() != null ? BigDecimal.valueOf(benchMetrics.currentLevel()) : null;
         BigDecimal benchHigh = benchMetrics != null && benchMetrics.rollingHigh() != null ? BigDecimal.valueOf(benchMetrics.rollingHigh()) : null;
 
-        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto rebalancePlan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
-            openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
-            com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), resolvedFy, derivedTriggerType, null
-        );
+        com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto rebalancePlan = null;
+        try {
+            rebalancePlan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
+                openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
+                com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), resolvedFy, derivedTriggerType, null
+            );
+        } catch (IllegalStateException ex) {
+            if (ex.getMessage() != null && ex.getMessage().contains("CRITICAL BENCHMARK FAILURE")) {
+                log.warn("Benchmark data unavailable during /sync/snapshot — gracefully degrading drawdown status: {}", ex.getMessage());
+                syncInfo = syncInfo.withDrawdownStatus("UNAVAILABLE");
+                rebalancePlan = com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto.fallbackWithUnavailableDrawdown();
+            } else {
+                throw ex;
+            }
+        }
 
         List<com.portfolioos.core.dtos.ReportDtos.BucketStatusDto> bucketAllocation = valuationService.getBucketAllocationStatuses();
 

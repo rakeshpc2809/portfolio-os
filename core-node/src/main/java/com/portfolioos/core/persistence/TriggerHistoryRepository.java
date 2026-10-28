@@ -134,25 +134,6 @@ public class TriggerHistoryRepository {
         }
     }
 
-    @Deprecated
-    public void recordExecution(
-        String planId,
-        String triggerType,
-        String reasonCode,
-        LocalDateTime firedAt,
-        boolean hasSellSide,
-        boolean hasGoldBuy,
-        String detailsJson
-    ) {
-        int tier = 0;
-        if ("DRAWDOWN".equalsIgnoreCase(triggerType) && reasonCode != null) {
-            if (reasonCode.contains("20")) tier = 20;
-            else if (reasonCode.contains("15")) tier = 15;
-            else if (reasonCode.contains("10")) tier = 10;
-        }
-        recordExecution(planId, triggerType, reasonCode, firedAt, hasSellSide, hasGoldBuy, detailsJson, tier);
-    }
-
     public Optional<LocalDateTime> getLastSellSideFiringDate() {
         String sql = "SELECT MAX(fired_at) FROM rebalance_trigger_history WHERE has_sell_side = 1";
         try (Connection conn = getConnection();
