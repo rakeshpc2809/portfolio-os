@@ -414,7 +414,13 @@ public class SyncController {
             if (ex.getMessage() != null && ex.getMessage().contains("CRITICAL BENCHMARK FAILURE")) {
                 log.warn("Benchmark data unavailable during /sync/snapshot — gracefully degrading drawdown status: {}", ex.getMessage());
                 syncInfo = syncInfo.withDrawdownStatus("UNAVAILABLE");
-                rebalancePlan = com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto.fallbackWithUnavailableDrawdown();
+                BigDecimal actualHeadroom = null;
+                try {
+                    if (exStatus != null) {
+                        actualHeadroom = new BigDecimal(exStatus.exemptionRemaining());
+                    }
+                } catch (Exception ignored) {}
+                rebalancePlan = com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto.fallbackWithUnavailableDrawdown(actualHeadroom);
             } else {
                 throw ex;
             }

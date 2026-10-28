@@ -544,6 +544,7 @@
               drawdownPct={-Math.abs(Number(snapshot?.rebalance_plan?.trigger?.drawdown_context?.current_drawdown_pct ?? 0))}
               liquidBufferValue={Number(snapshot?.rebalance_plan?.buckets?.find(b => b.bucket.includes('LIQUID') || b.bucket.includes('ARBITRAGE'))?.current_value ?? 0)}
               quietMode={quietMode}
+              status={snapshot?.sync_info?.drawdown_status ?? snapshot?.rebalance_plan?.trigger?.drawdown_context?.status ?? 'AVAILABLE'}
             />
           </div>
 

@@ -105,6 +105,7 @@ export interface RebalancePlanDto {
       arbitrage_total_value?: number | string;
       arbitrage_exit_load_free_value?: number | string;
       recommended_deployment_amount?: number | string;
+      status?: string;
     };
   };
   summary?: {
@@ -148,6 +149,7 @@ export interface NetworthTrendDto {
 
 export interface SyncInfoDto {
   status: string;
+  drawdown_status?: string;
   last_sync_timestamp: string;
   stale_nav_count: number;
   ledger_hmac_verified: boolean;

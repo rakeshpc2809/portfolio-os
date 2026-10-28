@@ -245,6 +245,68 @@ class SnapshotCacheManagerUnitTest {
         SnapshotCacheManager.setDisconnectionNotificationFired(mockContext, false)
         assertFalse("Flag must reset to false upon successful sync reconnection", SnapshotCacheManager.hasDisconnectionNotificationFired(mockContext))
     }
+
+    @Test
+    fun saveSnapshot_degradedDrawdownStatus_preservesExistingCachedRebalancePlan() {
+        val validSnapshot = SyncSnapshot(
+            syncInfo = SyncInfoDto(
+                timestamp = 1788000000000L,
+                generatedAt = "2026-08-31T12:00:00Z",
+                drawdownStatus = "AVAILABLE"
+            ),
+            rebalancePlan = RebalancePlanDto(
+                planId = "PLAN-VALID-001",
+                trigger = RebalanceTriggerDto(type = "SCHEDULED"),
+                drawdownContext = DrawdownContextDto(status = "AVAILABLE", currentDrawdownPct = 4.2),
+                buySide = BuySidePlanDto(totalToInvest = 50000.0)
+            )
+        )
+        SnapshotCacheManager.saveSnapshot(mockContext, validSnapshot, isFullLedgerSync = true)
+
+        val degradedSnapshot = SyncSnapshot(
+            syncInfo = SyncInfoDto(
+                timestamp = 1788000005000L,
+                generatedAt = "2026-08-31T12:05:00Z",
+                drawdownStatus = "UNAVAILABLE"
+            ),
+            rebalancePlan = RebalancePlanDto(
+                planId = "PLAN-DEGRADED-002",
+                trigger = RebalanceTriggerDto(type = "UNAVAILABLE", reasonCode = "BENCHMARK_UNAVAILABLE"),
+                drawdownContext = DrawdownContextDto(status = "UNAVAILABLE", currentDrawdownPct = 0.0),
+                buySide = BuySidePlanDto(totalToInvest = 0.0)
+            )
+        )
+        SnapshotCacheManager.saveSnapshot(mockContext, degradedSnapshot, isFullLedgerSync = false)
+
+        val loaded = SnapshotCacheManager.loadSnapshot(mockContext)
+        assertNotNull(loaded)
+        assertEquals("2026-08-31T12:05:00Z", loaded?.syncInfo?.generatedAt)
+        // Rebalance plan should NOT have been overwritten by degraded plan
+        assertEquals("PLAN-VALID-001", loaded?.rebalancePlan?.planId)
+        assertEquals("AVAILABLE", loaded?.rebalancePlan?.drawdownContext?.status)
+    }
+
+    @Test
+    fun saveSnapshot_degradedDrawdownStatus_withNoExistingCache_doesNotCacheDegradedPlan() {
+        val degradedSnapshot = SyncSnapshot(
+            syncInfo = SyncInfoDto(
+                timestamp = 1788000005000L,
+                generatedAt = "2026-08-31T12:05:00Z",
+                drawdownStatus = "UNAVAILABLE"
+            ),
+            rebalancePlan = RebalancePlanDto(
+                planId = "PLAN-DEGRADED-001",
+                trigger = RebalanceTriggerDto(type = "UNAVAILABLE", reasonCode = "BENCHMARK_UNAVAILABLE"),
+                drawdownContext = DrawdownContextDto(status = "UNAVAILABLE", currentDrawdownPct = 0.0)
+            )
+        )
+        SnapshotCacheManager.saveSnapshot(mockContext, degradedSnapshot, isFullLedgerSync = true)
+
+        val loaded = SnapshotCacheManager.loadSnapshot(mockContext)
+        assertNotNull(loaded)
+        assertEquals("2026-08-31T12:05:00Z", loaded?.syncInfo?.generatedAt)
+        assertNull("Degraded rebalance plan must not be cached when no previous valid plan exists", loaded?.rebalancePlan)
+    }
 }
 
 /**

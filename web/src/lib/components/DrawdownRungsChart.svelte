@@ -6,12 +6,14 @@
     drawdownPct?: number;
     liquidBufferValue?: number;
     quietMode?: boolean;
+    status?: string;
   }
 
   let {
     drawdownPct = 0,
     liquidBufferValue = 0,
-    quietMode = false
+    quietMode = false,
+    status = 'AVAILABLE'
   }: Props = $props();
 
   const normalizedDrawdown = $derived(drawdownPct > 0 ? -drawdownPct : drawdownPct);
@@ -44,6 +46,7 @@
   ];
 
   const activeRung = $derived(() => {
+    if (status === 'UNAVAILABLE') return 0;
     if (normalizedDrawdown <= -20.0) return 3;
     if (normalizedDrawdown <= -15.0) return 2;
     if (normalizedDrawdown <= -10.0) return 1;
@@ -65,12 +68,18 @@
       </div>
     </div>
     <div class="market-status-pill mono">
-      <span class="status-dot {activeRung() > 0 ? 'active' : 'standby'}"></span>
-      <span>{activeRung() > 0 ? `RUNG ${activeRung()} ACTIVE` : 'REGIME: STANDBY (<10% DRAWDOWN)'}</span>
+      <span class="status-dot {status === 'UNAVAILABLE' ? 'warning' : (activeRung() > 0 ? 'active' : 'standby')}"></span>
+      <span>{status === 'UNAVAILABLE' ? 'BENCHMARK MONITORING UNAVAILABLE' : (activeRung() > 0 ? `RUNG ${activeRung()} ACTIVE` : 'REGIME: STANDBY (<10% DRAWDOWN)')}</span>
     </div>
   </div>
 
   <div class="drawdown-body">
+    {#if status === 'UNAVAILABLE'}
+      <div class="drawdown-unavailable-banner">
+        <AlertCircle size={16} class="text-amber" />
+        <span>Notice: Nifty 500 TRI benchmark feed is unseeded or unavailable. Drawdown-induced rebalancing is temporarily suspended while portfolio sync remains operational.</span>
+      </div>
+    {/if}
     <!-- Visual Gauge Bar -->
     <div class="gauge-container">
       <div class="gauge-labels">
@@ -207,6 +216,24 @@
   .status-dot.active {
     background: var(--accent-amber);
     box-shadow: 0 0 6px var(--accent-amber);
+  }
+  .status-dot.warning {
+    background: #f59e0b;
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.7);
+  }
+
+  .drawdown-unavailable-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: var(--radius-md);
+    color: #fcd34d;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.4;
   }
 
   .drawdown-body {

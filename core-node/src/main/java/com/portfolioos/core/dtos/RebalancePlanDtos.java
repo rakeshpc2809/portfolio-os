@@ -197,19 +197,18 @@ public class RebalancePlanDtos {
                 return "";
             }
         }
-        public static RebalancePlanDto fallbackWithUnavailableDrawdown() {
+        public static RebalancePlanDto fallbackWithUnavailableDrawdown(BigDecimal actualHeadroom) {
             DrawdownContextDto unavailableDd = DrawdownContextDto.unavailable();
             RebalanceTriggerDto trigger = new RebalanceTriggerDto(
-                "SCHEDULED",
+                "UNAVAILABLE",
                 "BENCHMARK_UNAVAILABLE",
                 "Benchmark data unavailable; drawdown evaluation suspended",
-                "STANDBY",
+                "SUSPENDED",
                 unavailableDd
             );
-            TaxSummaryDto taxSummary = new TaxSummaryDto(
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.valueOf(125000), BigDecimal.valueOf(125000)
-            );
+            TaxSummaryDto taxSummary = actualHeadroom != null
+                ? new TaxSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, actualHeadroom, actualHeadroom)
+                : null;
             SellSidePlanDto sellSide = new SellSidePlanDto(BigDecimal.ZERO, List.of(), taxSummary);
             BuySidePlanDto buySide = new BuySidePlanDto(BigDecimal.ZERO, false, List.of());
             ReasoningNarrativeDto narrative = new ReasoningNarrativeDto(
@@ -229,6 +228,10 @@ public class RebalancePlanDtos {
                 null,
                 null
             );
+        }
+
+        public static RebalancePlanDto fallbackWithUnavailableDrawdown() {
+            return fallbackWithUnavailableDrawdown((BigDecimal) null);
         }
     }
 

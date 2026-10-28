@@ -110,6 +110,20 @@ class SyncControllerTest {
         assertNotNull(snapshot.rebalancePlan().trigger());
         assertNotNull(snapshot.rebalancePlan().trigger().drawdownContext());
         assertEquals("UNAVAILABLE", snapshot.rebalancePlan().trigger().drawdownContext().status());
+        assertEquals("UNAVAILABLE", snapshot.rebalancePlan().trigger().type(), "Fallback plan must have UNAVAILABLE trigger type, not SCHEDULED");
+        assertEquals("BENCHMARK_UNAVAILABLE", snapshot.rebalancePlan().trigger().reasonCode());
+        assertEquals("SUSPENDED", snapshot.rebalancePlan().trigger().scheduledWindowLabel());
+        assertEquals(BigDecimal.ZERO, snapshot.rebalancePlan().sellSide().totalRequired());
+        assertTrue(snapshot.rebalancePlan().sellSide().orders().isEmpty());
+        assertEquals(BigDecimal.ZERO, snapshot.rebalancePlan().buySide().totalToInvest());
+
+        var taxSummary = snapshot.rebalancePlan().sellSide().taxSummary();
+        assertNotNull(taxSummary, "Tax summary should reflect actual headroom");
+        assertEquals(BigDecimal.ZERO, taxSummary.totalRealizedGain());
+        assertEquals(BigDecimal.ZERO, taxSummary.totalTaxEstimate());
+        assertNotNull(taxSummary.exemptionHeadroomBefore());
+        assertEquals(taxSummary.exemptionHeadroomBefore(), taxSummary.exemptionHeadroomAfter(),
+            "Headroom before and after must be identical when no sells occur");
     }
 
     @Test

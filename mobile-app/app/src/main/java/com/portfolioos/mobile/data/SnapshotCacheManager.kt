@@ -156,9 +156,35 @@ object SnapshotCacheManager {
     }
 
     fun saveSnapshot(context: Context, snapshot: SyncSnapshot, isFullLedgerSync: Boolean) {
+        val isDegraded = snapshot.syncInfo?.drawdownStatus == "UNAVAILABLE" ||
+            snapshot.rebalancePlan?.trigger?.type == "UNAVAILABLE" ||
+            snapshot.rebalancePlan?.trigger?.reasonCode == "BENCHMARK_UNAVAILABLE" ||
+            snapshot.rebalancePlan?.drawdownContext?.status == "UNAVAILABLE"
+
+        val snapshotToSave = if (isDegraded) {
+            val existing = runCatching {
+                val json = getPrefs(context).getString(KEY_SNAPSHOT_JSON, null)
+                if (json != null) Gson().fromJson(json, SyncSnapshot::class.java) else null
+            }.getOrNull()
+
+            val existingPlan = existing?.rebalancePlan
+            val isExistingValid = existingPlan != null &&
+                existingPlan.drawdownContext?.status != "UNAVAILABLE" &&
+                existingPlan.trigger?.type != "UNAVAILABLE" &&
+                existingPlan.trigger?.reasonCode != "BENCHMARK_UNAVAILABLE"
+
+            if (isExistingValid) {
+                snapshot.copy(rebalancePlan = existingPlan)
+            } else {
+                snapshot.copy(rebalancePlan = null)
+            }
+        } else {
+            snapshot
+        }
+
         val now = System.currentTimeMillis()
         val editor = getPrefs(context).edit()
-        editor.putString(KEY_SNAPSHOT_JSON, Gson().toJson(snapshot))
+        editor.putString(KEY_SNAPSHOT_JSON, Gson().toJson(snapshotToSave))
         editor.putLong(KEY_LAST_SYNC_TS, now)
         if (isFullLedgerSync) {
             editor.putLong(KEY_LAST_FULL_LEDGER_TS, now)

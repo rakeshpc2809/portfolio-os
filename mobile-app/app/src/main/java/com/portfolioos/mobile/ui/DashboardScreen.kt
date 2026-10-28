@@ -1966,14 +1966,27 @@ fun RebalanceWaterfallView(
                 )
             }
         } else if (sellSide == null || (fundSellList.isEmpty() && totalToInvest == 0.0)) {
+            val isDrawdownUnavailable = rebalancePlan.drawdownContext?.status == "UNAVAILABLE" ||
+                rebalancePlan.trigger?.type == "UNAVAILABLE" ||
+                rebalancePlan.trigger?.reasonCode == "BENCHMARK_UNAVAILABLE"
             item {
-                PortfolioStateCard(
-                    icon = Icons.Default.CheckCircle,
-                    iconTint = M3GreenPositive,
-                    title = "Portfolio Allocation Balanced",
-                    subtitle = "No Rebalance Action Required",
-                    description = "All asset categories remain within target allocation bands. LTCG exemption headroom is uncompromised."
-                )
+                if (isDrawdownUnavailable) {
+                    PortfolioStateCard(
+                        icon = Icons.Default.Warning,
+                        iconTint = M3AmberWarning,
+                        title = "Drawdown Monitoring Unavailable",
+                        subtitle = "Benchmark Feed Offline · Standby",
+                        description = "Nifty 500 TRI benchmark data is unseeded or offline. Multi-tier drawdown rebalance triggers are suspended until the next sync."
+                    )
+                } else {
+                    PortfolioStateCard(
+                        icon = Icons.Default.CheckCircle,
+                        iconTint = M3GreenPositive,
+                        title = "Portfolio Allocation Balanced",
+                        subtitle = "No Rebalance Action Required",
+                        description = "All asset categories remain within target allocation bands. LTCG exemption headroom is uncompromised."
+                    )
+                }
             }
         } else {
             // 1. HERO SUMMARY CARD (Sleek Compact Glass Pill Header)
@@ -2458,6 +2471,9 @@ fun RebalanceWaterfallView(
 @Composable
 fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto, isQuietMode: Boolean = false) {
     val ddCtx = plan.drawdownContext
+    val isUnavailable = ddCtx?.status == "UNAVAILABLE" ||
+        plan.trigger?.type == "UNAVAILABLE" ||
+        plan.trigger?.reasonCode == "BENCHMARK_UNAVAILABLE"
     val currentDd = ddCtx?.currentDrawdownPct ?: 0.0
     val thresholds = ddCtx?.tierThresholds?.let { list -> if (list.size >= 3) list else null } ?: listOf(5.0, 10.0, 15.0)
     val t1 = thresholds.getOrElse(0) { 5.0 }
@@ -2473,7 +2489,7 @@ fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto, isQuietMode: Boolean = fa
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
         shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.25f)),
+        border = BorderStroke(1.dp, if (isUnavailable) M3AmberWarning.copy(alpha = 0.4f) else Color(0xFF38BDF8).copy(alpha = 0.25f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -2484,22 +2500,60 @@ fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto, isQuietMode: Boolean = fa
             ) {
                 Text(
                     text = "MULTI-TIER DRAWDOWN TRIPWIRE GAUGE",
-                    color = Color(0xFF38BDF8),
+                    color = if (isUnavailable) M3AmberWarning else Color(0xFF38BDF8),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 1.sp
                 )
+                if (isUnavailable) {
+                    Surface(
+                        color = M3AmberWarning.copy(alpha = 0.2f),
+                        shape = ShapeTokens.PillShape
+                    ) {
+                        Text(
+                            text = "UNAVAILABLE",
+                            color = M3AmberWarning,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                } else {
+                    Surface(
+                        color = Color(0xFF38BDF8).copy(alpha = 0.15f),
+                        shape = ShapeTokens.PillShape
+                    ) {
+                        Text(
+                            text = if (isQuietMode) "Nominal · Capital Protected" else "%.1f%% DRAWDOWN".format(currentDd),
+                            color = Color(0xFF38BDF8),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            if (isUnavailable) {
+                Spacer(modifier = Modifier.height(10.dp))
                 Surface(
-                    color = Color(0xFF38BDF8).copy(alpha = 0.15f),
-                    shape = ShapeTokens.PillShape
+                    color = M3AmberWarning.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, M3AmberWarning.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = if (isQuietMode) "Nominal · Capital Protected" else "%.1f%% DRAWDOWN".format(currentDd),
-                        color = Color(0xFF38BDF8),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "⚠️ Drawdown monitoring unavailable: Benchmark index feed is unseeded or offline. Portfolio rebalance triggers remain on standby.",
+                            color = M3AmberWarning,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
 
@@ -2557,7 +2611,9 @@ fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto, isQuietMode: Boolean = fa
             ) {
                 Text("Distance to Next Tripwire:", color = M3TextMuted, fontSize = 10.sp)
                 Text(
-                    text = if (isQuietMode) {
+                    text = if (isUnavailable) {
+                        "Benchmark Offline · Suspended"
+                    } else if (isQuietMode) {
                         "Protected · Within Target Bounds"
                     } else {
                         "%.1f%%%s to %s".format(
@@ -2566,7 +2622,7 @@ fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto, isQuietMode: Boolean = fa
                             nextTier
                         )
                     },
-                    color = Color.White,
+                    color = if (isUnavailable) M3AmberWarning else Color.White,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace

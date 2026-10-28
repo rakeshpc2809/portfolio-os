@@ -36,7 +36,8 @@ data class DrawdownContextDto(
     @SerializedName("rolling_high_value") val rollingHighValue: Double = 0.0,
     @SerializedName("next_tier") val nextTier: String = "TIER_10",
     @SerializedName("next_tier_distance_pct") val nextTierDistancePct: Double = 0.0,
-    @SerializedName("tier_thresholds") val tierThresholds: List<Double> = listOf(5.0, 10.0, 15.0)
+    @SerializedName("tier_thresholds") val tierThresholds: List<Double> = listOf(5.0, 10.0, 15.0),
+    @SerializedName("status") val status: String = "AVAILABLE"
 )
 
 @Immutable
@@ -196,6 +197,7 @@ data class SyncInfoDto(
     @SerializedName("formatted_unrealized_gain") val formattedUnrealizedGain: String = "",
     @SerializedName("stale_nav_count") val staleNavCount: Int = 0,
     @SerializedName("has_stale_nav") val hasStaleNav: Boolean = false,
+    @SerializedName("drawdown_status") val drawdownStatus: String = "AVAILABLE",
     @SerializedName("ledger_age_days") val ledgerAgeDays: Long = 0L,
     @SerializedName("valuation_freshness_hours") val valuationFreshnessHours: Long = 0L
 )
