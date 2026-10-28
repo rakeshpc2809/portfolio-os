@@ -525,4 +525,81 @@ class RebalanceWaterfallEngineTest {
         BigDecimal sumDrag = aligned.stream().map(RebalanceWaterfallEngine.WaterfallStep::taxDrag).reduce(BigDecimal.ZERO, BigDecimal::add);
         assertEquals(0, net.totalNetTaxEstimate().compareTo(sumDrag));
     }
+
+    @Test
+    @DisplayName("F5: Remainder absorption ensures sum-to-the-paisa equality on mixed heads with 3-way fractional splits")
+    void testProrateSection70NettingWithMixedHeadsAndPaisaRounding() {
+        TaxRulesConfig rules = TaxRulesLoader.loadRules("2026-27");
+
+        // 3 Equity LTCG lots split equally: ₹10,000 each (Total ₹30,000)
+        RebalanceWaterfallEngine.WaterfallStep ltcg1 = new RebalanceWaterfallEngine.WaterfallStep(
+            WaterfallTier.LTCG_BEYOND_EXEMPTION, "LOT-L1", "INF109KC12U0", "ICICI LargeMidcap",
+            new BigDecimal("100"), new BigDecimal("20000.00"), new BigDecimal("10000.00"),
+            "LONG_TERM", new BigDecimal("1250.00"), "SEC_112A_TAXABLE_12_5", BigDecimal.ZERO, new BigDecimal("10000.00")
+        );
+        RebalanceWaterfallEngine.WaterfallStep ltcg2 = new RebalanceWaterfallEngine.WaterfallStep(
+            WaterfallTier.LTCG_BEYOND_EXEMPTION, "LOT-L2", "INF109KC12U0", "ICICI LargeMidcap",
+            new BigDecimal("100"), new BigDecimal("20000.00"), new BigDecimal("10000.00"),
+            "LONG_TERM", new BigDecimal("1250.00"), "SEC_112A_TAXABLE_12_5", BigDecimal.ZERO, new BigDecimal("10000.00")
+        );
+        RebalanceWaterfallEngine.WaterfallStep ltcg3 = new RebalanceWaterfallEngine.WaterfallStep(
+            WaterfallTier.LTCG_BEYOND_EXEMPTION, "LOT-L3", "INF109KC12U0", "ICICI LargeMidcap",
+            new BigDecimal("100"), new BigDecimal("20000.00"), new BigDecimal("10000.00"),
+            "LONG_TERM", new BigDecimal("1250.00"), "SEC_112A_TAXABLE_12_5", BigDecimal.ZERO, new BigDecimal("10000.00")
+        );
+
+        // 1 LTCL lot offsetting ₹10,000 of LTCG
+        RebalanceWaterfallEngine.WaterfallStep ltclStep = new RebalanceWaterfallEngine.WaterfallStep(
+            WaterfallTier.LOSS_HARVEST, "LOT-LTCL", "INF109KC12U0", "ICICI LargeMidcap",
+            new BigDecimal("50"), new BigDecimal("10000.00"), new BigDecimal("-10000.00"),
+            "LONG_TERM", BigDecimal.ZERO, "SEC_112A_EXEMPT", BigDecimal.ZERO, BigDecimal.ZERO
+        );
+
+        // 1 STCL lot with ₹5,000 loss
+        RebalanceWaterfallEngine.WaterfallStep stclStep = new RebalanceWaterfallEngine.WaterfallStep(
+            WaterfallTier.LOSS_HARVEST, "LOT-STCL", "INF109KC12U0", "ICICI LargeMidcap",
+            new BigDecimal("20"), new BigDecimal("5000.00"), new BigDecimal("-5000.00"),
+            "SHORT_TERM", BigDecimal.ZERO, "SLAB_RATE_STCG", BigDecimal.ZERO, BigDecimal.ZERO
+        );
+
+        // Netting: ₹30,000 LTCG - ₹10,000 LTCL = ₹20,000 LTCG.
+        // Then STCL of ₹5,000 sets off LTCG -> Net taxable LTCG = ₹15,000.
+        // Tax @ 12.5% on ₹15,000 = ₹1,875.00.
+        // Split 3 ways across ₹10k/₹10k/₹10k lots: ₹1,875 / 3 = ₹625.00 each exactly.
+        RebalancePlanEngine.Section70NettingResult net = new RebalancePlanEngine.Section70NettingResult(
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("15000.00"),
+            BigDecimal.ZERO, new BigDecimal("1875.00"), BigDecimal.ZERO
+        );
+
+        List<RebalanceWaterfallEngine.WaterfallStep> aligned = RebalanceWaterfallEngine.prorateSection70Netting(
+            List.of(ltcg1, ltcg2, ltcg3, ltclStep, stclStep), net, rules
+        );
+
+        assertEquals(5, aligned.size());
+        BigDecimal sumLotTax = aligned.stream()
+            .map(RebalanceWaterfallEngine.WaterfallStep::taxDrag)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Mathematical sum-to-the-paisa guarantee: sum of lot tax drags MUST equal net tax estimate exactly
+        assertEquals(0, net.totalNetTaxEstimate().compareTo(sumLotTax),
+            "Sum of lot-level tax drags must equal totalNetTaxEstimate down to the paisa");
+        assertEquals(new BigDecimal("1875.00"), sumLotTax);
+
+        // Also test indivisible remainder absorption: e.g. net tax ₹100.01 across 3 equal lots
+        RebalancePlanEngine.Section70NettingResult oddNet = new RebalancePlanEngine.Section70NettingResult(
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("800.08"),
+            BigDecimal.ZERO, new BigDecimal("100.01"), BigDecimal.ZERO
+        );
+        List<RebalanceWaterfallEngine.WaterfallStep> oddAligned = RebalanceWaterfallEngine.prorateSection70Netting(
+            List.of(ltcg1, ltcg2, ltcg3), oddNet, rules
+        );
+        BigDecimal oddSum = oddAligned.stream()
+            .map(RebalanceWaterfallEngine.WaterfallStep::taxDrag)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // ₹100.01 split across 3 equal lots: 33.34 + 33.34 + 33.33 (remainder) = 100.01
+        assertEquals(new BigDecimal("100.01"), oddSum);
+        assertEquals(new BigDecimal("33.34"), oddAligned.get(0).taxDrag());
+        assertEquals(new BigDecimal("33.34"), oddAligned.get(1).taxDrag());
+        assertEquals(new BigDecimal("33.33"), oddAligned.get(2).taxDrag());
+    }
 }
