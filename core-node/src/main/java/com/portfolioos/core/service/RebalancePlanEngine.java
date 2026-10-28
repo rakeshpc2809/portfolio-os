@@ -654,13 +654,6 @@ public class RebalancePlanEngine {
                 if (origLot == null || origLot.acquisitionDate() == null) {
                     throw new IllegalStateException("CRITICAL REBALANCE AUDIT FAILURE: Lot " + step.lotId() + " (" + step.assetId() + ") missing original lot metadata or acquisition date in open lots pool");
                 }
-                long holdingDays = ChronoUnit.DAYS.between(origLot.acquisitionDate(), today);
-                BigDecimal costBasis = step.proceeds().subtract(step.realizedGain()).max(BigDecimal.ZERO);
-
-                // F4 Single Source of Truth: Read tax metadata directly from WaterfallStep
-                String regime = step.taxRegime();
-                BigDecimal exempt = step.exemptionApplied();
-                BigDecimal taxable = step.taxableAmount();
 
                 totalGain = totalGain.add(step.realizedGain());
 
@@ -688,6 +681,50 @@ public class RebalancePlanEngine {
                         }
                     }
                 }
+            }
+        }
+
+        // Income-tax Act, 2025 Section 108 / ITA 1961 Section 70 Statutory Loss Netting
+        TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
+        Section70NettingResult nettingResult = applySection70Netting(
+            grossStcgEquity,
+            grossStcgSlab,
+            grossStcl,
+            grossLtcgEquity,
+            grossLtcgNonEquity,
+            grossLtcl,
+            headroomBefore,
+            rules
+        );
+
+        BigDecimal totalLtcgExempt = nettingResult.ltcgExemptionUsed();
+        BigDecimal totalStcgTaxable = nettingResult.netTaxableStcgEquity().add(nettingResult.netTaxableStcgSlab());
+        totalTaxEstimate = nettingResult.totalNetTaxEstimate();
+        BigDecimal exemptionHeadroomAfter = nettingResult.remainingHeadroomAfter();
+
+        // F5 Second Pass: Align DTO lot-level tax estimates with Section 70 statutory netting
+        List<com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep> alignedSteps =
+            com.portfolioos.core.valuation.RebalanceWaterfallEngine.prorateSection70Netting(allSteps, nettingResult, rules);
+
+        if (!alignedSteps.isEmpty()) {
+            for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep step : alignedSteps) {
+                Lot origLot = null;
+                if (openLots != null) {
+                    for (Lot l : openLots) {
+                        if (l.lotId() != null && l.lotId().equals(step.lotId())) {
+                            origLot = l;
+                            break;
+                        }
+                    }
+                }
+
+                long holdingDays = ChronoUnit.DAYS.between(origLot.acquisitionDate(), today);
+                BigDecimal costBasis = step.proceeds().subtract(step.realizedGain()).max(BigDecimal.ZERO);
+
+                // Read aligned tax metadata from WaterfallStep
+                String regime = step.taxRegime();
+                BigDecimal exempt = step.exemptionApplied();
+                BigDecimal taxable = step.taxableAmount();
 
                 RebalanceLotImpactDto lotImpact = new RebalanceLotImpactDto(
                     step.lotId(),
@@ -700,7 +737,8 @@ public class RebalancePlanEngine {
                     step.proceeds(),
                     step.realizedGain(),
                     step.taxTerm(),
-                    new LotTaxImpactDto(regime, exempt, taxable, step.taxDrag())
+                    new LotTaxImpactDto(regime, exempt, taxable, step.taxDrag(), step.lossOffsetApplied()),
+                    step.lossOffsetApplied()
                 );
 
                 BucketEngine.Bucket rawBucket = origLot != null ? BucketEngine.classifyAssetToBucket(origLot.assetId(), origLot.assetName()) : null;
@@ -751,24 +789,6 @@ public class RebalancePlanEngine {
             soldCoreAmount.compareTo(BigDecimal.ZERO) == 0 ? ((soldArbitrageAmount.compareTo(BigDecimal.ZERO) > 0 || soldLegacyAmount.compareTo(BigDecimal.ZERO) > 0) ? "COVERED_BY_PRIOR_TIERS" : "NO_TRIMMABLE_LOTS") : null,
             soldCoreLots
         ));
-
-        // Income-tax Act, 2025 Section 108 / ITA 1961 Section 70 Statutory Loss Netting
-        TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
-        Section70NettingResult nettingResult = applySection70Netting(
-            grossStcgEquity,
-            grossStcgSlab,
-            grossStcl,
-            grossLtcgEquity,
-            grossLtcgNonEquity,
-            grossLtcl,
-            headroomBefore,
-            rules
-        );
-
-        BigDecimal totalLtcgExempt = nettingResult.ltcgExemptionUsed();
-        BigDecimal totalStcgTaxable = nettingResult.netTaxableStcgEquity().add(nettingResult.netTaxableStcgSlab());
-        totalTaxEstimate = nettingResult.totalNetTaxEstimate();
-        BigDecimal exemptionHeadroomAfter = nettingResult.remainingHeadroomAfter();
 
         TaxSummaryDto taxSummary = new TaxSummaryDto(
             totalGain,

@@ -14,8 +14,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import com.portfolioos.core.service.RebalancePlanEngine;
 
 public class RebalanceWaterfallEngine {
 
@@ -31,8 +33,26 @@ public class RebalanceWaterfallEngine {
         BigDecimal taxDrag,
         String taxRegime,
         BigDecimal exemptionApplied,
-        BigDecimal taxableAmount
-    ) {}
+        BigDecimal taxableAmount,
+        boolean lossOffsetApplied
+    ) {
+        public WaterfallStep(
+            WaterfallTier tier,
+            String lotId,
+            String assetId,
+            String assetName,
+            BigDecimal unitsSold,
+            BigDecimal proceeds,
+            BigDecimal realizedGain,
+            String taxTerm,
+            BigDecimal taxDrag,
+            String taxRegime,
+            BigDecimal exemptionApplied,
+            BigDecimal taxableAmount
+        ) {
+            this(tier, lotId, assetId, assetName, unitsSold, proceeds, realizedGain, taxTerm, taxDrag, taxRegime, exemptionApplied, taxableAmount, false);
+        }
+    }
 
     public record WaterfallResult(
         BucketEngine.Bucket bucket,
@@ -178,7 +198,40 @@ public class RebalanceWaterfallEngine {
             deferralReason = "No LTCG-eligible lots or urgency flag to justify STCG sale";
         }
 
-        BigDecimal exemptionConsumed = initialExemption.subtract(unusedExemption);
+        // F5 Section 70 Netting Second Pass on Waterfall Steps
+        boolean hasLossSteps = steps.stream().anyMatch(s -> s.realizedGain().compareTo(BigDecimal.ZERO) < 0);
+        if (hasLossSteps) {
+            BigDecimal gStcgEq = BigDecimal.ZERO;
+            BigDecimal gStcgSlab = BigDecimal.ZERO;
+            BigDecimal gStcl = BigDecimal.ZERO;
+            BigDecimal gLtcgEq = BigDecimal.ZERO;
+            BigDecimal gLtcgNonEq = BigDecimal.ZERO;
+            BigDecimal gLtcl = BigDecimal.ZERO;
+            for (WaterfallStep s : steps) {
+                boolean isLong = "LONG_TERM".equals(s.taxTerm());
+                AssetCategory cat = TaxClassifier.detectCategory(s.assetId(), s.assetName());
+                if (s.realizedGain().compareTo(BigDecimal.ZERO) < 0) {
+                    if (isLong) gLtcl = gLtcl.add(s.realizedGain().abs());
+                    else gStcl = gStcl.add(s.realizedGain().abs());
+                } else {
+                    if (isLong) {
+                        if (cat == AssetCategory.EQUITY) gLtcgEq = gLtcgEq.add(s.realizedGain());
+                        else gLtcgNonEq = gLtcgNonEq.add(s.realizedGain());
+                    } else {
+                        if (cat == AssetCategory.EQUITY) gStcgEq = gStcgEq.add(s.realizedGain());
+                        else gStcgSlab = gStcgSlab.add(s.realizedGain());
+                    }
+                }
+            }
+            RebalancePlanEngine.Section70NettingResult net = RebalancePlanEngine.applySection70Netting(
+                gStcgEq, gStcgSlab, gStcl, gLtcgEq, gLtcgNonEq, gLtcl, initialExemption, rules
+            );
+            steps = prorateSection70Netting(steps, net, rules);
+            totalTaxDrag = net.totalNetTaxEstimate();
+            unusedExemption = net.remainingHeadroomAfter();
+        }
+
+        BigDecimal exemptionConsumed = initialExemption.subtract(unusedExemption).max(BigDecimal.ZERO);
 
         return new WaterfallResult(
             bucket,
@@ -190,6 +243,172 @@ public class RebalanceWaterfallEngine {
             totalTaxDrag.setScale(2, RoundingMode.HALF_UP),
             exemptionConsumed.setScale(2, RoundingMode.HALF_UP)
         );
+    }
+
+    public static List<WaterfallStep> prorateSection70Netting(
+        List<WaterfallStep> steps,
+        RebalancePlanEngine.Section70NettingResult nettingResult,
+        TaxRulesConfig rules
+    ) {
+        if (steps == null || steps.isEmpty()) {
+            return List.of();
+        }
+        if (nettingResult == null || rules == null) {
+            return steps;
+        }
+
+        List<WaterfallStep> stcgSlabSteps = new ArrayList<>();
+        List<WaterfallStep> stcgEqSteps = new ArrayList<>();
+        List<WaterfallStep> ltcgNonEqSteps = new ArrayList<>();
+        List<WaterfallStep> ltcgEqSteps = new ArrayList<>();
+
+        BigDecimal sumStcgSlab = BigDecimal.ZERO;
+        BigDecimal sumStcgEq = BigDecimal.ZERO;
+        BigDecimal sumLtcgNonEq = BigDecimal.ZERO;
+        BigDecimal sumLtcgEq = BigDecimal.ZERO;
+
+        for (WaterfallStep step : steps) {
+            if (step.realizedGain().compareTo(BigDecimal.ZERO) > 0) {
+                boolean isLtcg = "LONG_TERM".equals(step.taxTerm());
+                AssetCategory cat = TaxClassifier.detectCategory(step.assetId(), step.assetName());
+                if (isLtcg) {
+                    if (cat == AssetCategory.EQUITY) {
+                        ltcgEqSteps.add(step);
+                        sumLtcgEq = sumLtcgEq.add(step.realizedGain());
+                    } else {
+                        ltcgNonEqSteps.add(step);
+                        sumLtcgNonEq = sumLtcgNonEq.add(step.realizedGain());
+                    }
+                } else {
+                    if (cat == AssetCategory.EQUITY) {
+                        stcgEqSteps.add(step);
+                        sumStcgEq = sumStcgEq.add(step.realizedGain());
+                    } else {
+                        stcgSlabSteps.add(step);
+                        sumStcgSlab = sumStcgSlab.add(step.realizedGain());
+                    }
+                }
+            }
+        }
+
+        Map<WaterfallStep, WaterfallStep> replacedMap = new IdentityHashMap<>();
+
+        // 1. STCG Slab
+        BigDecimal netTaxStcgSlab = nettingResult.netTaxableStcgSlab().multiply(rules.slabRate()).setScale(2, RoundingMode.HALF_UP);
+        boolean slabLossOffset = sumStcgSlab.compareTo(BigDecimal.ZERO) > 0 && nettingResult.netTaxableStcgSlab().compareTo(sumStcgSlab) < 0;
+        BigDecimal remTaxSlab = netTaxStcgSlab;
+        BigDecimal remTaxableSlab = nettingResult.netTaxableStcgSlab();
+        for (int i = 0; i < stcgSlabSteps.size(); i++) {
+            WaterfallStep s = stcgSlabSteps.get(i);
+            BigDecimal lotTax;
+            BigDecimal lotTaxable;
+            if (i == stcgSlabSteps.size() - 1) {
+                lotTax = remTaxSlab;
+                lotTaxable = remTaxableSlab;
+            } else {
+                lotTax = netTaxStcgSlab.multiply(s.realizedGain()).divide(sumStcgSlab, 2, RoundingMode.HALF_UP);
+                lotTaxable = nettingResult.netTaxableStcgSlab().multiply(s.realizedGain()).divide(sumStcgSlab, 2, RoundingMode.HALF_UP);
+                remTaxSlab = remTaxSlab.subtract(lotTax);
+                remTaxableSlab = remTaxableSlab.subtract(lotTaxable);
+            }
+            replacedMap.put(s, new WaterfallStep(
+                s.tier(), s.lotId(), s.assetId(), s.assetName(), s.unitsSold(), s.proceeds(), s.realizedGain(),
+                s.taxTerm(), lotTax, s.taxRegime(), s.exemptionApplied(), lotTaxable, slabLossOffset
+            ));
+        }
+
+        // 2. STCG Equity
+        BigDecimal netTaxStcgEq = nettingResult.netTaxableStcgEquity().multiply(rules.equityStcgRate()).setScale(2, RoundingMode.HALF_UP);
+        boolean stcgEqLossOffset = sumStcgEq.compareTo(BigDecimal.ZERO) > 0 && nettingResult.netTaxableStcgEquity().compareTo(sumStcgEq) < 0;
+        BigDecimal remTaxStcgEq = netTaxStcgEq;
+        BigDecimal remTaxableStcgEq = nettingResult.netTaxableStcgEquity();
+        for (int i = 0; i < stcgEqSteps.size(); i++) {
+            WaterfallStep s = stcgEqSteps.get(i);
+            BigDecimal lotTax;
+            BigDecimal lotTaxable;
+            if (i == stcgEqSteps.size() - 1) {
+                lotTax = remTaxStcgEq;
+                lotTaxable = remTaxableStcgEq;
+            } else {
+                lotTax = netTaxStcgEq.multiply(s.realizedGain()).divide(sumStcgEq, 2, RoundingMode.HALF_UP);
+                lotTaxable = nettingResult.netTaxableStcgEquity().multiply(s.realizedGain()).divide(sumStcgEq, 2, RoundingMode.HALF_UP);
+                remTaxStcgEq = remTaxStcgEq.subtract(lotTax);
+                remTaxableStcgEq = remTaxableStcgEq.subtract(lotTaxable);
+            }
+            replacedMap.put(s, new WaterfallStep(
+                s.tier(), s.lotId(), s.assetId(), s.assetName(), s.unitsSold(), s.proceeds(), s.realizedGain(),
+                s.taxTerm(), lotTax, s.taxRegime(), s.exemptionApplied(), lotTaxable, stcgEqLossOffset
+            ));
+        }
+
+        // 3. LTCG Non-Equity
+        BigDecimal netTaxLtcgNonEq = nettingResult.netTaxableLtcgNonEquity().multiply(rules.goldInternationalLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+        boolean ltcgNonEqLossOffset = sumLtcgNonEq.compareTo(BigDecimal.ZERO) > 0 && nettingResult.netTaxableLtcgNonEquity().compareTo(sumLtcgNonEq) < 0;
+        BigDecimal remTaxLtcgNonEq = netTaxLtcgNonEq;
+        BigDecimal remTaxableLtcgNonEq = nettingResult.netTaxableLtcgNonEquity();
+        for (int i = 0; i < ltcgNonEqSteps.size(); i++) {
+            WaterfallStep s = ltcgNonEqSteps.get(i);
+            BigDecimal lotTax;
+            BigDecimal lotTaxable;
+            if (i == ltcgNonEqSteps.size() - 1) {
+                lotTax = remTaxLtcgNonEq;
+                lotTaxable = remTaxableLtcgNonEq;
+            } else {
+                lotTax = netTaxLtcgNonEq.multiply(s.realizedGain()).divide(sumLtcgNonEq, 2, RoundingMode.HALF_UP);
+                lotTaxable = nettingResult.netTaxableLtcgNonEquity().multiply(s.realizedGain()).divide(sumLtcgNonEq, 2, RoundingMode.HALF_UP);
+                remTaxLtcgNonEq = remTaxLtcgNonEq.subtract(lotTax);
+                remTaxableLtcgNonEq = remTaxableLtcgNonEq.subtract(lotTaxable);
+            }
+            replacedMap.put(s, new WaterfallStep(
+                s.tier(), s.lotId(), s.assetId(), s.assetName(), s.unitsSold(), s.proceeds(), s.realizedGain(),
+                s.taxTerm(), lotTax, s.taxRegime(), s.exemptionApplied(), lotTaxable, ltcgNonEqLossOffset
+            ));
+        }
+
+        // 4. LTCG Equity
+        BigDecimal netTaxLtcgEq = nettingResult.netTaxableLtcgEquity().multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalExemptionUsed = nettingResult.ltcgExemptionUsed();
+        BigDecimal totalTaxableLtcgEq = nettingResult.netTaxableLtcgEquity();
+        boolean ltcgEqLossOffset = sumLtcgEq.compareTo(totalExemptionUsed.add(totalTaxableLtcgEq)) > 0;
+        BigDecimal remTaxLtcgEq = netTaxLtcgEq;
+        BigDecimal remExemptionLtcgEq = totalExemptionUsed;
+        BigDecimal remTaxableLtcgEq = totalTaxableLtcgEq;
+        for (int i = 0; i < ltcgEqSteps.size(); i++) {
+            WaterfallStep s = ltcgEqSteps.get(i);
+            BigDecimal lotTax;
+            BigDecimal lotExempt;
+            BigDecimal lotTaxable;
+            if (i == ltcgEqSteps.size() - 1) {
+                lotTax = remTaxLtcgEq;
+                lotExempt = remExemptionLtcgEq;
+                lotTaxable = remTaxableLtcgEq;
+            } else {
+                lotTax = sumLtcgEq.compareTo(BigDecimal.ZERO) > 0 ? netTaxLtcgEq.multiply(s.realizedGain()).divide(sumLtcgEq, 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+                lotExempt = sumLtcgEq.compareTo(BigDecimal.ZERO) > 0 ? totalExemptionUsed.multiply(s.realizedGain()).divide(sumLtcgEq, 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+                lotTaxable = sumLtcgEq.compareTo(BigDecimal.ZERO) > 0 ? totalTaxableLtcgEq.multiply(s.realizedGain()).divide(sumLtcgEq, 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+                remTaxLtcgEq = remTaxLtcgEq.subtract(lotTax);
+                remExemptionLtcgEq = remExemptionLtcgEq.subtract(lotExempt);
+                remTaxableLtcgEq = remTaxableLtcgEq.subtract(lotTaxable);
+            }
+            String regime = lotTax.compareTo(BigDecimal.ZERO) == 0 ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5";
+            replacedMap.put(s, new WaterfallStep(
+                s.tier(), s.lotId(), s.assetId(), s.assetName(), s.unitsSold(), s.proceeds(), s.realizedGain(),
+                s.taxTerm(), lotTax, regime, lotExempt, lotTaxable, ltcgEqLossOffset
+            ));
+        }
+
+        List<WaterfallStep> result = new ArrayList<>(steps.size());
+        for (WaterfallStep step : steps) {
+            if (replacedMap.containsKey(step)) {
+                result.add(replacedMap.get(step));
+            } else {
+                result.add(new WaterfallStep(
+                    step.tier(), step.lotId(), step.assetId(), step.assetName(), step.unitsSold(), step.proceeds(), step.realizedGain(),
+                    step.taxTerm(), BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), step.taxRegime(), step.exemptionApplied(), step.taxableAmount(), false
+                ));
+            }
+        }
+        return result;
     }
 
     private static Lot findWorkingLot(String lotId, List<Lot> legacy, List<Lot> core) {

@@ -1,6 +1,9 @@
 package com.portfolioos.core.valuation;
 
 import com.portfolioos.core.model.Lot;
+import com.portfolioos.core.rules.TaxRulesConfig;
+import com.portfolioos.core.rules.TaxRulesLoader;
+import com.portfolioos.core.service.RebalancePlanEngine;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -475,5 +478,51 @@ class RebalanceWaterfallEngineTest {
         assertEquals(new BigDecimal("1000.00"), stepTaxable.realizedGain(), "Taxable slice gain is remaining 1,000");
         assertEquals(new BigDecimal("0.00"), stepTaxable.exemptionApplied());
         assertEquals(new BigDecimal("1000.00"), stepTaxable.taxableAmount());
+    }
+
+    @Test
+    @DisplayName("F5: Lot-level tax estimates align with Section 70 netting and flag lossOffsetApplied")
+    void testProrateSection70NettingAlignedWithSummary() {
+        TaxRulesConfig rules = TaxRulesLoader.loadRules("2026-27");
+
+        // Step 1: Equity STCG lot with 20,000 gain
+        RebalanceWaterfallEngine.WaterfallStep stcgStep = new RebalanceWaterfallEngine.WaterfallStep(
+            WaterfallTier.STCG_URGENT_ONLY, "LOT-STCG", "INF109KC12U0", "ICICI LargeMidcap",
+            new BigDecimal("100"), new BigDecimal("30000.00"), new BigDecimal("20000.00"),
+            "SHORT_TERM", new BigDecimal("4000.00"), "SEC_111A_STCG_20", BigDecimal.ZERO, new BigDecimal("20000.00")
+        );
+        // Step 2: Short term loss lot with -15,000 loss
+        RebalanceWaterfallEngine.WaterfallStep lossStep = new RebalanceWaterfallEngine.WaterfallStep(
+            WaterfallTier.LOSS_HARVEST, "LOT-LOSS", "INF109KC12U0", "ICICI LargeMidcap",
+            new BigDecimal("50"), new BigDecimal("10000.00"), new BigDecimal("-15000.00"),
+            "SHORT_TERM", BigDecimal.ZERO, "SLAB_RATE_STCG", BigDecimal.ZERO, BigDecimal.ZERO
+        );
+
+        // Apply Section 70 netting: 20k gain - 15k loss = 5k net gain @ 20% = 1,000 tax
+        RebalancePlanEngine.Section70NettingResult net = RebalancePlanEngine.applySection70Netting(
+            new BigDecimal("20000.00"), BigDecimal.ZERO, new BigDecimal("15000.00"),
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, rules
+        );
+
+        List<RebalanceWaterfallEngine.WaterfallStep> aligned = RebalanceWaterfallEngine.prorateSection70Netting(
+            List.of(stcgStep, lossStep), net, rules
+        );
+
+        assertEquals(2, aligned.size());
+        RebalanceWaterfallEngine.WaterfallStep alignedGain = aligned.get(0);
+        RebalanceWaterfallEngine.WaterfallStep alignedLoss = aligned.get(1);
+
+        // Post-netting: lot-level tax drag is 1,000 (not 4,000) and lossOffsetApplied is true
+        assertEquals(0, new BigDecimal("1000.00").compareTo(alignedGain.taxDrag()));
+        assertTrue(alignedGain.lossOffsetApplied(), "Loss offset must be flagged true on net-relieved gain lot");
+        assertEquals(0, new BigDecimal("5000.00").compareTo(alignedGain.taxableAmount()));
+
+        // Loss lot has zero tax drag and lossOffsetApplied false
+        assertEquals(0, BigDecimal.ZERO.compareTo(alignedLoss.taxDrag()));
+        assertFalse(alignedLoss.lossOffsetApplied());
+
+        // Sum of lot tax drags equals net tax estimate
+        BigDecimal sumDrag = aligned.stream().map(RebalanceWaterfallEngine.WaterfallStep::taxDrag).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(0, net.totalNetTaxEstimate().compareTo(sumDrag));
     }
 }

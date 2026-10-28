@@ -394,16 +394,51 @@ public class RebalancePlanDtos {
         BigDecimal saleProceeds,
         BigDecimal realizedGain,
         String taxTerm,
-        LotTaxImpactDto taxImpact
-    ) {}
+        LotTaxImpactDto taxImpact,
+        boolean lossOffsetApplied
+    ) {
+        public RebalanceLotImpactDto(
+            String lotId,
+            String fundId,
+            String fundName,
+            String acquisitionDate,
+            long holdingDays,
+            BigDecimal unitsSold,
+            BigDecimal costBasis,
+            BigDecimal saleProceeds,
+            BigDecimal realizedGain,
+            String taxTerm,
+            LotTaxImpactDto taxImpact
+        ) {
+            this(
+                lotId, fundId, fundName, acquisitionDate, holdingDays, unitsSold, costBasis,
+                saleProceeds, realizedGain, taxTerm, taxImpact,
+                taxImpact != null && taxImpact.lossOffsetApplied()
+            );
+        }
+
+        public BigDecimal estimatedTaxDrag() {
+            return taxImpact != null && taxImpact.taxAmount() != null ? taxImpact.taxAmount() : BigDecimal.ZERO;
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record LotTaxImpactDto(
         String regime, // SEC_112A_EXEMPT, SEC_112A_TAXABLE_12_5, SEC_112_TAXABLE_12_5, SLAB_RATE_STCG
         BigDecimal exemptionApplied,
         BigDecimal taxableAmount,
-        BigDecimal taxAmount
-    ) {}
+        BigDecimal taxAmount,
+        boolean lossOffsetApplied
+    ) {
+        public LotTaxImpactDto(
+            String regime,
+            BigDecimal exemptionApplied,
+            BigDecimal taxableAmount,
+            BigDecimal taxAmount
+        ) {
+            this(regime, exemptionApplied, taxableAmount, taxAmount, false);
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record TaxSummaryDto(
