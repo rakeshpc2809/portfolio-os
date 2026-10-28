@@ -1,0 +1,2585 @@
+[
+  {
+    "fund_id": "118741",
+    "stock_symbol": "BHARTIARTL",
+    "stock_isin": "INE397D01024",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "118741",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "118741",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "118741",
+    "stock_symbol": "INFY",
+    "stock_isin": "INE009A01021",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "118741",
+    "stock_symbol": "NTPC",
+    "stock_isin": "INE733E01010",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "118741",
+    "stock_symbol": "ONGC",
+    "stock_isin": "INE213A01029",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "118741",
+    "stock_symbol": "POWERGRID",
+    "stock_isin": "INE752E01010",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "118741",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "118741",
+    "stock_symbol": "SBIN",
+    "stock_isin": "INE062A01020",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "118741",
+    "stock_symbol": "TRENT",
+    "stock_isin": "INE849A01020",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "140088",
+    "stock_symbol": "AXISBANK",
+    "stock_isin": "INE238A01034",
+    "weight_pct": 3.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "140088",
+    "stock_symbol": "BHARTIARTL",
+    "stock_isin": "INE397D01024",
+    "weight_pct": 3.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "140088",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 11.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "140088",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 7.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "140088",
+    "stock_symbol": "INFY",
+    "stock_isin": "INE009A01021",
+    "weight_pct": 5.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "140088",
+    "stock_symbol": "ITC",
+    "stock_isin": "INE154A01025",
+    "weight_pct": 4.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "140088",
+    "stock_symbol": "LT",
+    "stock_isin": "INE018A01030",
+    "weight_pct": 3.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "140088",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 9.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "140088",
+    "stock_symbol": "SBIN",
+    "stock_isin": "INE062A01020",
+    "weight_pct": 3.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "140088",
+    "stock_symbol": "TCS",
+    "stock_isin": "INE467B01029",
+    "weight_pct": 4.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "147702",
+    "stock_symbol": "BHARTIARTL",
+    "stock_isin": "INE397D01024",
+    "weight_pct": 3.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "147702",
+    "stock_symbol": "COFORGE",
+    "stock_isin": "INE591G01017",
+    "weight_pct": 1.65,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "147702",
+    "stock_symbol": "DIXON",
+    "stock_isin": "INE935N01020",
+    "weight_pct": 1.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "147702",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 6.42,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "147702",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 5.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "147702",
+    "stock_symbol": "INFY",
+    "stock_isin": "INE009A01021",
+    "weight_pct": 3.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "147702",
+    "stock_symbol": "LTIM",
+    "stock_isin": "INE214T01019",
+    "weight_pct": 1.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "147702",
+    "stock_symbol": "PERSISTENT",
+    "stock_isin": "INE262H01013",
+    "weight_pct": 1.75,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "147702",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 6.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "147702",
+    "stock_symbol": "TRENT",
+    "stock_isin": "INE849A01020",
+    "weight_pct": 2.15,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "148943",
+    "stock_symbol": "APARINDS",
+    "stock_isin": "INE072E01019",
+    "weight_pct": 2.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "148943",
+    "stock_symbol": "BSESOFT",
+    "stock_isin": "INE118H01025",
+    "weight_pct": 1.3,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "148943",
+    "stock_symbol": "CDSL",
+    "stock_isin": "INE736A01011",
+    "weight_pct": 1.45,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "148943",
+    "stock_symbol": "CGPOWER",
+    "stock_isin": "INE067A01029",
+    "weight_pct": 1.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "148943",
+    "stock_symbol": "CYIENT",
+    "stock_isin": "INE136B01020",
+    "weight_pct": 1.55,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "148943",
+    "stock_symbol": "ELECON",
+    "stock_isin": "INE205B01023",
+    "weight_pct": 2.35,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "148943",
+    "stock_symbol": "KAYNES",
+    "stock_isin": "INE918Z01012",
+    "weight_pct": 2.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "148943",
+    "stock_symbol": "MOTILALOFS",
+    "stock_isin": "INE338I01027",
+    "weight_pct": 1.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "148943",
+    "stock_symbol": "SCHNEIDER",
+    "stock_isin": "INE839M01018",
+    "weight_pct": 2.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "148943",
+    "stock_symbol": "SUZLON",
+    "stock_isin": "INE040H01021",
+    "weight_pct": 1.7,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "BPCL",
+    "stock_isin": "INE029A01011",
+    "weight_pct": 1.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "COALINDIA",
+    "stock_isin": "INE522F01014",
+    "weight_pct": 5.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "FEDERALBNK",
+    "stock_isin": "INE171A01029",
+    "weight_pct": 1.75,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "GAIL",
+    "stock_isin": "INE129A01019",
+    "weight_pct": 1.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 10.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "HINDALCO",
+    "stock_isin": "INE038A01020",
+    "weight_pct": 4.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "HPCL",
+    "stock_isin": "INE094A01015",
+    "weight_pct": 1.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 9.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "IOC",
+    "stock_isin": "INE242A01010",
+    "weight_pct": 1.3,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "NMDC",
+    "stock_isin": "INE584A01023",
+    "weight_pct": 2.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "NTPC",
+    "stock_isin": "INE733E01010",
+    "weight_pct": 7.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "OIL",
+    "stock_isin": "INE274J01014",
+    "weight_pct": 2.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "ONGC",
+    "stock_isin": "INE213A01029",
+    "weight_pct": 5.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "PFC",
+    "stock_isin": "INE134E01011",
+    "weight_pct": 3.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "POWERGRID",
+    "stock_isin": "INE752E01010",
+    "weight_pct": 6.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "RECLTD",
+    "stock_isin": "INE020B01018",
+    "weight_pct": 2.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 12.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "SBIN",
+    "stock_isin": "INE062A01020",
+    "weight_pct": 8.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "TATASTEEL",
+    "stock_isin": "INE081A01020",
+    "weight_pct": 4.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "150642",
+    "stock_symbol": "VEDL",
+    "stock_isin": "INE205A01012",
+    "weight_pct": 1.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "151814",
+    "stock_symbol": "BEL",
+    "stock_isin": "INE263A01024",
+    "weight_pct": 3.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "151814",
+    "stock_symbol": "BHAL",
+    "stock_isin": "INE257A01026",
+    "weight_pct": 3.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "151814",
+    "stock_symbol": "BHARTIARTL",
+    "stock_isin": "INE397D01024",
+    "weight_pct": 5.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "151814",
+    "stock_symbol": "CHOLAFIN",
+    "stock_isin": "INE121A01024",
+    "weight_pct": 3.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "151814",
+    "stock_symbol": "COFORGE",
+    "stock_isin": "INE591G01017",
+    "weight_pct": 4.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "151814",
+    "stock_symbol": "DIXON",
+    "stock_isin": "INE935N01020",
+    "weight_pct": 4.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "151814",
+    "stock_symbol": "HAL",
+    "stock_isin": "INE066F01020",
+    "weight_pct": 3.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "151814",
+    "stock_symbol": "PERSISTENT",
+    "stock_isin": "INE262H01013",
+    "weight_pct": 4.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "151814",
+    "stock_symbol": "TMC",
+    "stock_isin": "INE192A01025",
+    "weight_pct": 3.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "151814",
+    "stock_symbol": "TRENT",
+    "stock_isin": "INE849A01020",
+    "weight_pct": 5.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "152985",
+    "stock_symbol": "APOLLOTYRE",
+    "stock_isin": "INE438A01022",
+    "weight_pct": 1.65,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "152985",
+    "stock_symbol": "CHOLAFIN",
+    "stock_isin": "INE121A01024",
+    "weight_pct": 1.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "152985",
+    "stock_symbol": "COFORGE",
+    "stock_isin": "INE591G01017",
+    "weight_pct": 2.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "152985",
+    "stock_symbol": "DIXON",
+    "stock_isin": "INE935N01020",
+    "weight_pct": 2.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "152985",
+    "stock_symbol": "FEDERALBNK",
+    "stock_isin": "INE171A01029",
+    "weight_pct": 1.75,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "152985",
+    "stock_symbol": "INDIAMART",
+    "stock_isin": "INE933S01016",
+    "weight_pct": 1.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "152985",
+    "stock_symbol": "MAXHEALTH",
+    "stock_isin": "INE027H01010",
+    "weight_pct": 1.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "152985",
+    "stock_symbol": "PERSISTENT",
+    "stock_isin": "INE262H01013",
+    "weight_pct": 2.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "152985",
+    "stock_symbol": "POLYCAB",
+    "stock_isin": "INE455K01017",
+    "weight_pct": 1.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "152985",
+    "stock_symbol": "SUNDARMFIN",
+    "stock_isin": "INE660A01013",
+    "weight_pct": 1.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109K018M4",
+    "stock_symbol": "ADANIPORTS",
+    "stock_isin": "INE742F01042",
+    "weight_pct": 3.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF109K018M4",
+    "stock_symbol": "BHARTIARTL",
+    "stock_isin": "INE397D01024",
+    "weight_pct": 5.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF109K018M4",
+    "stock_symbol": "COALINDIA",
+    "stock_isin": "INE522F01014",
+    "weight_pct": 4.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF109K018M4",
+    "stock_symbol": "GRASIM",
+    "stock_isin": "INE047A01021",
+    "weight_pct": 3.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF109K018M4",
+    "stock_symbol": "LT",
+    "stock_isin": "INE018A01030",
+    "weight_pct": 9.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF109K018M4",
+    "stock_symbol": "NTPC",
+    "stock_isin": "INE733E01010",
+    "weight_pct": 7.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF109K018M4",
+    "stock_symbol": "ONGC",
+    "stock_isin": "INE213A01029",
+    "weight_pct": 5.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF109K018M4",
+    "stock_symbol": "POWERGRID",
+    "stock_isin": "INE752E01010",
+    "weight_pct": 6.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF109K018M4",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 4.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF109K018M4",
+    "stock_symbol": "ULTRACEMCO",
+    "stock_isin": "INE481G01011",
+    "weight_pct": 3.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF109KC12U0",
+    "stock_symbol": "BHARTIARTL",
+    "stock_isin": "INE397D01024",
+    "weight_pct": 3.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC12U0",
+    "stock_symbol": "COFORGE",
+    "stock_isin": "INE591G01017",
+    "weight_pct": 1.65,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC12U0",
+    "stock_symbol": "DIXON",
+    "stock_isin": "INE935N01020",
+    "weight_pct": 1.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC12U0",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 6.42,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC12U0",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 5.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC12U0",
+    "stock_symbol": "INFY",
+    "stock_isin": "INE009A01021",
+    "weight_pct": 3.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC12U0",
+    "stock_symbol": "LTIM",
+    "stock_isin": "INE214T01019",
+    "weight_pct": 1.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC12U0",
+    "stock_symbol": "PERSISTENT",
+    "stock_isin": "INE262H01013",
+    "weight_pct": 1.75,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC12U0",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 6.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC12U0",
+    "stock_symbol": "TRENT",
+    "stock_isin": "INE849A01020",
+    "weight_pct": 2.15,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "BPCL",
+    "stock_isin": "INE029A01011",
+    "weight_pct": 1.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "COALINDIA",
+    "stock_isin": "INE522F01014",
+    "weight_pct": 5.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "FEDERALBNK",
+    "stock_isin": "INE171A01029",
+    "weight_pct": 1.75,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "GAIL",
+    "stock_isin": "INE129A01019",
+    "weight_pct": 1.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 10.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "HINDALCO",
+    "stock_isin": "INE038A01020",
+    "weight_pct": 4.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "HPCL",
+    "stock_isin": "INE094A01015",
+    "weight_pct": 1.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 9.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "IOC",
+    "stock_isin": "INE242A01010",
+    "weight_pct": 1.3,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "NMDC",
+    "stock_isin": "INE584A01023",
+    "weight_pct": 2.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "NTPC",
+    "stock_isin": "INE733E01010",
+    "weight_pct": 7.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "OIL",
+    "stock_isin": "INE274J01014",
+    "weight_pct": 2.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "ONGC",
+    "stock_isin": "INE213A01029",
+    "weight_pct": 5.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "PFC",
+    "stock_isin": "INE134E01011",
+    "weight_pct": 3.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "POWERGRID",
+    "stock_isin": "INE752E01010",
+    "weight_pct": 6.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "RECLTD",
+    "stock_isin": "INE020B01018",
+    "weight_pct": 2.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 12.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "SBIN",
+    "stock_isin": "INE062A01020",
+    "weight_pct": 8.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "TATASTEEL",
+    "stock_isin": "INE081A01020",
+    "weight_pct": 4.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF109KC13X2",
+    "stock_symbol": "VEDL",
+    "stock_isin": "INE205A01012",
+    "weight_pct": 1.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF174KA1TY2",
+    "stock_symbol": "BHARTIARTL",
+    "stock_isin": "INE397D01024",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF174KA1TY2",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF174KA1TY2",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF174KA1TY2",
+    "stock_symbol": "INFY",
+    "stock_isin": "INE009A01021",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF174KA1TY2",
+    "stock_symbol": "NTPC",
+    "stock_isin": "INE733E01010",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF174KA1TY2",
+    "stock_symbol": "ONGC",
+    "stock_isin": "INE213A01029",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF174KA1TY2",
+    "stock_symbol": "POWERGRID",
+    "stock_isin": "INE752E01010",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF174KA1TY2",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF174KA1TY2",
+    "stock_symbol": "SBIN",
+    "stock_isin": "INE062A01020",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF174KA1TY2",
+    "stock_symbol": "TRENT",
+    "stock_isin": "INE849A01020",
+    "weight_pct": 1.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF200K01RA0",
+    "stock_symbol": "COALINDIA",
+    "stock_isin": "INE522F01014",
+    "weight_pct": 4.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01RA0",
+    "stock_symbol": "GAIL",
+    "stock_isin": "INE129A01019",
+    "weight_pct": 4.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01RA0",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 4.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01RA0",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 2.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01RA0",
+    "stock_symbol": "NTPC",
+    "stock_isin": "INE733E01010",
+    "weight_pct": 3.7,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01RA0",
+    "stock_symbol": "ONGC",
+    "stock_isin": "INE213A01029",
+    "weight_pct": 3.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01RA0",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 2.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01RA0",
+    "stock_symbol": "SBIN",
+    "stock_isin": "INE062A01020",
+    "weight_pct": 2.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01RA0",
+    "stock_symbol": "SUNPHARMA",
+    "stock_isin": "INE044A01036",
+    "weight_pct": 3.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01RA0",
+    "stock_symbol": "TECHM",
+    "stock_isin": "INE669C01036",
+    "weight_pct": 3.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01UJ5",
+    "stock_symbol": "BEL",
+    "stock_isin": "INE263A01024",
+    "weight_pct": 1.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01UJ5",
+    "stock_symbol": "CHOLAFIN",
+    "stock_isin": "INE121A01024",
+    "weight_pct": 2.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01UJ5",
+    "stock_symbol": "COFORGE",
+    "stock_isin": "INE591G01017",
+    "weight_pct": 2.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01UJ5",
+    "stock_symbol": "DIXON",
+    "stock_isin": "INE935N01020",
+    "weight_pct": 2.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01UJ5",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 5.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01UJ5",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 5.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01UJ5",
+    "stock_symbol": "INFY",
+    "stock_isin": "INE009A01021",
+    "weight_pct": 3.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01UJ5",
+    "stock_symbol": "PERSISTENT",
+    "stock_isin": "INE262H01013",
+    "weight_pct": 2.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01UJ5",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 4.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF200K01UJ5",
+    "stock_symbol": "SBIN",
+    "stock_isin": "INE062A01020",
+    "weight_pct": 2.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01G52",
+    "stock_symbol": "ASIANPAINT",
+    "stock_isin": "INE021A01026",
+    "weight_pct": 4.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01G52",
+    "stock_symbol": "BHARTIARTL",
+    "stock_isin": "INE397D01024",
+    "weight_pct": 7.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01G52",
+    "stock_symbol": "DABUR",
+    "stock_isin": "INE016A01026",
+    "weight_pct": 3.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01G52",
+    "stock_symbol": "GODREJCP",
+    "stock_isin": "INE102D01028",
+    "weight_pct": 3.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01G52",
+    "stock_symbol": "HINDUNILVR",
+    "stock_isin": "INE030A01027",
+    "weight_pct": 6.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01G52",
+    "stock_symbol": "ITC",
+    "stock_isin": "INE154A01025",
+    "weight_pct": 8.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01G52",
+    "stock_symbol": "NESTLEIND",
+    "stock_isin": "INE239A01024",
+    "weight_pct": 4.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01G52",
+    "stock_symbol": "TITAN",
+    "stock_isin": "INE280A01028",
+    "weight_pct": 6.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01G52",
+    "stock_symbol": "TRENT",
+    "stock_isin": "INE849A01020",
+    "weight_pct": 4.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01G52",
+    "stock_symbol": "ZOMATO",
+    "stock_isin": "INE758T01015",
+    "weight_pct": 5.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF204K01H36",
+    "stock_symbol": "AXISBANK",
+    "stock_isin": "INE238A01034",
+    "weight_pct": 3.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF204K01H36",
+    "stock_symbol": "BHARTIARTL",
+    "stock_isin": "INE397D01024",
+    "weight_pct": 3.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF204K01H36",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 11.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF204K01H36",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 7.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF204K01H36",
+    "stock_symbol": "INFY",
+    "stock_isin": "INE009A01021",
+    "weight_pct": 5.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF204K01H36",
+    "stock_symbol": "ITC",
+    "stock_isin": "INE154A01025",
+    "weight_pct": 4.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF204K01H36",
+    "stock_symbol": "LT",
+    "stock_isin": "INE018A01030",
+    "weight_pct": 3.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF204K01H36",
+    "stock_symbol": "RELIANCE",
+    "stock_isin": "INE002A01018",
+    "weight_pct": 9.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF204K01H36",
+    "stock_symbol": "SBIN",
+    "stock_isin": "INE062A01020",
+    "weight_pct": 3.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF204K01H36",
+    "stock_symbol": "TCS",
+    "stock_isin": "INE467B01029",
+    "weight_pct": 4.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "AAVAS",
+    "stock_isin": "INE128S01019",
+    "weight_pct": 0.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "APARINDS",
+    "stock_isin": "INE072E01019",
+    "weight_pct": 6.25,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "BALRAMCHIN",
+    "stock_isin": "INE119A01028",
+    "weight_pct": 0.65,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "BDL",
+    "stock_isin": "INE171Z01018",
+    "weight_pct": 3.15,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "BLUEJET",
+    "stock_isin": "INE050A01025",
+    "weight_pct": 0.3,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "CANFINHOME",
+    "stock_isin": "INE477A01020",
+    "weight_pct": 1.05,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "CARBORUN",
+    "stock_isin": "INE120A01034",
+    "weight_pct": 3.45,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "CENTURYTEX",
+    "stock_isin": "INE055A01016",
+    "weight_pct": 1.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "CHOLAFIN",
+    "stock_isin": "INE149A01033",
+    "weight_pct": 2.55,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "CONCORD",
+    "stock_isin": "INE338H01029",
+    "weight_pct": 0.35,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "CREDITACC",
+    "stock_isin": "INE741K01010",
+    "weight_pct": 1.55,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "CUB",
+    "stock_isin": "INE491A01021",
+    "weight_pct": 1.35,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "CUMMINSIND",
+    "stock_isin": "INE299A01018",
+    "weight_pct": 4.25,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "DCMSHRIRAM",
+    "stock_isin": "INE499A01024",
+    "weight_pct": 0.45,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "DIXON",
+    "stock_isin": "INE935N01020",
+    "weight_pct": 4.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "EIDPARRY",
+    "stock_isin": "INE126A01031",
+    "weight_pct": 0.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "ELGIEQUIP",
+    "stock_isin": "INE285A01027",
+    "weight_pct": 2.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "EQUITASBNK",
+    "stock_isin": "INE061F01012",
+    "weight_pct": 1.45,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "GRINDWELL",
+    "stock_isin": "INE536A01023",
+    "weight_pct": 1.65,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "HDFC_AMC",
+    "stock_isin": "INE127D01025",
+    "weight_pct": 6.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "HOMEFIRST",
+    "stock_isin": "INE481N01025",
+    "weight_pct": 0.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "INNOVA",
+    "stock_isin": "INE080A01025",
+    "weight_pct": 0.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "JUPITERLIFE",
+    "stock_isin": "INE010A01025",
+    "weight_pct": 0.25,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "JYOTHYLAB",
+    "stock_isin": "INE668F01031",
+    "weight_pct": 1.75,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "KAYNES",
+    "stock_isin": "INE918Z01012",
+    "weight_pct": 3.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "KEI",
+    "stock_isin": "INE878B01027",
+    "weight_pct": 5.15,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "KIRLOSENG",
+    "stock_isin": "INE250A01039",
+    "weight_pct": 2.35,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "KVB",
+    "stock_isin": "INE036D01028",
+    "weight_pct": 1.25,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "MASCOTCONTROLSYSTEMSLTD",
+    "stock_isin": "INE334A01012",
+    "weight_pct": 0.75,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "MULTIOPT",
+    "stock_isin": "INE745G01035",
+    "weight_pct": 5.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "PERSISTENT",
+    "stock_isin": "INE262H01013",
+    "weight_pct": 4.55,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "PRAJIND",
+    "stock_isin": "INE074A01025",
+    "weight_pct": 0.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "TIIL",
+    "stock_isin": "INE545H01011",
+    "weight_pct": 1.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "TIMKEN",
+    "stock_isin": "INE325A01013",
+    "weight_pct": 2.15,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "TRIVENI",
+    "stock_isin": "INE256C01024",
+    "weight_pct": 0.55,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "TUBEINVEST",
+    "stock_isin": "INE974X01010",
+    "weight_pct": 9.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "UJJIVANSFB",
+    "stock_isin": "INE551W01018",
+    "weight_pct": 1.15,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF204K01K15",
+    "stock_symbol": "VOLTAS",
+    "stock_isin": "INE226A01021",
+    "weight_pct": 5.45,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF247L01916",
+    "stock_symbol": "APOLLOTYRE",
+    "stock_isin": "INE438A01022",
+    "weight_pct": 1.65,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01916",
+    "stock_symbol": "CHOLAFIN",
+    "stock_isin": "INE121A01024",
+    "weight_pct": 1.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01916",
+    "stock_symbol": "COFORGE",
+    "stock_isin": "INE591G01017",
+    "weight_pct": 2.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01916",
+    "stock_symbol": "DIXON",
+    "stock_isin": "INE935N01020",
+    "weight_pct": 2.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01916",
+    "stock_symbol": "FEDERALBNK",
+    "stock_isin": "INE171A01029",
+    "weight_pct": 1.75,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01916",
+    "stock_symbol": "INDIAMART",
+    "stock_isin": "INE933S01016",
+    "weight_pct": 1.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01916",
+    "stock_symbol": "MAXHEALTH",
+    "stock_isin": "INE027H01010",
+    "weight_pct": 1.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01916",
+    "stock_symbol": "PERSISTENT",
+    "stock_isin": "INE262H01013",
+    "weight_pct": 2.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01916",
+    "stock_symbol": "POLYCAB",
+    "stock_isin": "INE455K01017",
+    "weight_pct": 1.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01916",
+    "stock_symbol": "SUNDARMFIN",
+    "stock_isin": "INE660A01013",
+    "weight_pct": 1.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01BQ9",
+    "stock_symbol": "APARINDS",
+    "stock_isin": "INE072E01019",
+    "weight_pct": 2.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01BQ9",
+    "stock_symbol": "BSESOFT",
+    "stock_isin": "INE118H01025",
+    "weight_pct": 1.3,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01BQ9",
+    "stock_symbol": "CDSL",
+    "stock_isin": "INE736A01011",
+    "weight_pct": 1.45,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01BQ9",
+    "stock_symbol": "CGPOWER",
+    "stock_isin": "INE067A01029",
+    "weight_pct": 1.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01BQ9",
+    "stock_symbol": "CYIENT",
+    "stock_isin": "INE136B01020",
+    "weight_pct": 1.55,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01BQ9",
+    "stock_symbol": "ELECON",
+    "stock_isin": "INE205B01023",
+    "weight_pct": 2.35,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01BQ9",
+    "stock_symbol": "KAYNES",
+    "stock_isin": "INE918Z01012",
+    "weight_pct": 2.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01BQ9",
+    "stock_symbol": "MOTILALOFS",
+    "stock_isin": "INE338I01027",
+    "weight_pct": 1.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01BQ9",
+    "stock_symbol": "SCHNEIDER",
+    "stock_isin": "INE839M01018",
+    "weight_pct": 2.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF247L01BQ9",
+    "stock_symbol": "SUZLON",
+    "stock_isin": "INE040H01021",
+    "weight_pct": 1.7,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF277K011O1",
+    "stock_symbol": "BASF",
+    "stock_isin": "INE373A01013",
+    "weight_pct": 3.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF277K011O1",
+    "stock_symbol": "BSESOFT",
+    "stock_isin": "INE118H01025",
+    "weight_pct": 1.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF277K011O1",
+    "stock_symbol": "CYIENT",
+    "stock_isin": "INE136B01020",
+    "weight_pct": 1.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF277K011O1",
+    "stock_symbol": "ELGIEQUIP",
+    "stock_isin": "INE285A01027",
+    "weight_pct": 2.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF277K011O1",
+    "stock_symbol": "HONAUT",
+    "stock_isin": "INE671A01010",
+    "weight_pct": 2.45,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF277K011O1",
+    "stock_symbol": "IDFCFIRSTB",
+    "stock_isin": "INE092T01019",
+    "weight_pct": 2.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF277K011O1",
+    "stock_symbol": "KNRCON",
+    "stock_isin": "INE634I01029",
+    "weight_pct": 1.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF277K011O1",
+    "stock_symbol": "QUESS",
+    "stock_isin": "INE615P01015",
+    "weight_pct": 2.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF277K011O1",
+    "stock_symbol": "RADICO",
+    "stock_isin": "INE944F01012",
+    "weight_pct": 2.65,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF277K011O1",
+    "stock_symbol": "REDINGTON",
+    "stock_isin": "INE891D01026",
+    "weight_pct": 1.65,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF754K01TN5",
+    "stock_symbol": "BEL",
+    "stock_isin": "INE263A01024",
+    "weight_pct": 3.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF754K01TN5",
+    "stock_symbol": "BHAL",
+    "stock_isin": "INE257A01026",
+    "weight_pct": 3.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF754K01TN5",
+    "stock_symbol": "BHARTIARTL",
+    "stock_isin": "INE397D01024",
+    "weight_pct": 5.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF754K01TN5",
+    "stock_symbol": "CHOLAFIN",
+    "stock_isin": "INE121A01024",
+    "weight_pct": 3.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF754K01TN5",
+    "stock_symbol": "COFORGE",
+    "stock_isin": "INE591G01017",
+    "weight_pct": 4.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF754K01TN5",
+    "stock_symbol": "DIXON",
+    "stock_isin": "INE935N01020",
+    "weight_pct": 4.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF754K01TN5",
+    "stock_symbol": "HAL",
+    "stock_isin": "INE066F01020",
+    "weight_pct": 3.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF754K01TN5",
+    "stock_symbol": "PERSISTENT",
+    "stock_isin": "INE262H01013",
+    "weight_pct": 4.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF754K01TN5",
+    "stock_symbol": "TMC",
+    "stock_isin": "INE192A01025",
+    "weight_pct": 3.0,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF754K01TN5",
+    "stock_symbol": "TRENT",
+    "stock_isin": "INE849A01020",
+    "weight_pct": 5.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "NSE_INDEX_CONSTITUENTS"
+  },
+  {
+    "fund_id": "INF769K01ED6",
+    "stock_symbol": "APOLLOHOSP",
+    "stock_isin": "INE437A01024",
+    "weight_pct": 6.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF769K01ED6",
+    "stock_symbol": "AUROPHARMA",
+    "stock_isin": "INE406A01037",
+    "weight_pct": 3.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF769K01ED6",
+    "stock_symbol": "CIPLA",
+    "stock_isin": "INE059A01026",
+    "weight_pct": 9.8,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF769K01ED6",
+    "stock_symbol": "DIVISLAB",
+    "stock_isin": "INE361B01024",
+    "weight_pct": 7.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF769K01ED6",
+    "stock_symbol": "DRREDDY",
+    "stock_isin": "INE089A01023",
+    "weight_pct": 8.4,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF769K01ED6",
+    "stock_symbol": "LUPIN",
+    "stock_isin": "INE326A01037",
+    "weight_pct": 5.2,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF769K01ED6",
+    "stock_symbol": "MANKIND",
+    "stock_isin": "INE634S01028",
+    "weight_pct": 4.6,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF769K01ED6",
+    "stock_symbol": "MAXHEALTH",
+    "stock_isin": "INE027H01010",
+    "weight_pct": 5.9,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF769K01ED6",
+    "stock_symbol": "SUNPHARMA",
+    "stock_isin": "INE044A01036",
+    "weight_pct": 14.5,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF769K01ED6",
+    "stock_symbol": "TORNTPHARM",
+    "stock_isin": "INE685A01028",
+    "weight_pct": 4.1,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "MANUAL_ESTIMATE_UNVERIFIED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "ALPHABET",
+    "stock_isin": "US02079K3059",
+    "weight_pct": 5.85,
+    "disclosure_date": "2026-03-31",
+    "market": "US",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "AMAZON",
+    "stock_isin": "US0231351067",
+    "weight_pct": 5.42,
+    "disclosure_date": "2026-03-31",
+    "market": "US",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "ASIANPAINT",
+    "stock_isin": "INE021A01026",
+    "weight_pct": 0.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "AXISBANK",
+    "stock_isin": "INE238A01034",
+    "weight_pct": 3.25,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "BAJFINANCE",
+    "stock_isin": "INE118A01012",
+    "weight_pct": 6.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "BRITANNIA",
+    "stock_isin": "INE216A01030",
+    "weight_pct": 0.75,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "CIPLA",
+    "stock_isin": "INE059A01026",
+    "weight_pct": 1.65,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "COALINDIA",
+    "stock_isin": "INE522F01014",
+    "weight_pct": 3.75,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "DRREDDY",
+    "stock_isin": "INE089A01023",
+    "weight_pct": 1.45,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "GRASIM",
+    "stock_isin": "INE047A01021",
+    "weight_pct": 1.05,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "HCLTECH",
+    "stock_isin": "INE860A01027",
+    "weight_pct": 2.78,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "HDFCBANK",
+    "stock_isin": "INE040A01034",
+    "weight_pct": 7.82,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "HEROMOTOCO",
+    "stock_isin": "INE158A01026",
+    "weight_pct": 1.35,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "ICICIBANK",
+    "stock_isin": "INE090A01021",
+    "weight_pct": 5.92,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "ITC",
+    "stock_isin": "INE154A01025",
+    "weight_pct": 4.88,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "KOTAKBANK",
+    "stock_isin": "INE237A01028",
+    "weight_pct": 2.15,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "LT",
+    "stock_isin": "INE018A01030",
+    "weight_pct": 2.3,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "M&M",
+    "stock_isin": "INE101A01026",
+    "weight_pct": 1.25,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "MARUTI",
+    "stock_isin": "INE585B01010",
+    "weight_pct": 2.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "META",
+    "stock_isin": "US30303M1027",
+    "weight_pct": 4.65,
+    "disclosure_date": "2026-03-31",
+    "market": "US",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "MICROSOFT",
+    "stock_isin": "US5949181045",
+    "weight_pct": 4.15,
+    "disclosure_date": "2026-03-31",
+    "market": "US",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "NESTLEIND",
+    "stock_isin": "INE239A01016",
+    "weight_pct": 0.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "NTPC",
+    "stock_isin": "INE733E01010",
+    "weight_pct": 1.95,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "POWERGRID",
+    "stock_isin": "INE752E01010",
+    "weight_pct": 4.12,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "SUNPHARMA",
+    "stock_isin": "INE044A01036",
+    "weight_pct": 1.55,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "TCS",
+    "stock_isin": "INE467B01029",
+    "weight_pct": 3.62,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "TECHM",
+    "stock_isin": "INE669C01036",
+    "weight_pct": 2.45,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "TITAN",
+    "stock_isin": "INE280A01028",
+    "weight_pct": 1.85,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  },
+  {
+    "fund_id": "INF879O01027",
+    "stock_symbol": "ULTRACEMCO",
+    "stock_isin": "INE481G01011",
+    "weight_pct": 1.15,
+    "disclosure_date": "2026-03-31",
+    "market": "IN",
+    "source_type": "FACTSHEET_POI_PARSED"
+  }
+]

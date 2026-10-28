@@ -618,6 +618,7 @@ public class DuckDbProjector implements AutoCloseable {
                     insertStmt.executeBatch();
                 }
                 conn.commit();
+                invalidateTrendCache();
             } catch (Exception e) {
                 conn.rollback();
                 throw new RuntimeException("Failed to project events in DuckDB", e);
