@@ -197,6 +197,39 @@ public class RebalancePlanDtos {
                 return "";
             }
         }
+        public static RebalancePlanDto fallbackWithUnavailableDrawdown() {
+            DrawdownContextDto unavailableDd = DrawdownContextDto.unavailable();
+            RebalanceTriggerDto trigger = new RebalanceTriggerDto(
+                "SCHEDULED",
+                "BENCHMARK_UNAVAILABLE",
+                "Benchmark data unavailable; drawdown evaluation suspended",
+                "STANDBY",
+                unavailableDd
+            );
+            TaxSummaryDto taxSummary = new TaxSummaryDto(
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.valueOf(125000), BigDecimal.valueOf(125000)
+            );
+            SellSidePlanDto sellSide = new SellSidePlanDto(BigDecimal.ZERO, List.of(), taxSummary);
+            BuySidePlanDto buySide = new BuySidePlanDto(BigDecimal.ZERO, false, List.of());
+            ReasoningNarrativeDto narrative = new ReasoningNarrativeDto(
+                "Rebalance Suspended: Benchmark Unavailable",
+                List.of("Nifty 500 TRI benchmark data is currently unavailable. Drawdown-induced rebalancing is temporarily suspended while portfolio sync remains operational."),
+                "v2.3"
+            );
+            return new RebalancePlanDto(
+                "PLAN-UNAVAILABLE-" + System.currentTimeMillis(),
+                java.time.LocalDateTime.now().toString(),
+                trigger,
+                sellSide,
+                buySide,
+                narrative,
+                null,
+                null,
+                null,
+                null
+            );
+        }
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -238,8 +271,31 @@ public class RebalancePlanDtos {
         BigDecimal currentValue,
         String armedTier,
         String nextTier,
-        double nextTierDistancePct
-    ) {}
+        double nextTierDistancePct,
+        String status
+    ) {
+        public DrawdownContextDto {
+            if (status == null || status.isBlank()) {
+                status = "AVAILABLE";
+            }
+        }
+
+        public DrawdownContextDto(
+            double currentDrawdownPct,
+            BigDecimal rollingHighValue,
+            String rollingHighDate,
+            BigDecimal currentValue,
+            String armedTier,
+            String nextTier,
+            double nextTierDistancePct
+        ) {
+            this(currentDrawdownPct, rollingHighValue, rollingHighDate, currentValue, armedTier, nextTier, nextTierDistancePct, "AVAILABLE");
+        }
+
+        public static DrawdownContextDto unavailable() {
+            return new DrawdownContextDto(0.0, BigDecimal.ZERO, null, BigDecimal.ZERO, "NONE", "TIER_10", 0.0, "UNAVAILABLE");
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record SellSidePlanDto(
