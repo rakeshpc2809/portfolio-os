@@ -29,6 +29,10 @@ public class BucketConfigLoader {
         public BucketTargetConfig(String bucket, double targetPct, double bandPct, List<PreferredFundConfig> preferredFunds) {
             this(bucket, targetPct, bandPct, bandPct, "", preferredFunds);
         }
+
+        public double driftTriggerPct() {
+            return triggerDriftPct;
+        }
     }
 
     public static String mapAssetToBucket(String assetId, String assetName) {
@@ -229,9 +233,11 @@ public class BucketConfigLoader {
                         double tPct = ((Number) tMap.get("target_pct")).doubleValue();
                         double bPct = ((Number) tMap.get("band_pct")).doubleValue();
                         
-                        double tdPct = tMap.containsKey("trigger_drift_pct") 
-                            ? ((Number) tMap.get("trigger_drift_pct")).doubleValue() 
-                            : bPct;
+                        double tdPct = tMap.containsKey("drift_trigger_pct")
+                            ? ((Number) tMap.get("drift_trigger_pct")).doubleValue()
+                            : (tMap.containsKey("trigger_drift_pct")
+                                ? ((Number) tMap.get("trigger_drift_pct")).doubleValue()
+                                : bPct);
                         String strat = (String) tMap.getOrDefault("strategy", "");
 
                         List<PreferredFundConfig> prefFunds = new ArrayList<>();

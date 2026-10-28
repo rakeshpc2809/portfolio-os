@@ -131,8 +131,8 @@ versions:
       allocation_weight: 0.3334
   - bucket: "GOLD_SILVER"
     target_pct: 10.0
-    band_pct: 5.0
-    trigger_drift_pct: 12.0
+    band_pct: 2.0
+    drift_trigger_pct: 5.0
     strategy: "ACCUMULATOR"
     preferred_funds:
     - fund_id: "INF247L01BM8"
