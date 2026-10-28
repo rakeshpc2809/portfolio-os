@@ -189,26 +189,58 @@ public class BucketEngineTest {
         // 25% of ₹300,000 = ₹75,000
         assertEquals(0, new BigDecimal("75000.00").compareTo(sellArb1.amount()));
 
-        // 2. Tier 2 (-15%): current = 8500
-        // Now remaining arbitrage has diminished to ₹225,000 (2,250 units)
-        Lot arbLotT2 = new Lot("lot-arb-t2", "INF205K01QU7", "Invesco India Arbitrage Fund", date.minusDays(100),
+        // 2. Same-tier refire at Tier 1: Buffer has diminished to ₹225,000
+        Lot arbLotT1Refire = new Lot("lot-arb-t1-refire", "INF205K01QU7", "Invesco India Arbitrage Fund", date.minusDays(100),
             new BigDecimal("2250"), new BigDecimal("2250"), new BigDecimal("100"), new BigDecimal("225000"), false, null);
+        BucketEngine.RebalanceEngineResult r1Refire = BucketEngine.evaluateRebalance(
+            List.of(coreLot, arbLotT1Refire), List.of(), navMap, date.plusDays(35), benchmarkT1, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+        );
+        // Idempotence: Tier 1 already deployed 25% (target remaining = ₹225,000); zero additional liquidation recommended!
+        boolean hasArbSellRefireT1 = r1Refire.recommendations().stream()
+            .anyMatch(r -> r.bucket() == BucketEngine.Bucket.LIQUID_BUFFER && "SELL".equals(r.action()));
+        assertFalse(hasArbSellRefireT1, "Same-tier refire must be idempotent and deploy ₹0 when target buffer remaining is met");
 
+        // 3. Tier 2 (-15%): current = 8500
+        // Cumulative target buffer is 50% of ₹300,000 = ₹150,000 remaining.
+        // Current balance is ₹225,000 -> incremental tranche deploy = ₹225,000 - ₹150,000 = ₹75,000!
         BigDecimal benchmarkT2 = new BigDecimal("8500.00");
         BucketEngine.RebalanceEngineResult r2 = BucketEngine.evaluateRebalance(
-            List.of(coreLot, arbLotT2), List.of(), navMap, date, benchmarkT2, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+            List.of(coreLot, arbLotT1Refire), List.of(), navMap, date.plusDays(40), benchmarkT2, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
         );
 
         BucketEngine.RebalanceRecommendation sellArb2 = r2.recommendations().stream()
             .filter(r -> r.bucket() == BucketEngine.Bucket.LIQUID_BUFFER && "SELL".equals(r.action()))
             .findFirst().orElseThrow();
-        // Sizing is 50% of BASELINE ₹300,000 = ₹150,000 (not 50% of diminished ₹225,000 = ₹112,500)
-        assertEquals(0, new BigDecimal("150000.00").compareTo(sellArb2.amount()));
+        assertEquals(0, new BigDecimal("75000.00").compareTo(sellArb2.amount()),
+            "Tier 2 escalation must deploy incremental ₹75,000 to reach 50% cumulative deployment");
 
-        // 3. Recovery: benchmark recovers to 9600 (-4.0% drawdown, < 5.0%)
+        // 4. Same-tier refire at Tier 2: Buffer has diminished to ₹150,000
+        Lot arbLotT2Refire = new Lot("lot-arb-t2-refire", "INF205K01QU7", "Invesco India Arbitrage Fund", date.minusDays(100),
+            new BigDecimal("1500"), new BigDecimal("1500"), new BigDecimal("100"), new BigDecimal("150000"), false, null);
+        BucketEngine.RebalanceEngineResult r2Refire = BucketEngine.evaluateRebalance(
+            List.of(coreLot, arbLotT2Refire), List.of(), navMap, date.plusDays(75), benchmarkT2, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+        );
+        boolean hasArbSellRefireT2 = r2Refire.recommendations().stream()
+            .anyMatch(r -> r.bucket() == BucketEngine.Bucket.LIQUID_BUFFER && "SELL".equals(r.action()));
+        assertFalse(hasArbSellRefireT2, "Same-tier refire at Tier 2 must deploy ₹0 when target buffer remaining (₹150k) is met");
+
+        // 5. Tier 3 (-20%): current = 8000
+        // Cumulative target buffer is 0% remaining (100% deployed).
+        // Current balance is ₹150,000 -> deploys remaining ₹150,000!
+        BigDecimal benchmarkT3 = new BigDecimal("8000.00");
+        BucketEngine.RebalanceEngineResult r3 = BucketEngine.evaluateRebalance(
+            List.of(coreLot, arbLotT2Refire), List.of(), navMap, date.plusDays(80), benchmarkT3, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+        );
+        BucketEngine.RebalanceRecommendation sellArb3 = r3.recommendations().stream()
+            .filter(r -> r.bucket() == BucketEngine.Bucket.LIQUID_BUFFER && "SELL".equals(r.action()))
+            .findFirst().orElseThrow();
+        assertEquals(0, new BigDecimal("150000.00").compareTo(sellArb3.amount()),
+            "Tier 3 escalation must deploy remaining ₹150,000 to reach 100% cumulative deployment");
+
+        // 6. Recovery: benchmark recovers to 9600 (-4.0% drawdown, < 5.0%)
         BigDecimal benchmarkRecovered = new BigDecimal("9600.00");
         BucketEngine.RebalanceEngineResult rRecover = BucketEngine.evaluateRebalance(
-            List.of(coreLot, arbLotT2), List.of(), navMap, date, benchmarkRecovered, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+            List.of(coreLot, arbLotT2Refire), List.of(), navMap, date.plusDays(100), benchmarkRecovered, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
         );
 
         // Baseline must be reset/cleared once recovered above -5%

@@ -54,7 +54,7 @@ def parse_bucket_targets_yaml(file_path: str) -> dict:
             current_target["target_pct"] = float(stripped.split(":", 1)[1].strip())
         elif current_target and stripped.startswith("band_pct:"):
             current_target["band_pct"] = float(stripped.split(":", 1)[1].strip())
-        elif current_target and (stripped.startswith("trigger_drift_pct:") or stripped.startswith("drift_trigger_pct:")):
+        elif current_target and stripped.startswith("trigger_drift_pct:"):
             current_target["trigger_drift_pct"] = float(stripped.split(":", 1)[1].strip())
         elif current_target and stripped.startswith("strategy:"):
             current_target["strategy"] = stripped.split(":", 1)[1].strip().strip('"').strip("'")

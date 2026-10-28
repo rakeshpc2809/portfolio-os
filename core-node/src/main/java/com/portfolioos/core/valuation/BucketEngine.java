@@ -702,8 +702,14 @@ public class BucketEngine {
             triggerHistoryRepository.setActiveDrawdownArbitrageBaseline(baselineArbitrageValue);
         }
 
-        BigDecimal deployAmount = baselineArbitrageValue.multiply(deployPct)
-            .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP)
+        // Cumulative target buffer remaining at this drawdown rung: baseline * (1 - deployPct / 100)
+        // Idempotent deployment: deploy = max(0, current - targetBufferRemaining)
+        BigDecimal targetBufferRemaining = baselineArbitrageValue
+            .multiply(BigDecimal.ONE.subtract(deployPct.divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP)))
+            .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal deployAmount = currentExitLoadFreeArbitrageValue.subtract(targetBufferRemaining)
+            .max(BigDecimal.ZERO)
             .min(currentExitLoadFreeArbitrageValue);
 
         if (deployAmount.compareTo(BigDecimal.ZERO) > 0) {

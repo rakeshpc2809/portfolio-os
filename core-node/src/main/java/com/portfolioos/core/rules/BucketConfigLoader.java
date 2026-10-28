@@ -575,6 +575,7 @@ public class BucketConfigLoader {
                     tMap.put("bucket", tc.bucket());
                     tMap.put("target_pct", tc.targetPct());
                     tMap.put("band_pct", tc.bandPct());
+                    tMap.put("drift_trigger_pct", tc.triggerDriftPct());
                     tMap.put("trigger_drift_pct", tc.triggerDriftPct());
                     tMap.put("strategy", tc.strategy());
 
