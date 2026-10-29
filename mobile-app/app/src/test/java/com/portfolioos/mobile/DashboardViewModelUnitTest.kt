@@ -8,6 +8,9 @@ import com.portfolioos.mobile.data.nav.AmfiDirectFetcher
 import com.portfolioos.mobile.model.FlatHoldingDto
 import com.portfolioos.mobile.model.SyncInfoDto
 import com.portfolioos.mobile.model.SyncSnapshot
+import com.portfolioos.mobile.model.RebalancePlanDto
+import com.portfolioos.mobile.model.RebalanceTriggerDto
+import com.portfolioos.mobile.model.DrawdownContextDto
 import com.portfolioos.mobile.ui.DashboardViewModel
 import com.portfolioos.mobile.util.formatInr
 import kotlinx.coroutines.Dispatchers
@@ -233,5 +236,55 @@ class DashboardViewModelUnitTest {
         assertTrue("isAmfiFallback should be true after AMFI fallback resolution", state.isAmfiFallback)
         assertTrue("lastSyncMillis should be updated with recent timestamp", state.lastSyncMillis > 0L)
         assertTrue("lastFullLedgerMillis should be aged compared to lastSyncMillis", state.lastFullLedgerMillis < state.lastSyncMillis)
+    }
+
+    @Test
+    fun initialLoad_degradedSnapshotFromCache_exposesUnavailableDrawdownAndPreservedPlan() = runTest(testDispatcher) {
+        val originalTimestamp = "2026-08-31T11:45:00Z"
+        val degradedTimestamp = "2026-08-31T12:30:00Z"
+
+        // 1. Seed cache with valid plan
+        val validSnapshot = SyncSnapshot(
+            syncInfo = SyncInfoDto(
+                timestamp = 1788000000000L,
+                generatedAt = originalTimestamp,
+                drawdownStatus = "AVAILABLE"
+            ),
+            rebalancePlan = RebalancePlanDto(
+                planId = "PLAN-PRESERVED-123",
+                generatedAt = originalTimestamp,
+                trigger = RebalanceTriggerDto(type = "SCHEDULED"),
+                drawdownContext = DrawdownContextDto(status = "AVAILABLE")
+            )
+        )
+        SnapshotCacheManager.saveSnapshot(mockContext, validSnapshot, isFullLedgerSync = true)
+
+        // 2. Degraded snapshot arrives
+        val degradedSnapshot = SyncSnapshot(
+            syncInfo = SyncInfoDto(
+                timestamp = 1788002700000L,
+                generatedAt = degradedTimestamp,
+                drawdownStatus = "UNAVAILABLE"
+            ),
+            rebalancePlan = RebalancePlanDto(
+                planId = "PLAN-DEGRADED-456",
+                generatedAt = degradedTimestamp,
+                trigger = RebalanceTriggerDto(type = "UNAVAILABLE", reasonCode = "BENCHMARK_UNAVAILABLE"),
+                drawdownContext = DrawdownContextDto(status = "UNAVAILABLE")
+            )
+        )
+        SnapshotCacheManager.saveSnapshot(mockContext, degradedSnapshot, isFullLedgerSync = false)
+
+        // 3. ViewModel loads from cache
+        val viewModel = DashboardViewModel(mockApplication)
+        viewModel.loadInitialCachedState()
+
+        val state = viewModel.uiState.value
+        assertNotNull("Snapshot should be loaded from cache", state.snapshot)
+        assertEquals("UNAVAILABLE", state.snapshot?.syncInfo?.drawdownStatus)
+        assertEquals(degradedTimestamp, state.snapshot?.syncInfo?.generatedAt)
+        assertEquals("PLAN-PRESERVED-123", state.snapshot?.rebalancePlan?.planId)
+        assertEquals(originalTimestamp, state.snapshot?.rebalancePlan?.generatedAt)
+        assertTrue("Rebalance plan must be marked as preserved from cache", state.snapshot?.rebalancePlan?.isPreservedFromCache == true)
     }
 }

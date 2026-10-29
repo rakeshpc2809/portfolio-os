@@ -112,9 +112,9 @@ object SyncApiClient {
             try {
                 val snapshot = createService(baseUrl).getSnapshot(token = authToken)
                 lastWorkingBaseUrl = baseUrl
-                SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
+                val savedSnapshot = SnapshotCacheManager.saveSnapshot(context, snapshot, isFullLedgerSync = true)
                 SnapshotCacheManager.setFullyOffline(context, false)
-                return snapshot
+                return savedSnapshot
             } catch (e: Exception) {
                 lastException = e
             }

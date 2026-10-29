@@ -155,7 +155,7 @@ object SnapshotCacheManager {
         }.getOrNull()
     }
 
-    fun saveSnapshot(context: Context, snapshot: SyncSnapshot, isFullLedgerSync: Boolean) {
+    fun saveSnapshot(context: Context, snapshot: SyncSnapshot, isFullLedgerSync: Boolean): SyncSnapshot {
         val isDegraded = snapshot.syncInfo?.drawdownStatus == "UNAVAILABLE" ||
             snapshot.rebalancePlan?.trigger?.type == "UNAVAILABLE" ||
             snapshot.rebalancePlan?.trigger?.reasonCode == "BENCHMARK_UNAVAILABLE" ||
@@ -173,8 +173,8 @@ object SnapshotCacheManager {
                 existingPlan.trigger?.type != "UNAVAILABLE" &&
                 existingPlan.trigger?.reasonCode != "BENCHMARK_UNAVAILABLE"
 
-            if (isExistingValid) {
-                snapshot.copy(rebalancePlan = existingPlan)
+            if (isExistingValid && existingPlan != null) {
+                snapshot.copy(rebalancePlan = existingPlan.copy(isPreservedFromCache = true))
             } else {
                 snapshot.copy(rebalancePlan = null)
             }
@@ -194,6 +194,7 @@ object SnapshotCacheManager {
             editor.putBoolean(KEY_IS_AMFI_FALLBACK, true)
         }
         editor.apply()
+        return snapshotToSave
     }
 
     fun createDefaultFallbackSnapshot(): SyncSnapshot {

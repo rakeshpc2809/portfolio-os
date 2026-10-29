@@ -82,7 +82,8 @@ data class RebalancePlanDto(
     @SerializedName("reasoning_narrative") val reasoningNarrative: ReasoningNarrativeDto? = null,
     @SerializedName("gold_silver_context") val goldSilverContext: GoldSilverContextDto? = null,
     @SerializedName("reconstitution_context") val reconstitutionContext: ReconstitutionContextDto? = null,
-    @SerializedName("beer_spread_context") val beerSpreadContext: BeerSpreadContextDto? = null
+    @SerializedName("beer_spread_context") val beerSpreadContext: BeerSpreadContextDto? = null,
+    @SerializedName("is_preserved_from_cache") val isPreservedFromCache: Boolean = false
 )
 
 @Immutable

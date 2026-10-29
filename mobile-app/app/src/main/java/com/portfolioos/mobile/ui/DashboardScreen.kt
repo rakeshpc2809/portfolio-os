@@ -39,6 +39,7 @@ import com.portfolioos.mobile.model.BenchmarkAnalyticsDto
 import com.portfolioos.mobile.model.FireSummaryResponseDto
 import com.portfolioos.mobile.model.OverlapReportDto
 import com.portfolioos.mobile.model.RebalancePlanDto
+import com.portfolioos.mobile.model.SyncInfoDto
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -406,6 +407,7 @@ fun DashboardScreen(
                                     1 -> GroupedTaxLotsView(taxLots, holdings, isQuietMode = isQuietModeEnabled)
                                     2 -> RebalanceWaterfallView(
                                         rebalancePlan = snapshot.rebalancePlan,
+                                        syncInfo = snapshot.syncInfo,
                                         fireSummary = fireSummaryData,
                                         isQuietMode = isQuietModeEnabled
                                     )
@@ -790,6 +792,51 @@ fun HoldingsView(
                     brief = snapshot.dailyBrief,
                     onDismiss = { briefDismissed = true }
                 )
+            }
+        }
+        if (syncInfo?.drawdownStatus == "UNAVAILABLE") {
+            item {
+                Surface(
+                    color = M3AmberWarning.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, M3AmberWarning.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = M3AmberWarning,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "BENCHMARK MONITORING UNAVAILABLE",
+                                color = M3AmberWarning,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            val isPreserved = snapshot?.rebalancePlan?.isPreservedFromCache == true ||
+                                (syncInfo.drawdownStatus == "UNAVAILABLE" && snapshot?.rebalancePlan != null)
+                            val planAsOf = snapshot?.rebalancePlan?.generatedAt?.ifBlank { null }
+                            Text(
+                                text = if (isPreserved && planAsOf != null)
+                                    "Nifty 500 TRI feed offline. Holdings are fresh, but rebalance plan is preserved from $planAsOf."
+                                else
+                                    "Nifty 500 TRI feed offline or unseeded. Multi-tier drawdown rebalance triggers are suspended.",
+                                color = Color(0xFFCBD5E1),
+                                fontSize = 10.sp,
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                }
             }
         }
         item {
@@ -1879,6 +1926,7 @@ internal fun shortenFundName(rawName: String?): String {
 @Composable
 fun RebalanceWaterfallView(
     rebalancePlan: com.portfolioos.mobile.model.RebalancePlanDto?,
+    syncInfo: com.portfolioos.mobile.model.SyncInfoDto? = null,
     fireSummary: FireSummaryResponseDto? = null,
     isQuietMode: Boolean = false
 ) {
@@ -1890,6 +1938,13 @@ fun RebalanceWaterfallView(
         val headline = rebalancePlan?.reasoningNarrative?.headline.orEmpty()
         headline.contains("cooldown", ignoreCase = true)
     }
+
+    val isDrawdownUnavailable = syncInfo?.drawdownStatus == "UNAVAILABLE" ||
+        rebalancePlan?.drawdownContext?.status == "UNAVAILABLE" ||
+        rebalancePlan?.trigger?.type == "UNAVAILABLE" ||
+        rebalancePlan?.trigger?.reasonCode == "BENCHMARK_UNAVAILABLE"
+    val isPlanStale = rebalancePlan?.isPreservedFromCache == true ||
+        (isDrawdownUnavailable && rebalancePlan != null)
 
     val totalRequired = sellSide?.totalRequired ?: 0.0
     val totalToInvest = buySide?.totalToInvest ?: 0.0
@@ -1944,17 +1999,39 @@ fun RebalanceWaterfallView(
     ) {
         if (rebalancePlan == null) {
             item {
-                PortfolioStateCard(
-                    icon = Icons.Default.Info,
-                    iconTint = M3NeonCyan,
-                    title = "Rebalance Plan Unavailable",
-                    subtitle = "Core Node Sync Required",
-                    description = "Point-in-time drawdown tiers and waterfall trade plans require connection to Core Node.",
-                    actionLabel = "Sync with Core Node",
-                    onAction = {}
-                )
+                if (isDrawdownUnavailable) {
+                    PortfolioStateCard(
+                        icon = Icons.Default.Warning,
+                        iconTint = M3AmberWarning,
+                        title = "Drawdown Monitoring Unavailable",
+                        subtitle = "Benchmark Feed Offline · Standby",
+                        description = "Nifty 500 TRI benchmark data is unseeded or offline. Multi-tier drawdown rebalance triggers are suspended until the next sync."
+                    )
+                } else {
+                    PortfolioStateCard(
+                        icon = Icons.Default.Info,
+                        iconTint = M3NeonCyan,
+                        title = "Rebalance Plan Unavailable",
+                        subtitle = "Core Node Sync Required",
+                        description = "Point-in-time drawdown tiers and waterfall trade plans require connection to Core Node.",
+                        actionLabel = "Sync with Core Node",
+                        onAction = {}
+                    )
+                }
             }
         } else if (isCooldownBlocked) {
+            if (isDrawdownUnavailable) {
+                item {
+                    val planDate = rebalancePlan.generatedAt.ifBlank { "previous sync" }
+                    PortfolioStateCard(
+                        icon = Icons.Default.Warning,
+                        iconTint = M3AmberWarning,
+                        title = "Benchmark Monitoring Unavailable",
+                        subtitle = "Preserved Plan (As of $planDate)",
+                        description = "Nifty 500 TRI benchmark feed is offline or unseeded. Current holdings are updated, but rebalance trade recommendations are preserved from $planDate."
+                    )
+                }
+            }
             item {
                 PortfolioStateCard(
                     icon = Icons.Default.Info,
@@ -1966,17 +2043,18 @@ fun RebalanceWaterfallView(
                 )
             }
         } else if (sellSide == null || (fundSellList.isEmpty() && totalToInvest == 0.0)) {
-            val isDrawdownUnavailable = rebalancePlan.drawdownContext?.status == "UNAVAILABLE" ||
-                rebalancePlan.trigger?.type == "UNAVAILABLE" ||
-                rebalancePlan.trigger?.reasonCode == "BENCHMARK_UNAVAILABLE"
             item {
                 if (isDrawdownUnavailable) {
+                    val planDate = rebalancePlan.generatedAt.ifBlank { "previous sync" }
                     PortfolioStateCard(
                         icon = Icons.Default.Warning,
                         iconTint = M3AmberWarning,
                         title = "Drawdown Monitoring Unavailable",
-                        subtitle = "Benchmark Feed Offline · Standby",
-                        description = "Nifty 500 TRI benchmark data is unseeded or offline. Multi-tier drawdown rebalance triggers are suspended until the next sync."
+                        subtitle = if (isPlanStale) "Preserved Plan (As of $planDate)" else "Benchmark Feed Offline · Standby",
+                        description = if (isPlanStale)
+                            "Nifty 500 TRI benchmark data is unseeded or offline. Preserved plan as of $planDate shows no drift, but live market drawdown monitoring is suspended."
+                        else
+                            "Nifty 500 TRI benchmark data is unseeded or offline. Multi-tier drawdown rebalance triggers are suspended until the next sync."
                     )
                 } else {
                     PortfolioStateCard(
@@ -1988,7 +2066,24 @@ fun RebalanceWaterfallView(
                     )
                 }
             }
+            if (isDrawdownUnavailable) {
+                item {
+                    MultiTierDrawdownGaugeCard(rebalancePlan, syncInfo = syncInfo, isQuietMode = isQuietMode)
+                }
+            }
         } else {
+            if (isDrawdownUnavailable) {
+                item {
+                    val planDate = rebalancePlan.generatedAt.ifBlank { "previous sync" }
+                    PortfolioStateCard(
+                        icon = Icons.Default.Warning,
+                        iconTint = M3AmberWarning,
+                        title = "Benchmark Monitoring Unavailable",
+                        subtitle = "Preserved Plan (As of $planDate)",
+                        description = "Nifty 500 TRI benchmark feed is offline or unseeded. Current holdings and valuations reflect live sync, but trade recommendations below are preserved from $planDate. Live drawdown triggers are suspended."
+                    )
+                }
+            }
             // 1. HERO SUMMARY CARD (Sleek Compact Glass Pill Header)
             item {
                 Card(
@@ -2008,7 +2103,7 @@ fun RebalanceWaterfallView(
                                 shape = ShapeTokens.PillShape
                             ) {
                                 Text(
-                                    text = "DRIFT REBALANCE TRIGGERED",
+                                    text = if (isPlanStale) "PRESERVED PLAN · AS OF ${rebalancePlan.generatedAt.take(10)}" else "DRIFT REBALANCE TRIGGERED",
                                     color = M3AmberWarning,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
@@ -2084,7 +2179,7 @@ fun RebalanceWaterfallView(
 
             // 1B. MULTI-TIER DRAWDOWN TRIPWIRE GAUGE CARD
             item {
-                MultiTierDrawdownGaugeCard(rebalancePlan, isQuietMode = isQuietMode)
+                MultiTierDrawdownGaugeCard(rebalancePlan, syncInfo = syncInfo, isQuietMode = isQuietMode)
             }
 
             // 1C. GOLD-SILVER SPOT RATIO CARD
@@ -2469,9 +2564,14 @@ fun RebalanceWaterfallView(
 }
 
 @Composable
-fun MultiTierDrawdownGaugeCard(plan: RebalancePlanDto, isQuietMode: Boolean = false) {
+fun MultiTierDrawdownGaugeCard(
+    plan: RebalancePlanDto,
+    syncInfo: SyncInfoDto? = null,
+    isQuietMode: Boolean = false
+) {
     val ddCtx = plan.drawdownContext
-    val isUnavailable = ddCtx?.status == "UNAVAILABLE" ||
+    val isUnavailable = syncInfo?.drawdownStatus == "UNAVAILABLE" ||
+        ddCtx?.status == "UNAVAILABLE" ||
         plan.trigger?.type == "UNAVAILABLE" ||
         plan.trigger?.reasonCode == "BENCHMARK_UNAVAILABLE"
     val currentDd = ddCtx?.currentDrawdownPct ?: 0.0

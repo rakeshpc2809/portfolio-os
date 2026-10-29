@@ -284,6 +284,7 @@ class SnapshotCacheManagerUnitTest {
         // Rebalance plan should NOT have been overwritten by degraded plan
         assertEquals("PLAN-VALID-001", loaded?.rebalancePlan?.planId)
         assertEquals("AVAILABLE", loaded?.rebalancePlan?.drawdownContext?.status)
+        assertEquals(true, loaded?.rebalancePlan?.isPreservedFromCache)
     }
 
     @Test
@@ -306,6 +307,63 @@ class SnapshotCacheManagerUnitTest {
         assertNotNull(loaded)
         assertEquals("2026-08-31T12:05:00Z", loaded?.syncInfo?.generatedAt)
         assertNull("Degraded rebalance plan must not be cached when no previous valid plan exists", loaded?.rebalancePlan)
+    }
+
+    @Test
+    fun testDegradedSnapshot_cacheLoadPath_preservesPlanAsStaleWithTimestamp() {
+        val originalTimestamp = "2026-08-31T11:45:00Z"
+        val degradedTimestamp = "2026-08-31T12:30:00Z"
+
+        // 1. Seed cache with valid plan
+        val validSnapshot = SyncSnapshot(
+            syncInfo = SyncInfoDto(
+                timestamp = 1788000000000L,
+                generatedAt = originalTimestamp,
+                drawdownStatus = "AVAILABLE",
+                currentValue = 1500000.0
+            ),
+            rebalancePlan = RebalancePlanDto(
+                planId = "PLAN-PRESERVED-123",
+                generatedAt = originalTimestamp,
+                trigger = RebalanceTriggerDto(type = "SCHEDULED"),
+                drawdownContext = DrawdownContextDto(status = "AVAILABLE", currentDrawdownPct = 2.5),
+                buySide = BuySidePlanDto(totalToInvest = 25000.0)
+            )
+        )
+        SnapshotCacheManager.saveSnapshot(mockContext, validSnapshot, isFullLedgerSync = true)
+
+        // 2. Incoming degraded snapshot with fresh holdings valuation but offline benchmark
+        val degradedSnapshot = SyncSnapshot(
+            syncInfo = SyncInfoDto(
+                timestamp = 1788002700000L,
+                generatedAt = degradedTimestamp,
+                drawdownStatus = "UNAVAILABLE",
+                currentValue = 1512000.0
+            ),
+            rebalancePlan = RebalancePlanDto(
+                planId = "PLAN-DEGRADED-456",
+                generatedAt = degradedTimestamp,
+                trigger = RebalanceTriggerDto(type = "UNAVAILABLE", reasonCode = "BENCHMARK_UNAVAILABLE"),
+                drawdownContext = DrawdownContextDto(status = "UNAVAILABLE", currentDrawdownPct = 0.0)
+            )
+        )
+        val saved = SnapshotCacheManager.saveSnapshot(mockContext, degradedSnapshot, isFullLedgerSync = false)
+        assertEquals("Returned snapshot must mark rebalancePlan as preserved", true, saved.rebalancePlan?.isPreservedFromCache)
+
+        // 3. Cold read from cache path
+        val loaded = SnapshotCacheManager.loadSnapshot(mockContext)
+        assertNotNull("Loaded cache snapshot must not be null", loaded)
+        assertEquals("Fresh holdings sync timestamp must be reflected in syncInfo", degradedTimestamp, loaded?.syncInfo?.generatedAt)
+        assertEquals("Drawdown status must remain UNAVAILABLE in syncInfo", "UNAVAILABLE", loaded?.syncInfo?.drawdownStatus)
+        assertEquals(1512000.0, loaded?.syncInfo?.currentValue ?: 0.0, 0.01)
+
+        // 4. Stale plan provenance verification
+        val preservedPlan = loaded?.rebalancePlan
+        assertNotNull("Preserved plan must exist", preservedPlan)
+        assertEquals("PLAN-PRESERVED-123", preservedPlan?.planId)
+        assertEquals("Preserved plan must retain its original generation timestamp", originalTimestamp, preservedPlan?.generatedAt)
+        assertTrue("isPreservedFromCache flag must be true on loaded plan", preservedPlan?.isPreservedFromCache == true)
+        assertEquals("Preserved plan drawdown context remains AVAILABLE", "AVAILABLE", preservedPlan?.drawdownContext?.status)
     }
 }
 
