@@ -158,6 +158,24 @@ public class RebalanceWaterfallEngine {
 
         for (WaterfallTierStrategy strategy : strategiesToRun) {
             if (remainingTarget.compareTo(BigDecimal.ZERO) <= 0) break;
+            if (strategy instanceof LossHarvestTierStrategy) {
+                boolean isStep0Legacy = (bucket == BucketEngine.Bucket.LEGACY_HOLDINGS);
+                boolean isBucketBeingTrimmed = (trimAmount != null && trimAmount.compareTo(BigDecimal.ZERO) > 0);
+                BigDecimal grossStcg = BigDecimal.ZERO;
+                BigDecimal grossLtcg = BigDecimal.ZERO;
+                for (WaterfallStep s : steps) {
+                    if (s.realizedGain() != null && s.realizedGain().compareTo(BigDecimal.ZERO) > 0) {
+                        if ("LONG_TERM".equals(s.taxTerm())) {
+                            grossLtcg = grossLtcg.add(s.realizedGain());
+                        } else {
+                            grossStcg = grossStcg.add(s.realizedGain());
+                        }
+                    }
+                }
+                if (!shouldHarvestLossLot(isStep0Legacy, isBucketBeingTrimmed, grossStcg, grossLtcg, unusedExemption)) {
+                    continue;
+                }
+            }
             List<Lot> candidateLots = strategy.selectLots(workingLegacyLots, workingCoreLots, navMap, today, rules);
             for (Lot lot : candidateLots) {
                 if (remainingTarget.compareTo(BigDecimal.ZERO) <= 0) break;
@@ -939,6 +957,10 @@ public class RebalanceWaterfallEngine {
             remCorePool = remCorePool.subtract(sinkAlloc);
         }
         cashOverflow = cashOverflow.add(remCorePool);
+
+        if (coreTrimPoolInr.compareTo(BigDecimal.ZERO) > 0) {
+            deficits.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE, BigDecimal.ZERO);
+        }
 
         // 3. General Pool Routing
         BigDecimal remGeneral = generalPoolInr;

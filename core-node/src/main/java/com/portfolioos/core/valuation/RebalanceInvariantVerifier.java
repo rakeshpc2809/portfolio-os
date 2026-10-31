@@ -9,6 +9,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -77,12 +78,13 @@ public final class RebalanceInvariantVerifier {
         }
 
         // Fix V1: Buy Order amount < minTradeAmountInr or negative rejection
+        // INVARIANT V1: Reject negative or non-positive / sub-minimum buy orders
         for (BuyOrder buy : plan.buyOrders()) {
-            if (buy.amountInr().compareTo(BigDecimal.ZERO) < 0) {
-                throw new IllegalStateException("INVARIANT_V1_VIOLATION: Negative buy order detected: " + buy.amountInr() + " for " + buy.isin());
+            if (buy.amountInr() == null || buy.amountInr().compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalStateException("INVARIANT_V1_VIOLATION: Negative buy order detected: " + (buy.amountInr() != null ? buy.amountInr() : "null") + " for " + buy.isin());
             }
-            if (buy.amountInr().compareTo(BigDecimal.ZERO) > 0 && buy.amountInr().compareTo(minOrder) < 0) {
-                throw new IllegalStateException("INVARIANT_V1_VIOLATION: Buy order below min threshold: " + buy.amountInr() + " < " + minOrder);
+            if (buy.amountInr().compareTo(minOrder) < 0) {
+                throw new IllegalStateException("INVARIANT_V1_VIOLATION: Buy order below min threshold: " + buy.amountInr() + " < " + minOrder + " for " + buy.bucket());
             }
         }
 
@@ -108,21 +110,38 @@ public final class RebalanceInvariantVerifier {
                 .collect(Collectors.toSet());
 
             for (LotOrder sold : plan.soldLots()) {
-                if (sold.lotId() != null && !preTradeLotIds.contains(sold.lotId())) {
+                if (sold.lotId() == null || !preTradeLotIds.contains(sold.lotId())) {
                     throw new IllegalStateException("INVARIANT_V2_VIOLATION: Sold lotId " + sold.lotId() + " does not exist in preTradeLotsSnapshot!");
                 }
             }
-        }
 
-        for (LotOrder sold : plan.soldLots()) {
-            String key = (sold.folioNo() != null ? sold.folioNo() : "DEFAULT") + "::" + sold.isin();
-            List<LocalDate> unsoldDates = plan.remainingUnsoldLotDatesByFolioIsin().getOrDefault(key, List.of());
-            boolean olderUnsoldExists = unsoldDates.stream()
-                .anyMatch(unsoldDate -> unsoldDate.isBefore(sold.acquisitionDate()));
-            if (olderUnsoldExists) {
-                throw new IllegalStateException(
-                    "INVARIANT_2_VIOLATION: RTA FIFO breached for " + key
-                    + ". Sold lot from " + sold.acquisitionDate() + " while older lot remains unsold.");
+            Set<String> soldLotIds = plan.soldLots().stream()
+                .map(LotOrder::lotId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+            for (LotOrder sold : plan.soldLots()) {
+                for (PreTradeLotSnapshot snap : preTradeLotsSnapshot) {
+                    if (!soldLotIds.contains(snap.lotId())
+                            && Objects.equals(snap.isin(), sold.isin())
+                            && Objects.equals(snap.folioNo(), sold.folioNo())
+                            && snap.acquisitionDate() != null && sold.acquisitionDate() != null
+                            && snap.acquisitionDate().isBefore(sold.acquisitionDate())) {
+                        throw new IllegalStateException("INVARIANT_2_VIOLATION: RTA FIFO breached for ISIN " + sold.isin() + " (folio " + sold.folioNo() + "). Sold lot " + sold.lotId() + " (acquired " + sold.acquisitionDate() + ") was sold while older unsold lot " + snap.lotId() + " (acquired " + snap.acquisitionDate() + ") remains open.");
+                    }
+                }
+            }
+        } else {
+            for (LotOrder sold : plan.soldLots()) {
+                String key = (sold.folioNo() != null ? sold.folioNo() : "DEFAULT") + "::" + sold.isin();
+                List<LocalDate> unsoldDates = plan.remainingUnsoldLotDatesByFolioIsin().getOrDefault(key, List.of());
+                boolean olderUnsoldExists = unsoldDates.stream()
+                    .anyMatch(unsoldDate -> unsoldDate.isBefore(sold.acquisitionDate()));
+                if (olderUnsoldExists) {
+                    throw new IllegalStateException(
+                        "INVARIANT_2_VIOLATION: RTA FIFO breached for " + key
+                        + ". Sold lot from " + sold.acquisitionDate() + " while older lot remains unsold.");
+                }
             }
         }
 
@@ -184,12 +203,14 @@ public final class RebalanceInvariantVerifier {
         // INVARIANT 6: Statutory Tax Law Limits (ITA 2025 Sec 111 & 112A)
         BigDecimal totalLtcgExemptionUsed = plan.soldLots().stream()
             .map(LotOrder::ltcgExemptionUsedInr).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal annualLimit = config.taxParameters().ltcgExemptionLimitInr();
+        BigDecimal effectiveLimit = plan.remainingAnnual112aExemptionInr() != null
+            ? plan.remainingAnnual112aExemptionInr().min(config.taxParameters().ltcgExemptionLimitInr())
+            : config.taxParameters().ltcgExemptionLimitInr();
 
-        if (totalLtcgExemptionUsed.compareTo(annualLimit) > 0) {
+        if (totalLtcgExemptionUsed.compareTo(effectiveLimit.add(new BigDecimal("0.01"))) > 0) {
             throw new IllegalStateException(
                 "INVARIANT_6_VIOLATION: Section 112A exemption consumed (" + totalLtcgExemptionUsed
-                + ") exceeds statutory cap (" + annualLimit + ")");
+                + ") exceeds available headroom (" + effectiveLimit + ")");
         }
 
         // Tax Proration Check: individual lot estimated tax must sum to summaryTaxInr within 1 INR

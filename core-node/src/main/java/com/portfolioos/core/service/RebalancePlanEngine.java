@@ -24,6 +24,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class RebalancePlanEngine {
 
@@ -337,6 +338,7 @@ public class RebalancePlanEngine {
         List<BucketEngine.BucketTarget> baseTargets = (customTargets != null && !customTargets.isEmpty())
             ? customTargets : BucketConfigLoader.getActiveBucketTargets(today);
         BucketConfigLoader.BucketTargetVersion activeVersion = BucketConfigLoader.getActiveVersion(today);
+        com.portfolioos.core.config.BucketTargetsConfig v24Config = BucketConfigLoader.loadV24Config();
 
         // 2. Portfolio Valuation
         BigDecimal liveCorpus = BigDecimal.ZERO;
@@ -443,26 +445,25 @@ public class RebalancePlanEngine {
         } else if (!isLumpsum && !hasSellSide) {
             if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
                 // Gold Floor Backstop top-up sizing (buy-only)
-                double goldTargetPct = 15.0;
+                double goldTargetPct = (v24Config != null && v24Config.buckets() != null && v24Config.buckets().containsKey(com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER))
+                    ? v24Config.buckets().get(com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER).targetPct().doubleValue()
+                    : 10.0;
                 double goldCurrentPct = 0.0;
-                for (BucketConfigLoader.BucketTargetConfig tc : activeVersion.targets()) {
-                    if ("GOLD_SILVER".equals(tc.bucket())) {
-                        goldTargetPct = tc.targetPct();
-                        break;
-                    }
-                }
                 BigDecimal goldVal = BigDecimal.ZERO;
-                for (Lot lot : openLots) {
-                    if ("GOLD_SILVER".equals(BucketConfigLoader.mapAssetToBucket(lot.assetId(), lot.assetName()))) {
-                        BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.goldVal");
-                        goldVal = goldVal.add(lot.remainingUnits().multiply(nav));
+                if (openLots != null) {
+                    for (Lot lot : openLots) {
+                        if ("GOLD_SILVER".equals(BucketConfigLoader.mapAssetToBucket(lot.assetId(), lot.assetName()))) {
+                            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.goldVal");
+                            goldVal = goldVal.add(lot.remainingUnits().multiply(nav));
+                        }
                     }
                 }
-                if (liveCorpus.compareTo(BigDecimal.ZERO) > 0) {
-                    goldCurrentPct = (goldVal.doubleValue() / liveCorpus.doubleValue()) * 100.0;
+                BigDecimal corpusBasis = sellSideActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? sellSideActiveCorpus : liveCorpus;
+                if (corpusBasis.compareTo(BigDecimal.ZERO) > 0) {
+                    goldCurrentPct = (goldVal.doubleValue() / corpusBasis.doubleValue()) * 100.0;
                 }
                 totalPool = GoldDampenerCalculator.calculateSizedAllocation(
-                    goldTargetPct, goldCurrentPct, 1.0, 1.0, liveCorpus, true
+                    goldTargetPct, goldCurrentPct, 1.0, 1.0, corpusBasis, true
                 );
             } else {
                 totalPool = BigDecimal.ZERO;
@@ -866,7 +867,9 @@ public class RebalancePlanEngine {
         }
 
         boolean hasWaterfallBuckets = activeTargets != null && activeTargets.stream().anyMatch(t -> t.bucket() == BucketEngine.Bucket.GOLD_SILVER || t.bucket() == BucketEngine.Bucket.LIQUID_BUFFER);
-        com.portfolioos.core.config.BucketTargetsConfig v24Config = BucketConfigLoader.loadV24Config();
+        if (v24Config == null) {
+            v24Config = BucketConfigLoader.loadV24Config();
+        }
         com.portfolioos.core.valuation.RebalanceWaterfallEngine.RoutingResult routingResult = null;
 
         if (hasWaterfallBuckets && !isLumpsum) {
@@ -1049,6 +1052,7 @@ public class RebalancePlanEngine {
                                 ? l.taxImpact().taxAmount() : BigDecimal.ZERO;
                             BigDecimal ltcgUsed = (l.taxImpact() != null && l.taxImpact().exemptionApplied() != null)
                                 ? l.taxImpact().exemptionApplied() : BigDecimal.ZERO;
+                            boolean withinExitLoad = l.holdingDays() < com.portfolioos.core.valuation.ExitLoadCalculator.getRequiredExitLoadDays(l.fundId(), l.fundName());
                             soldLotOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.LotOrder(
                                 l.lotId(),
                                 null,
@@ -1057,7 +1061,7 @@ public class RebalancePlanEngine {
                                 l.saleProceeds(),
                                 estTax,
                                 ltcgUsed,
-                                false
+                                withinExitLoad
                             ));
                         }
                     }
@@ -1066,6 +1070,9 @@ public class RebalancePlanEngine {
 
             List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.BuyOrder> buyOrders = new ArrayList<>();
             for (RebalanceBucketAllocationDto b : buyBuckets) {
+                if (b.amountAllocated() == null || b.amountAllocated().compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
                 try {
                     com.portfolioos.core.config.BucketTargetsConfig.BucketType bType =
                         mapToV24BucketType(BucketEngine.Bucket.valueOf(b.bucket()));
@@ -1111,8 +1118,8 @@ public class RebalancePlanEngine {
 
             BigDecimal summaryTax = (sellSide.taxSummary() != null && sellSide.taxSummary().totalTaxEstimate() != null)
                 ? sellSide.taxSummary().totalTaxEstimate() : BigDecimal.ZERO;
-            BigDecimal remainingExemption = (sellSide.taxSummary() != null && sellSide.taxSummary().exemptionHeadroomAfter() != null)
-                ? sellSide.taxSummary().exemptionHeadroomAfter() : BigDecimal.ZERO;
+            BigDecimal remainingExemption = (sellSide.taxSummary() != null && sellSide.taxSummary().exemptionHeadroomBefore() != null)
+                ? sellSide.taxSummary().exemptionHeadroomBefore() : (headroomBefore != null ? headroomBefore : BigDecimal.ZERO);
 
             boolean coreTrimmed = bucketSoldAmounts.getOrDefault(BucketEngine.Bucket.EQUITY_CORE, BigDecimal.ZERO).compareTo(BigDecimal.ZERO) > 0;
             BigDecimal effectiveCorpus = postActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? postActiveCorpus : sellSideActiveCorpus;

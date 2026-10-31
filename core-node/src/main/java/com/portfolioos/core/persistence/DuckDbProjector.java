@@ -525,8 +525,7 @@ public class DuckDbProjector implements AutoCloseable {
         String sql = "WITH recent_bench AS (" +
                      "  SELECT nav_date, level " +
                      "  FROM benchmark_history " +
-                     "  WHERE benchmark_id = ? AND level > 0 " +
-                     "  ORDER BY nav_date DESC LIMIT 252" +
+                     "  WHERE benchmark_id = ? AND level > 0" +
                      ") " +
                      "SELECT " +
                      "  (SELECT level FROM recent_bench ORDER BY nav_date DESC LIMIT 1) AS current_level, " +
@@ -552,8 +551,7 @@ public class DuckDbProjector implements AutoCloseable {
         String proxySql = "WITH recent_nav AS (" +
                           "  SELECT nav_date, nav " +
                           "  FROM nav_history " +
-                          "  WHERE asset_id = 'INF109KC12U0' AND nav > 0 " +
-                          "  ORDER BY nav_date DESC LIMIT 252" +
+                          "  WHERE asset_id = 'INF109KC12U0' AND nav > 0" +
                           ") " +
                           "SELECT " +
                           "  (SELECT nav FROM recent_nav ORDER BY nav_date DESC LIMIT 1) AS current_level, " +

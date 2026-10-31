@@ -124,7 +124,7 @@ class RebalanceV24RegressionTest {
             TriggerType.DRIFT, false, false,
             new BigDecimal("1000000.00"),
             List.of(new LotOrder("LOT-2", "FOLIO-1", "INF109KC12U0", d2, new BigDecimal("10000.00"), BigDecimal.ZERO, BigDecimal.ZERO, false)),
-            Map.of("FOLIO-1::INF109KC12U0", List.of(d1)), // older d1 is unsold!
+            Map.of(), // verifier derives FIFO ordering directly from preTradeSnapshots
             List.of(new BuyOrder(BucketType.EQUITY_CORE, "INF109KC12U0", new BigDecimal("10000.00"))),
             Map.of(BucketType.LIQUID_BUFFER, new BigDecimal("100000.00")),
             BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("125000.00")
@@ -212,7 +212,7 @@ class RebalanceV24RegressionTest {
     void testR2MixedPoolSatelliteProhibition() {
         BigDecimal corpus = new BigDecimal("1000000.00");
         BigDecimal coreTrim = new BigDecimal("50000.00");
-        BigDecimal generalPool = BigDecimal.ZERO;
+        BigDecimal generalPool = new BigDecimal("70000.00");
 
         Map<BucketType, BigDecimal> postSellValues = Map.of(
             BucketType.EQUITY_CORE, new BigDecimal("500000.00"),
@@ -241,6 +241,36 @@ class RebalanceV24RegressionTest {
         // CoreTrim must NOT leak into Satellite despite 100,000 deficit!
         assertEquals(0, result.bucketBuysInr().get(BucketType.EQUITY_SATELLITE).compareTo(BigDecimal.ZERO),
             "Satellite buys MUST be 0.00 when Core is trimmed");
+
+        List<BuyOrder> buyOrders = result.bucketBuysInr().entrySet().stream()
+            .filter(e -> e.getValue().compareTo(BigDecimal.ZERO) > 0)
+            .map(e -> new BuyOrder(e.getKey(), "SCHEME-" + e.getKey(), e.getValue()))
+            .toList();
+
+        BigDecimal summaryTax = new BigDecimal("1000.00");
+        List<LotOrder> soldLots = List.of(
+            new LotOrder("L1", "FOLIO1", "INF109KC12U0", LocalDate.now().minusDays(400), coreTrim, summaryTax, BigDecimal.ZERO, false),
+            new LotOrder("L2", "FOLIO1", "INF247L01BQ9", LocalDate.now().minusDays(500), generalPool, BigDecimal.ZERO, BigDecimal.ZERO, false)
+        );
+
+        Map<BucketType, BigDecimal> postTradeVals = new EnumMap<>(BucketType.class);
+        postSellValues.forEach((b, v) -> {
+            postTradeVals.put(b, v.add(result.bucketBuysInr().getOrDefault(b, BigDecimal.ZERO)));
+        });
+
+        VerifiablePlan plan = new VerifiablePlan(
+            TriggerType.DRIFT, false, true,
+            corpus,
+            soldLots,
+            Map.of(),
+            buyOrders,
+            postTradeVals,
+            result.cashOverflowInr(),
+            summaryTax,
+            new BigDecimal("125000.00")
+        );
+
+        assertDoesNotThrow(() -> verifier.assertAllInvariants(plan, config));
     }
 
     // =========================================================================

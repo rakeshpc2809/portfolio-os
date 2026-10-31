@@ -259,7 +259,8 @@ public class RebalanceTriggerEvaluator {
                     // v2.4 demotion: Under v2.4, remediate_on_passive_flow_only is true:
                     // intra-core ratio check skews buys/trims on passive flow only,
                     // and NEVER fires a standalone taxable sell rebalance when EQUITY_CORE aggregate is inside [45%, 55%].
-                    boolean isV24OrLater = ver != null && "2.4.0".equals(ver.versionId());
+                    boolean isV24OrLater = (ver != null && ver.versionId() != null && (ver.versionId().startsWith("2.4") || ver.versionId().startsWith("v2.4")))
+                        || (today != null && today.isAfter(LocalDate.of(2026, 9, 30)));
                     if (!isV24OrLater) {
                         driftedBuckets.add("CORE_INTERNAL_CIRCUIT_BREAKER");
                     }
