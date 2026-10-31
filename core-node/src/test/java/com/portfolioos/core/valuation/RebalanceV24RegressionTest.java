@@ -373,11 +373,11 @@ class RebalanceV24RegressionTest {
     }
 
     // =========================================================================
-    // E5: Persisted ATH Watermark Integrity & Lag Threshold
+    // E5: Persisted ATH Watermark Integrity & Dynamic Advancement
     // =========================================================================
     @Test
-    @DisplayName("E5: Persisted ATH watermark <= 0 or lagging current TRI by > 5% throws IllegalStateException")
-    void testE5WatermarkIntegrityChecks() {
+    @DisplayName("E5: Persisted ATH watermark <= 0 throws IllegalStateException")
+    void testE5WatermarkNonPositiveIntegrityCheck() {
         // Non-positive watermark in DB
         repository.setNiftyTriWatermark(BigDecimal.ZERO);
         IllegalStateException exZero = assertThrows(IllegalStateException.class, () ->
@@ -386,15 +386,28 @@ class RebalanceV24RegressionTest {
             )
         );
         assertTrue(exZero.getMessage().contains("Stored Nifty TRI watermark <= 0"));
+    }
 
-        // Stored watermark lags current TRI by > 5% (e.g. stored = 20,000, current = 25,000 -> 25% lag)
-        repository.setNiftyTriWatermark(new BigDecimal("20000.00"));
-        IllegalStateException exLag = assertThrows(IllegalStateException.class, () ->
-            evaluator.getCurrentStatus(
-                List.of(), Map.of(), new BigDecimal("25000.00"), new BigDecimal("25000.00"), null, null, LocalDate.now()
-            )
+    @Test
+    @DisplayName("E5: Stored watermark 10% below current TRI advances without throwing (new peak advancement)")
+    void testStoredWatermarkTenPercentBelowCurrentAdvancesWatermark() {
+        // Stored watermark = 22,500.00 (10% below current TRI = 25,000.00)
+        repository.setNiftyTriWatermark(new BigDecimal("22500.00"));
+        BigDecimal currentTri = new BigDecimal("25000.00");
+        BigDecimal rollingHigh = new BigDecimal("25000.00");
+
+        RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
+            List.of(), Map.of(), currentTri, rollingHigh, null, null, LocalDate.now()
         );
-        assertTrue(exLag.getMessage().contains("lags current TRI by > 5%"));
+
+        assertNotNull(res);
+        assertEquals(0, BigDecimal.ZERO.compareTo(BigDecimal.valueOf(res.drawdownContext().currentDrawdownPct())),
+            "Current TRI is at all-time high, drawdown must be 0%");
+        assertEquals(0, currentTri.compareTo(res.drawdownContext().rollingHighValue()),
+            "Effective high must advance to current TRI peak of 25,000.00");
+
+        // Verify watermark in repository was advanced and persisted as 25,000.00
+        assertEquals(new BigDecimal("25000.00"), repository.getNiftyTriWatermark().orElseThrow());
     }
 
     // =========================================================================

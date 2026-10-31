@@ -172,6 +172,10 @@ public class RebalancePlanDtos {
             );
         }
 
+        public BigDecimal cashOverflowInr() {
+            return buySide != null && buySide.cashOverflowInr() != null ? buySide.cashOverflowInr() : BigDecimal.ZERO;
+        }
+
         public static String computeDigest(RebalanceTriggerDto trigger, SellSidePlanDto sellSide, BuySidePlanDto buySide) {
             try {
                 java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
@@ -193,6 +197,8 @@ public class RebalancePlanDtos {
                 }
                 if (buySide != null) {
                     sb.append(";BUY:").append(buySide.totalToInvest()).append(";");
+                    BigDecimal overflow = buySide.cashOverflowInr() != null ? buySide.cashOverflowInr() : BigDecimal.ZERO;
+                    sb.append("OVERFLOW:").append(overflow).append(";");
                     if (buySide.buckets() != null) {
                         for (RebalanceBucketAllocationDto b : buySide.buckets()) {
                             sb.append(b.bucket()).append(":").append(b.amountAllocated()).append(",");
@@ -561,10 +567,15 @@ public class RebalancePlanDtos {
     public record BuySidePlanDto(
         BigDecimal totalToInvest,
         boolean isManualLumpsum,
-        List<RebalanceBucketAllocationDto> buckets
+        List<RebalanceBucketAllocationDto> buckets,
+        BigDecimal cashOverflowInr
     ) {
+        public BuySidePlanDto(BigDecimal totalToInvest, boolean isManualLumpsum, List<RebalanceBucketAllocationDto> buckets) {
+            this(totalToInvest, isManualLumpsum, buckets, BigDecimal.ZERO);
+        }
+
         public BuySidePlanDto(BigDecimal totalToInvest, List<RebalanceBucketAllocationDto> buckets) {
-            this(totalToInvest, false, buckets);
+            this(totalToInvest, false, buckets, BigDecimal.ZERO);
         }
     }
 

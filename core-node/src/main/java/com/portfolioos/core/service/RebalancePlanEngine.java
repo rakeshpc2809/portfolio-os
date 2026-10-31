@@ -944,7 +944,8 @@ public class RebalancePlanEngine {
             ));
         }
 
-        BuySidePlanDto buySide = new BuySidePlanDto(totalPool, isLumpsum, buyBuckets);
+        BigDecimal cashOverflow = (routingResult != null) ? routingResult.cashOverflowInr() : BigDecimal.ZERO;
+        BuySidePlanDto buySide = new BuySidePlanDto(totalPool, isLumpsum, buyBuckets, cashOverflow);
 
         // 5. Templated Narrative
         List<String> paragraphs = new ArrayList<>();
@@ -1011,6 +1012,10 @@ public class RebalancePlanEngine {
                     ts.totalTaxEstimate().longValue(), ts.exemptionHeadroomAfter().longValue()));
             }
             paragraphs.add(String.format("Target allocations reference Config Version %s (effective from %s).", activeVersion.versionId(), activeVersion.effectiveFrom()));
+        }
+
+        if (cashOverflow.compareTo(BigDecimal.ZERO) > 0) {
+            paragraphs.add(String.format("Cash overflow of ₹%,.2f held in unallocated reserve due to liquid buffer cap or minimum trade thresholds.", cashOverflow));
         }
 
         ReasoningNarrativeDto narrative = new ReasoningNarrativeDto(
@@ -1111,7 +1116,6 @@ public class RebalancePlanEngine {
 
             boolean coreTrimmed = bucketSoldAmounts.getOrDefault(BucketEngine.Bucket.EQUITY_CORE, BigDecimal.ZERO).compareTo(BigDecimal.ZERO) > 0;
             BigDecimal effectiveCorpus = postActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? postActiveCorpus : sellSideActiveCorpus;
-            BigDecimal cashOverflow = (routingResult != null) ? routingResult.cashOverflowInr() : BigDecimal.ZERO;
 
             com.portfolioos.core.valuation.RebalanceInvariantVerifier.VerifiablePlan vPlan =
                 new com.portfolioos.core.valuation.RebalanceInvariantVerifier.VerifiablePlan(

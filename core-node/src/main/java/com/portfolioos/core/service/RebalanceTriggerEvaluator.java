@@ -123,12 +123,7 @@ public class RebalanceTriggerEvaluator {
                         throw new IllegalStateException("CRITICAL INTEGRITY FAILURE: Stored Nifty TRI watermark <= 0");
                     }
                     if (curr.compareTo(storedWatermark) > 0) {
-                        BigDecimal lagFraction = curr.subtract(storedWatermark).divide(storedWatermark, 4, RoundingMode.HALF_UP);
-                        if (lagFraction.compareTo(new BigDecimal("0.05")) > 0) {
-                            throw new IllegalStateException("CRITICAL INTEGRITY FAILURE: Stored Nifty TRI watermark lags current TRI by > 5%: stored="
-                                + storedWatermark + ", current=" + curr);
-                        }
-                        // Advance and persist new peak within normal tolerance
+                        // A higher current level is a new peak: advance and persist the watermark
                         repository.setNiftyTriWatermark(curr);
                         storedWatermark = curr;
                     }
