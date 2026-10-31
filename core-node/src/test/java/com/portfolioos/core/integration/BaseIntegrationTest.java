@@ -158,6 +158,13 @@ public abstract class BaseIntegrationTest {
         eventStore.appendEvents(events);
         duckDbProjector.projectEvents(events);
 
+        try (java.sql.Connection conn = duckDbProjector.getConnection();
+             java.sql.Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE TABLE IF NOT EXISTS benchmark_history (benchmark_id VARCHAR, nav_date DATE, level DOUBLE);");
+            stmt.execute("DELETE FROM benchmark_history WHERE benchmark_id = 'NIFTY_500_TRI';");
+            stmt.execute("INSERT INTO benchmark_history VALUES ('NIFTY_500_TRI', '2026-10-15', 25000.0);");
+        } catch (Exception ignored) {}
+
         FifoMatcher matcher = new FifoMatcher();
         FifoMatcher.FifoResult fifoResult = matcher.processEvents(events);
 
