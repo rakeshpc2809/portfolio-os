@@ -1,0 +1,899 @@
+[INFO] Scanning for projects...
+[INFO] Loaded 24312 auto-discovered prefixes for remote repository central (prefixes-central.txt)
+[INFO] 
+[INFO] ---------------------< com.portfolioos:core-node >----------------------
+[INFO] Building core-node 3.0.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] Loaded 74 auto-discovered prefixes for remote repository apache.snapshots (prefixes-apache.snapshots.txt)
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ core-node ---
+[INFO] Copying 1 resource from src/main/resources to target/classes
+[INFO] Copying 9 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ core-node ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ core-node ---
+[INFO] Copying 1 resource from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ core-node ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ core-node ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.portfolioos.core.controllers.ConfigControllerTest
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.280 s -- in com.portfolioos.core.controllers.ConfigControllerTest
+[INFO] Running com.portfolioos.core.controllers.RebalanceControllerTest
+22:51:37.996 [main] INFO com.zaxxer.hikari.HikariDataSource -- TriggerHistoryPool - Starting...
+22:51:38.144 [main] INFO com.zaxxer.hikari.pool.HikariPool -- TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@5003041b
+22:51:38.145 [main] INFO com.zaxxer.hikari.HikariDataSource -- TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build as described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
+WARNING: A Java agent has been loaded dynamically (/home/rakeshpc/.m2/repository/net/bytebuddy/byte-buddy-agent/1.17.8/byte-buddy-agent-1.17.8.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.254 s -- in com.portfolioos.core.controllers.RebalanceControllerTest
+[INFO] Running com.portfolioos.core.controllers.StatementsControllerTest
+22:51:39.230 [main] WARN com.zaxxer.hikari.HikariConfig -- SqliteEventStorePool - idleTimeout has been set but has no effect because the pool is operating as a fixed size pool.
+22:51:39.235 [main] INFO com.zaxxer.hikari.HikariDataSource -- SqliteEventStorePool - Starting...
+22:51:39.237 [main] INFO com.zaxxer.hikari.pool.HikariPool -- SqliteEventStorePool - Added connection org.sqlite.jdbc4.JDBC4Connection@5ad1904f
+22:51:39.238 [main] INFO com.zaxxer.hikari.HikariDataSource -- SqliteEventStorePool - Start completed.
+22:51:39.244 [main] INFO com.zaxxer.hikari.HikariDataSource -- HikariPool-1 - Starting...
+22:51:39.685 [main] INFO com.zaxxer.hikari.pool.PoolBase -- HikariPool-1 - Driver does not support get/set network timeout for connections. (getNetworkTimeout)
+22:51:39.692 [main] INFO com.zaxxer.hikari.pool.HikariPool -- HikariPool-1 - Added connection org.duckdb.DuckDBConnection@2a235b8e
+22:51:39.692 [main] INFO com.zaxxer.hikari.HikariDataSource -- HikariPool-1 - Start completed.
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.972 s -- in com.portfolioos.core.controllers.StatementsControllerTest
+[INFO] Running com.portfolioos.core.controllers.SyncControllerTest
+Failed to fetch daily net worth trend from DuckDB: DuckDbProjector initialized in no-op testing mode; no DataSource available.
+Failed to fetch NAV history series with dates from DuckDB: DuckDbProjector initialized in no-op testing mode; no DataSource available.
+Failed to fetch daily net worth trend from DuckDB: DuckDbProjector initialized in no-op testing mode; no DataSource available.
+22:51:40.328 [main] WARN com.portfolioos.core.controllers.SyncController -- Benchmark data unavailable during /sync/snapshot — gracefully degrading drawdown status: CRITICAL BENCHMARK FAILURE: Missing or invalid 52-week peak for Nifty 500 TRI Benchmark
+22:51:40.342 [main] INFO com.zaxxer.hikari.HikariDataSource -- TriggerHistoryPool - Starting...
+22:51:40.343 [main] INFO com.zaxxer.hikari.pool.HikariPool -- TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@342ee097
+22:51:40.344 [main] INFO com.zaxxer.hikari.HikariDataSource -- TriggerHistoryPool - Start completed.
+22:51:40.465 [main] ERROR com.portfolioos.core.controllers.SyncController -- Cannot confirm rebalance execution: TriggerHistoryRepository is not configured
+22:51:40.465 [main] INFO com.zaxxer.hikari.HikariDataSource -- TriggerHistoryPool - Shutdown initiated...
+22:51:40.468 [main] INFO com.zaxxer.hikari.HikariDataSource -- TriggerHistoryPool - Shutdown completed.
+22:51:40.472 [main] INFO com.zaxxer.hikari.HikariDataSource -- TriggerHistoryPool - Starting...
+22:51:40.474 [main] INFO com.zaxxer.hikari.pool.HikariPool -- TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@64279ab
+22:51:40.474 [main] INFO com.zaxxer.hikari.HikariDataSource -- TriggerHistoryPool - Start completed.
+22:51:40.511 [main] INFO com.zaxxer.hikari.HikariDataSource -- TriggerHistoryPool - Shutdown initiated...
+22:51:40.512 [main] INFO com.zaxxer.hikari.HikariDataSource -- TriggerHistoryPool - Shutdown completed.
+Background cache refresh warning: Cannot invoke "com.portfolioos.core.ports.EventStorePort.getLatestEventHash()" because "this.eventStore" is null
+Failed to fetch daily net worth trend from DuckDB: DuckDbProjector initialized in no-op testing mode; no DataSource available.
+Failed to fetch daily net worth trend from DuckDB: DuckDbProjector initialized in no-op testing mode; no DataSource available.
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.353 s -- in com.portfolioos.core.controllers.SyncControllerTest
+[INFO] Running com.portfolioos.core.crypto.CloudBundleCryptoTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in com.portfolioos.core.crypto.CloudBundleCryptoTest
+[INFO] Running com.portfolioos.core.fire.FireTrackerTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in com.portfolioos.core.fire.FireTrackerTest
+[INFO] Running com.portfolioos.core.goals.GoalTrackerTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.portfolioos.core.goals.GoalTrackerTest
+[INFO] Running com.portfolioos.core.integration.AuditControllerIntegrationTest
+22:51:40.644 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.portfolioos.core.integration.AuditControllerIntegrationTest]: AuditControllerIntegrationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+22:51:40.754 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.portfolioos.core.CoreApplication for test class com.portfolioos.core.integration.AuditControllerIntegrationTest
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.5.16)
+
+2026-10-31T22:51:41.065+05:30  INFO 210264 --- [portfolio-os-core] [           main] c.p.c.i.AuditControllerIntegrationTest   : Starting AuditControllerIntegrationTest using Java 21.0.13 with PID 210264 (started by rakeshpc in /home/rakeshpc/Projects/portfolio-os/core-node)
+2026-10-31T22:51:41.066+05:30 DEBUG 210264 --- [portfolio-os-core] [           main] c.p.c.i.AuditControllerIntegrationTest   : Running with Spring Boot v3.5.16, Spring v6.2.19
+2026-10-31T22:51:41.067+05:30  INFO 210264 --- [portfolio-os-core] [           main] c.p.c.i.AuditControllerIntegrationTest   : No active profile set, falling back to 1 default profile: "default"
+2026-10-31T22:51:41.683+05:30  WARN 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariConfig           : SqliteEventStorePool - idleTimeout has been set but has no effect because the pool is operating as a fixed size pool.
+2026-10-31T22:51:41.684+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : SqliteEventStorePool - Starting...
+2026-10-31T22:51:41.687+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : SqliteEventStorePool - Added connection org.sqlite.jdbc4.JDBC4Connection@79bf39e5
+2026-10-31T22:51:41.687+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : SqliteEventStorePool - Start completed.
+2026-10-31T22:51:41.708+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-2 - Starting...
+2026-10-31T22:51:41.715+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.PoolBase          : HikariPool-2 - Driver does not support get/set network timeout for connections. (getNetworkTimeout)
+2026-10-31T22:51:41.717+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-2 - Added connection org.duckdb.DuckDBConnection@6cd6698b
+2026-10-31T22:51:41.718+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-2 - Start completed.
+2026-10-31T22:51:41.809+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:41.811+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@1c14d24d
+2026-10-31T22:51:41.812+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:41.960+05:30  INFO 210264 --- [portfolio-os-core] [           main] o.s.b.a.w.s.WelcomePageHandlerMapping    : Adding welcome page: class path resource [static/index.html]
+2026-10-31T22:51:42.179+05:30  INFO 210264 --- [portfolio-os-core] [           main] o.s.b.t.m.w.SpringBootMockServletContext : Initializing Spring TestDispatcherServlet ''
+2026-10-31T22:51:42.179+05:30  INFO 210264 --- [portfolio-os-core] [           main] o.s.t.web.servlet.TestDispatcherServlet  : Initializing Servlet ''
+2026-10-31T22:51:42.180+05:30  INFO 210264 --- [portfolio-os-core] [           main] o.s.t.web.servlet.TestDispatcherServlet  : Completed initialization in 1 ms
+2026-10-31T22:51:42.205+05:30  INFO 210264 --- [portfolio-os-core] [           main] c.p.c.i.AuditControllerIntegrationTest   : Started AuditControllerIntegrationTest in 1.367 seconds (process running for 5.258)
+Verifying SQLite HMAC ledger integrity...
+Ledger integrity verified successfully. Initializing DuckDB Projection...
+DuckDB projection loaded successfully.
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 10.63 s -- in com.portfolioos.core.integration.AuditControllerIntegrationTest
+[INFO] Running com.portfolioos.core.integration.DuckDbProjectorIntegrationTest
+2026-10-31T22:51:51.218+05:30  INFO 210264 --- [portfolio-os-core] [           main] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [com.portfolioos.core.integration.DuckDbProjectorIntegrationTest]: DuckDbProjectorIntegrationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+2026-10-31T22:51:51.223+05:30  INFO 210264 --- [portfolio-os-core] [           main] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration com.portfolioos.core.CoreApplication for test class com.portfolioos.core.integration.DuckDbProjectorIntegrationTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.046 s -- in com.portfolioos.core.integration.DuckDbProjectorIntegrationTest
+[INFO] Running com.portfolioos.core.integration.IdempotentLedgerReconciliationIntegrationTest
+2026-10-31T22:51:51.265+05:30  INFO 210264 --- [portfolio-os-core] [           main] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [com.portfolioos.core.integration.IdempotentLedgerReconciliationIntegrationTest]: IdempotentLedgerReconciliationIntegrationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+2026-10-31T22:51:51.268+05:30  INFO 210264 --- [portfolio-os-core] [           main] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration com.portfolioos.core.CoreApplication for test class com.portfolioos.core.integration.IdempotentLedgerReconciliationIntegrationTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.372 s -- in com.portfolioos.core.integration.IdempotentLedgerReconciliationIntegrationTest
+[INFO] Running com.portfolioos.core.integration.ProductionConfigBootSmokeTest
+2026-10-31T22:51:51.640+05:30  INFO 210264 --- [portfolio-os-core] [           main] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [com.portfolioos.core.integration.ProductionConfigBootSmokeTest]: ProductionConfigBootSmokeTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+2026-10-31T22:51:51.643+05:30  INFO 210264 --- [portfolio-os-core] [           main] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration com.portfolioos.core.CoreApplication for test class com.portfolioos.core.integration.ProductionConfigBootSmokeTest
+2026-10-31T22:51:51.657+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:51.658+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6d911985
+2026-10-31T22:51:51.659+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:51.662+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:51.662+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:51.667+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:51.668+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@b867869
+2026-10-31T22:51:51.669+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:51.671+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:51.672+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:51.681+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:51.682+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@3b60be3
+2026-10-31T22:51:51.683+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:51.685+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:51.686+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:51.695+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:51.696+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@759c53e5
+2026-10-31T22:51:51.697+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:51.698+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:51.699+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.063 s -- in com.portfolioos.core.integration.ProductionConfigBootSmokeTest
+[INFO] Running com.portfolioos.core.integration.ReportControllerIntegrationTest
+2026-10-31T22:51:51.703+05:30  INFO 210264 --- [portfolio-os-core] [           main] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [com.portfolioos.core.integration.ReportControllerIntegrationTest]: ReportControllerIntegrationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+2026-10-31T22:51:51.706+05:30  INFO 210264 --- [portfolio-os-core] [           main] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration com.portfolioos.core.CoreApplication for test class com.portfolioos.core.integration.ReportControllerIntegrationTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.162 s -- in com.portfolioos.core.integration.ReportControllerIntegrationTest
+[INFO] Running com.portfolioos.core.integration.SecurityGateIntegrationTest
+2026-10-31T22:51:51.867+05:30  INFO 210264 --- [portfolio-os-core] [           main] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [com.portfolioos.core.integration.SecurityGateIntegrationTest]: SecurityGateIntegrationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+2026-10-31T22:51:51.868+05:30  INFO 210264 --- [portfolio-os-core] [           main] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration com.portfolioos.core.CoreApplication for test class com.portfolioos.core.integration.SecurityGateIntegrationTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.198 s -- in com.portfolioos.core.integration.SecurityGateIntegrationTest
+[INFO] Running com.portfolioos.core.integration.StatementIngestionReconciliationGateIntegrationTest
+2026-10-31T22:51:52.068+05:30  INFO 210264 --- [portfolio-os-core] [           main] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [com.portfolioos.core.integration.StatementIngestionReconciliationGateIntegrationTest]: StatementIngestionReconciliationGateIntegrationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+2026-10-31T22:51:52.072+05:30  INFO 210264 --- [portfolio-os-core] [           main] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration com.portfolioos.core.CoreApplication for test class com.portfolioos.core.integration.StatementIngestionReconciliationGateIntegrationTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.056 s -- in com.portfolioos.core.integration.StatementIngestionReconciliationGateIntegrationTest
+[INFO] Running com.portfolioos.core.integration.SyncControllerIntegrationTest
+2026-10-31T22:51:52.125+05:30  INFO 210264 --- [portfolio-os-core] [           main] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [com.portfolioos.core.integration.SyncControllerIntegrationTest]: SyncControllerIntegrationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+2026-10-31T22:51:52.128+05:30  INFO 210264 --- [portfolio-os-core] [           main] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration com.portfolioos.core.CoreApplication for test class com.portfolioos.core.integration.SyncControllerIntegrationTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.170 s -- in com.portfolioos.core.integration.SyncControllerIntegrationTest
+[INFO] Running com.portfolioos.core.matcher.FifoMatcherGrandfatheringTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.portfolioos.core.matcher.FifoMatcherGrandfatheringTest
+[INFO] Running com.portfolioos.core.matcher.FundTierClassifierTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.portfolioos.core.matcher.FundTierClassifierTest
+[INFO] Running com.portfolioos.core.matcher.TaxClassifierTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.portfolioos.core.matcher.TaxClassifierTest
+[INFO] Running com.portfolioos.core.nav.AmfiNavSyncTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.083 s -- in com.portfolioos.core.nav.AmfiNavSyncTest
+[INFO] Running com.portfolioos.core.nav.PortfolioOverlapAuditTest
+2026-10-31T22:51:52.393+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-3 - Starting...
+2026-10-31T22:51:52.407+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.PoolBase          : HikariPool-3 - Driver does not support get/set network timeout for connections. (getNetworkTimeout)
+2026-10-31T22:51:52.409+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-3 - Added connection org.duckdb.DuckDBConnection@312e8eaf
+2026-10-31T22:51:52.409+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-3 - Start completed.
+2026-10-31T22:51:52.888+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-4 - Starting...
+2026-10-31T22:51:52.894+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.PoolBase          : HikariPool-4 - Driver does not support get/set network timeout for connections. (getNetworkTimeout)
+2026-10-31T22:51:52.896+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-4 - Added connection org.duckdb.DuckDBConnection@10ab976b
+2026-10-31T22:51:52.896+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-4 - Start completed.
+2026-10-31T22:51:53.260+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-5 - Starting...
+2026-10-31T22:51:53.269+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.PoolBase          : HikariPool-5 - Driver does not support get/set network timeout for connections. (getNetworkTimeout)
+2026-10-31T22:51:53.271+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-5 - Added connection org.duckdb.DuckDBConnection@235b4aea
+2026-10-31T22:51:53.271+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-5 - Start completed.
+2026-10-31T22:51:53.643+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-6 - Starting...
+2026-10-31T22:51:53.648+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.PoolBase          : HikariPool-6 - Driver does not support get/set network timeout for connections. (getNetworkTimeout)
+2026-10-31T22:51:53.650+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-6 - Added connection org.duckdb.DuckDBConnection@5a110e7d
+2026-10-31T22:51:53.653+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-6 - Start completed.
+2026-10-31T22:51:54.025+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-7 - Starting...
+2026-10-31T22:51:54.029+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.PoolBase          : HikariPool-7 - Driver does not support get/set network timeout for connections. (getNetworkTimeout)
+2026-10-31T22:51:54.031+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-7 - Added connection org.duckdb.DuckDBConnection@5c00de0d
+2026-10-31T22:51:54.031+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-7 - Start completed.
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.037 s -- in com.portfolioos.core.nav.PortfolioOverlapAuditTest
+[INFO] Running com.portfolioos.core.persistence.SqliteEventStoreTest
+2026-10-31T22:51:54.428+05:30  WARN 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariConfig           : SqliteEventStorePool - idleTimeout has been set but has no effect because the pool is operating as a fixed size pool.
+2026-10-31T22:51:54.428+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : SqliteEventStorePool - Starting...
+2026-10-31T22:51:54.430+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : SqliteEventStorePool - Added connection org.sqlite.jdbc4.JDBC4Connection@52e5ad71
+2026-10-31T22:51:54.430+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : SqliteEventStorePool - Start completed.
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.portfolioos.core.persistence.SqliteEventStoreTest
+[INFO] Running com.portfolioos.core.persistence.TriggerHistoryRepositoryTest
+2026-10-31T22:51:54.435+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:54.440+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@70736b19
+2026-10-31T22:51:54.440+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:54.451+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:54.455+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@2f1b8770
+2026-10-31T22:51:54.456+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.034 s -- in com.portfolioos.core.persistence.TriggerHistoryRepositoryTest
+[INFO] Running com.portfolioos.core.reconciliation.ReconciliationGateTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.portfolioos.core.reconciliation.ReconciliationGateTest
+[INFO] Running com.portfolioos.core.reporting.Itr2CsvExporterTest
+CRITICAL ERROR: Pre-2018 lot for ISIN INF109KC13X2 (Fund Pre No FMV) has no 2018-01-31 FMV data. Sec 55(2)(ac) calculation cannot proceed safely.
+CRITICAL ERROR: Pre-2018 lot for ISIN INF109KC13X2 (Pre 2018 Fund) has no 2018-01-31 FMV data. Sec 55(2)(ac) calculation cannot proceed safely.
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in com.portfolioos.core.reporting.Itr2CsvExporterTest
+[INFO] Running com.portfolioos.core.reporting.TaxReportAndItr2ExporterTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.portfolioos.core.reporting.TaxReportAndItr2ExporterTest
+[INFO] Running com.portfolioos.core.rules.BucketConfigLoaderTest
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in com.portfolioos.core.rules.BucketConfigLoaderTest
+[INFO] Running com.portfolioos.core.rules.FireActionRuleEngineTest
+=== DENOMINATOR EXCLUSION TEST PASSED ===
+Investable Net Worth Denominator: ₹6500000.0
+Computed Withdrawal Rate        : 10.0%
+=== GUYTON-KLINGER HIGH PE BREACH TEST PASSED ===
+Nifty PE: 26.5 -> Contracted SWR: 2.6%
+Upper Guardrail: 3.12% vs Current Rate: 3.6%
+Status: ACTION_RECOMMENDED | Severity: HIGH
+=== FALLBACK INDICATOR TEST PASSED ===
+Default Nifty PE: 22.4
+Fallback Flag   : true
+=== FIRE ACTION RULE ENGINE UNIT TEST PASSED ===
+Full Headroom Rationale    : INF109KC13X2 and INF879O01027 share 5 significant stock positions, creating 23.56% structural redundancy. FIFO lot-level evaluation confirms oldest lots are long-term (held >365 days, LTCG under Sec 112A). Net estimated tax is ₹0 after applying remaining FY exemption headroom of ₹125,000.
+Consumed Headroom Rationale: INF109KC13X2 and INF879O01027 share 5 significant stock positions, creating 23.56% structural redundancy. FIFO lot-level evaluation confirms oldest lots are long-term (held >365 days, LTCG under Sec 112A). Net estimated tax is ₹0 after applying remaining FY exemption headroom of ₹80,000.
+=== GUYTON-KLINGER LOW PE EXPANSION TEST PASSED ===
+Nifty PE: 16.5 -> Expanded SWR: 3.35%
+Lower Guardrail: 2.68% vs Current Rate: 1.8%
+Computed ERP: -0.89%
+=== GUYTON-KLINGER CORRIDOR STABLE TEST PASSED ===
+Summary  : Decumulation corridor stable: current rate 2.88% vs SWR corridor 2.40%–3.60%.
+Rationale: Mode A Stress-Test: Current withdrawal rate of 2.88% operates comfortably within the Guyton-Klinger safe corridor (2.40% to 3.60%). Nifty 50 P/E of 22.4 (FAIR_VALUE) establishes a baseline SWR of 3.00% (ERP: +-2.64%). Mode B Target: Retirement plan remains ON_TRACK with target age 45 projected corpus of ₹42,000,000 vs required ₹24,000,000.
+=== STRICT MF UPPER GUARDRAIL TEST PASSED ===
+Status  : ACTION_RECOMMENDED | Severity: HIGH
+Summary : Current withdrawal rate (52.19%) exceeds GK upper guardrail (3.60%).
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in com.portfolioos.core.rules.FireActionRuleEngineTest
+[INFO] Running com.portfolioos.core.rules.TaxRulesLoaderTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.portfolioos.core.rules.TaxRulesLoaderTest
+[INFO] Running com.portfolioos.core.security.SecurityInterceptorTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.portfolioos.core.security.SecurityInterceptorTest
+[INFO] Running com.portfolioos.core.service.DuckDbProjectorNetWorthAccountingTest
+2026-10-31T22:51:54.518+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-8 - Starting...
+2026-10-31T22:51:54.519+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.PoolBase          : HikariPool-8 - Driver does not support get/set network timeout for connections. (getNetworkTimeout)
+2026-10-31T22:51:54.521+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-8 - Added connection org.duckdb.DuckDBConnection@648c80cb
+2026-10-31T22:51:54.521+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-8 - Start completed.
+2026-10-31T22:51:54.556+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-9 - Starting...
+2026-10-31T22:51:54.556+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.PoolBase          : HikariPool-9 - Driver does not support get/set network timeout for connections. (getNetworkTimeout)
+2026-10-31T22:51:54.558+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-9 - Added connection org.duckdb.DuckDBConnection@2aac60b
+2026-10-31T22:51:54.558+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-9 - Start completed.
+2026-10-31T22:51:54.574+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-10 - Starting...
+2026-10-31T22:51:54.580+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.PoolBase          : HikariPool-10 - Driver does not support get/set network timeout for connections. (getNetworkTimeout)
+2026-10-31T22:51:54.582+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-10 - Added connection org.duckdb.DuckDBConnection@29becf8b
+2026-10-31T22:51:54.582+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-10 - Start completed.
+2026-10-31T22:51:55.092+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-10 - Shutdown initiated...
+2026-10-31T22:51:55.109+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-10 - Shutdown completed.
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.593 s -- in com.portfolioos.core.service.DuckDbProjectorNetWorthAccountingTest
+[INFO] Running com.portfolioos.core.service.LegacyFundWaterfallAuditTest
+2026-10-31T22:51:55.113+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.115+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@318353
+2026-10-31T22:51:55.115+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.117+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.117+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.119+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.120+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@63be4548
+2026-10-31T22:51:55.120+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.121+05:30  WARN 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariConfig           : SqliteEventStorePool - idleTimeout has been set but has no effect because the pool is operating as a fixed size pool.
+2026-10-31T22:51:55.121+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : SqliteEventStorePool - Starting...
+2026-10-31T22:51:55.122+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : SqliteEventStorePool - Added connection org.sqlite.jdbc4.JDBC4Connection@5c3ad125
+2026-10-31T22:51:55.122+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : SqliteEventStorePool - Start completed.
+Skipping real DB run: data/tax_ledger.db has no events
+2026-10-31T22:51:55.123+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.123+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.125+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.125+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@eb23b9c
+2026-10-31T22:51:55.125+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+=== FIXED SYSTEM: RebalancePlanEngine Output ===
+Sold Legacy Amount: ₹110000.00
+Sold Core Amount: ₹0
+2026-10-31T22:51:55.136+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.137+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.138+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.139+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@5984742f
+2026-10-31T22:51:55.139+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.141+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.141+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.142+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.143+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@207358ad
+2026-10-31T22:51:55.143+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+=== FIXED SYSTEM: Chronological Coincidence Prevention Output ===
+Newer Legacy Lot (2024-02-01) Sold: ₹50000.00
+Old Core Lot (2023-05-10) Sold: ₹229500.00
+2026-10-31T22:51:55.148+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.148+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.037 s -- in com.portfolioos.core.service.LegacyFundWaterfallAuditTest
+[INFO] Running com.portfolioos.core.service.RebalancePlanEngineTest
+2026-10-31T22:51:55.152+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.153+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@705ebb4d
+2026-10-31T22:51:55.153+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.159+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.160+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.161+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.162+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@4c897417
+2026-10-31T22:51:55.163+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.177+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.177+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.178+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.179+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@21d478f3
+2026-10-31T22:51:55.179+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.180+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.180+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.181+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.182+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@5b2c9a69
+2026-10-31T22:51:55.182+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.190+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.190+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.192+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.192+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@17e31657
+2026-10-31T22:51:55.193+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.203+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.203+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.205+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.206+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@5b166420
+2026-10-31T22:51:55.207+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.219+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.220+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.221+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.223+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@71d0ad00
+2026-10-31T22:51:55.223+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.225+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.226+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.228+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.229+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@7040d71
+2026-10-31T22:51:55.230+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.231+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.232+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.234+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.235+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@31d09031
+2026-10-31T22:51:55.235+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.248+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.249+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.251+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.252+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@234dfc8e
+2026-10-31T22:51:55.252+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.265+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.266+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.267+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.268+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@1ec96512
+2026-10-31T22:51:55.269+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.276+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.280+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.282+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.283+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@2b20caed
+2026-10-31T22:51:55.283+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.291+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.292+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.293+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.294+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@75128cf
+2026-10-31T22:51:55.294+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.305+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.306+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.307+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.308+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6a495d88
+2026-10-31T22:51:55.308+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.316+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.317+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.317+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.318+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@70d24586
+2026-10-31T22:51:55.318+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.325+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.326+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.327+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.328+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@76a86677
+2026-10-31T22:51:55.328+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.328+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.329+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.330+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.330+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6e200307
+2026-10-31T22:51:55.331+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.338+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.339+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.340+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.341+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@19370af1
+2026-10-31T22:51:55.341+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.347+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.348+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.349+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.350+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@1d0f03f6
+2026-10-31T22:51:55.350+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.357+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.357+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.358+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.359+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6cb5a64d
+2026-10-31T22:51:55.359+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.367+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.368+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.368+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.369+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@4bfaff23
+2026-10-31T22:51:55.369+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.370+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.370+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.371+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.372+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@5b476930
+2026-10-31T22:51:55.372+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.378+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.379+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+[INFO] Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.228 s -- in com.portfolioos.core.service.RebalancePlanEngineTest
+[INFO] Running com.portfolioos.core.service.RebalanceSankeyDtoTest
+2026-10-31T22:51:55.381+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.382+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@30e734a1
+2026-10-31T22:51:55.383+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+CONFIG_SOURCE_AUDIT: [YAML_FILE] Successfully loaded active configuration from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+BucketConfigLoader: Loaded config from /home/rakeshpc/Projects/portfolio-os/core-node/rules/bucket_targets.yaml
+2026-10-31T22:51:55.393+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.393+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.394+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.395+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@2f6ede9
+2026-10-31T22:51:55.395+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.398+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.399+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.400+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.400+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6ff05f85
+2026-10-31T22:51:55.401+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.403+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.403+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.404+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.405+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@4d1a763c
+2026-10-31T22:51:55.405+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.408+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.409+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.410+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.411+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@5d7f4cbb
+2026-10-31T22:51:55.411+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.414+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.415+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.035 s -- in com.portfolioos.core.service.RebalanceSankeyDtoTest
+[INFO] Running com.portfolioos.core.service.RebalanceTriggerEvaluatorTest
+2026-10-31T22:51:55.417+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.417+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@73299197
+2026-10-31T22:51:55.417+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.418+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.418+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.419+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.419+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6f45be42
+2026-10-31T22:51:55.420+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.421+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.421+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.422+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.423+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@2c40e456
+2026-10-31T22:51:55.423+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.424+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.424+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.425+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.425+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@19993ed
+2026-10-31T22:51:55.425+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.426+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.427+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.427+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.428+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@396a4dea
+2026-10-31T22:51:55.428+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.429+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.429+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.430+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.431+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6a0d47e8
+2026-10-31T22:51:55.431+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.433+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.433+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.434+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.435+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@2e674698
+2026-10-31T22:51:55.435+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.437+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.437+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.438+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.439+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@76ea1cb5
+2026-10-31T22:51:55.439+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.440+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.441+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.442+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.443+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@365c8a47
+2026-10-31T22:51:55.443+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.444+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.444+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.445+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.446+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@24c7b944
+2026-10-31T22:51:55.446+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.448+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.449+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.450+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.451+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6b72c62
+2026-10-31T22:51:55.452+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.454+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.455+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@46bbcb82
+2026-10-31T22:51:55.455+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.456+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.457+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.459+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.460+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6ed87b1c
+2026-10-31T22:51:55.460+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.462+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.463+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.048 s -- in com.portfolioos.core.service.RebalanceTriggerEvaluatorTest
+[INFO] Running com.portfolioos.core.service.RebalanceWaterfallRoutingTest
+2026-10-31T22:51:55.467+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.468+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@57f9f387
+2026-10-31T22:51:55.468+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.469+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.470+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.472+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.473+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@36109a76
+2026-10-31T22:51:55.473+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.476+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.476+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.478+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.479+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@1f9a5d3b
+2026-10-31T22:51:55.480+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.481+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.482+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.483+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.484+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@709353b9
+2026-10-31T22:51:55.484+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.486+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.486+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.488+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.489+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@10cf3e4f
+2026-10-31T22:51:55.490+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.492+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.493+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.494+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.495+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@11c372e9
+2026-10-31T22:51:55.495+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.497+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.497+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.499+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.500+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@274b0c2a
+2026-10-31T22:51:55.500+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.502+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.503+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.505+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.506+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@46f3d0f7
+2026-10-31T22:51:55.507+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.507+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.508+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.509+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.509+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@39329d81
+2026-10-31T22:51:55.509+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.510+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.511+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.046 s -- in com.portfolioos.core.service.RebalanceWaterfallRoutingTest
+[INFO] Running com.portfolioos.core.service.SimulationServiceTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in com.portfolioos.core.service.SimulationServiceTest
+[INFO] Running com.portfolioos.core.service.TaxOptimizationServiceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.066 s -- in com.portfolioos.core.service.TaxOptimizationServiceTest
+[INFO] Running com.portfolioos.core.tax.TaxWaterfallSequencingAuditTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.portfolioos.core.tax.TaxWaterfallSequencingAuditTest
+[INFO] Running com.portfolioos.core.valuation.BucketAllocationTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in com.portfolioos.core.valuation.BucketAllocationTest
+[INFO] Running com.portfolioos.core.valuation.BucketEngineTest
+2026-10-31T22:51:55.609+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.613+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@a703934
+2026-10-31T22:51:55.614+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.027 s -- in com.portfolioos.core.valuation.BucketEngineTest
+[INFO] Running com.portfolioos.core.valuation.ConsolidationRebalanceEngineTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in com.portfolioos.core.valuation.ConsolidationRebalanceEngineTest
+[INFO] Running com.portfolioos.core.valuation.ExitLoadCalculatorTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.portfolioos.core.valuation.ExitLoadCalculatorTest
+[INFO] Running com.portfolioos.core.valuation.GoldDampenerCalculatorTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.portfolioos.core.valuation.GoldDampenerCalculatorTest
+[INFO] Running com.portfolioos.core.valuation.GoldSilverRatioCalculatorTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in com.portfolioos.core.valuation.GoldSilverRatioCalculatorTest
+[INFO] Running com.portfolioos.core.valuation.HarvestAdvisorTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.portfolioos.core.valuation.HarvestAdvisorTest
+[INFO] Running com.portfolioos.core.valuation.MonteCarloSanityTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.portfolioos.core.valuation.MonteCarloSanityTest
+[INFO] Running com.portfolioos.core.valuation.NavResolverTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in com.portfolioos.core.valuation.NavResolverTest
+[INFO] Running com.portfolioos.core.valuation.RebalanceEnginePropertyTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in com.portfolioos.core.valuation.RebalanceEnginePropertyTest
+[INFO] Running com.portfolioos.core.valuation.RebalanceEngineTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.portfolioos.core.valuation.RebalanceEngineTest
+[INFO] Running com.portfolioos.core.valuation.RebalanceV24RegressionTest
+2026-10-31T22:51:55.693+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.694+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@72cf159f
+2026-10-31T22:51:55.694+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.695+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.696+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.697+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.697+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@39aaa7db
+2026-10-31T22:51:55.697+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.701+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.701+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.703+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.704+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@1926806c
+2026-10-31T22:51:55.704+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.706+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.707+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.708+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.709+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@68ac6e6e
+2026-10-31T22:51:55.709+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.712+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.713+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.715+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.716+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@4d62bb8b
+2026-10-31T22:51:55.716+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.718+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.719+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.720+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.721+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@33c5e52f
+2026-10-31T22:51:55.721+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.723+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.724+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.725+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.726+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6153aca1
+2026-10-31T22:51:55.727+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.728+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.729+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.730+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.731+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@4e6c703a
+2026-10-31T22:51:55.731+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.733+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.733+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.734+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.735+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@324e62e2
+2026-10-31T22:51:55.735+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.736+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.736+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.737+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.738+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@20f94e9a
+2026-10-31T22:51:55.738+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.739+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.740+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.740+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.741+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@46c47690
+2026-10-31T22:51:55.741+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.743+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.744+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.745+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.746+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@12e3cf1c
+2026-10-31T22:51:55.746+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.748+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.750+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.751+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.753+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@5dd79a57
+2026-10-31T22:51:55.754+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.755+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.757+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.759+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.760+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@59e9ba7
+2026-10-31T22:51:55.761+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.764+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.765+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.767+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.768+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@6ec9f664
+2026-10-31T22:51:55.769+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.774+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.774+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+2026-10-31T22:51:55.777+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Starting...
+2026-10-31T22:51:55.778+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.pool.HikariPool        : TriggerHistoryPool - Added connection org.sqlite.jdbc4.JDBC4Connection@75a6cdb
+2026-10-31T22:51:55.779+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Start completed.
+2026-10-31T22:51:55.780+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown initiated...
+2026-10-31T22:51:55.781+05:30  INFO 210264 --- [portfolio-os-core] [           main] com.zaxxer.hikari.HikariDataSource       : TriggerHistoryPool - Shutdown completed.
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.089 s -- in com.portfolioos.core.valuation.RebalanceV24RegressionTest
+[INFO] Running com.portfolioos.core.valuation.RebalanceWaterfallEngineTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.028 s -- in com.portfolioos.core.valuation.RebalanceWaterfallEngineTest
+[INFO] Running com.portfolioos.core.valuation.ReconstitutionCalendarTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.portfolioos.core.valuation.ReconstitutionCalendarTest
+[INFO] Running com.portfolioos.core.xirr.XirrEngineTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.portfolioos.core.xirr.XirrEngineTest
+[INFO] Running com.portfolioos.core.matcher.FifoMatcherPropertyTest
+2026-10-31T22:51:55.959+05:30  INFO 210264 --- [portfolio-os-core] [           main] n.j.e.p.RandomizedShrinkablesGenerator   : Edge case generation exceeds number of tries. Stopped after 1000 generated cases.
+timestamp = 2026-10-31T22:51:56.203488371, FifoMatcherPropertyTest:stockSplitConservesTotalCostBasisAndScalesUnits = 
+                              |-----------------------jqwik-----------------------
+tries = 1000                  | # of calls to property
+checks = 1000                 | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 1000       | # of all combined edge cases
+edge-cases#tried = 154        | # of edge cases tried in current run
+seed = -2233579269477106216   | random seed to reproduce generated values
+
+
+2026-10-31T22:51:56.215+05:30  INFO 210264 --- [portfolio-os-core] [           main] n.j.e.p.RandomizedShrinkablesGenerator   : Edge case generation exceeds number of tries. Stopped after 1000 generated cases.
+timestamp = 2026-10-31T22:51:56.383848903, FifoMatcherPropertyTest:corporateMergerRemapsAssetIdAndPreservesCostBasis = 
+                              |-----------------------jqwik-----------------------
+tries = 1000                  | # of calls to property
+checks = 1000                 | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 1000       | # of all combined edge cases
+edge-cases#tried = 172        | # of edge cases tried in current run
+seed = 5216924197101326735    | random seed to reproduce generated values
+
+
+timestamp = 2026-10-31T22:51:56.410209181, FifoMatcherPropertyTest:sgbMaturityYieldsExemptTaxTermRegardlessOfHoldingDays = 
+                              |-----------------------jqwik-----------------------
+tries = 1000                  | # of calls to property
+checks = 1000                 | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 12         | # of all combined edge cases
+edge-cases#tried = 12         | # of edge cases tried in current run
+seed = 5617417841138867433    | random seed to reproduce generated values
+
+
+Tax rules YAML missing for FY 2024-25, using default Finance Act 2024 rules.
+timestamp = 2026-10-31T22:51:56.527981817, FifoMatcherPropertyTest:cumulativeRoundingDriftOnMultiSliceDisposals = 
+                              |-----------------------jqwik-----------------------
+tries = 1000                  | # of calls to property
+checks = 1000                 | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 0          | # of all combined edge cases
+edge-cases#tried = 0          | # of edge cases tried in current run
+seed = -7416175387362356547   | random seed to reproduce generated values
+
+
+2026-10-31T22:51:56.532+05:30  INFO 210264 --- [portfolio-os-core] [           main] n.j.e.p.RandomizedShrinkablesGenerator   : Edge case generation exceeds number of tries. Stopped after 1000 generated cases.
+timestamp = 2026-10-31T22:51:56.659328475, FifoMatcherPropertyTest:strictFifoMonotonicity = 
+                              |-----------------------jqwik-----------------------
+tries = 1000                  | # of calls to property
+checks = 1000                 | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 1000       | # of all combined edge cases
+edge-cases#tried = 165        | # of edge cases tried in current run
+seed = 956390759663601807     | random seed to reproduce generated values
+
+
+2026-10-31T22:51:56.674+05:30  INFO 210264 --- [portfolio-os-core] [           main] n.j.e.p.RandomizedShrinkablesGenerator   : Edge case generation exceeds number of tries. Stopped after 1000 generated cases.
+timestamp = 2026-10-31T22:51:56.819251486, FifoMatcherPropertyTest:unitConservationAcrossAcquisitionsAndDisposals = 
+                              |-----------------------jqwik-----------------------
+tries = 1000                  | # of calls to property
+checks = 1000                 | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 1000       | # of all combined edge cases
+edge-cases#tried = 175        | # of edge cases tried in current run
+seed = -402261023939485164    | random seed to reproduce generated values
+
+
+2026-10-31T22:51:56.827+05:30  INFO 210264 --- [portfolio-os-core] [           main] n.j.e.p.RandomizedShrinkablesGenerator   : Edge case generation exceeds number of tries. Stopped after 1000 generated cases.
+timestamp = 2026-10-31T22:51:56.973507523, FifoMatcherPropertyTest:gainIntegrityAndNonNegativeQuantities = 
+                              |-----------------------jqwik-----------------------
+tries = 1000                  | # of calls to property
+checks = 1000                 | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 1000       | # of all combined edge cases
+edge-cases#tried = 179        | # of edge cases tried in current run
+seed = -8082932230414816186   | random seed to reproduce generated values
+
+
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.133 s -- in com.portfolioos.core.matcher.FifoMatcherPropertyTest
+[INFO] Running com.portfolioos.core.valuation.RebalanceEnginePropertyTest
+2026-10-31T22:51:56.985+05:30  INFO 210264 --- [portfolio-os-core] [           main] n.j.e.p.RandomizedShrinkablesGenerator   : Edge case generation exceeds number of tries. Stopped after 200 generated cases.
+timestamp = 2026-10-31T22:51:57.553555348, [RebalanceEnginePropertyTest:fuzzEndToEndBuildPreviewPlanPassesAllInvariants] (200) rebalance_trigger = 
+    AUTO (200) : 100 %
+
+timestamp = 2026-10-31T22:51:57.553841470, [RebalanceEnginePropertyTest:fuzzEndToEndBuildPreviewPlanPassesAllInvariants] (200) has_sells = 
+    true (200) : 100 %
+
+timestamp = 2026-10-31T22:51:57.553990031, [RebalanceEnginePropertyTest:fuzzEndToEndBuildPreviewPlanPassesAllInvariants] (200) has_buys = 
+    true (200) : 100 %
+
+timestamp = 2026-10-31T22:51:57.554314960, RebalanceEnginePropertyTest:fuzzEndToEndBuildPreviewPlanPassesAllInvariants = 
+                              |-----------------------jqwik-----------------------
+tries = 200                   | # of calls to property
+checks = 200                  | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 200        | # of all combined edge cases
+edge-cases#tried = 40         | # of edge cases tried in current run
+seed = -4421985088404208145   | random seed to reproduce generated values
+
+
+2026-10-31T22:51:57.560+05:30  INFO 210264 --- [portfolio-os-core] [           main] n.j.e.p.RandomizedShrinkablesGenerator   : Edge case generation exceeds number of tries. Stopped after 1000 generated cases.
+timestamp = 2026-10-31T22:51:57.624347874, RebalanceEnginePropertyTest:fuzzDriftAndLegacyRoutingPassesAllInvariants = 
+                              |-----------------------jqwik-----------------------
+tries = 1000                  | # of calls to property
+checks = 1000                 | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 1000       | # of all combined edge cases
+edge-cases#tried = 189        | # of edge cases tried in current run
+seed = -7109852430781616066   | random seed to reproduce generated values
+
+
+2026-10-31T22:51:57.628+05:30  INFO 210264 --- [portfolio-os-core] [           main] n.j.e.p.RandomizedShrinkablesGenerator   : Edge case generation exceeds number of tries. Stopped after 1000 generated cases.
+timestamp = 2026-10-31T22:51:57.670697453, RebalanceEnginePropertyTest:fuzzDrawdownCrisisRoutingPassesAllInvariants = 
+                              |-----------------------jqwik-----------------------
+tries = 1000                  | # of calls to property
+checks = 1000                 | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 1000       | # of all combined edge cases
+edge-cases#tried = 151        | # of edge cases tried in current run
+seed = -1778693990965303576   | random seed to reproduce generated values
+
+
+timestamp = 2026-10-31T22:51:57.688921073, RebalanceEnginePropertyTest:fuzzExtremeSellPoolNeverBreaches15PercentLiquidCeiling = 
+                              |-----------------------jqwik-----------------------
+tries = 500                   | # of calls to property
+checks = 500                  | # of not rejected calls
+generation = RANDOMIZED       | parameters are randomly generated
+after-failure = SAMPLE_FIRST  | try previously failed sample, then previous seed
+when-fixed-seed = ALLOW       | fixing the random seed is allowed
+edge-cases#mode = MIXIN       | edge cases are mixed in
+edge-cases#total = 16         | # of all combined edge cases
+edge-cases#tried = 16         | # of edge cases tried in current run
+seed = 6269168591455523534    | random seed to reproduce generated values
+
+
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.714 s -- in com.portfolioos.core.valuation.RebalanceEnginePropertyTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 290, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  23.366 s
+[INFO] Finished at: 2026-10-31T22:51:58+05:30
+[INFO] ------------------------------------------------------------------------

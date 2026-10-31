@@ -5,11 +5,15 @@ import java.math.RoundingMode;
 
 public class FundTrendDampenerCalculator {
 
-    public record DampenerMultipliers(double buyMultiplier, double sellMultiplier) {}
+    public record DampenerMultipliers(double buyMultiplier, double sellMultiplier) {
+    }
 
     /**
-     * Calculates dynamic per-fund trend dampener multipliers based on percentage drift.
-     * @param driftPct positive if overweight (excess), negative if underweight (deficit)
+     * Calculates dynamic per-fund trend dampener multipliers based on percentage
+     * drift.
+     * 
+     * @param driftPct positive if overweight (excess), negative if underweight
+     *                 (deficit)
      */
     public static DampenerMultipliers calculateFundMultipliers(double driftPct) {
         double buyMult;
@@ -54,11 +58,12 @@ public class FundTrendDampenerCalculator {
      * Sizes the per-bucket dampened excess trim amount using v2.4 dampener tiers.
      */
     public static BigDecimal calculateDampenedTrim(BigDecimal excessVal, double targetVal) {
-        return calculateDampenedTrim(excessVal, targetVal, null);
+        return calculateDampenedTrim(excessVal, targetVal, java.time.LocalDate.now());
     }
 
     /**
-     * Sizes the per-bucket dampened excess trim amount using version-aware dampener rules.
+     * Sizes the per-bucket dampened excess trim amount using version-aware dampener
+     * rules.
      */
     public static BigDecimal calculateDampenedTrim(BigDecimal excessVal, double targetVal, java.time.LocalDate date) {
         if (excessVal == null || excessVal.compareTo(BigDecimal.ZERO) <= 0 || targetVal <= 0.0) {
@@ -66,36 +71,26 @@ public class FundTrendDampenerCalculator {
         }
         double relativeExcessPct = (excessVal.doubleValue() / targetVal) * 100.0;
 
-        boolean isV24 = (date == null || !date.isBefore(java.time.LocalDate.of(2026, 10, 1)));
+        java.time.LocalDate evalDate = date != null ? date : java.time.LocalDate.now();
+        var activeVersion = com.portfolioos.core.rules.BucketConfigLoader.getActiveVersion(evalDate);
+        boolean isV24 = activeVersion != null && activeVersion.versionId() != null
+            && (activeVersion.versionId().startsWith("2.4") || activeVersion.versionId().startsWith("v2.4"));
+
         if (isV24) {
+            var v24Config = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
+            if (v24Config == null || v24Config.dampenerTiers() == null || v24Config.dampenerTiers().isEmpty()) {
+                throw new IllegalStateException("CRITICAL CONFIGURATION ERROR: dampenerTiers missing or empty in v2.4 configuration!");
+            }
             BigDecimal mult = null;
-            try {
-                var v24Config = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
-                if (v24Config != null && v24Config.dampenerTiers() != null && !v24Config.dampenerTiers().isEmpty()) {
-                    for (var tier : v24Config.dampenerTiers()) {
-                        if (relativeExcessPct <= tier.maxRelativeExcessPct().doubleValue()) {
-                            mult = tier.multiplier();
-                            break;
-                        }
-                    }
-                    if (mult == null) {
-                        mult = v24Config.dampenerTiers().get(v24Config.dampenerTiers().size() - 1).multiplier();
-                    }
+            for (var tier : v24Config.dampenerTiers()) {
+                if (relativeExcessPct <= tier.maxRelativeExcessPct().doubleValue()) {
+                    mult = tier.multiplier();
+                    break;
                 }
-            } catch (Exception e) {
-                // fallback
             }
-
             if (mult == null) {
-                if (relativeExcessPct <= 15.0) {
-                    mult = new BigDecimal("0.40");
-                } else if (relativeExcessPct <= 25.0) {
-                    mult = new BigDecimal("0.66");
-                } else {
-                    mult = new BigDecimal("0.75");
-                }
+                mult = v24Config.dampenerTiers().get(v24Config.dampenerTiers().size() - 1).multiplier();
             }
-
             return excessVal.multiply(mult).setScale(2, RoundingMode.HALF_UP);
         } else {
             DampenerMultipliers mults = calculateFundMultipliers(relativeExcessPct);

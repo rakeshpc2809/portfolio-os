@@ -296,15 +296,11 @@ public class RebalanceTriggerEvaluator {
         boolean sellTriggerEvaluated = false;
 
         // Blackout ceiling math: within 48h of March 31 / September 30
-        int blackoutHours = 48;
-        try {
-            var v24 = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
-            if (v24 != null && v24.globalInvariants() != null) {
-                blackoutHours = v24.globalInvariants().nseReconstitutionBlackoutHours();
-            }
-        } catch (Exception e) {
-            // fallback
+        var v24 = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
+        if (v24 == null || v24.globalInvariants() == null) {
+            throw new IllegalStateException("CRITICAL CONFIGURATION ERROR: globalInvariants missing in configuration for blackout evaluation!");
         }
+        int blackoutHours = v24.globalInvariants().nseReconstitutionBlackoutHours();
         int blackoutDays = (blackoutHours + 23) / 24; // 2 days ceiling
         int daysLeftInMonth = today.lengthOfMonth() - today.getDayOfMonth();
         boolean insideBlackout = (today.getMonthValue() == 3 || today.getMonthValue() == 9) && (daysLeftInMonth < blackoutDays);

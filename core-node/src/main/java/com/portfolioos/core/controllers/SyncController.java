@@ -404,11 +404,14 @@ public class SyncController {
         BigDecimal benchCurrent = benchMetrics != null && benchMetrics.currentLevel() != null ? BigDecimal.valueOf(benchMetrics.currentLevel()) : null;
         BigDecimal benchHigh = benchMetrics != null && benchMetrics.rollingHigh() != null ? BigDecimal.valueOf(benchMetrics.rollingHigh()) : null;
 
+        com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(
+            triggerHistoryRepository
+        );
         com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto rebalancePlan = null;
         try {
             rebalancePlan = com.portfolioos.core.service.RebalancePlanEngine.buildPreviewPlan(
                 openLots, matchedLots, navMap, LocalDate.now(), benchCurrent, benchHigh,
-                com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), resolvedFy, derivedTriggerType, null
+                com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), resolvedFy, derivedTriggerType, null, evaluator
             );
         } catch (IllegalStateException ex) {
             if (ex.getMessage() != null && ex.getMessage().contains("CRITICAL BENCHMARK FAILURE")) {

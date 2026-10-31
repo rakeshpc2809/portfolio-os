@@ -1254,15 +1254,11 @@ public class RebalancePlanEngine {
             }
         }
 
-        BigDecimal minOrder = new BigDecimal("1000.00");
-        try {
-            var v24 = BucketConfigLoader.loadV24Config();
-            if (v24 != null && v24.globalInvariants() != null && v24.globalInvariants().minTradeAmountInr() != null) {
-                minOrder = v24.globalInvariants().minTradeAmountInr();
-            }
-        } catch (Exception e) {
-            // fallback to 1000.00
+        var v24 = BucketConfigLoader.loadV24Config();
+        if (v24 == null || v24.globalInvariants() == null || v24.globalInvariants().minTradeAmountInr() == null) {
+            throw new IllegalStateException("CRITICAL CONFIGURATION ERROR: minTradeAmountInr missing in globalInvariants!");
         }
+        BigDecimal minOrder = v24.globalInvariants().minTradeAmountInr();
 
         List<BigDecimal> preValList = new ArrayList<>();
         for (BucketConfigLoader.PreferredFundConfig pf : prefFunds) {
