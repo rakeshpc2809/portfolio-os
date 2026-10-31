@@ -295,7 +295,21 @@ public class RebalanceTriggerEvaluator {
         boolean hasGoldBuy = false;
         boolean sellTriggerEvaluated = false;
 
-        // Priority 1: DRAWDOWN
+        // Blackout ceiling math: within 48h of March 31 / September 30
+        int blackoutHours = 48;
+        try {
+            var v24 = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
+            if (v24 != null && v24.globalInvariants() != null) {
+                blackoutHours = v24.globalInvariants().nseReconstitutionBlackoutHours();
+            }
+        } catch (Exception e) {
+            // fallback
+        }
+        int blackoutDays = (blackoutHours + 23) / 24; // 2 days ceiling
+        int daysLeftInMonth = today.lengthOfMonth() - today.getDayOfMonth();
+        boolean insideBlackout = (today.getMonthValue() == 3 || today.getMonthValue() == 9) && (daysLeftInMonth < blackoutDays);
+
+        // Priority 1: DRAWDOWN (Crisis response preserved, never blocked by blackout)
         if (!"NONE".equals(armedTier)) {
             sellTriggerEvaluated = true;
             if (sellCooldownActive && !drawdownEscalated) {
@@ -317,6 +331,10 @@ public class RebalanceTriggerEvaluator {
                 reasonCode = "DRIFT_BLOCKED_BY_COOLDOWN";
                 reasonLabel = String.format("Bucket drift detected (%s) but sell rebalance is on 30-day cooldown (%d days since last sell)",
                     String.join(", ", driftedBuckets), daysSinceLastSell);
+            } else if (insideBlackout) {
+                reasonCode = "DRIFT_BLOCKED_BY_BLACKOUT";
+                reasonLabel = String.format("Drift detected (%s) but sell rebalance is suppressed during 48h NSE semi-annual reconstitution blackout window",
+                    String.join(", ", driftedBuckets));
             } else {
                 triggerType = "DRIFT";
                 reasonCode = "DRIFT_THRESHOLD_EXCEEDED";
@@ -328,12 +346,6 @@ public class RebalanceTriggerEvaluator {
 
         // Priority 3: SCHEDULED (March/September window, if Drawdown/Drift not evaluated)
         if (!sellTriggerEvaluated && (today.getMonthValue() == 3 || today.getMonthValue() == 9)) {
-            // E2: Blackout ceiling math
-            int blackoutHours = 48;
-            int blackoutDays = (blackoutHours + 23) / 24; // 2 days ceiling
-            int daysLeftInMonth = today.lengthOfMonth() - today.getDayOfMonth();
-            boolean insideBlackout = daysLeftInMonth < blackoutDays;
-
             // E1: Idempotency check: has scheduled rebalance already run for this (Year, Month)?
             boolean alreadyExecutedThisMonth = repository != null && repository.hasScheduledRunExecutedForMonth(today.getYear(), today.getMonthValue());
 

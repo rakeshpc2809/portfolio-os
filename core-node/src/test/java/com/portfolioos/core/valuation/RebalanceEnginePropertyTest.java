@@ -2,6 +2,7 @@ package com.portfolioos.core.valuation;
 
 import com.portfolioos.core.config.BucketTargetsConfig;
 import com.portfolioos.core.config.BucketTargetsConfig.BucketType;
+import com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto;
 import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.rules.BucketConfigLoader;
 import com.portfolioos.core.service.RebalancePlanEngine;
@@ -168,6 +169,75 @@ class RebalanceEnginePropertyTest {
             massiveCoreTrimPool.compareTo(totalBuys.add(result.cashOverflowInr())),
             "Exact paisa conservation failed under extreme overflow"
         );
+    }
+
+    // =========================================================================
+    // PROPERTY 4: 200-Portfolio End-to-End Fuzzing of buildPreviewPlan
+    // Verifies: Randomized multi-scheme portfolios passing buildPreviewPlan generate
+    //           valid non-empty planDigest, and all scheme buy allocations are either 0 or >= ₹1,000.
+    // =========================================================================
+    @Property(tries = 200, shrinking = ShrinkingMode.FULL)
+    void fuzzEndToEndBuildPreviewPlanPassesAllInvariants(
+            @ForAll("fuzzMultiSchemeOpenLots") List<Lot> lots,
+            @ForAll("fuzzDrawdownRungs") String drawdownRung) {
+
+        LocalDate today = LocalDate.of(2026, 10, 15);
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", new BigDecimal("100.00"),
+            "INF879O01027", new BigDecimal("100.00"),
+            "INF109KC13X2", new BigDecimal("100.00"),
+            "INF247L01916", new BigDecimal("100.00"),
+            "INF247L01BM8", new BigDecimal("100.00"),
+            "INF205K01KR8", new BigDecimal("100.00")
+        );
+
+        BigDecimal liveCorpus = BigDecimal.ZERO;
+        for (Lot lot : lots) {
+            BigDecimal nav = navMap.getOrDefault(lot.assetId(), new BigDecimal("100.00"));
+            liveCorpus = liveCorpus.add(lot.remainingUnits().multiply(nav));
+        }
+
+        BigDecimal rollingHigh = liveCorpus;
+        if ("TIER_10".equals(drawdownRung)) {
+            rollingHigh = liveCorpus.divide(new BigDecimal("0.89"), 2, RoundingMode.HALF_UP);
+        } else if ("TIER_15".equals(drawdownRung)) {
+            rollingHigh = liveCorpus.divide(new BigDecimal("0.84"), 2, RoundingMode.HALF_UP);
+        } else if ("TIER_20".equals(drawdownRung)) {
+            rollingHigh = liveCorpus.divide(new BigDecimal("0.79"), 2, RoundingMode.HALF_UP);
+        }
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
+            lots,
+            List.of(),
+            navMap,
+            today,
+            liveCorpus,
+            rollingHigh,
+            null,
+            "2026-27",
+            "AUTO",
+            null
+        );
+
+        assertNotNull(plan, "Preview plan must not be null");
+        assertNotNull(plan.planDigest(), "Plan digest must not be null");
+        assertFalse(plan.planDigest().isEmpty(), "Plan digest must not be empty");
+
+        BigDecimal minOrder = new BigDecimal("1000.00");
+        if (plan.buySide() != null && plan.buySide().buckets() != null) {
+            for (var b : plan.buySide().buckets()) {
+                if (b.fundBreakdown() != null) {
+                    for (var f : b.fundBreakdown()) {
+                        if (f.amount() != null && f.amount().compareTo(BigDecimal.ZERO) > 0) {
+                            assertTrue(
+                                f.amount().compareTo(minOrder) >= 0,
+                                "Scheme buy allocation below ₹1,000 min order: " + f.amount() + " for " + f.fundName()
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // =========================================================================
@@ -400,6 +470,42 @@ class RebalanceEnginePropertyTest {
     Arbitrary<BigDecimal> excessPoolFraction() {
         return Arbitraries.integers().between(5, 35)
             .map(pct -> BigDecimal.valueOf(pct).divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP));
+    }
+
+    @Provide
+    Arbitrary<String> fuzzDrawdownRungs() {
+        return Arbitraries.of("NONE", "TIER_10", "TIER_15", "TIER_20");
+    }
+
+    @Provide
+    Arbitrary<List<Lot>> fuzzMultiSchemeOpenLots() {
+        LocalDate acq = LocalDate.of(2024, 1, 15);
+        LocalDate sip = LocalDate.of(2026, 9, 15);
+        BigDecimal nav = new BigDecimal("100.00");
+        BigDecimal cost = new BigDecimal("80.00");
+
+        Arbitrary<Integer> c1Units = Arbitraries.integers().between(100, 2000);
+        Arbitrary<Integer> c2Units = Arbitraries.integers().between(100, 2000);
+        Arbitrary<Integer> s1Units = Arbitraries.integers().between(100, 1500);
+        Arbitrary<Integer> s2Units = Arbitraries.integers().between(100, 1500);
+        Arbitrary<Integer> gUnits = Arbitraries.integers().between(50, 1000);
+        Arbitrary<Integer> lUnits = Arbitraries.integers().between(50, 1000);
+
+        return Combinators.combine(c1Units, c2Units, s1Units, s2Units, gUnits, lUnits)
+            .as((u1, u2, u3, u4, u5, u6) -> List.of(
+                new Lot("c1-ltcg", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", acq, BigDecimal.valueOf(u1), BigDecimal.valueOf(u1), nav, BigDecimal.valueOf(u1).multiply(cost), false, null),
+                new Lot("c1-sip", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund", sip, BigDecimal.ONE, BigDecimal.ONE, nav, cost, false, null),
+                new Lot("c2-ltcg", "INF879O01027", "Parag Parikh Flexi Cap Fund", acq, BigDecimal.valueOf(u2), BigDecimal.valueOf(u2), nav, BigDecimal.valueOf(u2).multiply(cost), false, null),
+                new Lot("c2-sip", "INF879O01027", "Parag Parikh Flexi Cap Fund", sip, BigDecimal.ONE, BigDecimal.ONE, nav, cost, false, null),
+                new Lot("s1-ltcg", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", acq, BigDecimal.valueOf(u3), BigDecimal.valueOf(u3), nav, BigDecimal.valueOf(u3).multiply(cost), false, null),
+                new Lot("s1-sip", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund", sip, BigDecimal.ONE, BigDecimal.ONE, nav, cost, false, null),
+                new Lot("s2-ltcg", "INF247L01916", "Motilal Oswal Nifty Midcap 150 Index Fund", acq, BigDecimal.valueOf(u4), BigDecimal.valueOf(u4), nav, BigDecimal.valueOf(u4).multiply(cost), false, null),
+                new Lot("s2-sip", "INF247L01916", "Motilal Oswal Nifty Midcap 150 Index Fund", sip, BigDecimal.ONE, BigDecimal.ONE, nav, cost, false, null),
+                new Lot("g1-ltcg", "INF247L01BM8", "Motilal Oswal Gold and Silver ETFs FoF", acq, BigDecimal.valueOf(u5), BigDecimal.valueOf(u5), nav, BigDecimal.valueOf(u5).multiply(cost), false, null),
+                new Lot("g1-sip", "INF247L01BM8", "Motilal Oswal Gold and Silver ETFs FoF", sip, BigDecimal.ONE, BigDecimal.ONE, nav, cost, false, null),
+                new Lot("l1-ltcg", "INF205K01KR8", "Invesco India Arbitrage Fund", acq, BigDecimal.valueOf(u6), BigDecimal.valueOf(u6), nav, BigDecimal.valueOf(u6).multiply(cost), false, null),
+                new Lot("l1-sip", "INF205K01KR8", "Invesco India Arbitrage Fund", sip, BigDecimal.ONE, BigDecimal.ONE, nav, cost, false, null)
+            ));
     }
 
     // =========================================================================

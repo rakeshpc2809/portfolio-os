@@ -90,6 +90,20 @@ public class RebalanceWaterfallEngine {
         LocalDate currentDate,
         String fiscalYear
     ) {
+        return buildTrimWaterfall(bucket, trimAmount, openLots, navMap, remainingExemption, urgent, currentDate, fiscalYear, false);
+    }
+
+    public static WaterfallResult buildTrimWaterfall(
+        BucketEngine.Bucket bucket,
+        BigDecimal trimAmount,
+        List<Lot> openLots,
+        Map<String, BigDecimal> navMap,
+        BigDecimal remainingExemption,
+        boolean urgent,
+        LocalDate currentDate,
+        String fiscalYear,
+        boolean isStandaloneTaxHarvest
+    ) {
         TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
         LocalDate today = currentDate != null ? currentDate : LocalDate.now();
 
@@ -160,7 +174,7 @@ public class RebalanceWaterfallEngine {
             if (remainingTarget.compareTo(BigDecimal.ZERO) <= 0) break;
             if (strategy instanceof LossHarvestTierStrategy) {
                 boolean isStep0Legacy = (bucket == BucketEngine.Bucket.LEGACY_HOLDINGS);
-                boolean isBucketBeingTrimmed = (trimAmount != null && trimAmount.compareTo(BigDecimal.ZERO) > 0);
+                boolean isBucketBeingTrimmed = (trimAmount != null && trimAmount.compareTo(BigDecimal.ZERO) > 0 && !isStandaloneTaxHarvest);
                 BigDecimal grossStcg = BigDecimal.ZERO;
                 BigDecimal grossLtcg = BigDecimal.ZERO;
                 for (WaterfallStep s : steps) {
@@ -169,6 +183,24 @@ public class RebalanceWaterfallEngine {
                             grossLtcg = grossLtcg.add(s.realizedGain());
                         } else {
                             grossStcg = grossStcg.add(s.realizedGain());
+                        }
+                    }
+                }
+                if (grossStcg.compareTo(BigDecimal.ZERO) == 0 && grossLtcg.compareTo(BigDecimal.ZERO) == 0 && openLots != null) {
+                    for (Lot l : openLots) {
+                        BigDecimal nav = navMap != null ? navMap.get(l.assetId()) : null;
+                        if (nav != null) {
+                            BigDecimal cur = l.remainingUnits().multiply(nav);
+                            BigDecimal cost = l.effectiveTotalCostBasis(nav);
+                            BigDecimal g = cur.subtract(cost);
+                            if (g.compareTo(BigDecimal.ZERO) > 0) {
+                                long holdingDays = java.time.temporal.ChronoUnit.DAYS.between(l.acquisitionDate(), today);
+                                if (holdingDays >= rules.equityLtcgThresholdDays()) {
+                                    grossLtcg = grossLtcg.add(g);
+                                } else {
+                                    grossStcg = grossStcg.add(g);
+                                }
+                            }
                         }
                     }
                 }
@@ -916,7 +948,7 @@ public class RebalanceWaterfallEngine {
                 .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
             BigDecimal currentVal = postSellValuesInr.getOrDefault(b, BigDecimal.ZERO);
             BigDecimal def = targetVal.subtract(currentVal).max(BigDecimal.ZERO);
-            deficits.put(b, def);
+            deficits.put(b, def.compareTo(minOrder) >= 0 ? def : BigDecimal.ZERO);
         }
 
         BigDecimal cashOverflow = BigDecimal.ZERO;
@@ -985,35 +1017,29 @@ public class RebalanceWaterfallEngine {
                 }
             } else {
                 BigDecimal allocatedSum = BigDecimal.ZERO;
-                com.portfolioos.core.config.BucketTargetsConfig.BucketType largestDeficitBucket =
-                    com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE;
-                BigDecimal maxDef = BigDecimal.ZERO;
-
                 for (com.portfolioos.core.config.BucketTargetsConfig.BucketType b : List.of(
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE,
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE,
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER,
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER)) {
                     BigDecimal d = deficits.getOrDefault(b, BigDecimal.ZERO);
-                    if (d.compareTo(maxDef) > 0) {
-                        maxDef = d;
-                        largestDeficitBucket = b;
-                    }
                     BigDecimal share = remGeneral.multiply(d)
                         .divide(totalRemainingDeficit, 2, RoundingMode.DOWN);
                     if (share.compareTo(minOrder) >= 0) {
                         buys.put(b, buys.getOrDefault(b, BigDecimal.ZERO).add(share));
+                        deficits.put(b, d.subtract(share));
                         allocatedSum = allocatedSum.add(share);
                     }
                 }
                 BigDecimal remainder = remGeneral.subtract(allocatedSum);
-                if (buys.getOrDefault(largestDeficitBucket, BigDecimal.ZERO).add(remainder).compareTo(deficits.getOrDefault(largestDeficitBucket, BigDecimal.ZERO)) <= 0
-                        && buys.getOrDefault(largestDeficitBucket, BigDecimal.ZERO).add(remainder).compareTo(minOrder) >= 0) {
-                    buys.put(largestDeficitBucket, buys.getOrDefault(largestDeficitBucket, BigDecimal.ZERO).add(remainder));
-                    remGeneral = BigDecimal.ZERO;
-                } else {
-                    remGeneral = remainder;
+                for (com.portfolioos.core.config.BucketTargetsConfig.BucketType b : List.of(
+                        com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE,
+                        com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE,
+                        com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER,
+                        com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER)) {
+                    remainder = fillBucketV24(buys, deficits, b, remainder, minOrder);
                 }
+                remGeneral = remainder;
             }
         }
 

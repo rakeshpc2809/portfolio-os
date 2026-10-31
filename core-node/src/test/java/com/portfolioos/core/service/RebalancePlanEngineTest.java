@@ -638,10 +638,16 @@ class RebalancePlanEngineTest {
         assertEquals(0.0, mults.buyMultiplier(),
             "Positive drift must have 0.0 buy multiplier");
 
-        // Excess of 13,500 on 100,000 target (13.5% drift) yields dampened trim of 8,455.05 vs linear 13,500.00
-        BigDecimal dampenedTrim135 = FundTrendDampenerCalculator.calculateDampenedTrim(new BigDecimal("13500.00"), 100000.0);
+        LocalDate today = LocalDate.of(2026, 8, 28);
+
+        // Excess of 13,500 on 100,000 target (13.5% drift) yields dampened trim of 8,455.05 under v2.3 rules
+        BigDecimal dampenedTrim135 = FundTrendDampenerCalculator.calculateDampenedTrim(new BigDecimal("13500.00"), 100000.0, today);
         assertEquals(new BigDecimal("8455.05"), dampenedTrim135,
             "Dampened trim for 13,500.00 excess on 100k target must be 8,455.05 (0.6263x), not linear 13,500.00");
+        // Under v2.4 dampener tier (<=15.0% has 0.40x multiplier)
+        BigDecimal v24DampenedTrim = FundTrendDampenerCalculator.calculateDampenedTrim(new BigDecimal("13500.00"), 100000.0);
+        assertEquals(new BigDecimal("5400.00"), v24DampenedTrim,
+            "V2.4 dampened trim for 13.5% relative excess must apply 0.40x tier yielding 5,400.00");
 
         // -----------------------------------------------------------------------------------------
         // Component 2: RebalanceTriggerEvaluator sensitivity to Gold 12% threshold vs 5% Core/Satellite
@@ -652,7 +658,6 @@ class RebalancePlanEngineTest {
         // Liquid: 10.0% target, 5.0% trigger drift ([5%, 15%])
         // Gold: 10.0% target, 12.0% trigger drift (triggers only if drift >= 12.0%, i.e. >= 22.0% or <= -2.0%)
         // We test on 2026-08-28 (v2.3 active, outside March/September scheduled reconstitution window)
-        LocalDate today = LocalDate.of(2026, 8, 28);
         LocalDate acqDate = LocalDate.of(2024, 1, 1);
         LocalDate sipDate = LocalDate.of(2026, 7, 15);
         BigDecimal nav = new BigDecimal("100.00");

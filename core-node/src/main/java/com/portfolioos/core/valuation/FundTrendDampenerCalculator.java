@@ -51,15 +51,55 @@ public class FundTrendDampenerCalculator {
     }
 
     /**
-     * Sizes the per-bucket dampened excess trim amount.
+     * Sizes the per-bucket dampened excess trim amount using v2.4 dampener tiers.
      */
     public static BigDecimal calculateDampenedTrim(BigDecimal excessVal, double targetVal) {
+        return calculateDampenedTrim(excessVal, targetVal, null);
+    }
+
+    /**
+     * Sizes the per-bucket dampened excess trim amount using version-aware dampener rules.
+     */
+    public static BigDecimal calculateDampenedTrim(BigDecimal excessVal, double targetVal, java.time.LocalDate date) {
         if (excessVal == null || excessVal.compareTo(BigDecimal.ZERO) <= 0 || targetVal <= 0.0) {
             return BigDecimal.ZERO;
         }
-        double driftPct = (excessVal.doubleValue() / targetVal) * 100.0;
-        DampenerMultipliers mults = calculateFundMultipliers(driftPct);
-        return excessVal.multiply(BigDecimal.valueOf(mults.sellMultiplier()))
-            .setScale(2, RoundingMode.HALF_UP);
+        double relativeExcessPct = (excessVal.doubleValue() / targetVal) * 100.0;
+
+        boolean isV24 = (date == null || !date.isBefore(java.time.LocalDate.of(2026, 10, 1)));
+        if (isV24) {
+            BigDecimal mult = null;
+            try {
+                var v24Config = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
+                if (v24Config != null && v24Config.dampenerTiers() != null && !v24Config.dampenerTiers().isEmpty()) {
+                    for (var tier : v24Config.dampenerTiers()) {
+                        if (relativeExcessPct <= tier.maxRelativeExcessPct().doubleValue()) {
+                            mult = tier.multiplier();
+                            break;
+                        }
+                    }
+                    if (mult == null) {
+                        mult = v24Config.dampenerTiers().get(v24Config.dampenerTiers().size() - 1).multiplier();
+                    }
+                }
+            } catch (Exception e) {
+                // fallback
+            }
+
+            if (mult == null) {
+                if (relativeExcessPct <= 15.0) {
+                    mult = new BigDecimal("0.40");
+                } else if (relativeExcessPct <= 25.0) {
+                    mult = new BigDecimal("0.66");
+                } else {
+                    mult = new BigDecimal("0.75");
+                }
+            }
+
+            return excessVal.multiply(mult).setScale(2, RoundingMode.HALF_UP);
+        } else {
+            DampenerMultipliers mults = calculateFundMultipliers(relativeExcessPct);
+            return excessVal.multiply(BigDecimal.valueOf(mults.sellMultiplier())).setScale(2, RoundingMode.HALF_UP);
+        }
     }
 }

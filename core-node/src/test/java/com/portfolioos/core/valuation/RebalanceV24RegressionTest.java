@@ -533,4 +533,46 @@ class RebalanceV24RegressionTest {
 
         assertDoesNotThrow(() -> verifier.assertAllInvariants(plan, config));
     }
+
+    // =========================================================================
+    // Regression: Sub-₹1,000 Scheme-Level Splits in resolveRealFundBreakdown
+    // =========================================================================
+    @Test
+    @DisplayName("Fix Sub-₹1,000 Scheme-Level Splits: ₹1,500 EQUITY_SATELLITE allocation does not emit < ₹1,000 orders")
+    void testSatelliteSmallAllocationDoesNotSplitBelowMinOrder() {
+        BucketConfigLoader.BucketTargetVersion v24Version = BucketConfigLoader.getActiveVersion(LocalDate.of(2026, 10, 1));
+        BigDecimal allocAmount = new BigDecimal("1500.00");
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC13X2", new BigDecimal("100.00"),
+            "INF247L01916", new BigDecimal("100.00"),
+            "INF174KA1TY2", new BigDecimal("100.00")
+        );
+
+        List<com.portfolioos.core.dtos.RebalancePlanDtos.FundAllocationDto> funds =
+            RebalancePlanEngine.resolveRealFundBreakdown(
+                com.portfolioos.core.valuation.BucketEngine.Bucket.EQUITY_SATELLITE,
+                allocAmount,
+                v24Version,
+                List.of(),
+                navMap,
+                new BigDecimal("1000000.00"),
+                new BigDecimal("1000000.00")
+            );
+
+        assertNotNull(funds);
+        assertFalse(funds.isEmpty());
+
+        BigDecimal sum = BigDecimal.ZERO;
+        for (var f : funds) {
+            sum = sum.add(f.amount());
+            if (f.amount().compareTo(BigDecimal.ZERO) > 0) {
+                assertTrue(f.amount().compareTo(new BigDecimal("1000.00")) >= 0,
+                    "Every positive scheme allocation must be >= ₹1,000 min order, but got " + f.amount() + " for " + f.fundName());
+            }
+        }
+        assertEquals(0, allocAmount.compareTo(sum), "Sum of scheme allocations must equal totalAmount exactly");
+
+        long positiveCount = funds.stream().filter(f -> f.amount().compareTo(BigDecimal.ZERO) > 0).count();
+        assertEquals(1, positiveCount, "Since 1,500 < 3,000 (3 * 1,000), exactly one scheme must receive the full 1,500");
+    }
 }

@@ -522,7 +522,7 @@ public class RebalancePlanEngine {
                     } else if (targetVal.compareTo(BigDecimal.ZERO) <= 0) {
                         dampenedTrim = excessVal;
                     } else {
-                        dampenedTrim = FundTrendDampenerCalculator.calculateDampenedTrim(excessVal, targetVal.doubleValue());
+                        dampenedTrim = FundTrendDampenerCalculator.calculateDampenedTrim(excessVal, targetVal.doubleValue(), today);
                     }
                     if (dampenedTrim.compareTo(BigDecimal.ZERO) > 0) {
                         bucketTrims.put(target.bucket(), dampenedTrim);
@@ -1076,11 +1076,23 @@ public class RebalancePlanEngine {
                 try {
                     com.portfolioos.core.config.BucketTargetsConfig.BucketType bType =
                         mapToV24BucketType(BucketEngine.Bucket.valueOf(b.bucket()));
-                    buyOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.BuyOrder(
-                        bType,
-                        b.bucket(),
-                        b.amountAllocated()
-                    ));
+                    if (b.fundBreakdown() != null && !b.fundBreakdown().isEmpty()) {
+                        for (FundAllocationDto f : b.fundBreakdown()) {
+                            if (f.amount() != null && f.amount().compareTo(BigDecimal.ZERO) > 0) {
+                                buyOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.BuyOrder(
+                                    bType,
+                                    f.fundId() != null ? f.fundId() : (f.fundName() != null ? f.fundName() : b.bucket()),
+                                    f.amount()
+                                ));
+                            }
+                        }
+                    } else {
+                        buyOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.BuyOrder(
+                            bType,
+                            b.bucket(),
+                            b.amountAllocated()
+                        ));
+                    }
                 } catch (Exception e) {
                     // ignore unmapped bucket
                 }
@@ -1187,7 +1199,7 @@ public class RebalancePlanEngine {
         return new BeerSpreadContextDto(7.10, 22.40, 100.0 / 22.40, 7.10 - (100.0 / 22.40), "FAIR", LocalDate.now().toString(), true, "FALLBACK");
     }
 
-    private static List<FundAllocationDto> resolveRealFundBreakdown(
+    public static List<FundAllocationDto> resolveRealFundBreakdown(
         BucketEngine.Bucket bucket,
         BigDecimal totalAmount,
         BucketConfigLoader.BucketTargetVersion activeVersion,
@@ -1220,6 +1232,10 @@ public class RebalancePlanEngine {
             prefFunds = BucketConfigLoader.getDefaultPreferredFundsForBucket(bucket.name());
         }
 
+        if (prefFunds == null || prefFunds.isEmpty()) {
+            return List.of();
+        }
+
         // Map existing fund valuations by assetId and assetName
         Map<String, BigDecimal> fundValByAssetId = new HashMap<>();
         Map<String, BigDecimal> fundValByName = new HashMap<>();
@@ -1238,26 +1254,79 @@ public class RebalancePlanEngine {
             }
         }
 
-        List<FundAllocationDto> funds = new ArrayList<>();
-        BigDecimal remaining = totalAmount;
-
-        for (int i = 0; i < prefFunds.size(); i++) {
-            BucketConfigLoader.PreferredFundConfig pf = prefFunds.get(i);
-            BigDecimal alloc;
-            if (i == prefFunds.size() - 1) {
-                alloc = remaining;
-            } else {
-                alloc = totalAmount.multiply(BigDecimal.valueOf(pf.allocationWeight())).setScale(2, RoundingMode.HALF_UP);
-                remaining = remaining.subtract(alloc);
+        BigDecimal minOrder = new BigDecimal("1000.00");
+        try {
+            var v24 = BucketConfigLoader.loadV24Config();
+            if (v24 != null && v24.globalInvariants() != null && v24.globalInvariants().minTradeAmountInr() != null) {
+                minOrder = v24.globalInvariants().minTradeAmountInr();
             }
+        } catch (Exception e) {
+            // fallback to 1000.00
+        }
 
+        List<BigDecimal> preValList = new ArrayList<>();
+        for (BucketConfigLoader.PreferredFundConfig pf : prefFunds) {
             BigDecimal preVal = BigDecimal.ZERO;
             if (pf.fundId() != null && fundValByAssetId.containsKey(pf.fundId().toLowerCase().trim())) {
                 preVal = fundValByAssetId.get(pf.fundId().toLowerCase().trim());
             } else if (pf.fundName() != null && fundValByName.containsKey(pf.fundName().toLowerCase().trim())) {
                 preVal = fundValByName.get(pf.fundName().toLowerCase().trim());
             }
+            preValList.add(preVal);
+        }
 
+        List<BigDecimal> allocations = new ArrayList<>();
+        for (int i = 0; i < prefFunds.size(); i++) {
+            allocations.add(BigDecimal.ZERO);
+        }
+
+        BigDecimal thresholdAllFunds = minOrder.multiply(BigDecimal.valueOf(prefFunds.size()));
+        if (totalAmount.compareTo(thresholdAllFunds) < 0) {
+            // Bug C: If totalAmount < prefFunds.size() * minOrder, allocate totalAmount
+            // entirely to the most underweight scheme (lowest preVal).
+            int lowestIdx = 0;
+            BigDecimal minPreVal = preValList.get(0);
+            for (int i = 1; i < prefFunds.size(); i++) {
+                if (preValList.get(i).compareTo(minPreVal) < 0) {
+                    minPreVal = preValList.get(i);
+                    lowestIdx = i;
+                }
+            }
+            allocations.set(lowestIdx, totalAmount);
+        } else {
+            // If totalAmount >= prefFunds.size() * minOrder, do weighted allocation
+            BigDecimal remaining = totalAmount;
+            for (int i = 0; i < prefFunds.size(); i++) {
+                BucketConfigLoader.PreferredFundConfig pf = prefFunds.get(i);
+                BigDecimal alloc;
+                if (i == prefFunds.size() - 1) {
+                    alloc = remaining;
+                } else {
+                    alloc = totalAmount.multiply(BigDecimal.valueOf(pf.allocationWeight())).setScale(2, RoundingMode.HALF_UP);
+                    remaining = remaining.subtract(alloc);
+                }
+                allocations.set(i, alloc);
+            }
+
+            // Roll any < minOrder fractional allocations into primary scheme (index 0)
+            BigDecimal rolledToPrimary = BigDecimal.ZERO;
+            for (int i = 1; i < allocations.size(); i++) {
+                BigDecimal a = allocations.get(i);
+                if (a.compareTo(BigDecimal.ZERO) > 0 && a.compareTo(minOrder) < 0) {
+                    rolledToPrimary = rolledToPrimary.add(a);
+                    allocations.set(i, BigDecimal.ZERO);
+                }
+            }
+            if (rolledToPrimary.compareTo(BigDecimal.ZERO) > 0) {
+                allocations.set(0, allocations.get(0).add(rolledToPrimary));
+            }
+        }
+
+        List<FundAllocationDto> funds = new ArrayList<>();
+        for (int i = 0; i < prefFunds.size(); i++) {
+            BucketConfigLoader.PreferredFundConfig pf = prefFunds.get(i);
+            BigDecimal alloc = allocations.get(i);
+            BigDecimal preVal = preValList.get(i);
             BigDecimal postVal = preVal.add(alloc);
             double currentPct = (preActiveCorpus != null && preActiveCorpus.compareTo(BigDecimal.ZERO) > 0)
                 ? Math.round((preVal.doubleValue() / preActiveCorpus.doubleValue()) * 1000.0) / 10.0

@@ -72,6 +72,12 @@ public class HarvestAdvisor {
             }
         }
 
+        // Loss harvesting gate: in standalone tax harvesting, shouldHarvestLossLot ensures
+        // loss harvesting is blocked when net taxable gains are within ₹1.25L exemption
+        BigDecimal netStcg = BigDecimal.ZERO;
+        BigDecimal netLtcg = totalUnrealizedLtcg;
+        boolean allowLossHarvest = RebalanceWaterfallEngine.shouldHarvestLossLot(false, false, netStcg, netLtcg, remainingExemption);
+
         // Enforce RTA chronological FIFO within each scheme; across different schemes, prioritize highest gain
         ltcgLots.sort((a, b) -> {
             if (a.lot().assetId().equalsIgnoreCase(b.lot().assetId())) {
