@@ -131,6 +131,9 @@ public class RebalancePlanEngine {
                 detailsJson,
                 drawdownTier
             );
+            if ("SCHEDULED".equalsIgnoreCase(triggerType) || "SCHEDULED_MAINTENANCE".equalsIgnoreCase(triggerType)) {
+                repository.recordScheduledRunExecution(LocalDateTime.now().getYear(), LocalDateTime.now().getMonthValue(), LocalDateTime.now());
+            }
         return plan;
     }
 
@@ -848,27 +851,51 @@ public class RebalancePlanEngine {
             totalShortfall = totalShortfall.add(shortfall);
         }
 
+        // Determine TriggerType for v2.4 water-filling routing
+        com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType tType;
+        if ("SCHEDULED".equalsIgnoreCase(resolvedType) || "SCHEDULED_MAINTENANCE".equalsIgnoreCase(resolvedType)) {
+            tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.SCHEDULED_MAINTENANCE;
+        } else if ("DRAWDOWN".equalsIgnoreCase(resolvedType)) {
+            tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.DRAWDOWN;
+        } else if ("DRIFT".equalsIgnoreCase(resolvedType)) {
+            tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.DRIFT;
+        } else if ("GOLD_FLOOR_BACKSTOP".equalsIgnoreCase(resolvedType)) {
+            tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.GOLD_FLOOR_BACKSTOP;
+        } else {
+            tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.NONE;
+        }
+
         boolean hasWaterfallBuckets = activeTargets != null && activeTargets.stream().anyMatch(t -> t.bucket() == BucketEngine.Bucket.GOLD_SILVER || t.bucket() == BucketEngine.Bucket.LIQUID_BUFFER);
-        BigDecimal coreTrimProceeds = bucketSoldAmounts.getOrDefault(BucketEngine.Bucket.EQUITY_CORE, BigDecimal.ZERO);
-        com.portfolioos.core.valuation.RebalanceWaterfallEngine.TrimDestinationAllocation coreWaterfallAlloc = null;
-        if (coreTrimProceeds.compareTo(BigDecimal.ZERO) > 0 && !isLumpsum && hasWaterfallBuckets) {
-            BigDecimal gVal = statusMap.containsKey(BucketEngine.Bucket.GOLD_SILVER) ? statusMap.get(BucketEngine.Bucket.GOLD_SILVER).currentValue() : BigDecimal.ZERO;
-            BigDecimal aVal = statusMap.containsKey(BucketEngine.Bucket.LIQUID_BUFFER) ? statusMap.get(BucketEngine.Bucket.LIQUID_BUFFER).currentValue() : BigDecimal.ZERO;
-            BigDecimal cVal = statusMap.containsKey(BucketEngine.Bucket.EQUITY_CORE) ? statusMap.get(BucketEngine.Bucket.EQUITY_CORE).currentValue().subtract(coreTrimProceeds) : BigDecimal.ZERO;
-            BigDecimal aTgtPct = new BigDecimal("10.0");
-            BigDecimal cTgtPct = new BigDecimal("50.0");
-            for (BucketEngine.BucketTarget t : activeTargets) {
-                if (t.bucket() == BucketEngine.Bucket.LIQUID_BUFFER || t.bucket() == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE) {
-                    aTgtPct = t.targetPct();
-                } else if (t.bucket() == BucketEngine.Bucket.EQUITY_CORE) {
-                    cTgtPct = t.targetPct();
-                }
+        com.portfolioos.core.config.BucketTargetsConfig v24Config = BucketConfigLoader.loadV24Config();
+        com.portfolioos.core.valuation.RebalanceWaterfallEngine.RoutingResult routingResult = null;
+
+        if (hasWaterfallBuckets && !isLumpsum) {
+            BigDecimal coreTrimProceeds = bucketSoldAmounts.getOrDefault(BucketEngine.Bucket.EQUITY_CORE, BigDecimal.ZERO);
+            BigDecimal generalPool = totalPool.subtract(coreTrimProceeds).max(BigDecimal.ZERO);
+            BigDecimal effectiveActiveCorpus = postActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? postActiveCorpus : sellSideActiveCorpus;
+
+            Map<com.portfolioos.core.config.BucketTargetsConfig.BucketType, BigDecimal> postSellValues =
+                new java.util.EnumMap<>(com.portfolioos.core.config.BucketTargetsConfig.BucketType.class);
+            Map<com.portfolioos.core.config.BucketTargetsConfig.BucketType, BigDecimal> targetWeightsPct =
+                new java.util.EnumMap<>(com.portfolioos.core.config.BucketTargetsConfig.BucketType.class);
+
+            for (BucketEngine.BucketTarget target : activeTargets) {
+                com.portfolioos.core.config.BucketTargetsConfig.BucketType bType = mapToV24BucketType(target.bucket());
+                BigDecimal curVal = statusMap.containsKey(target.bucket()) ? statusMap.get(target.bucket()).currentValue() : BigDecimal.ZERO;
+                BigDecimal soldVal = bucketSoldAmounts.getOrDefault(target.bucket(), BigDecimal.ZERO);
+                BigDecimal postVal = curVal.subtract(soldVal).max(BigDecimal.ZERO);
+                postSellValues.put(bType, postSellValues.getOrDefault(bType, BigDecimal.ZERO).add(postVal));
+                targetWeightsPct.put(bType, targetWeightsPct.getOrDefault(bType, BigDecimal.ZERO).add(target.targetPct()));
             }
-            BigDecimal gTgt = postActiveCorpus.multiply(new BigDecimal("0.10")).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal aTgt = postActiveCorpus.multiply(aTgtPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
-            BigDecimal cTgt = postActiveCorpus.multiply(cTgtPct).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
-            coreWaterfallAlloc = com.portfolioos.core.valuation.RebalanceWaterfallEngine.routeTrimProceeds(
-                coreTrimProceeds, gVal, gTgt, aVal, aTgt, cVal, cTgt, postActiveCorpus
+
+            routingResult = com.portfolioos.core.valuation.RebalanceWaterfallEngine.routeProceedsV24(
+                v24Config,
+                tType,
+                coreTrimProceeds,
+                generalPool,
+                effectiveActiveCorpus,
+                postSellValues,
+                targetWeightsPct
             );
         }
 
@@ -885,21 +912,9 @@ public class RebalancePlanEngine {
             BigDecimal amountAllocated = BigDecimal.ZERO;
             BigDecimal shortfall = bucketShortfalls.getOrDefault(target.bucket(), BigDecimal.ZERO);
 
-            if (coreWaterfallAlloc != null) {
-                if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER) {
-                    amountAllocated = coreWaterfallAlloc.toGold();
-                } else if (target.bucket() == BucketEngine.Bucket.LIQUID_BUFFER) {
-                    amountAllocated = coreWaterfallAlloc.toArbTarget().add(coreWaterfallAlloc.toArbTerminal());
-                } else if (target.bucket() == BucketEngine.Bucket.EQUITY_CORE) {
-                    amountAllocated = coreWaterfallAlloc.toCore();
-                } else {
-                    amountAllocated = BigDecimal.ZERO;
-                }
-                BigDecimal nonCorePool = totalPool.subtract(coreTrimProceeds).max(BigDecimal.ZERO);
-                if (nonCorePool.compareTo(BigDecimal.ZERO) > 0 && totalShortfall.compareTo(BigDecimal.ZERO) > 0 && shortfall.compareTo(BigDecimal.ZERO) > 0) {
-                    BigDecimal legAlloc = nonCorePool.multiply(shortfall).divide(totalShortfall, 2, RoundingMode.HALF_UP).min(shortfall);
-                    amountAllocated = amountAllocated.add(legAlloc);
-                }
+            if (routingResult != null) {
+                com.portfolioos.core.config.BucketTargetsConfig.BucketType bType = mapToV24BucketType(target.bucket());
+                amountAllocated = routingResult.bucketBuysInr().getOrDefault(bType, BigDecimal.ZERO);
             } else if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
                 if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER) {
                     amountAllocated = totalPool;
@@ -927,40 +942,6 @@ public class RebalancePlanEngine {
                 amountAllocated,
                 realFunds
             ));
-        }
-
-        // Budget Conservation Normalization: Ensure sum(amountAllocated) strictly equals totalPool
-        BigDecimal rawSum = buyBuckets.stream().map(RebalanceBucketAllocationDto::amountAllocated).reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (rawSum.compareTo(BigDecimal.ZERO) > 0 && totalPool.compareTo(BigDecimal.ZERO) > 0 && rawSum.compareTo(totalPool) != 0) {
-            List<RebalanceBucketAllocationDto> normalizedBuckets = new ArrayList<>();
-            BigDecimal runningAlloc = BigDecimal.ZERO;
-            for (int i = 0; i < buyBuckets.size(); i++) {
-                RebalanceBucketAllocationDto b = buyBuckets.get(i);
-                BigDecimal normAlloc;
-                if (i == buyBuckets.size() - 1) {
-                    normAlloc = totalPool.subtract(runningAlloc).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-                } else {
-                    normAlloc = b.amountAllocated().multiply(totalPool).divide(rawSum, 2, RoundingMode.HALF_UP);
-                    runningAlloc = runningAlloc.add(normAlloc);
-                }
-                BucketEngine.Bucket bBucket = BucketEngine.Bucket.valueOf(b.bucket());
-                List<FundAllocationDto> realFunds = resolveRealFundBreakdown(bBucket, normAlloc, activeVersion, openLots, navMap, liveCorpus, postCorpus);
-                BigDecimal curVal = statusMap.containsKey(bBucket) ?
-                    statusMap.get(bBucket).currentValue() : BigDecimal.ZERO;
-                BigDecimal soldFromBucket = bucketSoldAmounts.getOrDefault(bBucket, BigDecimal.ZERO);
-                if (soldFromBucket.compareTo(curVal) > 0) {
-                    throw new IllegalStateException("RebalancePlanEngine: Trim proceeds for bucket " + bBucket +
-                        " (" + soldFromBucket + ") exceed pre-rebalance valuation (" + curVal + ")");
-                }
-                BigDecimal postVal = curVal.subtract(soldFromBucket).add(normAlloc);
-                double postPct = (postActiveCorpus.compareTo(BigDecimal.ZERO) > 0) ?
-                    Math.round((postVal.doubleValue() / postActiveCorpus.doubleValue()) * 1000.0) / 10.0 : b.targetPct();
-
-                normalizedBuckets.add(new RebalanceBucketAllocationDto(
-                    b.bucket(), b.targetPct(), b.currentPct(), postPct, normAlloc, realFunds
-                ));
-            }
-            buyBuckets = normalizedBuckets;
         }
 
         BuySidePlanDto buySide = new BuySidePlanDto(totalPool, isLumpsum, buyBuckets);
@@ -1049,114 +1030,106 @@ public class RebalancePlanEngine {
         BeerSpreadContextDto beerSpreadCtx = loadMarketIndicators();
 
         // 6-Invariant Runtime Firewall: Verify invariants before computing digest and releasing plan
-        try {
-            com.portfolioos.core.config.BucketTargetsConfig v24Config = BucketConfigLoader.loadV24Config();
-            BigDecimal actualSoldAmount = (sellSide != null && sellSide.totalRequired() != null)
-                ? sellSide.totalRequired() : BigDecimal.ZERO;
-            if (v24Config != null && sellSide != null && buySide != null && (!buyBuckets.isEmpty() || actualSoldAmount.compareTo(BigDecimal.ZERO) > 0)) {
-                com.portfolioos.core.valuation.RebalanceInvariantVerifier verifier = new com.portfolioos.core.valuation.RebalanceInvariantVerifier();
+        BigDecimal actualSoldAmount = (sellSide != null && sellSide.totalRequired() != null)
+            ? sellSide.totalRequired() : BigDecimal.ZERO;
+        if (hasWaterfallBuckets && !isLumpsum && v24Config != null && sellSide != null && buySide != null && (!buyBuckets.isEmpty() || actualSoldAmount.compareTo(BigDecimal.ZERO) > 0)) {
+            com.portfolioos.core.valuation.RebalanceInvariantVerifier verifier = new com.portfolioos.core.valuation.RebalanceInvariantVerifier();
 
-                List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.LotOrder> soldLotOrders = new ArrayList<>();
-                if (sellSide.waterfall() != null) {
-                    for (WaterfallTierDto t : sellSide.waterfall()) {
-                        if (t.lots() != null) {
-                            for (RebalanceLotImpactDto l : t.lots()) {
-                                BigDecimal estTax = (l.taxImpact() != null && l.taxImpact().taxAmount() != null)
-                                    ? l.taxImpact().taxAmount() : BigDecimal.ZERO;
-                                BigDecimal ltcgUsed = (l.taxImpact() != null && l.taxImpact().exemptionApplied() != null)
-                                    ? l.taxImpact().exemptionApplied() : BigDecimal.ZERO;
-                                soldLotOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.LotOrder(
-                                    l.lotId(),
-                                    null,
-                                    l.fundId(),
-                                    l.acquisitionDate() != null ? LocalDate.parse(l.acquisitionDate()) : today,
-                                    l.saleProceeds(),
-                                    estTax,
-                                    ltcgUsed,
-                                    false
-                                ));
-                            }
+            List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.LotOrder> soldLotOrders = new ArrayList<>();
+            if (sellSide.waterfall() != null) {
+                for (WaterfallTierDto t : sellSide.waterfall()) {
+                    if (t.lots() != null) {
+                        for (RebalanceLotImpactDto l : t.lots()) {
+                            BigDecimal estTax = (l.taxImpact() != null && l.taxImpact().taxAmount() != null)
+                                ? l.taxImpact().taxAmount() : BigDecimal.ZERO;
+                            BigDecimal ltcgUsed = (l.taxImpact() != null && l.taxImpact().exemptionApplied() != null)
+                                ? l.taxImpact().exemptionApplied() : BigDecimal.ZERO;
+                            soldLotOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.LotOrder(
+                                l.lotId(),
+                                null,
+                                l.fundId(),
+                                l.acquisitionDate() != null ? LocalDate.parse(l.acquisitionDate()) : today,
+                                l.saleProceeds(),
+                                estTax,
+                                ltcgUsed,
+                                false
+                            ));
                         }
                     }
                 }
-
-                List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.BuyOrder> buyOrders = new ArrayList<>();
-                for (RebalanceBucketAllocationDto b : buyBuckets) {
-                    try {
-                        com.portfolioos.core.config.BucketTargetsConfig.BucketType bType =
-                            com.portfolioos.core.config.BucketTargetsConfig.BucketType.valueOf(b.bucket().toUpperCase());
-                        buyOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.BuyOrder(
-                            bType,
-                            b.bucket(),
-                            b.amountAllocated()
-                        ));
-                    } catch (Exception e) {
-                        // ignore unmapped bucket
-                    }
-                }
-
-                Map<String, List<LocalDate>> remainingUnsoldLotDates = new HashMap<>();
-                if (workingLots != null) {
-                    for (Lot wl : workingLots) {
-                        String key = "DEFAULT::" + wl.assetId();
-                        remainingUnsoldLotDates.computeIfAbsent(key, k -> new ArrayList<>()).add(wl.acquisitionDate());
-                    }
-                }
-
-                Map<com.portfolioos.core.config.BucketTargetsConfig.BucketType, BigDecimal> postTradeVals = new EnumMap<>(com.portfolioos.core.config.BucketTargetsConfig.BucketType.class);
-                for (RebalanceBucketAllocationDto b : buyBuckets) {
-                    try {
-                        com.portfolioos.core.config.BucketTargetsConfig.BucketType bType =
-                            com.portfolioos.core.config.BucketTargetsConfig.BucketType.valueOf(b.bucket().toUpperCase());
-                        BigDecimal curVal = statusMap.containsKey(BucketEngine.Bucket.valueOf(b.bucket()))
-                            ? statusMap.get(BucketEngine.Bucket.valueOf(b.bucket())).currentValue() : BigDecimal.ZERO;
-                        BigDecimal soldVal = bucketSoldAmounts.getOrDefault(BucketEngine.Bucket.valueOf(b.bucket()), BigDecimal.ZERO);
-                        BigDecimal postVal = curVal.subtract(soldVal).add(b.amountAllocated());
-                        postTradeVals.put(bType, postVal);
-                    } catch (Exception e) {}
-                }
-
-                List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.PreTradeLotSnapshot> preTradeSnapshots = new ArrayList<>();
-                if (openLots != null) {
-                    for (Lot ol : openLots) {
-                        preTradeSnapshots.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.PreTradeLotSnapshot(
-                            ol.lotId(), null, ol.assetId(), ol.acquisitionDate()
-                        ));
-                    }
-                }
-
-                BigDecimal summaryTax = (sellSide.taxSummary() != null && sellSide.taxSummary().totalTaxEstimate() != null)
-                    ? sellSide.taxSummary().totalTaxEstimate() : BigDecimal.ZERO;
-                BigDecimal remainingExemption = (sellSide.taxSummary() != null && sellSide.taxSummary().exemptionHeadroomAfter() != null)
-                    ? sellSide.taxSummary().exemptionHeadroomAfter() : BigDecimal.ZERO;
-
-                boolean coreTrimmed = soldCoreAmount.compareTo(BigDecimal.ZERO) > 0;
-                RebalanceTriggerEvaluator.TriggerType tType = RebalanceTriggerEvaluator.TriggerType.NONE;
-                try {
-                    tType = RebalanceTriggerEvaluator.TriggerType.valueOf(resolvedType.toUpperCase());
-                } catch (Exception e) {}
-
-                BigDecimal effectiveCorpus = postActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? postActiveCorpus : sellSideActiveCorpus;
-
-                com.portfolioos.core.valuation.RebalanceInvariantVerifier.VerifiablePlan vPlan =
-                    new com.portfolioos.core.valuation.RebalanceInvariantVerifier.VerifiablePlan(
-                        tType,
-                        isUrgent,
-                        coreTrimmed,
-                        effectiveCorpus,
-                        soldLotOrders,
-                        remainingUnsoldLotDates,
-                        buyOrders,
-                        postTradeVals,
-                        BigDecimal.ZERO, // cash overflow
-                        summaryTax,
-                        remainingExemption
-                    );
-
-                verifier.assertAllInvariants(vPlan, preTradeSnapshots, v24Config);
             }
-        } catch (Exception e) {
-            log.warn("RebalanceInvariantVerifier audit note: {}", e.getMessage());
+
+            List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.BuyOrder> buyOrders = new ArrayList<>();
+            for (RebalanceBucketAllocationDto b : buyBuckets) {
+                try {
+                    com.portfolioos.core.config.BucketTargetsConfig.BucketType bType =
+                        mapToV24BucketType(BucketEngine.Bucket.valueOf(b.bucket()));
+                    buyOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.BuyOrder(
+                        bType,
+                        b.bucket(),
+                        b.amountAllocated()
+                    ));
+                } catch (Exception e) {
+                    // ignore unmapped bucket
+                }
+            }
+
+            Map<String, List<LocalDate>> remainingUnsoldLotDates = new HashMap<>();
+            if (workingLots != null) {
+                for (Lot wl : workingLots) {
+                    String key = "DEFAULT::" + wl.assetId();
+                    remainingUnsoldLotDates.computeIfAbsent(key, k -> new ArrayList<>()).add(wl.acquisitionDate());
+                }
+            }
+
+            Map<com.portfolioos.core.config.BucketTargetsConfig.BucketType, BigDecimal> postTradeVals = new EnumMap<>(com.portfolioos.core.config.BucketTargetsConfig.BucketType.class);
+            for (RebalanceBucketAllocationDto b : buyBuckets) {
+                try {
+                    com.portfolioos.core.config.BucketTargetsConfig.BucketType bType =
+                        mapToV24BucketType(BucketEngine.Bucket.valueOf(b.bucket()));
+                    BigDecimal curVal = statusMap.containsKey(BucketEngine.Bucket.valueOf(b.bucket()))
+                        ? statusMap.get(BucketEngine.Bucket.valueOf(b.bucket())).currentValue() : BigDecimal.ZERO;
+                    BigDecimal soldVal = bucketSoldAmounts.getOrDefault(BucketEngine.Bucket.valueOf(b.bucket()), BigDecimal.ZERO);
+                    BigDecimal postVal = curVal.subtract(soldVal).add(b.amountAllocated());
+                    postTradeVals.put(bType, postVal);
+                } catch (Exception e) {}
+            }
+
+            List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.PreTradeLotSnapshot> preTradeSnapshots = new ArrayList<>();
+            if (openLots != null) {
+                for (Lot ol : openLots) {
+                    preTradeSnapshots.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.PreTradeLotSnapshot(
+                        ol.lotId(), null, ol.assetId(), ol.acquisitionDate()
+                    ));
+                }
+            }
+
+            BigDecimal summaryTax = (sellSide.taxSummary() != null && sellSide.taxSummary().totalTaxEstimate() != null)
+                ? sellSide.taxSummary().totalTaxEstimate() : BigDecimal.ZERO;
+            BigDecimal remainingExemption = (sellSide.taxSummary() != null && sellSide.taxSummary().exemptionHeadroomAfter() != null)
+                ? sellSide.taxSummary().exemptionHeadroomAfter() : BigDecimal.ZERO;
+
+            boolean coreTrimmed = bucketSoldAmounts.getOrDefault(BucketEngine.Bucket.EQUITY_CORE, BigDecimal.ZERO).compareTo(BigDecimal.ZERO) > 0;
+            BigDecimal effectiveCorpus = postActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? postActiveCorpus : sellSideActiveCorpus;
+            BigDecimal cashOverflow = (routingResult != null) ? routingResult.cashOverflowInr() : BigDecimal.ZERO;
+
+            com.portfolioos.core.valuation.RebalanceInvariantVerifier.VerifiablePlan vPlan =
+                new com.portfolioos.core.valuation.RebalanceInvariantVerifier.VerifiablePlan(
+                    tType,
+                    isUrgent,
+                    coreTrimmed,
+                    effectiveCorpus,
+                    soldLotOrders,
+                    remainingUnsoldLotDates,
+                    buyOrders,
+                    postTradeVals,
+                    cashOverflow,
+                    summaryTax,
+                    remainingExemption
+                );
+
+            // FAIL CLOSED: Invariant violation aborts plan creation
+            verifier.assertAllInvariants(vPlan, preTradeSnapshots, v24Config);
         }
 
         return new RebalancePlanDto(
@@ -1311,6 +1284,17 @@ public class RebalancePlanEngine {
             }
         }
         return rawBucket;
+    }
+
+    private static com.portfolioos.core.config.BucketTargetsConfig.BucketType mapToV24BucketType(BucketEngine.Bucket b) {
+        if (b == null) return com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER;
+        return switch (b) {
+            case EQUITY_CORE -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE;
+            case EQUITY_SATELLITE, SATELLITE_VALUE, SATELLITE_MOMENTUM, SATELLITE_SMALLCAP -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE;
+            case GOLD_SILVER, HEDGE_COMMODITY -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER;
+            case LIQUID_BUFFER, LIQUIDITY_ARBITRAGE -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER;
+            case LEGACY_HOLDINGS -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.LEGACY_HOLDINGS;
+        };
     }
 
     /**

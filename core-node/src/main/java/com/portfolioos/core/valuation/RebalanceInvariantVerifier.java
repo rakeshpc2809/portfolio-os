@@ -87,15 +87,17 @@ public final class RebalanceInvariantVerifier {
         }
 
         // INVARIANT 1: Strict Conservation of Money (Down to 1 Paisa)
-        BigDecimal totalSells = plan.soldLots().stream()
-            .map(LotOrder::netProceedsInr).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal totalBuys = plan.buyOrders().stream()
-            .map(BuyOrder::amountInr).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal accountingDiff = totalSells.subtract(totalBuys.add(plan.cashOverflowInr())).abs();
-        if (accountingDiff.compareTo(new BigDecimal("0.01")) > 0) {
-            throw new IllegalStateException(
-                "INVARIANT_1_VIOLATION: Conservation of money failed. Sells=" + totalSells
-                + ", Buys=" + totalBuys + ", CashOverflow=" + plan.cashOverflowInr());
+        if (!plan.soldLots().isEmpty()) {
+            BigDecimal totalSells = plan.soldLots().stream()
+                .map(LotOrder::netProceedsInr).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal totalBuys = plan.buyOrders().stream()
+                .map(BuyOrder::amountInr).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal accountingDiff = totalSells.subtract(totalBuys.add(plan.cashOverflowInr())).abs();
+            if (accountingDiff.compareTo(new BigDecimal("0.01")) > 0) {
+                throw new IllegalStateException(
+                    "INVARIANT_1_VIOLATION: Conservation of money failed. Sells=" + totalSells
+                    + ", Buys=" + totalBuys + ", CashOverflow=" + plan.cashOverflowInr());
+            }
         }
 
         // INVARIANT 2 & Fix V2: Strict RTA Chronological FIFO per (Folio + ISIN)
@@ -144,7 +146,7 @@ public final class RebalanceInvariantVerifier {
 
         // INVARIANT 4 & Fix V3 & R2: Cross-Bucket Contamination Firewall
         // Fix V3: Derive coreTrimmed dynamically by inspecting config schemes for EQUITY_CORE
-        Set<String> coreIsins = config.buckets().containsKey(BucketType.EQUITY_CORE)
+        Set<String> coreIsins = (config != null && config.buckets() != null && config.buckets().containsKey(BucketType.EQUITY_CORE))
             ? config.buckets().get(BucketType.EQUITY_CORE).schemes().stream()
                 .map(BucketTargetsConfig.SchemeSpec::isin).collect(Collectors.toSet())
             : Set.of("INF109KC12U0", "INF879O01027");
@@ -158,6 +160,15 @@ public final class RebalanceInvariantVerifier {
             if (satelliteBought) {
                 throw new IllegalStateException(
                     "INVARIANT_4_VIOLATION: EQUITY_CORE proceeds routed into EQUITY_SATELLITE (Firewall breached)");
+            }
+        }
+
+        if (plan.triggerType() == TriggerType.DRAWDOWN) {
+            boolean goldBought = plan.buyOrders().stream()
+                .anyMatch(b -> b.bucket() == BucketType.GOLD_SILVER && b.amountInr().compareTo(BigDecimal.ZERO) > 0);
+            if (goldBought) {
+                throw new IllegalStateException(
+                    "INVARIANT_4_VIOLATION: Crisis DRAWDOWN deployment leaked into GOLD_SILVER");
             }
         }
 
@@ -182,13 +193,15 @@ public final class RebalanceInvariantVerifier {
         }
 
         // Tax Proration Check: individual lot estimated tax must sum to summaryTaxInr within 1 INR
-        BigDecimal totalLotTax = plan.soldLots().stream()
-            .map(LotOrder::estimatedTaxInr).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal taxDiff = totalLotTax.subtract(plan.summaryTaxInr()).abs();
-        if (taxDiff.compareTo(new BigDecimal("1.00")) > 0) {
-            throw new IllegalStateException(
-                "INVARIANT_6_VIOLATION: Individual lot estimated tax sum (" + totalLotTax
-                + ") diverges from plan summary tax (" + plan.summaryTaxInr() + ") by > 1.00 INR");
+        if (!plan.soldLots().isEmpty()) {
+            BigDecimal totalLotTax = plan.soldLots().stream()
+                .map(LotOrder::estimatedTaxInr).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal taxDiff = totalLotTax.subtract(plan.summaryTaxInr()).abs();
+            if (taxDiff.compareTo(new BigDecimal("1.00")) > 0) {
+                throw new IllegalStateException(
+                    "INVARIANT_6_VIOLATION: Individual lot estimated tax sum (" + totalLotTax
+                    + ") diverges from plan summary tax (" + plan.summaryTaxInr() + ") by > 1.00 INR");
+            }
         }
     }
 }

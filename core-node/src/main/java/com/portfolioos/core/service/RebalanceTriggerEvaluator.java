@@ -114,7 +114,7 @@ public class RebalanceTriggerEvaluator {
                 throw new IllegalStateException("CRITICAL BENCHMARK FAILURE: Missing or invalid live level for Nifty 500 TRI Benchmark");
             }
 
-            // E5: Persisted ATH Watermark integrity check
+            // E5: Persisted ATH Watermark integrity check & advancement
             if (repository != null) {
                 Optional<BigDecimal> storedWatermarkOpt = repository.getNiftyTriWatermark();
                 if (storedWatermarkOpt.isPresent()) {
@@ -122,17 +122,22 @@ public class RebalanceTriggerEvaluator {
                     if (storedWatermark.compareTo(BigDecimal.ZERO) <= 0) {
                         throw new IllegalStateException("CRITICAL INTEGRITY FAILURE: Stored Nifty TRI watermark <= 0");
                     }
-                    // Fail closed if stored watermark lags current TRI by > 5% without an update
                     if (curr.compareTo(storedWatermark) > 0) {
                         BigDecimal lagFraction = curr.subtract(storedWatermark).divide(storedWatermark, 4, RoundingMode.HALF_UP);
                         if (lagFraction.compareTo(new BigDecimal("0.05")) > 0) {
                             throw new IllegalStateException("CRITICAL INTEGRITY FAILURE: Stored Nifty TRI watermark lags current TRI by > 5%: stored="
                                 + storedWatermark + ", current=" + curr);
                         }
+                        // Advance and persist new peak within normal tolerance
+                        repository.setNiftyTriWatermark(curr);
+                        storedWatermark = curr;
                     }
                     high = storedWatermark.max(benchmarkRollingHigh).max(curr);
                 } else {
-                    high = benchmarkRollingHigh.max(curr);
+                    // Seed initial ATH watermark from historical rolling high or current level
+                    BigDecimal initialWatermark = benchmarkRollingHigh.max(curr);
+                    repository.setNiftyTriWatermark(initialWatermark);
+                    high = initialWatermark;
                 }
             } else {
                 high = benchmarkRollingHigh.max(curr);
@@ -422,6 +427,9 @@ public class RebalanceTriggerEvaluator {
                 "{\"driftedBuckets\":" + resolution.driftedBuckets() + "}",
                 drawdownTier
             );
+            if ("SCHEDULED".equalsIgnoreCase(resolution.triggerType()) || "SCHEDULED_MAINTENANCE".equalsIgnoreCase(resolution.triggerType())) {
+                repository.recordScheduledRunExecution(today.getYear(), today.getMonthValue(), today.atStartOfDay());
+            }
         }
 
         return resolution;

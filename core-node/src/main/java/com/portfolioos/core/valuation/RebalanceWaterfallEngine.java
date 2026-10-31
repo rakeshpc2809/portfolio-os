@@ -889,6 +889,9 @@ public class RebalanceWaterfallEngine {
 
         Map<com.portfolioos.core.config.BucketTargetsConfig.BucketType, BigDecimal> deficits =
             new java.util.EnumMap<>(com.portfolioos.core.config.BucketTargetsConfig.BucketType.class);
+        for (com.portfolioos.core.config.BucketTargetsConfig.BucketType b : com.portfolioos.core.config.BucketTargetsConfig.BucketType.values()) {
+            deficits.put(b, BigDecimal.ZERO);
+        }
         for (var entry : targetWeightsPct.entrySet()) {
             com.portfolioos.core.config.BucketTargetsConfig.BucketType b = entry.getKey();
             BigDecimal targetVal = effectiveActiveCorpusInr.multiply(entry.getValue())
@@ -900,11 +903,24 @@ public class RebalanceWaterfallEngine {
 
         BigDecimal cashOverflow = BigDecimal.ZERO;
 
-        // 1. DRAWDOWN Routing
+        // 0. GOLD_FLOOR_BACKSTOP Routing (Buy-only, 100% into GOLD_SILVER)
+        if (triggerType == com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.GOLD_FLOOR_BACKSTOP) {
+            BigDecimal pool = generalPoolInr.add(coreTrimPoolInr);
+            buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER, pool);
+            return new RoutingResult(buys, BigDecimal.ZERO);
+        }
+
+        // 1. DRAWDOWN Routing: Strictly into EQUITY_CORE first, then SATELLITE (0% to Gold)
         if (triggerType == com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.DRAWDOWN) {
             BigDecimal pool = generalPoolInr.add(coreTrimPoolInr);
             pool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE, pool, minOrder);
             pool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE, pool, minOrder);
+            // If drawdown deployment exceeds calculated deficits, all remaining crisis dry powder goes to EQUITY_CORE
+            if (pool.compareTo(minOrder) >= 0) {
+                buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE,
+                    buys.get(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE).add(pool));
+                pool = BigDecimal.ZERO;
+            }
             cashOverflow = cashOverflow.add(pool);
             return new RoutingResult(buys, cashOverflow);
         }
@@ -935,9 +951,9 @@ public class RebalanceWaterfallEngine {
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE,
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER,
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER)) {
-                    BigDecimal d = deficits.get(b);
+                    BigDecimal d = deficits.getOrDefault(b, BigDecimal.ZERO);
                     if (d.compareTo(minOrder) >= 0) {
-                        buys.put(b, buys.get(b).add(d));
+                        buys.put(b, buys.getOrDefault(b, BigDecimal.ZERO).add(d));
                         remGeneral = remGeneral.subtract(d);
                         deficits.put(b, BigDecimal.ZERO);
                     }
@@ -953,7 +969,7 @@ public class RebalanceWaterfallEngine {
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE,
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER,
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER)) {
-                    BigDecimal d = deficits.get(b);
+                    BigDecimal d = deficits.getOrDefault(b, BigDecimal.ZERO);
                     if (d.compareTo(maxDef) > 0) {
                         maxDef = d;
                         largestDeficitBucket = b;
@@ -961,14 +977,14 @@ public class RebalanceWaterfallEngine {
                     BigDecimal share = remGeneral.multiply(d)
                         .divide(totalRemainingDeficit, 2, RoundingMode.DOWN);
                     if (share.compareTo(minOrder) >= 0) {
-                        buys.put(b, buys.get(b).add(share));
+                        buys.put(b, buys.getOrDefault(b, BigDecimal.ZERO).add(share));
                         allocatedSum = allocatedSum.add(share);
                     }
                 }
                 BigDecimal remainder = remGeneral.subtract(allocatedSum);
-                if (buys.get(largestDeficitBucket).add(remainder).compareTo(deficits.get(largestDeficitBucket)) <= 0
-                        && buys.get(largestDeficitBucket).add(remainder).compareTo(minOrder) >= 0) {
-                    buys.put(largestDeficitBucket, buys.get(largestDeficitBucket).add(remainder));
+                if (buys.getOrDefault(largestDeficitBucket, BigDecimal.ZERO).add(remainder).compareTo(deficits.getOrDefault(largestDeficitBucket, BigDecimal.ZERO)) <= 0
+                        && buys.getOrDefault(largestDeficitBucket, BigDecimal.ZERO).add(remainder).compareTo(minOrder) >= 0) {
+                    buys.put(largestDeficitBucket, buys.getOrDefault(largestDeficitBucket, BigDecimal.ZERO).add(remainder));
                     remGeneral = BigDecimal.ZERO;
                 } else {
                     remGeneral = remainder;
@@ -977,11 +993,11 @@ public class RebalanceWaterfallEngine {
         }
 
         BigDecimal finalLiquidHeadroom = maxAdditionalLiquidHeadroom
-            .subtract(buys.get(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER)).max(BigDecimal.ZERO);
+            .subtract(buys.getOrDefault(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER, BigDecimal.ZERO)).max(BigDecimal.ZERO);
         if (remGeneral.compareTo(minOrder) >= 0 && finalLiquidHeadroom.compareTo(minOrder) >= 0) {
             BigDecimal extraLiq = remGeneral.min(finalLiquidHeadroom);
             buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER,
-                buys.get(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER).add(extraLiq));
+                buys.getOrDefault(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER, BigDecimal.ZERO).add(extraLiq));
             remGeneral = remGeneral.subtract(extraLiq);
         }
         cashOverflow = cashOverflow.add(remGeneral);

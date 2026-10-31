@@ -740,7 +740,7 @@ class RebalancePlanEngineTest {
         // Notice: un-dampened linear trim would have been 135,000.00!
         RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
             lotsCaseB, Collections.emptyList(), navMap, today,
-            corpus, benchmark, null, "2026-27", null, null, evaluator
+            benchmark, benchmark, null, "2026-27", null, null, evaluator
         );
 
         assertNotNull(plan);
