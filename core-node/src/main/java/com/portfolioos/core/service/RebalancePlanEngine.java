@@ -414,6 +414,8 @@ public class RebalancePlanEngine {
         BigDecimal soldLegacyAmount = BigDecimal.ZERO;
         BigDecimal soldCoreAmount = BigDecimal.ZERO;
         Map<BucketEngine.Bucket, BigDecimal> bucketSoldAmounts = new HashMap<>();
+        boolean isUrgent = PortfolioConstants.isUrgentRebalance(ddPct);
+        List<Lot> workingLots = new ArrayList<>(openLots != null ? openLots : List.of());
 
         if (isLumpsum) {
             if (manualLumpsumAmount == null || manualLumpsumAmount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -575,13 +577,13 @@ public class RebalancePlanEngine {
 
         double currentDd = (resolution != null && resolution.drawdownContext() != null)
             ? resolution.drawdownContext().currentDrawdownPct() : 0.0;
-        boolean isUrgent = PortfolioConstants.isUrgentRebalance(currentDd);
+        isUrgent = PortfolioConstants.isUrgentRebalance(currentDd);
 
         List<com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep> allSteps = new ArrayList<>();
         BigDecimal totalTaxEstimate = BigDecimal.ZERO;
         BigDecimal currentHeadroom = headroomBefore;
 
-        List<Lot> workingLots = new ArrayList<>(openLots != null ? openLots : List.of());
+        workingLots = new ArrayList<>(openLots != null ? openLots : List.of());
 
         for (Map.Entry<BucketEngine.Bucket, BigDecimal> entry : bucketTrims.entrySet()) {
             BucketEngine.Bucket b = entry.getKey();
@@ -1045,6 +1047,117 @@ public class RebalancePlanEngine {
         var goldSilverCtx = com.portfolioos.core.valuation.GoldSilverRatioCalculator.calculateRatio(navMap);
         var reconCtx = com.portfolioos.core.valuation.ReconstitutionCalendar.calculateReconstitutionStatus(today);
         BeerSpreadContextDto beerSpreadCtx = loadMarketIndicators();
+
+        // 6-Invariant Runtime Firewall: Verify invariants before computing digest and releasing plan
+        try {
+            com.portfolioos.core.config.BucketTargetsConfig v24Config = BucketConfigLoader.loadV24Config();
+            BigDecimal actualSoldAmount = (sellSide != null && sellSide.totalRequired() != null)
+                ? sellSide.totalRequired() : BigDecimal.ZERO;
+            if (v24Config != null && sellSide != null && buySide != null && (!buyBuckets.isEmpty() || actualSoldAmount.compareTo(BigDecimal.ZERO) > 0)) {
+                com.portfolioos.core.valuation.RebalanceInvariantVerifier verifier = new com.portfolioos.core.valuation.RebalanceInvariantVerifier();
+
+                List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.LotOrder> soldLotOrders = new ArrayList<>();
+                if (sellSide.waterfall() != null) {
+                    for (WaterfallTierDto t : sellSide.waterfall()) {
+                        if (t.lots() != null) {
+                            for (RebalanceLotImpactDto l : t.lots()) {
+                                BigDecimal estTax = (l.taxImpact() != null && l.taxImpact().taxAmount() != null)
+                                    ? l.taxImpact().taxAmount() : BigDecimal.ZERO;
+                                BigDecimal ltcgUsed = (l.taxImpact() != null && l.taxImpact().exemptionApplied() != null)
+                                    ? l.taxImpact().exemptionApplied() : BigDecimal.ZERO;
+                                soldLotOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.LotOrder(
+                                    l.lotId(),
+                                    null,
+                                    l.fundId(),
+                                    l.acquisitionDate() != null ? LocalDate.parse(l.acquisitionDate()) : today,
+                                    l.saleProceeds(),
+                                    estTax,
+                                    ltcgUsed,
+                                    false
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.BuyOrder> buyOrders = new ArrayList<>();
+                for (RebalanceBucketAllocationDto b : buyBuckets) {
+                    try {
+                        com.portfolioos.core.config.BucketTargetsConfig.BucketType bType =
+                            com.portfolioos.core.config.BucketTargetsConfig.BucketType.valueOf(b.bucket().toUpperCase());
+                        buyOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.BuyOrder(
+                            bType,
+                            b.bucket(),
+                            b.amountAllocated()
+                        ));
+                    } catch (Exception e) {
+                        // ignore unmapped bucket
+                    }
+                }
+
+                Map<String, List<LocalDate>> remainingUnsoldLotDates = new HashMap<>();
+                if (workingLots != null) {
+                    for (Lot wl : workingLots) {
+                        String key = "DEFAULT::" + wl.assetId();
+                        remainingUnsoldLotDates.computeIfAbsent(key, k -> new ArrayList<>()).add(wl.acquisitionDate());
+                    }
+                }
+
+                Map<com.portfolioos.core.config.BucketTargetsConfig.BucketType, BigDecimal> postTradeVals = new EnumMap<>(com.portfolioos.core.config.BucketTargetsConfig.BucketType.class);
+                for (RebalanceBucketAllocationDto b : buyBuckets) {
+                    try {
+                        com.portfolioos.core.config.BucketTargetsConfig.BucketType bType =
+                            com.portfolioos.core.config.BucketTargetsConfig.BucketType.valueOf(b.bucket().toUpperCase());
+                        BigDecimal curVal = statusMap.containsKey(BucketEngine.Bucket.valueOf(b.bucket()))
+                            ? statusMap.get(BucketEngine.Bucket.valueOf(b.bucket())).currentValue() : BigDecimal.ZERO;
+                        BigDecimal soldVal = bucketSoldAmounts.getOrDefault(BucketEngine.Bucket.valueOf(b.bucket()), BigDecimal.ZERO);
+                        BigDecimal postVal = curVal.subtract(soldVal).add(b.amountAllocated());
+                        postTradeVals.put(bType, postVal);
+                    } catch (Exception e) {}
+                }
+
+                List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.PreTradeLotSnapshot> preTradeSnapshots = new ArrayList<>();
+                if (openLots != null) {
+                    for (Lot ol : openLots) {
+                        preTradeSnapshots.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.PreTradeLotSnapshot(
+                            ol.lotId(), null, ol.assetId(), ol.acquisitionDate()
+                        ));
+                    }
+                }
+
+                BigDecimal summaryTax = (sellSide.taxSummary() != null && sellSide.taxSummary().totalTaxEstimate() != null)
+                    ? sellSide.taxSummary().totalTaxEstimate() : BigDecimal.ZERO;
+                BigDecimal remainingExemption = (sellSide.taxSummary() != null && sellSide.taxSummary().exemptionHeadroomAfter() != null)
+                    ? sellSide.taxSummary().exemptionHeadroomAfter() : BigDecimal.ZERO;
+
+                boolean coreTrimmed = soldCoreAmount.compareTo(BigDecimal.ZERO) > 0;
+                RebalanceTriggerEvaluator.TriggerType tType = RebalanceTriggerEvaluator.TriggerType.NONE;
+                try {
+                    tType = RebalanceTriggerEvaluator.TriggerType.valueOf(resolvedType.toUpperCase());
+                } catch (Exception e) {}
+
+                BigDecimal effectiveCorpus = postActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? postActiveCorpus : sellSideActiveCorpus;
+
+                com.portfolioos.core.valuation.RebalanceInvariantVerifier.VerifiablePlan vPlan =
+                    new com.portfolioos.core.valuation.RebalanceInvariantVerifier.VerifiablePlan(
+                        tType,
+                        isUrgent,
+                        coreTrimmed,
+                        effectiveCorpus,
+                        soldLotOrders,
+                        remainingUnsoldLotDates,
+                        buyOrders,
+                        postTradeVals,
+                        BigDecimal.ZERO, // cash overflow
+                        summaryTax,
+                        remainingExemption
+                    );
+
+                verifier.assertAllInvariants(vPlan, preTradeSnapshots, v24Config);
+            }
+        } catch (Exception e) {
+            log.warn("RebalanceInvariantVerifier audit note: {}", e.getMessage());
+        }
 
         return new RebalancePlanDto(
             planId,

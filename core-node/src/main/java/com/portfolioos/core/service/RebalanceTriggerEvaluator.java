@@ -24,6 +24,14 @@ public class RebalanceTriggerEvaluator {
 
     private final TriggerHistoryRepository repository;
 
+    public enum TriggerType {
+        DRAWDOWN,
+        DRIFT,
+        SCHEDULED_MAINTENANCE, // Only executes Step 0 Legacy + Tax Harvest (no active trims)
+        GOLD_FLOOR_BACKSTOP,
+        NONE
+    }
+
     public record TriggerResolution(
         String triggerType,            // DRAWDOWN, DRIFT, SCHEDULED, GOLD_FLOOR_BACKSTOP, NONE
         String reasonCode,
@@ -55,6 +63,19 @@ public class RebalanceTriggerEvaluator {
         BucketConfigLoader.BucketTargetVersion activeVersion,
         LocalDate currentDate
     ) {
+        return getCurrentStatus(openLots, navMap, benchmarkCurrent, benchmarkRollingHigh, customTargets, activeVersion, currentDate, false);
+    }
+
+    public TriggerResolution getCurrentStatus(
+        List<Lot> openLots,
+        Map<String, BigDecimal> navMap,
+        BigDecimal benchmarkCurrent,
+        BigDecimal benchmarkRollingHigh,
+        List<BucketEngine.BucketTarget> customTargets,
+        BucketConfigLoader.BucketTargetVersion activeVersion,
+        LocalDate currentDate,
+        boolean allowScopedFeedDegradation
+    ) {
         LocalDate today = currentDate != null ? currentDate : LocalDate.now();
 
         // 1. Calculate Corpus and Bucket Valuations
@@ -79,13 +100,57 @@ public class RebalanceTriggerEvaluator {
         }
 
         // 2. Compute Drawdown Context
-        double ddPct = PortfolioConstants.requireValidDrawdownPct(benchmarkCurrent, benchmarkRollingHigh, "Nifty 500 TRI Benchmark");
-        BigDecimal high = benchmarkRollingHigh;
+        BigDecimal high = null;
         BigDecimal curr = benchmarkCurrent;
+        double ddPct = 0.0;
+        boolean benchmarkSupplied = benchmarkCurrent != null && benchmarkRollingHigh != null;
 
-        String armedTier = ddPct >= PortfolioConstants.DRAWDOWN_TIER_3_PCT ? "TIER_20"
-            : (ddPct >= PortfolioConstants.DRAWDOWN_TIER_2_PCT ? "TIER_15"
-            : (ddPct >= PortfolioConstants.DRAWDOWN_TIER_1_PCT ? "TIER_10" : "NONE"));
+        if (benchmarkSupplied) {
+            // Validate non-positive benchmark levels
+            if (benchmarkRollingHigh.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalStateException("CRITICAL BENCHMARK FAILURE: Missing or invalid 52-week peak for Nifty 500 TRI Benchmark");
+            }
+            if (benchmarkCurrent.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalStateException("CRITICAL BENCHMARK FAILURE: Missing or invalid live level for Nifty 500 TRI Benchmark");
+            }
+
+            // E5: Persisted ATH Watermark integrity check
+            if (repository != null) {
+                Optional<BigDecimal> storedWatermarkOpt = repository.getNiftyTriWatermark();
+                if (storedWatermarkOpt.isPresent()) {
+                    BigDecimal storedWatermark = storedWatermarkOpt.get();
+                    if (storedWatermark.compareTo(BigDecimal.ZERO) <= 0) {
+                        throw new IllegalStateException("CRITICAL INTEGRITY FAILURE: Stored Nifty TRI watermark <= 0");
+                    }
+                    // Fail closed if stored watermark lags current TRI by > 5% without an update
+                    if (curr.compareTo(storedWatermark) > 0) {
+                        BigDecimal lagFraction = curr.subtract(storedWatermark).divide(storedWatermark, 4, RoundingMode.HALF_UP);
+                        if (lagFraction.compareTo(new BigDecimal("0.05")) > 0) {
+                            throw new IllegalStateException("CRITICAL INTEGRITY FAILURE: Stored Nifty TRI watermark lags current TRI by > 5%: stored="
+                                + storedWatermark + ", current=" + curr);
+                        }
+                    }
+                    high = storedWatermark.max(benchmarkRollingHigh).max(curr);
+                } else {
+                    high = benchmarkRollingHigh.max(curr);
+                }
+            } else {
+                high = benchmarkRollingHigh.max(curr);
+            }
+            ddPct = PortfolioConstants.requireValidDrawdownPct(curr, high, "Nifty 500 TRI Benchmark");
+        } else {
+            // E4: Scoped feed degradation
+            if (!allowScopedFeedDegradation) {
+                PortfolioConstants.requireValidDrawdownPct(benchmarkCurrent, benchmarkRollingHigh, "Nifty 500 TRI Benchmark");
+            }
+            high = BigDecimal.ZERO;
+            ddPct = 0.0;
+        }
+
+        boolean benchmarkAvailable = benchmarkSupplied && benchmarkCurrent.compareTo(BigDecimal.ZERO) > 0 && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0;
+        String armedTier = (!benchmarkAvailable || ddPct < PortfolioConstants.DRAWDOWN_TIER_1_PCT) ? "NONE"
+            : (ddPct >= PortfolioConstants.DRAWDOWN_TIER_3_PCT ? "TIER_20"
+            : (ddPct >= PortfolioConstants.DRAWDOWN_TIER_2_PCT ? "TIER_15" : "TIER_10"));
 
         String nextTier = ddPct < 10.0 ? "TIER_10" : (ddPct < 15.0 ? "TIER_15" : (ddPct < 20.0 ? "TIER_20" : "MAX_TIER_REACHED"));
         double nextTierTargetPct = ddPct < 10.0 ? 10.0 : (ddPct < 15.0 ? 15.0 : (ddPct < 20.0 ? 20.0 : 20.0));
@@ -191,7 +256,13 @@ public class RebalanceTriggerEvaluator {
                 double lmRatioUpper = targetLmRatio + PortfolioConstants.CORE_INTERNAL_RATIO_BAND;
                 double lmRatioLower = targetLmRatio - PortfolioConstants.CORE_INTERNAL_RATIO_BAND;
                 if (largeMidRatio > lmRatioUpper || largeMidRatio < lmRatioLower) {
-                    driftedBuckets.add("CORE_INTERNAL_CIRCUIT_BREAKER");
+                    // v2.4 demotion: Under v2.4, remediate_on_passive_flow_only is true:
+                    // intra-core ratio check skews buys/trims on passive flow only,
+                    // and NEVER fires a standalone taxable sell rebalance when EQUITY_CORE aggregate is inside [45%, 55%].
+                    boolean isV24OrLater = ver != null && "2.4.0".equals(ver.versionId());
+                    if (!isV24OrLater) {
+                        driftedBuckets.add("CORE_INTERNAL_CIRCUIT_BREAKER");
+                    }
                 }
             }
 
@@ -257,16 +328,27 @@ public class RebalanceTriggerEvaluator {
 
         // Priority 3: SCHEDULED (March/September window, if Drawdown/Drift not evaluated)
         if (!sellTriggerEvaluated && (today.getMonthValue() == 3 || today.getMonthValue() == 9)) {
-            sellTriggerEvaluated = true;
-            if (sellCooldownActive) {
-                reasonCode = "SCHEDULED_BLOCKED_BY_COOLDOWN";
-                reasonLabel = String.format("Scheduled window active but sell rebalance is on 30-day cooldown (%d days since last sell)", daysSinceLastSell);
-            } else {
-                triggerType = "SCHEDULED";
-                reasonCode = "SCHEDULED_RECONSTITUTION";
-                reasonLabel = "March/September Scheduled Reconstitution Window";
-                hasSellSide = true;
-                hasGoldBuy = true;
+            // E2: Blackout ceiling math
+            int blackoutHours = 48;
+            int blackoutDays = (blackoutHours + 23) / 24; // 2 days ceiling
+            int daysLeftInMonth = today.lengthOfMonth() - today.getDayOfMonth();
+            boolean insideBlackout = daysLeftInMonth < blackoutDays;
+
+            // E1: Idempotency check: has scheduled rebalance already run for this (Year, Month)?
+            boolean alreadyExecutedThisMonth = repository != null && repository.hasScheduledRunExecutedForMonth(today.getYear(), today.getMonthValue());
+
+            if (!insideBlackout && !alreadyExecutedThisMonth) {
+                sellTriggerEvaluated = true;
+                if (sellCooldownActive) {
+                    reasonCode = "SCHEDULED_BLOCKED_BY_COOLDOWN";
+                    reasonLabel = String.format("Scheduled window active but sell rebalance is on 30-day cooldown (%d days since last sell)", daysSinceLastSell);
+                } else {
+                    triggerType = "SCHEDULED";
+                    reasonCode = "SCHEDULED_RECONSTITUTION";
+                    reasonLabel = "March/September Scheduled Reconstitution Window";
+                    hasSellSide = true;
+                    hasGoldBuy = true;
+                }
             }
         }
 

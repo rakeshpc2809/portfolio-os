@@ -1,4 +1,156 @@
----
+# Portfolio OS Configuration
+# Format: Hybrid multi-version and v2.4 structured specification
+version: "2.4.0"
+
+global_invariants:
+  rebalance_cooldown_days: 30
+  min_trade_amount_inr: 1000.00          # Dust filter: suppresses micro-orders < ₹1,000
+  liquid_hard_cap_pct: 15.00             # Terminal sink ceiling for Invesco Arbitrage
+  drawdown_anchor_mode: "ATH_WATERMARK"  # Replaces 252d rolling high; peak holds until broken
+  drawdown_hold_zone_min_pct: 5.00       # Hysteresis freeze floor
+  drawdown_hold_zone_max_pct: 10.00      # Hysteresis freeze ceiling
+  urgent_drawdown_threshold_pct: 15.00   # Unlocks STCG & exit-load lots when drawdown >= 15%
+  scheduled_months: [3, 9]               # March & September (Step 0 + Tax Harvest ONLY if inside bands)
+  nse_reconstitution_blackout_hours: 48  # Pause within 48h of Mar 31 / Sep 30
+
+tax_parameters:
+  ltcg_exemption_limit_inr: 125000.00    # Section 112A annual exemption
+  equity_ltcg_base_rate: 0.125           # 12.5% base
+  equity_stcg_base_rate: 0.200           # 20.0% base (Section 111A)
+  fof_ltcg_base_rate: 0.125              # 12.5% > 730 days (Unlisted FoF)
+  debt_50aa_slab_base_rate: 0.300        # 30.0% slab rate (< 730d FoF / Section 50AA)
+  health_education_cess_rate: 0.04       # Mandatory 4% cess (13.0% eff. LTCG / 20.8% eff. STCG)
+
+drawdown_rungs:
+  - tier: "TIER_10"
+    drawdown_pct: 10.00
+    liquid_target_pct: 7.50
+    core_target_pct: 52.50
+    liquid_deploy_fraction: 0.25
+  - tier: "TIER_15"
+    drawdown_pct: 15.00
+    liquid_target_pct: 5.00
+    core_target_pct: 55.00
+    liquid_deploy_fraction: 0.50
+  - tier: "TIER_20"
+    drawdown_pct: 20.00
+    liquid_target_pct: 0.00
+    core_target_pct: 60.00
+    liquid_deploy_fraction: 1.00
+
+dampener_tiers:
+  # Proportional control: relative excess over target -> trim multiplier
+  - max_relative_excess_pct: 15.0
+    multiplier: 0.40
+  - max_relative_excess_pct: 25.0
+    multiplier: 0.66
+  - max_relative_excess_pct: 999.0
+    multiplier: 0.75
+
+buckets:
+  EQUITY_CORE:
+    target_pct: 50.00
+    band_lower_pct: 5.00                 # Fires < 45.0%
+    band_upper_pct: 5.00                 # Fires > 55.0%
+    intra_bucket_routing:
+      # Piggyback-only: skews buys/trims to restore 60/40; NEVER fires a standalone sell
+      remediate_on_passive_flow_only: true
+      primary_isin: "INF109KC12U0"
+      primary_target_ratio: 0.60
+      ratio_band: 0.06                   # [0.54, 0.66] circuit breaker for buy-skewing
+    schemes:
+      - isin: "INF109KC12U0"
+        name: "ICICI Pru Nifty LargeMidcap 250 Index Direct Growth"
+        amc_code: "ICICI"
+        weight_within_bucket: 0.60
+        exit_load_days: 0
+        ltcg_holding_days: 365
+        settlement_days: 1
+      - isin: "INF879O01027"
+        name: "Parag Parikh Flexi Cap Direct Growth"
+        amc_code: "PPFAS"
+        weight_within_bucket: 0.40
+        exit_load_days: 730              # 2-year exit load guard
+        ltcg_holding_days: 365
+        settlement_days: 2
+
+  EQUITY_SATELLITE:
+    target_pct: 30.00
+    band_lower_pct: 5.00                 # Fires < 25.0%
+    band_upper_pct: 5.00                 # Fires > 35.0%
+    schemes:
+      - isin: "INF109KC13X2"
+        name: "ICICI Pru Nifty200 Value 30 Index Direct Growth"
+        amc_code: "ICICI"
+        weight_within_bucket: 0.3334
+        exit_load_days: 0
+        ltcg_holding_days: 365
+        settlement_days: 1
+      - isin: "INF754K01TN5"
+        name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Direct Growth"
+        amc_code: "EDELWEISS"
+        weight_within_bucket: 0.3333
+        exit_load_days: 30
+        ltcg_holding_days: 365
+        settlement_days: 1
+      - isin: "INF204K01K15"
+        name: "Nippon India Small Cap Direct Growth"
+        amc_code: "NIPPON"
+        weight_within_bucket: 0.3333
+        exit_load_days: 365              # 1-year exit load guard
+        ltcg_holding_days: 365
+        settlement_days: 1
+
+  GOLD_SILVER:
+    target_pct: 10.00
+    band_lower_pct: 2.00                 # Handled via Gold Floor Backstop (-2.0% gap)
+    band_upper_pct: 12.00                # Accumulator ceiling: only trims if > 22.0%
+    backstop:
+      min_idle_months: 6
+      min_underweight_gap_pct: 2.00
+      gap_close_fraction: 0.50           # Flat 50% gap close (200-DMA multiplier stripped)
+    schemes:
+      - isin: "INF247L01BM8"
+        name: "Motilal Oswal Gold and Silver Passive FoF Direct Growth"
+        amc_code: "MOTILAL"
+        weight_within_bucket: 1.00
+        exit_load_days: 15
+        ltcg_holding_days: 730           # 24-month Unlisted FoF cliff
+        settlement_days: 2
+
+  LIQUID_BUFFER:
+    target_pct: 10.00
+    band_lower_pct: 2.50                 # 5/25 Rule: fires < 7.5%
+    band_upper_pct: 2.50                 # 5/25 Rule: fires > 12.5% (normal regime)
+    schemes:
+      - isin: "INF205K01KR8"
+        name: "Invesco India Arbitrage Direct Growth"
+        amc_code: "INVESCO"
+        weight_within_bucket: 1.00
+        exit_load_days: 15
+        ltcg_holding_days: 365
+        settlement_days: 1
+
+legacy_isin_blacklist:
+  - "INF174KA1TY2"
+  - "INF247L01916"
+  - "INF247L01BQ9"
+  - "INF769K01ED6"
+
+legacy_liquidation_candidates:
+  - isin: "INF174KA1TY2"
+    fund_name: "Kotak Nifty 100 Equal Weight Index Fund Direct Growth"
+    reason: "Legacy core index holding slated for systematic tax-free LTCG liquidation"
+  - isin: "INF247L01916"
+    fund_name: "Motilal Oswal Nifty Midcap 150 Index Fund Direct Growth"
+    reason: "Legacy midcap holding slated for systematic tax-free LTCG liquidation"
+  - isin: "INF247L01BQ9"
+    fund_name: "Motilal Oswal Nifty Microcap 250 Index Fund Direct Growth"
+    reason: "Legacy microcap holding slated for systematic tax-free LTCG liquidation"
+  - isin: "INF769K01ED6"
+    fund_name: "Mirae Asset Healthcare Fund Direct Growth"
+    reason: "Legacy sectoral holding slated for systematic tax-free LTCG liquidation"
+
 versions:
 - version_id: "v1.0"
   effective_from: "2024-01-01"
@@ -132,7 +284,7 @@ versions:
   - bucket: "GOLD_SILVER"
     target_pct: 10.0
     band_pct: 5.0
-    drift_trigger_pct: 5.0
+    trigger_drift_pct: 5.0
     strategy: "ACCUMULATOR"
     preferred_funds:
     - fund_id: "INF247L01BM8"
@@ -140,26 +292,10 @@ versions:
       allocation_weight: 1.0
   - bucket: "LIQUID_BUFFER"
     target_pct: 10.0
-    band_pct: 5.0
-    trigger_drift_pct: 5.0
+    band_pct: 2.5
+    trigger_drift_pct: 2.5
     strategy: "ARBITRAGE"
     preferred_funds:
     - fund_id: "INF205K01KR8"
       fund_name: "Invesco India Arbitrage Fund"
       allocation_weight: 1.0
-
-legacy_liquidation_candidates:
-  - isin: "INF174KA1TY2"
-    fund_name: "Kotak Nifty 100 Equal Weight Index Fund Direct Growth"
-    reason: "Legacy core index holding slated for systematic tax-free LTCG liquidation"
-  - isin: "INF247L01916"
-    fund_name: "Motilal Oswal Nifty Midcap 150 Index Fund Direct Growth"
-    reason: "Legacy midcap holding slated for systematic tax-free LTCG liquidation"
-  - isin: "INF247L01BQ9"
-    fund_name: "Motilal Oswal Nifty Microcap 250 Index Fund Direct Growth"
-    reason: "Legacy microcap holding slated for systematic tax-free LTCG liquidation"
-  - isin: "INF769K01ED6"
-    fund_name: "Mirae Asset Healthcare Fund Direct Growth"
-    reason: "Legacy sectoral holding slated for systematic tax-free LTCG liquidation"
-
-

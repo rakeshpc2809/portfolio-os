@@ -1,7 +1,8 @@
-package in.portfolioos.rebalancer.config;
+package com.portfolioos.core.config;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -59,13 +60,31 @@ public record BucketTargetsConfig(
 
     public record DampenerTier(BigDecimal maxRelativeExcessPct, BigDecimal multiplier) {}
 
+    public record IntraBucketRoutingSpec(
+        boolean remediateOnPassiveFlowOnly,
+        String primaryIsin,
+        BigDecimal primaryTargetRatio,
+        BigDecimal ratioBand
+    ) {}
+
     public record BucketSpec(
         BigDecimal targetPct,
         BigDecimal bandLowerPct,
         BigDecimal bandUpperPct,
+        IntraBucketRoutingSpec intraBucketRouting,
         BackstopSpec backstop,
         List<SchemeSpec> schemes
-    ) {}
+    ) {
+        public BucketSpec(
+            BigDecimal targetPct,
+            BigDecimal bandLowerPct,
+            BigDecimal bandUpperPct,
+            BackstopSpec backstop,
+            List<SchemeSpec> schemes
+        ) {
+            this(targetPct, bandLowerPct, bandUpperPct, null, backstop, schemes);
+        }
+    }
 
     public record BackstopSpec(
         int minIdleMonths,
@@ -85,6 +104,21 @@ public record BucketTargetsConfig(
 
     public BucketTargetsConfig {
         Objects.requireNonNull(globalInvariants, "globalInvariants required");
+        Objects.requireNonNull(taxParameters, "taxParameters required");
+        Objects.requireNonNull(buckets, "buckets required");
+
+        // Fix E3: Ensure all config lists are sorted ascending by threshold
+        if (drawdownRungs != null) {
+            drawdownRungs = drawdownRungs.stream()
+                .sorted(Comparator.comparing(DrawdownRung::drawdownPct))
+                .toList();
+        }
+        if (dampenerTiers != null) {
+            dampenerTiers = dampenerTiers.stream()
+                .sorted(Comparator.comparing(DampenerTier::maxRelativeExcessPct))
+                .toList();
+        }
+
         BigDecimal totalTarget = buckets.values().stream()
             .map(BucketSpec::targetPct)
             .reduce(BigDecimal.ZERO, BigDecimal::add);

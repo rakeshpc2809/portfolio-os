@@ -100,6 +100,22 @@ public class TriggerHistoryRepository {
                 "  recorded_at TEXT NOT NULL" +
                 ")"
             );
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS nifty_tri_watermark (" +
+                "  id INTEGER PRIMARY KEY CHECK (id = 1)," +
+                "  watermark_value TEXT NOT NULL," +
+                "  recorded_at TEXT NOT NULL" +
+                ")"
+            );
+            stmt.execute(
+                "CREATE TABLE IF NOT EXISTS scheduled_rebalance_history (" +
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "  run_year INTEGER NOT NULL," +
+                "  run_month INTEGER NOT NULL," +
+                "  executed_at TEXT NOT NULL," +
+                "  UNIQUE (run_year, run_month)" +
+                ")"
+            );
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize rebalance_trigger_history schema", e);
         }
@@ -257,11 +273,90 @@ public class TriggerHistoryRepository {
         }
     }
 
+    public Optional<BigDecimal> getNiftyTriWatermark() {
+        String sql = "SELECT watermark_value FROM nifty_tri_watermark WHERE id = 1";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                String val = rs.getString(1);
+                if (val != null && !val.isBlank()) {
+                    return Optional.of(new BigDecimal(val));
+                }
+            }
+            return Optional.empty();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to query Nifty TRI watermark", e);
+        }
+    }
+
+    public void setNiftyTriWatermark(BigDecimal watermark) {
+        if (watermark == null) return;
+        String sql = "INSERT OR REPLACE INTO nifty_tri_watermark (id, watermark_value, recorded_at) VALUES (1, ?, ?)";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, watermark.toPlainString());
+            stmt.setString(2, LocalDateTime.now().format(ISO_FORMATTER));
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to persist Nifty TRI watermark", e);
+        }
+    }
+
+    public boolean hasScheduledRunExecutedForMonth(int year, int month) {
+        String sql = "SELECT COUNT(*) FROM scheduled_rebalance_history WHERE run_year = ? AND run_month = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, year);
+            stmt.setInt(2, month);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+            return false;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to query scheduled rebalance history", e);
+        }
+    }
+
+    public void recordScheduledRunExecution(int year, int month, LocalDateTime executedAt) {
+        String sql = "INSERT OR REPLACE INTO scheduled_rebalance_history (run_year, run_month, executed_at) VALUES (?, ?, ?)";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, year);
+            stmt.setInt(2, month);
+            stmt.setString(3, (executedAt != null ? executedAt : LocalDateTime.now()).format(ISO_FORMATTER));
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to record scheduled rebalance run", e);
+        }
+    }
+
+    public Optional<LocalDateTime> getLastScheduledRunDate() {
+        String sql = "SELECT MAX(executed_at) FROM scheduled_rebalance_history";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                String str = rs.getString(1);
+                if (str != null && !str.isBlank()) {
+                    return Optional.of(LocalDateTime.parse(str, ISO_FORMATTER));
+                }
+            }
+            return Optional.empty();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to query last scheduled run date", e);
+        }
+    }
+
     public void clearAll() {
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute("DELETE FROM rebalance_trigger_history");
             stmt.execute("DELETE FROM active_drawdown_baseline");
+            stmt.execute("DELETE FROM nifty_tri_watermark");
+            stmt.execute("DELETE FROM scheduled_rebalance_history");
         } catch (SQLException e) {
             throw new RuntimeException("Failed to clear trigger history", e);
         }

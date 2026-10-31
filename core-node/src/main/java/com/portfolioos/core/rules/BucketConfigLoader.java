@@ -144,9 +144,161 @@ public class BucketConfigLoader {
     }
 
     private static BucketRulesConfig cachedRules = null;
+    private static com.portfolioos.core.config.BucketTargetsConfig cachedV24Config = null;
 
     public static synchronized void resetCache() {
         cachedRules = null;
+        cachedV24Config = null;
+    }
+
+    public static synchronized com.portfolioos.core.config.BucketTargetsConfig loadV24Config() {
+        if (cachedV24Config != null) {
+            return cachedV24Config;
+        }
+
+        File ruleFile = findConfigFile();
+        if (ruleFile == null || !ruleFile.exists()) {
+            throw new IllegalStateException("CRITICAL CONFIG ERROR: File rules/bucket_targets.yaml not found at any search location!");
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+            Map<String, Object> data = mapper.readValue(ruleFile, Map.class);
+            if (data == null) {
+                throw new IllegalStateException("CRITICAL CONFIG ERROR: YAML file " + ruleFile.getAbsolutePath() + " is empty!");
+            }
+
+            String version = String.valueOf(data.getOrDefault("version", "2.4.0"));
+
+            // Global Invariants
+            Map<String, Object> giMap = (Map<String, Object>) data.get("global_invariants");
+            if (giMap == null) {
+                throw new IllegalStateException("Missing 'global_invariants' section in bucket_targets.yaml");
+            }
+            int cooldownDays = ((Number) giMap.getOrDefault("rebalance_cooldown_days", 30)).intValue();
+            BigDecimal minTradeAmount = new BigDecimal(String.valueOf(giMap.getOrDefault("min_trade_amount_inr", "1000.00")));
+            BigDecimal liquidHardCap = new BigDecimal(String.valueOf(giMap.getOrDefault("liquid_hard_cap_pct", "15.00")));
+            String ddAnchorMode = String.valueOf(giMap.getOrDefault("drawdown_anchor_mode", "ATH_WATERMARK"));
+            BigDecimal ddHoldMin = new BigDecimal(String.valueOf(giMap.getOrDefault("drawdown_hold_zone_min_pct", "5.00")));
+            BigDecimal ddHoldMax = new BigDecimal(String.valueOf(giMap.getOrDefault("drawdown_hold_zone_max_pct", "10.00")));
+            BigDecimal urgentDdThresh = new BigDecimal(String.valueOf(giMap.getOrDefault("urgent_drawdown_threshold_pct", "15.00")));
+            List<?> rawSchedMonths = (List<?>) giMap.getOrDefault("scheduled_months", List.of(3, 9));
+            List<Integer> schedMonths = rawSchedMonths.stream().map(m -> ((Number) m).intValue()).toList();
+            int nseBlackoutHours = ((Number) giMap.getOrDefault("nse_reconstitution_blackout_hours", 48)).intValue();
+
+            var globalInvariants = new com.portfolioos.core.config.BucketTargetsConfig.GlobalInvariants(
+                cooldownDays, minTradeAmount, liquidHardCap, ddAnchorMode, ddHoldMin, ddHoldMax, urgentDdThresh, schedMonths, nseBlackoutHours
+            );
+
+            // Tax Parameters
+            Map<String, Object> tpMap = (Map<String, Object>) data.get("tax_parameters");
+            if (tpMap == null) {
+                throw new IllegalStateException("Missing 'tax_parameters' section in bucket_targets.yaml");
+            }
+            BigDecimal ltcgExempt = new BigDecimal(String.valueOf(tpMap.getOrDefault("ltcg_exemption_limit_inr", "125000.00")));
+            BigDecimal eqLtcg = new BigDecimal(String.valueOf(tpMap.getOrDefault("equity_ltcg_base_rate", "0.125")));
+            BigDecimal eqStcg = new BigDecimal(String.valueOf(tpMap.getOrDefault("equity_stcg_base_rate", "0.200")));
+            BigDecimal fofLtcg = new BigDecimal(String.valueOf(tpMap.getOrDefault("fof_ltcg_base_rate", "0.125")));
+            BigDecimal debt50aa = new BigDecimal(String.valueOf(tpMap.getOrDefault("debt_50aa_slab_base_rate", "0.300")));
+            BigDecimal cess = new BigDecimal(String.valueOf(tpMap.getOrDefault("health_education_cess_rate", "0.04")));
+
+            var taxParameters = new com.portfolioos.core.config.BucketTargetsConfig.TaxParameters(
+                ltcgExempt, eqLtcg, eqStcg, fofLtcg, debt50aa, cess
+            );
+
+            // Drawdown Rungs
+            List<Map<String, Object>> rungsRaw = (List<Map<String, Object>>) data.getOrDefault("drawdown_rungs", List.of());
+            List<com.portfolioos.core.config.BucketTargetsConfig.DrawdownRung> drawdownRungs = new ArrayList<>();
+            for (Map<String, Object> r : rungsRaw) {
+                drawdownRungs.add(new com.portfolioos.core.config.BucketTargetsConfig.DrawdownRung(
+                    String.valueOf(r.get("tier")),
+                    new BigDecimal(String.valueOf(r.get("drawdown_pct"))),
+                    new BigDecimal(String.valueOf(r.get("liquid_target_pct"))),
+                    new BigDecimal(String.valueOf(r.get("core_target_pct"))),
+                    new BigDecimal(String.valueOf(r.get("liquid_deploy_fraction")))
+                ));
+            }
+
+            // Dampener Tiers
+            List<Map<String, Object>> tiersRaw = (List<Map<String, Object>>) data.getOrDefault("dampener_tiers", List.of());
+            List<com.portfolioos.core.config.BucketTargetsConfig.DampenerTier> dampenerTiers = new ArrayList<>();
+            for (Map<String, Object> t : tiersRaw) {
+                dampenerTiers.add(new com.portfolioos.core.config.BucketTargetsConfig.DampenerTier(
+                    new BigDecimal(String.valueOf(t.get("max_relative_excess_pct"))),
+                    new BigDecimal(String.valueOf(t.get("multiplier")))
+                ));
+            }
+
+            // Buckets
+            Map<String, Object> bMap = (Map<String, Object>) data.get("buckets");
+            if (bMap == null) {
+                throw new IllegalStateException("Missing 'buckets' section in bucket_targets.yaml");
+            }
+            Map<com.portfolioos.core.config.BucketTargetsConfig.BucketType, com.portfolioos.core.config.BucketTargetsConfig.BucketSpec> buckets = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> entry : bMap.entrySet()) {
+                com.portfolioos.core.config.BucketTargetsConfig.BucketType bType =
+                    com.portfolioos.core.config.BucketTargetsConfig.BucketType.valueOf(entry.getKey().toUpperCase());
+                Map<String, Object> bsData = (Map<String, Object>) entry.getValue();
+
+                BigDecimal targetPct = new BigDecimal(String.valueOf(bsData.get("target_pct")));
+                BigDecimal bandLower = new BigDecimal(String.valueOf(bsData.get("band_lower_pct")));
+                BigDecimal bandUpper = new BigDecimal(String.valueOf(bsData.get("band_upper_pct")));
+
+                // Intra Bucket Routing
+                com.portfolioos.core.config.BucketTargetsConfig.IntraBucketRoutingSpec intraSpec = null;
+                if (bsData.containsKey("intra_bucket_routing")) {
+                    Map<String, Object> ibrData = (Map<String, Object>) bsData.get("intra_bucket_routing");
+                    boolean remediatePassive = Boolean.parseBoolean(String.valueOf(ibrData.getOrDefault("remediate_on_passive_flow_only", "true")));
+                    String primaryIsin = String.valueOf(ibrData.get("primary_isin"));
+                    BigDecimal primaryRatio = new BigDecimal(String.valueOf(ibrData.getOrDefault("primary_target_ratio", "0.60")));
+                    BigDecimal ratioBand = new BigDecimal(String.valueOf(ibrData.getOrDefault("ratio_band", "0.06")));
+                    intraSpec = new com.portfolioos.core.config.BucketTargetsConfig.IntraBucketRoutingSpec(remediatePassive, primaryIsin, primaryRatio, ratioBand);
+                }
+
+                // Backstop
+                com.portfolioos.core.config.BucketTargetsConfig.BackstopSpec backstopSpec = null;
+                if (bsData.containsKey("backstop")) {
+                    Map<String, Object> bkData = (Map<String, Object>) bsData.get("backstop");
+                    int minIdle = ((Number) bkData.getOrDefault("min_idle_months", 6)).intValue();
+                    BigDecimal minUnderweight = new BigDecimal(String.valueOf(bkData.getOrDefault("min_underweight_gap_pct", "2.00")));
+                    BigDecimal gapClose = new BigDecimal(String.valueOf(bkData.getOrDefault("gap_close_fraction", "0.50")));
+                    backstopSpec = new com.portfolioos.core.config.BucketTargetsConfig.BackstopSpec(minIdle, minUnderweight, gapClose);
+                }
+
+                // Schemes
+                List<Map<String, Object>> schList = (List<Map<String, Object>>) bsData.getOrDefault("schemes", List.of());
+                List<com.portfolioos.core.config.BucketTargetsConfig.SchemeSpec> schemes = new ArrayList<>();
+                for (Map<String, Object> s : schList) {
+                    schemes.add(new com.portfolioos.core.config.BucketTargetsConfig.SchemeSpec(
+                        String.valueOf(s.get("isin")),
+                        String.valueOf(s.get("name")),
+                        String.valueOf(s.get("amc_code")),
+                        new BigDecimal(String.valueOf(s.get("weight_within_bucket"))),
+                        ((Number) s.getOrDefault("exit_load_days", 0)).intValue(),
+                        ((Number) s.getOrDefault("ltcg_holding_days", 365)).intValue(),
+                        ((Number) s.getOrDefault("settlement_days", 1)).intValue()
+                    ));
+                }
+
+                buckets.put(bType, new com.portfolioos.core.config.BucketTargetsConfig.BucketSpec(
+                    targetPct, bandLower, bandUpper, intraSpec, backstopSpec, schemes
+                ));
+            }
+
+            // Legacy blacklist
+            List<?> blRaw = (List<?>) data.getOrDefault("legacy_isin_blacklist", List.of());
+            List<String> legacyBlacklist = blRaw.stream().map(Object::toString).toList();
+
+            cachedV24Config = new com.portfolioos.core.config.BucketTargetsConfig(
+                version, globalInvariants, taxParameters, drawdownRungs, dampenerTiers, buckets, legacyBlacklist
+            );
+            return cachedV24Config;
+        } catch (Exception e) {
+            if (e instanceof IllegalStateException ise) {
+                throw ise;
+            }
+            throw new IllegalStateException("CRITICAL CONFIG ERROR: Failed to load v2.4 bucket_targets.yaml: " + e.getMessage(), e);
+        }
     }
 
     public static synchronized void setCachedConfig(BucketRulesConfig config) {
