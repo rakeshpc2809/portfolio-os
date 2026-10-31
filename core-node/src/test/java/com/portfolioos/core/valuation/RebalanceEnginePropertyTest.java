@@ -219,7 +219,7 @@ class RebalanceEnginePropertyTest {
             rollingHigh,
             null,
             "2026-27",
-            "AUTO",
+            null,
             null,
             false,
             isolatedEvaluator
@@ -228,6 +228,14 @@ class RebalanceEnginePropertyTest {
         assertNotNull(plan, "Preview plan must not be null");
         assertNotNull(plan.planDigest(), "Plan digest must not be null");
         assertFalse(plan.planDigest().isEmpty(), "Plan digest must not be empty");
+
+        // Assert trigger resolution fidelity: Drawdown rungs MUST resolve to DRAWDOWN trigger type
+        if (!"NONE".equals(drawdownRung)) {
+            assertEquals("DRAWDOWN", plan.trigger().type(),
+                "Drawdown rung " + drawdownRung + " must resolve to DRAWDOWN trigger type");
+            assertEquals(drawdownRung, plan.trigger().drawdownContext().armedTier(),
+                "Armed tier must match drawdown rung " + drawdownRung);
+        }
 
         boolean hasSells = plan.sellSide() != null && plan.sellSide().waterfall() != null &&
             plan.sellSide().waterfall().stream().anyMatch(w -> w.sold() != null && w.sold().compareTo(BigDecimal.ZERO) > 0);

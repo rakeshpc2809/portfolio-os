@@ -886,6 +886,22 @@ public class RebalanceWaterfallEngine {
         return fifoOrdered;
     }
 
+    /**
+     * Determines whether to harvest tax-loss lots in the waterfall.
+     *
+     * Architectural Policy Decision:
+     * 1. In-Plan Trimming (isBucketBeingTrimmed = true):
+     *    Always returns true. RTA chronological FIFO strictly requires head loss lots within an
+     *    overweight scheme to be liquidated before subsequent gain lots in the same folio/ISIN
+     *    can be reached and trimmed. Sourcing cash from loss lots provides needed rebalance liquidity
+     *    while offsetting net taxable gains across the plan.
+     *
+     * 2. Standalone / Non-Trim Runs (isBucketBeingTrimmed = false):
+     *    Harvesting losses when net gains are within the statutory ₹1.25 Lakh Section 112A annual
+     *    exemption is suppressed. Liquidating loss lots when ₹0 tax is owed wastes capital losses
+     *    that could otherwise be carried forward (up to 8 Assessment Years under Section 74 of the
+     *    Income-tax Act) or offset against future taxable gains, yielding zero tax benefit today.
+     */
     public static boolean shouldHarvestLossLot(
         boolean isStep0Legacy,
         boolean isBucketBeingTrimmed,
@@ -964,10 +980,16 @@ public class RebalanceWaterfallEngine {
         }
 
         // 1. DRAWDOWN Routing: Strictly into EQUITY_CORE first, then SATELLITE (0% to Gold)
+        // R2 Invariant: If Core was trimmed, Satellite buy allocation must strictly be zero
         if (triggerType == com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.DRAWDOWN) {
+            if (coreTrimPoolInr.compareTo(BigDecimal.ZERO) > 0) {
+                deficits.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE, BigDecimal.ZERO);
+            }
             BigDecimal pool = generalPoolInr.add(coreTrimPoolInr);
             pool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE, pool, minOrder);
-            pool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE, pool, minOrder);
+            if (coreTrimPoolInr.compareTo(BigDecimal.ZERO) == 0) {
+                pool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE, pool, minOrder);
+            }
             // If drawdown deployment exceeds calculated deficits, all remaining crisis dry powder goes to EQUITY_CORE
             if (pool.compareTo(minOrder) >= 0) {
                 buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE,

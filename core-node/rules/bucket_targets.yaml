@@ -101,6 +101,15 @@ buckets:
         ltcg_holding_days: 365
         settlement_days: 1
 
+  # Architectural Policy Decision (v2.4):
+  # 1. Accumulator Drift Asymmetry: Gold FoF target is 10.0%. Upper trigger drift is set to 12.0%
+  #    (selling trims activate only if gold breaches 10% + 12% = 22.0% of portfolio).
+  #    Precious metals display high cyclical non-structural price noise; widening the upper
+  #    trim boundary prevents premature realization of taxable capital gains on normal gold rallies.
+  # 2. Backstop Mechanics & Underweight Note: Gold Floor Backstop activates ONLY when BOTH
+  #    (a) >= 6 months have elapsed since any gold buy, AND (b) gold sits >= 2.0% points
+  #    under target (<= 8.0%). Note that gold can sit underweight indefinitely if small, periodic
+  #    gold buys continually reset the 6-month idle timer.
   GOLD_SILVER:
     target_pct: 10.00
     band_lower_pct: 2.00                 # Handled via Gold Floor Backstop (-2.0% gap)
@@ -332,7 +341,7 @@ versions:
   - bucket: "GOLD_SILVER"
     target_pct: 10.0
     band_pct: 5.0
-    trigger_drift_pct: 12.0
+    trigger_drift_pct: 12.0              # Trim trigger requires >= 22.0% (target 10% + 12% drift)
     strategy: "ACCUMULATOR"
     preferred_funds:
     - fund_id: "INF247L01BM8"
