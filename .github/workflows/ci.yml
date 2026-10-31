@@ -25,3 +25,16 @@ jobs:
         working-directory: core-node
         run: mvn -B clean test
 
+      - name: Dump Surefire Reports on Failure
+        if: failure()
+        run: |
+          echo "=== FAILED TESTS DETAILS ==="
+          for f in core-node/target/surefire-reports/*.txt; do
+            if [ -f "$f" ] && (grep -q "<<< FAILURE!" "$f" || grep -q "<<< ERROR!" "$f"); then
+              echo "----------------------------------------"
+              echo "FILE: $f"
+              echo "----------------------------------------"
+              cat "$f"
+            fi
+          done
+
