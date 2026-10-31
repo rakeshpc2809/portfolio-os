@@ -18,7 +18,7 @@ public class ProductionConfigBootSmokeTest extends BaseIntegrationTest {
     @Test
     @DisplayName("Production Config Smoke Test: Bucket Targets Rollup to v2.3 50/30/10/10 with Exact Band Metadata")
     void testProductionBucketConfigRollup() {
-        BucketConfigLoader.BucketTargetVersion activeVersion = BucketConfigLoader.getActiveVersion(LocalDate.now());
+        BucketConfigLoader.BucketTargetVersion activeVersion = BucketConfigLoader.getActiveVersion(LocalDate.of(2026, 8, 26));
         assertNotNull(activeVersion, "Active bucket version must not be null in production configuration");
         assertEquals("v2.3", activeVersion.versionId(), "Active production bucket version must be v2.3");
 
@@ -61,6 +61,18 @@ public class ProductionConfigBootSmokeTest extends BaseIntegrationTest {
         assertEquals(10.0, liquid.targetPct(), 0.001);
         assertEquals(2.5, liquid.bandPct(), 0.001, "LIQUID_BUFFER band_pct tightened to 2.5% under 5/25 rule in v2.4");
         assertEquals(2.5, liquid.triggerDriftPct(), 0.001, "LIQUID_BUFFER trigger_drift_pct tightened to 2.5% under 5/25 rule in v2.4");
+
+        // Validate v2.4 Version effective 2026-10-01
+        BucketConfigLoader.BucketTargetVersion v24Version = BucketConfigLoader.getActiveVersion(LocalDate.of(2026, 10, 1));
+        assertNotNull(v24Version, "v2.4 bucket version must not be null");
+        assertEquals("v2.4", v24Version.versionId(), "Active version for 2026-10-01 must be v2.4");
+        BucketConfigLoader.BucketTargetConfig goldV24 = v24Version.targets().stream()
+            .filter(t -> "GOLD_SILVER".equals(t.bucket())).findFirst().orElseThrow();
+        assertEquals(12.0, goldV24.triggerDriftPct(), 0.001, "GOLD_SILVER trigger_drift_pct in v2.4 must be 12.0%");
+        BucketConfigLoader.BucketTargetConfig liquidV24 = v24Version.targets().stream()
+            .filter(t -> "LIQUID_BUFFER".equals(t.bucket())).findFirst().orElseThrow();
+        assertEquals(2.5, liquidV24.bandPct(), 0.001, "LIQUID_BUFFER band_pct tightened to 2.5% under v2.4");
+        assertEquals(2.5, liquidV24.triggerDriftPct(), 0.001, "LIQUID_BUFFER trigger_drift_pct tightened to 2.5% under v2.4");
     }
 
     @Test

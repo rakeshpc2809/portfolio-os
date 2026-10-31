@@ -89,7 +89,7 @@ public final class RebalanceInvariantVerifier {
         }
 
         // INVARIANT 1: Strict Conservation of Money (Down to 1 Paisa)
-        if (!plan.soldLots().isEmpty()) {
+        if (plan.triggerType() != TriggerType.GOLD_FLOOR_BACKSTOP) {
             BigDecimal totalSells = plan.soldLots().stream()
                 .map(LotOrder::netProceedsInr).reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal totalBuys = plan.buyOrders().stream()

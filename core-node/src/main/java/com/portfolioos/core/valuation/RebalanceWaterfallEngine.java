@@ -924,6 +924,9 @@ public class RebalanceWaterfallEngine {
         // 0. GOLD_FLOOR_BACKSTOP Routing (Buy-only, 100% into GOLD_SILVER)
         if (triggerType == com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.GOLD_FLOOR_BACKSTOP) {
             BigDecimal pool = generalPoolInr.add(coreTrimPoolInr);
+            if (pool.compareTo(minOrder) < 0) {
+                return new RoutingResult(buys, pool);
+            }
             buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER, pool);
             return new RoutingResult(buys, BigDecimal.ZERO);
         }

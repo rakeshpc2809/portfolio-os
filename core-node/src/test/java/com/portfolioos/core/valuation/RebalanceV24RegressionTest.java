@@ -461,4 +461,76 @@ class RebalanceV24RegressionTest {
         // Blocked condition: No STCG, and LTCG (50k) is within 1.25L exemption -> DO NOT harvest loss to burn exemption!
         assertFalse(RebalanceWaterfallEngine.shouldHarvestLossLot(false, false, BigDecimal.ZERO, new BigDecimal("50000.00"), new BigDecimal("125000.00")));
     }
+
+    // =========================================================================
+    // Edge Cases: Invariant 1 with Zero Sells & Gold Backstop Dust Routing
+    // =========================================================================
+    @Test
+    @DisplayName("Invariant 1: Phantom buys with zero sells in DRIFT plan are rejected by Conservation of Money")
+    void testZeroSellsWithPhantomBuyRejected() {
+        VerifiablePlan phantomBuyPlan = new VerifiablePlan(
+            TriggerType.DRIFT, false, false,
+            new BigDecimal("1000000.00"),
+            List.of(), // 0 sold lots!
+            Map.of(),
+            List.of(new BuyOrder(BucketType.EQUITY_CORE, "INF109KC12U0", new BigDecimal("5000.00"))), // ₹5,000 phantom buy
+            Map.of(BucketType.LIQUID_BUFFER, new BigDecimal("100000.00")),
+            BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("125000.00")
+        );
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+            verifier.assertAllInvariants(phantomBuyPlan, config)
+        );
+        assertTrue(ex.getMessage().contains("INVARIANT_1_VIOLATION"));
+        assertTrue(ex.getMessage().contains("Conservation of money failed"));
+    }
+
+    @Test
+    @DisplayName("Gold Floor Backstop: sub-₹1,000 dust pool routes to cash overflow and does not violate Invariant V1")
+    void testGoldFloorBackstopSubMinOrderRoutesToOverflow() {
+        RoutingResult result = RebalanceWaterfallEngine.routeProceedsV24(
+            config,
+            TriggerType.GOLD_FLOOR_BACKSTOP,
+            BigDecimal.ZERO,
+            new BigDecimal("800.00"), // ₹800 sub-minOrder dust!
+            new BigDecimal("1000000.00"),
+            Map.of(
+                BucketType.EQUITY_CORE, new BigDecimal("500000.00"),
+                BucketType.EQUITY_SATELLITE, new BigDecimal("300000.00"),
+                BucketType.GOLD_SILVER, new BigDecimal("80000.00"),
+                BucketType.LIQUID_BUFFER, new BigDecimal("100000.00")
+            ),
+            Map.of(
+                BucketType.EQUITY_CORE, new BigDecimal("50.00"),
+                BucketType.EQUITY_SATELLITE, new BigDecimal("30.00"),
+                BucketType.GOLD_SILVER, new BigDecimal("10.00"),
+                BucketType.LIQUID_BUFFER, new BigDecimal("10.00")
+            )
+        );
+
+        // Sub-₹1,000 order must NOT be in bucketBuys
+        assertEquals(0, result.bucketBuysInr().get(BucketType.GOLD_SILVER).compareTo(BigDecimal.ZERO),
+            "Gold buy must be 0 for sub-₹1,000 dust pool");
+        assertEquals(0, new BigDecimal("800.00").compareTo(result.cashOverflowInr()),
+            "Pool of 800 must route to cashOverflow");
+
+        List<BuyOrder> buyOrders = result.bucketBuysInr().entrySet().stream()
+            .filter(e -> e.getValue().compareTo(BigDecimal.ZERO) > 0)
+            .map(e -> new BuyOrder(e.getKey(), "DUMMY", e.getValue()))
+            .toList();
+
+        VerifiablePlan plan = new VerifiablePlan(
+            TriggerType.GOLD_FLOOR_BACKSTOP, false, false,
+            new BigDecimal("1000000.00"),
+            List.of(),
+            Map.of(),
+            buyOrders, // empty buy orders
+            Map.of(BucketType.LIQUID_BUFFER, new BigDecimal("100000.00")),
+            result.cashOverflowInr(),
+            BigDecimal.ZERO,
+            new BigDecimal("125000.00")
+        );
+
+        assertDoesNotThrow(() -> verifier.assertAllInvariants(plan, config));
+    }
 }
