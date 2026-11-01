@@ -135,6 +135,7 @@ export interface BucketAllocationDto {
   current_pct: number;
   current_value?: number;
   post_pct?: number;
+  post_rebalance_pct?: number;
   amount_allocated?: number;
   is_drifted?: boolean;
   funds?: any[];

@@ -45,6 +45,13 @@
 
   let query = $state('');
   let selectedIndex = $state(0);
+  let searchInput = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    if (open && searchInput) {
+      searchInput.focus();
+    }
+  });
 
 
   interface CommandItem {
@@ -175,6 +182,7 @@
     class="palette-backdrop" 
     role="presentation"
     onclick={onclose}
+    onkeydown={(e) => { if (e.key === 'Escape') onclose?.(); }}
   >
     <div 
       class="palette-card"
@@ -183,16 +191,17 @@
       aria-label="Command Palette"
       tabindex="-1"
       onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
     >
       <!-- Search Input -->
       <div class="search-header">
         <Search size={18} class="search-icon" />
         <input 
+          bind:this={searchInput}
           type="text" 
           placeholder="Type a command or jump to view..." 
           bind:value={query}
           class="palette-input"
-          autofocus
         />
         <span class="esc-badge">ESC</span>
       </div>

@@ -240,7 +240,7 @@
     <div class="empty-state">
       <Filter size={32} class="empty-icon" />
       <p class="empty-title">No matching tax lots found</p>
-      <p class="empty-desc">Try clearing your search query or selecting a different tax filter.</p>
+      <p class="empty-desc">Try clearing your search query or selecting 'ALL' to view all open holdings.</p>
     </div>
   {:else}
     <div class="schemes-list">

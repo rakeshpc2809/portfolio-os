@@ -85,7 +85,7 @@
     ].join(' ');
   }
 
-  const slices = $derived<ArcSlice[]>(() => {
+  const slices = $derived.by<ArcSlice[]>(() => {
     if (!buckets || buckets.length === 0) return [];
     const validBuckets = buckets.filter(b => (b.current_pct || 0) > 0 || (b.target_pct || 0) > 0);
     const sumPct = validBuckets.reduce((acc, b) => acc + (b.current_pct || 0), 0) || 100;
@@ -113,9 +113,9 @@
     });
   });
 
-  const activeHoveredSlice = $derived<ArcSlice | null>(() => {
+  const activeHoveredSlice = $derived.by<ArcSlice | null>(() => {
     if (!hoveredBucket) return null;
-    return slices().find(s => s.bucket === hoveredBucket) || null;
+    return slices.find(s => s.bucket === hoveredBucket) || null;
   });
 </script>
 
@@ -148,7 +148,7 @@
         <circle cx={cx} cy={cy} r="60" fill="none" stroke="var(--color-rule)" stroke-width="6" />
 
         <!-- Outer Slices -->
-        {#each slices() as s}
+        {#each slices as s}
           {@const isHovered = hoveredBucket === s.bucket}
           <path
             d={s.path}
@@ -171,8 +171,8 @@
 
         <!-- Center HUD Text -->
         <g class="center-hud" pointer-events="none">
-          {#if activeHoveredSlice()}
-            {@const hs = activeHoveredSlice()!}
+          {#if activeHoveredSlice}
+            {@const hs = activeHoveredSlice}
             <text x={cx} y={cy - 14} class="center-sub-text">{hs.label}</text>
             <text x={cx} y={cy + 8} class="center-main-text" fill={hs.color}>
               {hs.currentPct.toFixed(1)}%
@@ -186,7 +186,7 @@
               {formatCompactINR(totalNetWorth, quietMode)}
             </text>
             <text x={cx} y={cy + 26} class="center-drift-text">
-              {slices().length} Active Buckets
+              {slices.length} Active Buckets
             </text>
           {/if}
         </g>
@@ -195,7 +195,7 @@
 
     <!-- Legend & Quantitative Breakdown -->
     <div class="donut-legend">
-      {#each slices() as s}
+      {#each slices as s}
         {@const isHovered = hoveredBucket === s.bucket}
         {@const isDrift = Math.abs(s.driftPct) > 5.0 && s.bucket !== 'LEGACY_HOLDINGS'}
         <div 

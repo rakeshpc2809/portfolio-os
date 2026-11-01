@@ -633,6 +633,7 @@
       class="modal-backdrop" 
       role="presentation"
       onclick={() => showCasModal = false}
+      onkeydown={(e) => { if (e.key === 'Escape') showCasModal = false; }}
     >
       <div 
         class="modal-card" 
@@ -641,6 +642,7 @@
         aria-labelledby="cas-modal-title"
         tabindex="-1"
         onclick={(e) => e.stopPropagation()}
+        onkeydown={(e) => e.stopPropagation()}
       >
         <div class="modal-header">
           <h3 id="cas-modal-title" class="modal-title">Import CAS E-Statement</h3>
@@ -1258,8 +1260,6 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-
-  .text-amber { color: var(--accent-amber); }
 
   .dashboard-charts-grid {
     display: grid;

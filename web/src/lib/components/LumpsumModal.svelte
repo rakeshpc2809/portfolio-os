@@ -710,26 +710,6 @@
     gap: 1.25rem;
   }
 
-  .summary-bar {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0.75rem;
-    background: var(--color-paper-3);
-    border: 1px solid var(--color-rule);
-    border-radius: var(--radius-card);
-    padding: 0.75rem 1rem;
-  }
-
-  .sum-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .sum-divider {
-    display: none;
-  }
-
   .sum-label {
     font-size: 0.75rem;
     color: var(--color-muted);

@@ -156,6 +156,7 @@
     class="modal-backdrop" 
     role="presentation"
     onclick={onclose}
+    onkeydown={(e) => { if (e.key === 'Escape') onclose?.(); }}
   >
     <div 
       class="sql-modal-card"
@@ -164,6 +165,7 @@
       aria-labelledby="sql-modal-title"
       tabindex="-1"
       onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
     >
       <!-- Header -->
       <div class="modal-header">

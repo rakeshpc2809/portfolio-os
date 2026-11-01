@@ -342,7 +342,7 @@
     gap: 8px;
   }
 
-  .header-icon {
+  :global(.header-icon) {
     color: var(--accent-cyan);
   }
 
@@ -410,12 +410,12 @@
     gap: 8px;
   }
 
-  .chevron {
+  :global(.chevron) {
     color: var(--text-muted);
     transition: transform 0.2s ease;
     display: inline-block;
   }
-  .chevron.open {
+  :global(.chevron.open) {
     transform: rotate(90deg);
   }
 
@@ -605,7 +605,7 @@
     align-items: center;
     gap: 12px;
   }
-  .empty-icon {
+  :global(.empty-icon) {
     opacity: 0.9;
   }
   .empty-text {
@@ -647,7 +647,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .alloc-bar, .chevron, .fund-item, .view-lots-btn-inline {
+    .alloc-bar, :global(.chevron), .fund-item, .view-lots-btn-inline {
       transition: none !important;
     }
   }

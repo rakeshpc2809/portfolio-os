@@ -73,6 +73,7 @@
       scenario_id?: string;
       id?: string;
       label: string;
+      active?: boolean;
       target_corpus?: string;
       monthly_expense?: string;
       monthly_expense_today?: string;
