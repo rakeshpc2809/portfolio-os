@@ -73,7 +73,7 @@
     {#if effectiveQuiet}
       <div class="quiet-mask">
         <span class="mask-text">₹ •••,••,•••</span>
-        <span class="mask-badge">QUIET SHIELD</span>
+        <span class="mask-badge">Quiet Shield</span>
       </div>
     {:else}
       <div class="hud-value tnum" class:negative={isNegativeValue}>{displayValue}</div>
@@ -82,7 +82,7 @@
 
   {#if progressPct !== null}
     <div class="progress-track">
-      <div class="progress-fill fill-{effectiveAccent}" style="width: {Math.min(100, Math.max(0, progressPct))}%;"></div>
+      <div class="progress-fill fill-{effectiveAccent}" style="transform: scaleX({Math.min(1, Math.max(0, (progressPct ?? 0) / 100))});"></div>
     </div>
   {/if}
 
@@ -101,69 +101,21 @@
 <style>
   .hud-card {
     background: var(--surface-card);
-    backdrop-filter: blur(28px) saturate(190%);
     border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-lg);
-    padding: 22px 24px;
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    min-height: 130px;
+    min-height: 125px;
     position: relative;
     overflow: hidden;
-    box-shadow: 0 10px 25px -8px rgba(0, 0, 0, 0.4);
-    transition: transform 0.28s var(--ease-bounce), 
-                border-color 0.2s ease, 
-                box-shadow 0.28s var(--ease-bounce);
+    transition: border-color 0.15s ease, background-color 0.15s ease;
   }
 
   .hud-card:hover {
-    transform: translateY(-5px) scale(1.018);
+    background: var(--surface-card-hover);
     border-color: var(--border-subtle);
-  }
-
-  /* Radiant accent glow on hover */
-  .glow-cyan:hover {
-    box-shadow: 0 18px 40px -10px rgba(6, 182, 212, 0.35);
-    border-color: rgba(6, 182, 212, 0.45);
-  }
-  .glow-emerald:hover {
-    box-shadow: 0 18px 40px -10px rgba(16, 185, 129, 0.35);
-    border-color: rgba(16, 185, 129, 0.45);
-  }
-  .glow-amber:hover {
-    box-shadow: 0 18px 40px -10px rgba(245, 158, 11, 0.35);
-    border-color: rgba(245, 158, 11, 0.45);
-  }
-  .glow-violet:hover {
-    box-shadow: 0 18px 40px -10px rgba(168, 85, 247, 0.35);
-    border-color: rgba(168, 85, 247, 0.45);
-  }
-  .glow-rose:hover {
-    box-shadow: 0 18px 40px -10px rgba(244, 63, 94, 0.35);
-    border-color: rgba(244, 63, 94, 0.45);
-  }
-
-  /* Vibrant top accent line */
-  .hud-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    opacity: 0.6;
-    transition: opacity 0.2s ease, height 0.2s ease;
-  }
-  .glow-cyan::before { background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent); }
-  .glow-emerald::before { background: linear-gradient(90deg, transparent, var(--accent-emerald), transparent); }
-  .glow-amber::before { background: linear-gradient(90deg, transparent, var(--accent-amber), transparent); }
-  .glow-violet::before { background: linear-gradient(90deg, transparent, var(--accent-violet), transparent); }
-  .glow-rose::before { background: linear-gradient(90deg, transparent, var(--accent-rose), transparent); }
-
-  .hud-card:hover::before {
-    opacity: 1;
-    height: 3px;
   }
 
   .hud-header {
@@ -175,15 +127,11 @@
   .label-with-icon {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
   }
 
   .hud-icon {
-    opacity: 0.95;
-    transition: transform 0.25s var(--ease-bounce);
-  }
-  .hud-card:hover .hud-icon {
-    transform: scale(1.15) rotate(4deg);
+    opacity: 0.85;
   }
   .icon-cyan { color: var(--accent-cyan); }
   .icon-emerald { color: var(--accent-emerald); }
@@ -193,11 +141,9 @@
 
   .hud-label {
     font-family: var(--font-sans);
-    font-size: 0.8rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
+    font-size: 0.82rem;
+    font-weight: 500;
     color: var(--text-muted);
-    text-transform: uppercase;
   }
 
   .header-right {
@@ -209,130 +155,127 @@
   .badge {
     font-family: var(--font-sans);
     font-size: 0.72rem;
-    font-weight: 700;
-    padding: 3px 9px;
-    border-radius: var(--radius-pill);
-    letter-spacing: 0.03em;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: var(--radius-xs);
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    transition: transform 0.2s var(--ease-bounce);
-  }
-  .badge:hover {
-    transform: scale(1.05);
   }
   .badge-positive {
-    background: rgba(16, 185, 129, 0.16);
-    color: var(--accent-emerald-bright);
-    border: 1px solid rgba(16, 185, 129, 0.35);
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
+    border: 1px solid var(--border-hairline);
   }
   .badge-neutral {
-    background: rgba(148, 163, 184, 0.15);
+    background: var(--surface-elevated);
     color: var(--text-secondary);
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1px solid var(--border-hairline);
   }
   .badge-negative, .badge-drift {
-    background: rgba(244, 63, 94, 0.16);
-    color: var(--accent-rose-bright);
-    border: 1px solid rgba(244, 63, 94, 0.35);
+    background: var(--color-bad-soft);
+    color: var(--color-bad);
+    border: 1px solid var(--border-hairline);
   }
 
   .hud-pip {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    animation: pipPulse 2.4s infinite ease-in-out;
   }
-  .pip-cyan { background: var(--accent-cyan); box-shadow: 0 0 10px var(--accent-cyan); }
-  .pip-emerald { background: var(--accent-emerald); box-shadow: 0 0 10px var(--accent-emerald); }
-  .pip-amber { background: var(--accent-amber); box-shadow: 0 0 10px var(--accent-amber); }
-  .pip-violet { background: var(--accent-violet); box-shadow: 0 0 10px var(--accent-violet); }
-  .pip-rose { background: var(--accent-rose); box-shadow: 0 0 10px var(--accent-rose); }
-
-  @keyframes pipPulse {
-    0%, 100% { transform: scale(1); opacity: 0.9; }
-    50% { transform: scale(1.25); opacity: 1; }
-  }
+  .pip-cyan { background: var(--accent-cyan); }
+  .pip-emerald { background: var(--accent-emerald); }
+  .pip-amber { background: var(--accent-amber); }
+  .pip-violet { background: var(--accent-violet); }
+  .pip-rose { background: var(--accent-rose); }
 
   .hud-value-container {
-    margin: 10px 0 6px 0;
+    margin: 8px 0 4px 0;
   }
 
   .hud-value {
-    font-family: var(--font-brand);
-    font-size: 2.15rem;
-    font-weight: 800;
-    color: #FFFFFF;
-    letter-spacing: -0.025em;
-    line-height: 1.1;
+    font-family: var(--font-mono);
+    font-size: 1.85rem;
+    font-weight: 600;
+    color: var(--text-main);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
   }
 
   .quiet-mask {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
   }
 
   .mask-text {
-    font-family: var(--font-brand);
-    font-size: 1.75rem;
-    font-weight: 800;
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 600;
     color: var(--text-muted);
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
   }
 
   .mask-badge {
     font-family: var(--font-sans);
     font-size: 0.68rem;
-    font-weight: 800;
-    padding: 3px 8px;
-    border-radius: var(--radius-pill);
-    background: rgba(6, 182, 212, 0.16);
-    color: var(--accent-cyan-bright);
-    border: 1px solid rgba(6, 182, 212, 0.4);
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    background: var(--surface-elevated);
+    color: var(--accent-cyan);
+    border: 1px solid var(--border-hairline);
   }
 
   .progress-track {
     width: 100%;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: var(--radius-pill);
+    height: 3px;
+    background: var(--surface-void);
+    border-radius: var(--radius-xs);
     overflow: hidden;
-    margin: 6px 0 8px 0;
+    margin: 4px 0 6px 0;
   }
 
   .progress-fill {
     height: 100%;
-    border-radius: var(--radius-pill);
-    transition: width 0.5s var(--ease-bounce);
+    width: 100%;
+    transform-origin: left;
+    border-radius: var(--radius-xs);
+    transition: transform 0.3s ease;
   }
-  .fill-cyan { background: linear-gradient(90deg, var(--accent-cyan), var(--accent-cyan-bright)); }
-  .fill-emerald { background: linear-gradient(90deg, var(--accent-emerald), var(--accent-emerald-bright)); }
-  .fill-amber { background: linear-gradient(90deg, var(--accent-amber), var(--accent-amber-bright)); }
-  .fill-violet { background: linear-gradient(90deg, var(--accent-violet), var(--accent-violet-bright)); }
-  .fill-rose { background: linear-gradient(90deg, var(--accent-rose), var(--accent-rose-bright)); }
+  .fill-cyan { background: var(--accent-cyan); }
+  .fill-emerald { background: var(--accent-emerald); }
+  .fill-amber { background: var(--accent-amber); }
+  .fill-violet { background: var(--accent-violet); }
+  .fill-rose { background: var(--accent-rose); }
 
   .hud-value.negative {
-    color: var(--accent-rose-bright, #FB7185) !important;
+    color: var(--accent-rose-bright) !important;
   }
 
   .hud-subtext {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-family: var(--font-sans);
     font-weight: 500;
     color: var(--text-secondary);
     line-height: 1.3;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
   }
 
   .sub-value.negative {
-    color: var(--accent-rose-bright, #FB7185) !important;
-    font-weight: 700;
+    color: var(--accent-rose-bright) !important;
+    font-weight: 600;
   }
   .sub-value.positive {
-    color: var(--accent-emerald-bright, #34D399) !important;
+    color: var(--accent-emerald-bright) !important;
     font-weight: 600;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .progress-fill {
+      transition: none !important;
+    }
   }
 </style>

@@ -208,3 +208,72 @@ pub struct HrpAllocation {
     pub hrp_pct: f64,
     pub drift_pct: f64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_minimal_snapshot() {
+        let json = r#"{
+            "sync_info": {
+                "fiscal_year": "2026-2027",
+                "generated_at": "2026-11-01T10:00:00",
+                "portfolio_xirr": 14.52,
+                "xirr_percentage": "14.52%",
+                "total_invested": 1000000.0,
+                "current_value": 1250000.0,
+                "unrealized_gain": 250000.0,
+                "formatted_current_value": "₹ 12,50,000",
+                "formatted_total_invested": "₹ 10,00,000",
+                "formatted_unrealized_gain": "₹ 2,50,000"
+            },
+            "holdings": [],
+            "tax_lots": [],
+            "radar_signals": [],
+            "net_worth_history": [],
+            "rebalance_plan": null,
+            "bucket_allocation": []
+        }"#;
+
+        let snapshot: Result<Snapshot, _> = serde_json::from_str(json);
+        assert!(snapshot.is_ok(), "Failed to deserialize minimal snapshot: {:?}", snapshot.err());
+        let s = snapshot.unwrap();
+        assert_eq!(s.sync_info.fiscal_year, "2026-2027");
+        assert_eq!(s.sync_info.portfolio_xirr, 14.52);
+        assert!(s.holdings.is_empty());
+    }
+
+    #[test]
+    fn test_deserialize_hrp_audit_default_status() {
+        let json = r#"{
+            "trading_days": 750,
+            "start_date": "2023-10-01",
+            "end_date": "2026-10-01",
+            "allocations": []
+        }"#;
+
+        let audit: Result<HrpAudit, _> = serde_json::from_str(json);
+        assert!(audit.is_ok());
+        let a = audit.unwrap();
+        assert_eq!(a.status, "SUCCESS");
+        assert_eq!(a.trading_days, Some(750));
+    }
+
+    #[test]
+    fn test_deserialize_daily_brief_verified() {
+        let json = r#"{
+            "status": "HEALTHY",
+            "headline": "Portfolio all-time high",
+            "narration": "Net worth breached target milestone with disciplined rebalancing.",
+            "verified": true,
+            "generated_at": "2026-11-01T08:00:00"
+        }"#;
+
+        let brief: Result<DailyBrief, _> = serde_json::from_str(json);
+        assert!(brief.is_ok());
+        let b = brief.unwrap();
+        assert!(b.verified);
+        assert_eq!(b.status.as_deref(), Some("HEALTHY"));
+    }
+}

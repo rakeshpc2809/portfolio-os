@@ -96,7 +96,7 @@
         <div class="zone zone-3" style="left: 75%; width: 25%;"></div>
 
         <!-- Current Drawdown Indicator Needle -->
-        <div class="drawdown-needle" style="left: {clampedPos}%;">
+        <div class="drawdown-needle" style="--needle-pct: {clampedPos}%;">
           <div class="needle-flag mono">
             {normalizedDrawdown.toFixed(1)}%
           </div>
@@ -113,14 +113,14 @@
         <div class="rung-item" class:triggered={isTriggered} class:next-rung={activeRung() === r.level - 1}>
           <div class="rung-top">
             <div class="rung-badge mono">
-              RUNG {r.level} ({r.threshold}%)
+              Rung {r.level} ({r.threshold}%)
             </div>
             {#if isTriggered}
-              <span class="status-tag triggered">DEPLOY ACTIVE</span>
+              <span class="status-tag triggered">Deploy active</span>
             {:else if activeRung() === r.level - 1}
-              <span class="status-tag next">NEXT TRIGGER</span>
+              <span class="status-tag next">Next trigger</span>
             {:else}
-              <span class="status-tag standing">STANDBY</span>
+              <span class="status-tag standing">Standby</span>
             {/if}
           </div>
 
@@ -174,34 +174,34 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    background: rgba(6, 182, 212, 0.1);
-    border: 1px solid rgba(6, 182, 212, 0.25);
-    border-radius: var(--radius-md);
+    background: var(--color-cool-soft);
+    border: 1px solid var(--color-cool);
+    border-radius: var(--radius-pill);
   }
 
   .header-title {
     font-size: 0.95rem;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--color-ink);
     margin: 0;
   }
 
   .header-sub {
     font-size: 0.72rem;
-    color: var(--text-muted);
+    color: var(--color-muted);
   }
 
   .market-status-pill {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.68rem;
-    font-weight: 700;
+    font-size: 0.75rem;
+    font-weight: 600;
     padding: 3px 8px;
-    border-radius: var(--radius-xs);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-hairline);
-    color: var(--text-muted);
+    border-radius: var(--radius-pill);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    color: var(--color-muted);
   }
 
   .status-dot {
@@ -210,16 +210,13 @@
     border-radius: 50%;
   }
   .status-dot.standby {
-    background: var(--accent-emerald);
-    box-shadow: 0 0 6px var(--accent-emerald);
+    background: var(--color-ok);
   }
   .status-dot.active {
-    background: var(--accent-amber);
-    box-shadow: 0 0 6px var(--accent-amber);
+    background: var(--color-accent);
   }
   .status-dot.warning {
-    background: #f59e0b;
-    box-shadow: 0 0 6px rgba(245, 158, 11, 0.7);
+    background: var(--color-bad);
   }
 
   .drawdown-unavailable-banner {
@@ -227,10 +224,10 @@
     align-items: center;
     gap: 8px;
     padding: 10px 14px;
-    background: rgba(245, 158, 11, 0.1);
-    border: 1px solid rgba(245, 158, 11, 0.3);
-    border-radius: var(--radius-md);
-    color: #fcd34d;
+    background: var(--color-accent-soft);
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-card);
+    color: var(--color-accent);
     font-size: 0.78rem;
     font-weight: 500;
     line-height: 1.4;
@@ -252,16 +249,16 @@
   .gauge-labels {
     display: flex;
     justify-content: space-between;
-    font-size: 0.68rem;
-    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-family: var(--font-outlier);
   }
 
   .gauge-track {
     position: relative;
     height: 12px;
     border-radius: var(--radius-pill);
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border-hairline);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
     overflow: visible;
   }
 
@@ -271,13 +268,15 @@
     bottom: 0;
   }
   .zone-1 {
-    background: linear-gradient(90deg, rgba(16, 185, 129, 0.2), rgba(245, 158, 11, 0.25));
+    background: var(--color-ok-soft);
+    border-top-left-radius: var(--radius-pill);
+    border-bottom-left-radius: var(--radius-pill);
   }
   .zone-2 {
-    background: linear-gradient(90deg, rgba(245, 158, 11, 0.25), rgba(244, 63, 94, 0.3));
+    background: var(--color-accent-soft);
   }
   .zone-3 {
-    background: linear-gradient(90deg, rgba(244, 63, 94, 0.3), rgba(244, 63, 94, 0.5));
+    background: var(--color-bad-soft);
     border-top-right-radius: var(--radius-pill);
     border-bottom-right-radius: var(--radius-pill);
   }
@@ -285,29 +284,28 @@
   .drawdown-needle {
     position: absolute;
     top: -24px;
+    left: var(--needle-pct, 0%);
     transform: translateX(-50%);
     display: flex;
     flex-direction: column;
     align-items: center;
-    transition: left 0.4s ease;
     z-index: 5;
   }
 
   .needle-flag {
-    font-size: 0.65rem;
-    font-weight: 800;
-    background: var(--accent-cyan);
-    color: #030712;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: var(--font-outlier);
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
     padding: 1px 6px;
-    border-radius: 4px;
-    box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
+    border-radius: var(--radius-pill);
   }
 
   .needle-line {
     width: 2px;
     height: 28px;
-    background: var(--accent-cyan);
-    box-shadow: 0 0 6px var(--accent-cyan);
+    background: var(--color-accent);
   }
 
   /* Rungs Grid */
@@ -318,22 +316,22 @@
   }
 
   .rung-item {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-md);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    transition: all 0.2s ease;
+    transition: border-color 0.15s ease, background 0.15s ease;
   }
   .rung-item.next-rung {
-    border-color: rgba(6, 182, 212, 0.4);
-    background: rgba(6, 182, 212, 0.03);
+    border-color: var(--color-cool);
+    background: var(--color-cool-soft);
   }
   .rung-item.triggered {
-    border-color: rgba(245, 158, 11, 0.5);
-    background: rgba(245, 158, 11, 0.05);
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
   }
 
   .rung-top {
@@ -343,31 +341,33 @@
   }
 
   .rung-badge {
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: var(--font-outlier);
+    color: var(--color-ink);
   }
 
   .status-tag {
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    font-weight: 700;
+    font-family: var(--font-outlier);
+    font-size: 0.75rem;
+    font-weight: 600;
     padding: 1px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-pill);
   }
   .status-tag.standing {
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--text-muted);
+    background: var(--color-paper);
+    color: var(--color-muted);
+    border: 1px solid var(--color-rule);
   }
   .status-tag.next {
-    background: rgba(6, 182, 212, 0.15);
-    color: var(--accent-cyan);
-    border: 1px solid rgba(6, 182, 212, 0.3);
+    background: var(--color-cool-soft);
+    color: var(--color-cool);
+    border: 1px solid var(--color-cool);
   }
   .status-tag.triggered {
-    background: rgba(245, 158, 11, 0.15);
-    color: var(--accent-amber);
-    border: 1px solid rgba(245, 158, 11, 0.35);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
   }
 
   .rung-main {
@@ -378,24 +378,32 @@
 
   .deploy-action {
     font-size: 0.85rem;
-    color: #ffffff;
+    font-weight: 600;
+    color: var(--color-ink);
   }
 
   .deploy-target {
-    font-size: 0.72rem;
+    font-size: 0.75rem;
+    color: var(--color-cool);
   }
 
   .deploy-amount {
     font-size: 1.05rem;
-    color: var(--accent-emerald-bright);
+    color: var(--color-ok);
     margin-top: 2px;
   }
 
   .rung-desc {
-    font-size: 0.72rem;
-    color: var(--text-muted);
+    font-size: 0.75rem;
+    color: var(--color-muted);
     line-height: 1.35;
     margin: 4px 0 0 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rung-item {
+      transition: none !important;
+    }
   }
 
   @media (max-width: 860px) {

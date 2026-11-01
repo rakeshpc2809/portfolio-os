@@ -23,7 +23,8 @@
     Compass,
     Sparkles,
     BarChart3,
-    LineChart
+    LineChart,
+    Calendar
   } from '@lucide/svelte';
 
   interface Props {
@@ -228,7 +229,7 @@
       <div>
         <div class="title-row">
           <h3 class="header-title">Portfolio & Benchmark Performance Engine</h3>
-          <span class="hud-pill mono">SEBI / NSE FACTOR AUDIT</span>
+          <span class="hud-pill mono">SEBI / NSE factor audit</span>
           {#if asOfDate}
             <span class="as-of-date">As of {asOfDate}</span>
           {/if}
@@ -332,7 +333,7 @@
           {@const isBeating = cagrDelta >= 0}
 
           <div class="combined-stats-grid">
-            <div class="stat-card highlight">
+            <div class="stat-cell highlight">
               <span class="stat-meta">Annualized CAGR</span>
               <div class="stat-val-row">
                 <span class="stat-val mono bold text-cyan">{pCagr.toFixed(2)}%</span>
@@ -343,18 +344,18 @@
               </span>
             </div>
 
-            <div class="stat-card">
+            <div class="stat-cell">
               <span class="stat-meta">Volatility (Risk Level)</span>
               <div class="stat-val-row">
                 <span class="stat-val mono bold text-emerald">{pVol.toFixed(2)}%</span>
                 <span class="stat-bench mono text-muted">vs {bVol.toFixed(2)}%</span>
               </div>
               <span class="stat-sub text-muted">
-                {pVol < bVol ? `🛡️ ${(bVol - pVol).toFixed(2)}% Lower Risk` : `Higher Fluctuation`}
+                {pVol < bVol ? `${(bVol - pVol).toFixed(2)}% Lower Risk` : `Higher Fluctuation`}
               </span>
             </div>
 
-            <div class="stat-card">
+            <div class="stat-cell">
               <span class="stat-meta">Market Beta (β)</span>
               <div class="stat-val-row">
                 <span class="stat-val mono bold text-cyan">{beta.toFixed(2)}</span>
@@ -365,7 +366,7 @@
               </span>
             </div>
 
-            <div class="stat-card">
+            <div class="stat-cell">
               <span class="stat-meta">Jensen's Alpha</span>
               <div class="stat-val-row">
                 <span class="stat-val mono bold" class:text-emerald={alpha >= 0} class:text-rose={alpha < 0}>
@@ -378,7 +379,7 @@
               </span>
             </div>
 
-            <div class="stat-card">
+            <div class="stat-cell">
               <span class="stat-meta">Information Ratio</span>
               <div class="stat-val-row">
                 <span class="stat-val mono bold text-primary">{ir.toFixed(2)}</span>
@@ -395,7 +396,7 @@
             <!-- Dynamic Hover Readout Header -->
             <div class="chart-readout-row">
               <div class="readout-date mono">
-                📅 {activeDate || 'Tracking period'}
+                <Calendar size={13} /> {activeDate || 'Tracking period'}
               </div>
               <div class="readout-values">
                 <div class="readout-item">
@@ -540,7 +541,7 @@
           </div>
 
           <!-- Bottom Analytical Audit Card -->
-          <div class="audit-callout-card">
+          <div class="audit-callout-panel">
             <div class="audit-left">
               <div class="audit-icon">
                 <CheckCircle2 size={20} class="text-emerald" />
@@ -637,7 +638,7 @@
                 {@const irVal = f.informationRatio ?? 0}
                 
                 <div 
-                  class="bar-card" 
+                  class="bar-row" 
                   class:selected={isSelected}
                   onclick={() => selectedFundIsin = f.isin}
                   role="button"
@@ -651,7 +652,7 @@
                       <span class="sample-pill mono">{f.sampleDays || 0}d</span>
                     </div>
                     <div class="benchmark-pill-row">
-                      <span class="bench-tag">BENCHMARK:</span>
+                      <span class="bench-tag">Benchmark:</span>
                       <span class="bench-name bold text-cyan">{f.benchmarkName}</span>
                       <span class="bench-id mono">({f.benchmarkId})</span>
                     </div>
@@ -731,29 +732,29 @@
                     {:else if activeMetric === 'BETA'}
                       {#if betaVal > 1.05}
                         <span class="status-badge high-vol">
-                          <span>AGGRESSIVE SENSITIVITY (β {betaVal.toFixed(2)})</span>
+                          <span>Aggressive sensitivity (β {betaVal.toFixed(2)})</span>
                         </span>
                       {:else if betaVal < 0.95}
                         <span class="status-badge low-vol">
-                          <span>DEFENSIVE DAMPENER (β {betaVal.toFixed(2)})</span>
+                          <span>Defensive dampener (β {betaVal.toFixed(2)})</span>
                         </span>
                       {:else}
                         <span class="status-badge neutral-vol">
-                          <span>NEUTRAL BENCHMARK MATCH</span>
+                          <span>Neutral benchmark match</span>
                         </span>
                       {/if}
                     {:else if activeMetric === 'IR'}
                       {#if irVal >= 0.5}
                         <span class="status-badge beat">
-                          <span>EXCEPTIONAL RISK-ADJUSTED</span>
+                          <span>Exceptional risk-adjusted</span>
                         </span>
                       {:else if irVal >= 0}
                         <span class="status-badge neutral-vol">
-                          <span>CONSISTENT ACTIVE ALPHA</span>
+                          <span>Consistent active alpha</span>
                         </span>
                       {:else}
                         <span class="status-badge lag">
-                          <span>NEGATIVE TRACKING DRAG</span>
+                          <span>Negative tracking drag</span>
                         </span>
                       {/if}
                     {/if}
@@ -767,12 +768,12 @@
           {#if selectedFund}
             {@const sf = selectedFund}
             {@const sfOutperf = sf.outperformancePct ?? sf.alphaPct ?? 0}
-            <div class="inspector-card">
+            <div class="inspector-drawer">
               <div class="inspector-header">
-                <span class="inspector-tag mono">FACTOR RECONCILIATION</span>
                 <h4 class="inspector-fund-title">{formatSchemeName(sf.fundName)}</h4>
+                <span class="inspector-tag mono">Factor reconciliation</span>
                 <div class="inspector-bench-row">
-                  <span class="bench-label">BENCHMARK:</span>
+                  <span class="bench-label">Benchmark:</span>
                   <span class="bench-name bold text-cyan">{sf.benchmarkName}</span>
                 </div>
               </div>
@@ -838,12 +839,11 @@
 
 <style>
   .benchmark-card {
-    background: var(--surface-card, #0e1422);
-    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.08));
-    border-radius: var(--radius-lg, 12px);
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
     overflow: hidden;
     margin-bottom: 1.5rem;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(6, 182, 212, 0.04);
   }
 
   .card-header {
@@ -851,8 +851,8 @@
     justify-content: space-between;
     align-items: flex-start;
     padding: 1.2rem 1.5rem;
-    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-    background: rgba(14, 20, 34, 0.6);
+    border-bottom: 1px solid var(--color-rule);
+    background: var(--color-paper);
     flex-wrap: wrap;
     gap: 1rem;
   }
@@ -866,9 +866,9 @@
   .icon-wrap {
     width: 36px;
     height: 36px;
-    background: rgba(6, 182, 212, 0.12);
-    border: 1px solid rgba(6, 182, 212, 0.25);
-    border-radius: var(--radius-md, 8px);
+    background: var(--color-cool-soft);
+    border: 1px solid var(--color-cool);
+    border-radius: var(--radius-pill);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -885,28 +885,30 @@
   .header-title {
     font-size: 1.1rem;
     font-weight: 600;
-    color: var(--text-primary, #ffffff);
+    color: var(--color-ink);
     margin: 0;
   }
 
   .hud-pill {
-    font-size: 0.65rem;
+    font-size: 0.75rem;
     padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-full, 999px);
-    background: rgba(6, 182, 212, 0.12);
-    color: var(--accent-cyan, #06b6d4);
-    border: 1px solid rgba(6, 182, 212, 0.3);
-    font-weight: 700;
+    border-radius: var(--radius-pill);
+    background: var(--color-cool-soft);
+    color: var(--color-cool);
+    border: 1px solid var(--color-cool);
+    font-family: var(--font-outlier);
+    font-weight: 600;
   }
 
   .as-of-date {
-    font-size: 0.72rem;
-    color: var(--text-muted, #64748b);
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    font-family: var(--font-outlier);
   }
 
   .header-sub {
     font-size: 0.8rem;
-    color: var(--text-muted, #94a3b8);
+    color: var(--color-muted);
     margin: 0.25rem 0 0 0;
   }
 
@@ -919,9 +921,9 @@
   /* Scope Switcher Tabs */
   .scope-tabs-group {
     display: flex;
-    background: var(--surface-void, #060911);
-    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.1));
-    border-radius: var(--radius-md, 8px);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
     padding: 0.25rem;
     gap: 0.25rem;
   }
@@ -933,41 +935,50 @@
     padding: 0.4rem 0.85rem;
     background: transparent;
     border: none;
-    border-radius: var(--radius-sm, 6px);
-    color: var(--text-secondary, #94a3b8);
+    border-radius: var(--radius-pill);
+    color: var(--color-muted);
     font-size: 0.78rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.15s ease, background 0.15s ease;
   }
 
   .scope-btn:hover {
-    color: var(--text-primary, #ffffff);
+    color: var(--color-ink);
   }
 
   .scope-btn.active {
-    background: rgba(6, 182, 212, 0.18);
-    color: var(--accent-cyan, #06b6d4);
+    background: var(--color-cool-soft);
+    color: var(--color-cool);
     font-weight: 600;
   }
 
   .refresh-btn {
     width: 32px;
     height: 32px;
-    background: var(--surface-void, #060911);
-    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.1));
-    border-radius: var(--radius-md, 8px);
-    color: var(--text-muted, #94a3b8);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
+    color: var(--color-muted);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.15s ease, border-color 0.15s ease;
   }
 
   .refresh-btn:hover {
-    color: var(--text-primary, #ffffff);
-    border-color: var(--accent-cyan, #06b6d4);
+    color: var(--color-ink);
+    border-color: var(--color-cool);
+  }
+
+  .scope-btn:focus-visible,
+  .refresh-btn:focus-visible,
+  .bench-selector-pill:focus-visible,
+  .metric-btn:focus-visible,
+  .bar-row:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
   }
 
   /* Body */
@@ -989,9 +1000,9 @@
     flex-wrap: wrap;
     gap: 0.75rem;
     padding: 0.6rem 0.85rem;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
-    border-radius: var(--radius-md, 8px);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
   }
 
   .toolbar-left {
@@ -1003,7 +1014,7 @@
 
   .toolbar-label {
     font-size: 0.75rem;
-    color: var(--text-muted, #94a3b8);
+    color: var(--color-muted);
   }
 
   .benchmark-pills {
@@ -1014,23 +1025,23 @@
   .bench-selector-pill {
     font-size: 0.75rem;
     padding: 0.25rem 0.65rem;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.1));
-    border-radius: var(--radius-sm, 6px);
-    color: var(--text-secondary, #94a3b8);
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
+    color: var(--color-muted);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
   }
 
   .bench-selector-pill:hover {
-    color: #fff;
-    border-color: var(--accent-cyan, #06b6d4);
+    color: var(--color-ink);
+    border-color: var(--color-cool);
   }
 
   .bench-selector-pill.active {
-    background: rgba(245, 158, 11, 0.15);
-    border-color: rgba(245, 158, 11, 0.4);
-    color: var(--accent-amber, #f59e0b);
+    background: var(--color-accent-soft);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
     font-weight: 600;
   }
 
@@ -1054,12 +1065,12 @@
   }
 
   .legend-line.portfolio-line {
-    background: #06b6d4;
+    background: var(--color-cool);
   }
 
   .legend-line.benchmark-line {
-    background: #f59e0b;
-    border-top: 1px dashed #f59e0b;
+    background: var(--color-accent);
+    border-top: 1px dashed var(--color-accent);
   }
 
   /* Scorecard Grid */
@@ -1069,26 +1080,25 @@
     gap: 0.75rem;
   }
 
-  .stat-card {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
-    border-radius: var(--radius-md, 8px);
+  .stat-cell {
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
     padding: 0.75rem 1rem;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
   }
 
-  .stat-card.highlight {
-    background: rgba(6, 182, 212, 0.06);
-    border-color: rgba(6, 182, 212, 0.25);
+  .stat-cell.highlight {
+    background: var(--color-cool-soft);
+    border-color: var(--color-cool);
   }
 
   .stat-meta {
-    font-size: 0.68rem;
-    color: var(--text-muted, #64748b);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    font-weight: 500;
   }
 
   .stat-val-row {
@@ -1099,39 +1109,41 @@
 
   .stat-val {
     font-size: 1.25rem;
+    font-family: var(--font-outlier);
   }
 
   .stat-bench {
     font-size: 0.75rem;
+    font-family: var(--font-outlier);
   }
 
   .stat-sub-pill {
-    font-size: 0.68rem;
+    font-size: 0.75rem;
     padding: 0.15rem 0.4rem;
-    border-radius: 4px;
-    font-weight: 700;
+    border-radius: var(--radius-pill);
+    font-weight: 600;
     width: fit-content;
   }
 
   .stat-sub-pill.beat {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
   }
 
   .stat-sub-pill.lag {
-    background: rgba(244, 63, 94, 0.15);
-    color: #f43f5e;
+    background: var(--color-bad-soft);
+    color: var(--color-bad);
   }
 
   .stat-sub {
-    font-size: 0.68rem;
+    font-size: 0.75rem;
   }
 
   /* SVG Chart Container */
   .svg-chart-container {
-    background: rgba(6, 9, 17, 0.7);
-    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.08));
-    border-radius: var(--radius-md, 8px);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
     padding: 1rem 1.25rem;
     display: flex;
     flex-direction: column;
@@ -1145,12 +1157,16 @@
     flex-wrap: wrap;
     gap: 0.75rem;
     padding-bottom: 0.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--color-rule);
   }
 
   .readout-date {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     font-size: 0.78rem;
-    color: var(--text-secondary, #94a3b8);
+    color: var(--color-muted);
+    font-family: var(--font-outlier);
   }
 
   .readout-values {
@@ -1173,20 +1189,20 @@
   }
 
   .readout-dot.port-dot {
-    background: #06b6d4;
-    box-shadow: 0 0 6px #06b6d4;
+    background: var(--color-cool);
   }
 
   .readout-dot.bench-dot {
-    background: #f59e0b;
+    background: var(--color-accent);
   }
 
   .readout-label {
-    color: var(--text-muted, #64748b);
+    color: var(--color-muted);
   }
 
   .readout-pct {
-    font-size: 0.72rem;
+    font-size: 0.75rem;
+    font-family: var(--font-outlier);
   }
 
   .trend-svg {
@@ -1200,22 +1216,23 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.72rem;
-    color: var(--text-muted, #64748b);
+    font-size: 0.75rem;
+    color: var(--color-muted);
     padding-top: 0.25rem;
+    font-family: var(--font-outlier);
   }
 
   .axis-center-note {
     font-style: italic;
     font-size: 0.7rem;
-    color: var(--text-muted, #475569);
+    color: var(--color-muted);
   }
 
-  /* Audit Callout Card */
-  .audit-callout-card {
-    background: rgba(16, 185, 129, 0.05);
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    border-radius: var(--radius-md, 8px);
+  /* Audit Callout Panel */
+  .audit-callout-panel {
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-ok);
+    border-radius: var(--radius-card);
     padding: 0.85rem 1.15rem;
   }
 
@@ -1240,22 +1257,22 @@
     align-items: center;
     gap: 0.6rem;
     font-size: 0.85rem;
-    color: #ffffff;
+    color: var(--color-ink);
   }
 
   .audit-badge {
-    font-size: 0.65rem;
-    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-family: var(--font-outlier);
     padding: 0.1rem 0.45rem;
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
-    border-radius: 4px;
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
+    border-radius: var(--radius-pill);
     font-weight: 600;
   }
 
   .audit-desc {
     font-size: 0.78rem;
-    color: #cbd5e1;
+    color: var(--color-muted);
     margin: 0;
     line-height: 1.45;
   }
@@ -1274,16 +1291,16 @@
     flex-wrap: wrap;
     gap: 0.75rem;
     padding: 0.5rem 0.85rem;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
-    border-radius: var(--radius-md, 8px);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
   }
 
   .metric-toggle-group {
     display: flex;
-    background: var(--surface-void, #060911);
-    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.1));
-    border-radius: var(--radius-md, 8px);
+    background: var(--color-paper);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
     padding: 0.2rem;
     gap: 0.2rem;
   }
@@ -1295,21 +1312,21 @@
     padding: 0.35rem 0.7rem;
     background: transparent;
     border: none;
-    border-radius: var(--radius-sm, 6px);
-    color: var(--text-secondary, #94a3b8);
+    border-radius: var(--radius-pill);
+    color: var(--color-muted);
     font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.15s ease, background 0.15s ease;
   }
 
   .metric-btn:hover {
-    color: var(--text-primary, #ffffff);
+    color: var(--color-ink);
   }
 
   .metric-btn.active {
-    background: rgba(6, 182, 212, 0.18);
-    color: var(--accent-cyan, #06b6d4);
+    background: var(--color-cool-soft);
+    color: var(--color-cool);
     font-weight: 600;
   }
 
@@ -1317,13 +1334,14 @@
     display: flex;
     gap: 0.6rem;
     font-size: 0.75rem;
-    color: var(--text-muted, #94a3b8);
+    color: var(--color-muted);
   }
 
   .pill-item {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--color-paper);
+    border: 1px solid var(--color-rule);
     padding: 0.2rem 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
   }
 
   /* Scheme Bars Layout */
@@ -1351,10 +1369,9 @@
     grid-template-columns: 280px 1fr 180px;
     gap: 1rem;
     padding: 0.4rem 0.85rem;
-    font-size: 0.68rem;
-    color: var(--text-muted, #64748b);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    font-weight: 500;
   }
 
   .bars-list {
@@ -1363,28 +1380,27 @@
     gap: 0.5rem;
   }
 
-  .bar-card {
+  .bar-row {
     display: grid;
     grid-template-columns: 280px 1fr 180px;
     gap: 1rem;
     align-items: center;
     padding: 0.75rem 0.85rem;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.05));
-    border-radius: var(--radius-md, 8px);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: border-color 0.15s ease, background 0.15s ease;
   }
 
-  .bar-card:hover {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(6, 182, 212, 0.3);
+  .bar-row:hover {
+    background: var(--color-paper);
+    border-color: var(--color-cool);
   }
 
-  .bar-card.selected {
-    background: rgba(6, 182, 212, 0.07);
-    border-color: rgba(6, 182, 212, 0.5);
-    box-shadow: 0 0 15px rgba(6, 182, 212, 0.1);
+  .bar-row.selected {
+    background: var(--color-cool-soft);
+    border-color: var(--color-cool);
   }
 
   .bar-scheme-info {
@@ -1403,19 +1419,20 @@
   .scheme-name {
     font-size: 0.82rem;
     font-weight: 600;
-    color: var(--text-primary, #ffffff);
+    color: var(--color-ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .sample-pill {
-    font-size: 0.62rem;
-    color: var(--text-muted, #64748b);
-    background: rgba(255, 255, 255, 0.05);
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    background: var(--color-paper);
     padding: 0.1rem 0.35rem;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
     flex-shrink: 0;
+    font-family: var(--font-outlier);
   }
 
   .benchmark-pill-row {
@@ -1429,9 +1446,9 @@
   }
 
   .bench-tag {
-    font-size: 0.62rem;
-    color: var(--text-muted, #64748b);
-    font-weight: 700;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    font-weight: 600;
   }
 
   .bench-name {
@@ -1439,8 +1456,9 @@
   }
 
   .bench-id {
-    font-size: 0.65rem;
-    color: var(--text-muted, #64748b);
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    font-family: var(--font-outlier);
   }
 
   /* Bar Visual Cell */
@@ -1454,8 +1472,8 @@
     position: relative;
     flex: 1;
     height: 14px;
-    background: rgba(0, 0, 0, 0.35);
-    border-radius: 999px;
+    background: var(--color-paper);
+    border-radius: var(--radius-pill);
     overflow: hidden;
   }
 
@@ -1465,7 +1483,7 @@
     top: 0;
     bottom: 0;
     width: 2px;
-    background: rgba(255, 255, 255, 0.25);
+    background: var(--color-rule-2);
     z-index: 2;
   }
 
@@ -1473,16 +1491,15 @@
     position: absolute;
     top: 2px;
     bottom: 2px;
-    border-radius: 999px;
-    transition: width 0.3s ease;
+    border-radius: var(--radius-pill);
   }
 
   .bar-fill-positive {
-    background: linear-gradient(90deg, #10b981, #34d399);
+    background: var(--color-ok);
   }
 
   .bar-fill-negative {
-    background: linear-gradient(90deg, #f43f5e, #e11d48);
+    background: var(--color-bad);
   }
 
   /* Beta track */
@@ -1490,8 +1507,8 @@
     position: relative;
     flex: 1;
     height: 14px;
-    background: rgba(0, 0, 0, 0.35);
-    border-radius: 999px;
+    background: var(--color-paper);
+    border-radius: var(--radius-pill);
     overflow: hidden;
   }
 
@@ -1501,32 +1518,32 @@
     top: 0;
     bottom: 0;
     width: 2px;
-    background: rgba(255, 255, 255, 0.35);
+    background: var(--color-rule-2);
     z-index: 2;
   }
 
   .beta-fill {
     height: 100%;
-    border-radius: 999px;
-    transition: width 0.3s ease;
+    border-radius: var(--radius-pill);
   }
 
   .beta-high {
-    background: linear-gradient(90deg, #06b6d4, #f59e0b);
+    background: var(--color-accent);
   }
 
   .beta-low {
-    background: linear-gradient(90deg, #06b6d4, #10b981);
+    background: var(--color-ok);
   }
 
   .beta-neutral {
-    background: var(--accent-cyan, #06b6d4);
+    background: var(--color-cool);
   }
 
   .metric-val-readout {
     font-size: 0.85rem;
     min-width: 65px;
     text-align: right;
+    font-family: var(--font-outlier);
   }
 
   /* Assessment Badges */
@@ -1540,47 +1557,47 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    font-weight: 700;
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-weight: 600;
     white-space: nowrap;
   }
 
   .status-badge.beat {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
+    border: 1px solid var(--color-ok);
   }
 
   .status-badge.lag {
-    background: rgba(244, 63, 94, 0.15);
-    color: #f43f5e;
-    border: 1px solid rgba(244, 63, 94, 0.3);
+    background: var(--color-bad-soft);
+    color: var(--color-bad);
+    border: 1px solid var(--color-bad);
   }
 
   .status-badge.low-vol {
-    background: rgba(6, 182, 212, 0.15);
-    color: #06b6d4;
-    border: 1px solid rgba(6, 182, 212, 0.3);
+    background: var(--color-cool-soft);
+    color: var(--color-cool);
+    border: 1px solid var(--color-cool);
   }
 
   .status-badge.high-vol {
-    background: rgba(245, 158, 11, 0.15);
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
   }
 
   .status-badge.neutral-vol {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-secondary, #94a3b8);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--color-paper);
+    color: var(--color-muted);
+    border: 1px solid var(--color-rule);
   }
 
-  /* Inspector Card */
-  .inspector-card {
-    background: rgba(10, 15, 26, 0.8);
-    border: 1px solid rgba(6, 182, 212, 0.25);
-    border-radius: 8px;
+  /* Inspector Drawer */
+  .inspector-drawer {
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-cool);
+    border-radius: var(--radius-card);
     padding: 1.25rem;
     display: flex;
     flex-direction: column;
@@ -1593,20 +1610,21 @@
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--color-rule);
     padding-bottom: 0.75rem;
   }
 
   .inspector-tag {
-    font-size: 0.65rem;
-    color: var(--accent-cyan, #06b6d4);
-    font-weight: 700;
+    font-size: 0.75rem;
+    color: var(--color-cool);
+    font-weight: 600;
+    font-family: var(--font-outlier);
   }
 
   .inspector-fund-title {
     font-size: 0.95rem;
     font-weight: 600;
-    color: var(--text-primary, #ffffff);
+    color: var(--color-ink);
     margin: 0;
     line-height: 1.3;
   }
@@ -1618,7 +1636,7 @@
   }
 
   .bench-label {
-    color: var(--text-muted, #64748b);
+    color: var(--color-muted);
   }
 
   .inspector-stats-grid {
@@ -1628,9 +1646,9 @@
   }
 
   .istat-box {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 6px;
+    background: var(--color-paper);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
     padding: 0.65rem 0.75rem;
     display: flex;
     flex-direction: column;
@@ -1638,24 +1656,25 @@
   }
 
   .istat-label {
-    font-size: 0.65rem;
-    color: var(--text-muted, #64748b);
-    text-transform: uppercase;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    font-weight: 500;
   }
 
   .istat-value {
     font-size: 1.15rem;
+    font-family: var(--font-outlier);
   }
 
   .istat-desc {
-    font-size: 0.65rem;
-    color: var(--text-muted, #94a3b8);
+    font-size: 0.75rem;
+    color: var(--color-muted);
   }
 
   .inspector-guidance {
-    background: rgba(6, 182, 212, 0.05);
-    border: 1px solid rgba(6, 182, 212, 0.15);
-    border-radius: 6px;
+    background: var(--color-cool-soft);
+    border: 1px solid var(--color-cool);
+    border-radius: var(--radius-card);
     padding: 0.85rem;
     display: flex;
     flex-direction: column;
@@ -1671,12 +1690,12 @@
   .guidance-title {
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--accent-cyan, #06b6d4);
+    color: var(--color-cool);
   }
 
   .guidance-text {
     font-size: 0.75rem;
-    color: var(--text-secondary, #cbd5e1);
+    color: var(--color-ink-2);
     margin: 0;
     line-height: 1.45;
   }
@@ -1685,19 +1704,20 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.65rem;
+    font-size: 0.75rem;
     margin-top: 0.25rem;
+    font-family: var(--font-outlier);
   }
 
   .sample-status-pill {
-    background: rgba(16, 185, 129, 0.12);
-    color: #10b981;
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
     padding: 0.1rem 0.4rem;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
   }
 
   .sample-days-text {
-    color: var(--text-muted, #64748b);
+    color: var(--color-muted);
   }
 
   .state-container {
@@ -1706,32 +1726,18 @@
     align-items: center;
     justify-content: center;
     padding: 3rem 1rem;
-    color: var(--text-muted, #94a3b8);
+    color: var(--color-muted);
     font-size: 0.85rem;
     gap: 0.75rem;
   }
 
-  :global(.text-emerald) {
-    color: #10b981 !important;
-  }
-
-  :global(.text-rose) {
-    color: #f43f5e !important;
-  }
-
-  :global(.text-cyan) {
-    color: #06b6d4 !important;
-  }
-
-  :global(.text-amber) {
-    color: #f59e0b !important;
-  }
-
-  :global(.text-muted) {
-    color: #64748b !important;
-  }
-
-  :global(.text-primary) {
-    color: #ffffff !important;
+  @media (prefers-reduced-motion: reduce) {
+    .scope-btn,
+    .refresh-btn,
+    .bench-selector-pill,
+    .metric-btn,
+    .bar-row {
+      transition: none !important;
+    }
   }
 </style>

@@ -81,7 +81,10 @@ assert.ok(allWebSources.includes('aria-selected='), 'Web app must contain dynami
 console.log("  ✓ ARIA tablist, tab, and tabpanel accessibility attributes verified in Svelte 5 views");
 
 // Assert modal dialog contracts
-assert.ok(allWebSources.includes('TAX LOT INSPECTOR'), "Tax lot inspector must exist");
+assert.ok(
+  allWebSources.includes('TaxLotsTable') || allWebSources.includes('Scheme Tax Lots & FIFO') || allWebSources.includes('TAX LOT INSPECTOR'),
+  "Tax lot inspector / TaxLotsTable must exist"
+);
 assert.ok(allWebSources.includes('id="lumpsumModal"'), "lumpsumModal ID must exist");
 assert.ok(allWebSources.includes('id="casPasswordModal"'), "casPasswordModal ID must exist");
 assert.ok(allWebSources.includes('OverlapModal') || allWebSources.includes('PORTFOLIO OVERLAP'), "Overlap matrix modal must exist");

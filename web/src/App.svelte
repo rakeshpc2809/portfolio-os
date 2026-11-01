@@ -242,15 +242,15 @@
     <div class="brand-group">
       <div class="brand-pip"></div>
       <div class="brand-text">
-        <h1 class="brand-name gradient-text-cyan">PORTFOLIO OS</h1>
-        <span class="brand-edition">✨ PERSONAL COCKPIT v4.0</span>
+        <h1 class="brand-name">Portfolio OS</h1>
+        <span class="brand-edition">Console v4.0</span>
       </div>
       {#if snapshot?.sync_info}
         <div class="freshness-tag">
           <span class="live-dot" class:stale={snapshot.sync_info.stale_nav_count > 0}></span>
           <span>{snapshot.sync_info.status}</span>
           {#if snapshot.sync_info.ledger_hmac_verified}
-            <span class="hmac-verified" title="Ledger cryptographic integrity verified">HMAC SECURE</span>
+            <span class="hmac-verified" title="Ledger cryptographic integrity verified">HMAC Secure</span>
           {/if}
         </div>
       {/if}
@@ -300,7 +300,7 @@
         title="Simulate Lump-Sum Inflow"
       >
         <Coins size={15} />
-        <span class="btn-text">💰 Deploy Cash</span>
+        <span class="btn-text">Deploy Cash</span>
       </button>
 
       <!-- CAS Upload Trigger -->
@@ -335,10 +335,10 @@
       >
         {#if quietMode}
           <EyeOff size={15} class="text-amber" />
-          <span class="btn-text">🧘 Zen Mode</span>
+          <span class="btn-text">Zen Mode</span>
         {:else}
           <Eye size={15} />
-          <span class="btn-text">👁️ Reveal</span>
+          <span class="btn-text">Live Mode</span>
         {/if}
       </button>
 
@@ -351,7 +351,7 @@
         title="Sync Latest AMFI NAVs"
       >
         <RefreshCw size={15} class={syncing ? 'spin' : ''} />
-        <span class="btn-text">⚡ Sync NAVs</span>
+        <span class="btn-text">{syncing ? 'Syncing...' : 'Sync NAVs'}</span>
       </button>
     </div>
   </header>
@@ -363,9 +363,9 @@
         <div class="brief-content">
           <div class="brief-header">
             <div class="brief-badge-row">
-              <span class="brief-tag"><Sparkles size={13} /> MORNING EXECUTIVE BRIEF</span>
+              <span class="brief-tag"><Sparkles size={13} /> Executive Brief</span>
               {#if snapshot.daily_brief.verified}
-                <span class="brief-verified-tag"><ShieldCheck size={12} /> AUDIT VERIFIED</span>
+                <span class="brief-verified-tag"><ShieldCheck size={12} /> Audit Verified</span>
               {/if}
               {#if snapshot.daily_brief.generated_at}
                 <span class="brief-timestamp">{snapshot.daily_brief.generated_at}</span>
@@ -643,10 +643,7 @@
         onclick={(e) => e.stopPropagation()}
       >
         <div class="modal-header">
-          <div>
-            <span class="modal-tag">DATA INGESTION</span>
-            <h3 id="cas-modal-title" class="modal-title">Import CAS E-Statement</h3>
-          </div>
+          <h3 id="cas-modal-title" class="modal-title">Import CAS E-Statement</h3>
           <button type="button" class="close-btn" onclick={() => showCasModal = false} aria-label="Close dialog">✕</button>
         </div>
 
@@ -722,13 +719,11 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 2rem;
-    background: rgba(14, 20, 36, 0.75);
+    background: var(--surface-void);
     border-bottom: 1px solid var(--border-hairline);
     position: sticky;
     top: 0;
     z-index: 100;
-    backdrop-filter: blur(24px) saturate(190%);
-    box-shadow: 0 4px 24px -6px rgba(0, 0, 0, 0.4);
   }
 
   .brand-group {
@@ -738,12 +733,10 @@
   }
 
   .brand-pip {
-    width: 12px;
-    height: 12px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: var(--accent-cyan);
-    box-shadow: 0 0 16px var(--accent-cyan);
-    animation: pipPulse 2.4s infinite ease-in-out;
   }
 
   .brand-text {
@@ -753,55 +746,55 @@
 
   .brand-name {
     font-family: var(--font-brand);
-    font-size: 1.25rem;
-    font-weight: 800;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-main);
     letter-spacing: -0.01em;
     margin: 0;
     line-height: 1.1;
   }
 
   .brand-edition {
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     font-family: var(--font-sans);
-    font-weight: 700;
-    color: var(--accent-cyan-bright);
-    letter-spacing: 0.05em;
+    font-weight: 500;
+    color: var(--text-muted);
+    letter-spacing: normal;
   }
 
   .freshness-tag {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.35rem 0.75rem;
-    background: rgba(255, 255, 255, 0.04);
+    padding: 0.3rem 0.65rem;
+    background: var(--surface-card);
     border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-xs);
     font-size: 0.72rem;
     font-family: var(--font-sans);
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text-secondary);
   }
 
   .live-dot {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--accent-emerald);
-    box-shadow: 0 0 8px var(--accent-emerald);
   }
 
   .live-dot.stale {
     background: var(--accent-amber);
-    box-shadow: 0 0 8px var(--accent-amber);
   }
 
   .hmac-verified {
-    padding: 2px 7px;
-    border-radius: var(--radius-pill);
-    background: rgba(16, 185, 129, 0.16);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    background: var(--accent-emerald-bg);
     color: var(--accent-emerald-bright);
     font-size: 0.65rem;
-    font-weight: 700;
+    font-weight: 600;
+    border: 1px solid var(--border-hairline);
   }
 
   /* Toolbelt */
@@ -815,59 +808,51 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.45rem 0.95rem;
-    background: rgba(255, 255, 255, 0.04);
+    padding: 0.4rem 0.85rem;
+    background: var(--surface-card);
     border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     font-size: 0.82rem;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
-    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.3);
-    transition: transform 0.2s var(--ease-bounce), 
-                background 0.2s ease, 
-                border-color 0.2s ease, 
-                box-shadow 0.2s ease, 
-                color 0.2s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   }
 
   .action-btn:hover {
-    color: #FFFFFF;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+    background: var(--surface-card-hover);
     border-color: var(--border-subtle);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.4);
   }
 
   .action-btn.highlight-cyan {
-    border-color: rgba(6, 182, 212, 0.35);
+    border-color: var(--border-subtle);
     color: var(--accent-cyan-bright);
-    background: rgba(6, 182, 212, 0.08);
+    background: var(--accent-cyan-bg);
   }
 
   .action-btn.highlight-cyan:hover {
-    background: rgba(6, 182, 212, 0.2);
-    border-color: var(--accent-cyan-bright);
-    box-shadow: 0 6px 20px -4px rgba(6, 182, 212, 0.4);
+    background: var(--surface-card-hover);
+    border-color: var(--accent-cyan);
   }
 
   .action-btn.quiet-toggle.active {
-    border-color: rgba(245, 158, 11, 0.4);
-    background: rgba(245, 158, 11, 0.14);
+    border-color: var(--border-subtle);
+    background: var(--accent-amber-bg);
     color: var(--accent-amber-bright);
   }
 
   .action-btn.quiet-toggle.active:hover {
-    box-shadow: 0 6px 20px -4px rgba(245, 158, 11, 0.4);
+    background: var(--surface-card-hover);
   }
 
   .sync-btn {
-    font-weight: 700;
+    font-weight: 600;
   }
 
   .cmd-palette-trigger kbd {
     padding: 1px 5px;
-    background: rgba(0, 0, 0, 0.3);
+    background: var(--surface-void);
     border: 1px solid var(--border-hairline);
     border-radius: var(--radius-xs);
     font-size: 0.65rem;
@@ -889,12 +874,10 @@
 
   /* Morning Executive Brief Banner */
   .brief-banner {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.08) 50%, rgba(15, 23, 42, 0.6) 100%);
-    border: 1px solid rgba(16, 185, 129, 0.25);
-    border-radius: var(--radius-lg, 12px);
+    background: var(--surface-card);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
     padding: 1.1rem 1.4rem;
-    backdrop-filter: blur(16px);
-    box-shadow: 0 8px 32px -8px rgba(16, 185, 129, 0.15);
   }
 
   .brief-content {
@@ -919,59 +902,56 @@
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--accent-emerald, #10b981);
-    background: rgba(16, 185, 129, 0.14);
-    padding: 0.25rem 0.55rem;
-    border-radius: var(--radius-pill, 9999px);
-    border: 1px solid rgba(16, 185, 129, 0.25);
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--accent-emerald);
+    background: var(--accent-emerald-bg);
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border-hairline);
   }
 
   .brief-verified-tag {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    color: var(--accent-cyan, #06b6d4);
-    background: rgba(6, 182, 212, 0.12);
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--accent-cyan);
+    background: var(--accent-cyan-bg);
     padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-pill, 9999px);
-    border: 1px solid rgba(6, 182, 212, 0.25);
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border-hairline);
   }
 
   .brief-timestamp {
     font-size: 0.72rem;
-    color: var(--text-muted, #94a3b8);
-    font-family: var(--font-mono, monospace);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
   }
 
   .brief-dismiss {
     background: transparent;
     border: none;
-    color: var(--text-muted, #94a3b8);
+    color: var(--text-muted);
     cursor: pointer;
     padding: 0.3rem;
-    border-radius: var(--radius-sm, 6px);
+    border-radius: var(--radius-xs);
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s ease;
+    transition: color 0.15s ease, background-color 0.15s ease;
   }
 
   .brief-dismiss:hover {
-    color: var(--text-main, #f8fafc);
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+    background: var(--surface-elevated);
   }
 
   .brief-headline {
     font-size: 1.05rem;
-    font-weight: 700;
-    color: var(--text-main, #f8fafc);
+    font-weight: 600;
+    color: var(--text-main);
     margin: 0;
     letter-spacing: -0.01em;
   }
@@ -979,7 +959,7 @@
   .brief-narration {
     font-size: 0.88rem;
     line-height: 1.5;
-    color: rgba(226, 232, 240, 0.88);
+    color: var(--text-secondary);
     margin: 0;
   }
 
@@ -993,55 +973,49 @@
   /* Navigation Tabs */
   .tabs-nav {
     display: flex;
-    gap: 0.6rem;
-    padding: 0.4rem 0.6rem;
-    background: var(--surface-card);
+    gap: 0.4rem;
+    padding: 0.25rem;
+    background: var(--surface-void);
     border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-sm);
     width: fit-content;
-    box-shadow: 0 6px 20px -6px rgba(0, 0, 0, 0.4);
   }
 
   .tab-link {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0.6rem 1.25rem;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
     background: transparent;
-    border: none;
-    border-radius: var(--radius-pill);
-    color: var(--text-secondary);
-    font-size: 0.88rem;
-    font-weight: 600;
+    border: 1px solid transparent;
+    border-radius: var(--radius-xs);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 500;
     cursor: pointer;
-    transition: transform 0.2s var(--ease-bounce), 
-                background 0.2s ease, 
-                color 0.2s ease, 
-                box-shadow 0.2s ease;
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
   }
 
   .tab-link:hover {
-    color: #FFFFFF;
-    background: rgba(255, 255, 255, 0.05);
-    transform: translateY(-1px);
+    color: var(--text-main);
+    background: var(--surface-card);
   }
 
   .tab-link.active {
-    background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(168, 85, 247, 0.25));
-    color: #FFFFFF;
-    border: 1px solid rgba(6, 182, 212, 0.4);
-    box-shadow: 0 4px 18px -4px rgba(6, 182, 212, 0.35);
+    background: var(--surface-card);
+    color: var(--text-main);
+    border-color: var(--border-highlight);
   }
 
   .count-pill {
-    padding: 2px 7px;
-    background: rgba(0, 0, 0, 0.4);
-    border-radius: var(--radius-pill);
+    padding: 1px 6px;
+    background: var(--surface-void);
+    border-radius: var(--radius-xs);
     font-size: 0.72rem;
-    font-family: var(--font-brand);
-    font-weight: 700;
+    font-family: var(--font-mono);
+    font-weight: 500;
     color: var(--accent-cyan-bright);
-    border: 1px solid rgba(6, 182, 212, 0.3);
+    border: 1px solid var(--border-hairline);
   }
 
   .tab-kbd {
@@ -1137,7 +1111,7 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(4, 7, 13, 0.82);
+    background: color-mix(in oklab, var(--color-paper-3) 85%, transparent);
     backdrop-filter: blur(12px);
     display: flex;
     align-items: center;
@@ -1148,11 +1122,10 @@
 
   .modal-card {
     background: var(--surface-card);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-xl);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
     width: 100%;
     max-width: 480px;
-    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9);
     overflow: hidden;
   }
 
@@ -1164,16 +1137,9 @@
     border-bottom: 1px solid var(--border-subtle);
   }
 
-  .modal-tag {
-    font-size: 0.65rem;
-    font-family: var(--font-mono);
-    color: var(--accent-cyan);
-    letter-spacing: 0.05em;
-  }
-
   .modal-title {
     font-size: 1.15rem;
-    margin: 0.2rem 0 0 0;
+    margin: 0;
   }
 
   .close-btn {
@@ -1320,6 +1286,12 @@
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.spin) {
+      animation: none !important;
+    }
   }
 
   @media (max-width: 1024px) {

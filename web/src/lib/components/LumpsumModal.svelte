@@ -125,11 +125,11 @@
       <!-- Header -->
       <div class="modal-header">
         <div>
-          <div class="tag-row">
-            <span class="hud-tag">CAPITAL ALLOCATION SIMULATOR</span>
-            <span class="status-pill">DRY RUN PREVIEW</span>
-          </div>
           <h2 id="lumpsum-modal-title" class="title">Deploy Lump-Sum Inflow</h2>
+          <div class="tag-row">
+            <span class="hud-tag">Capital allocation simulator</span>
+            <span class="status-pill">Dry run preview</span>
+          </div>
           <p class="subtitle">Direct fresh capital into underweight buckets to restore target drift with zero tax drag</p>
         </div>
         <button type="button" class="close-btn" onclick={onclose} aria-label="Close dialog">
@@ -201,7 +201,7 @@
             <div class="mode-text">
               <div class="mode-title-row">
                 <span class="mode-title">1. Lump-Sum Alone</span>
-                <span class="mode-tax-badge emerald">0% TAX DRAG</span>
+                <span class="mode-tax-badge emerald">0% Tax drag</span>
               </div>
               <p class="mode-desc">
                 Deploys cash strictly into underweight buckets. <strong>Zero asset sales</strong>, preserving all existing holdings.
@@ -226,7 +226,7 @@
             <div class="mode-text">
               <div class="mode-title-row">
                 <span class="mode-title">2. Inflow + Full Rebalance</span>
-                <span class="mode-tax-badge amber">INCLUDES SELLS</span>
+                <span class="mode-tax-badge amber">Includes sells</span>
               </div>
               <p class="mode-desc">
                 Deploys cash <strong>plus trims overweight holdings</strong> to bring every asset class to exact Policy v2.3 targets.
@@ -278,8 +278,8 @@
             <div class="results-table-section sell-section">
               <div class="section-header">
                 <div class="sec-left">
-                  <span class="sec-pill rose">SELL TRIMS</span>
                   <h4 class="section-title">Disciplined Sell Suggestions ({simulatedPlan.sell_side.orders.length} Schemes)</h4>
+                  <span class="sec-pill rose">Sell trims</span>
                 </div>
                 <span class="section-badge text-rose mono">
                   Total Proceeds: +{formatINR(simulatedPlan.sell_side.total_required, quietMode)}
@@ -321,10 +321,10 @@
           <div class="results-table-section">
             <div class="section-header">
               <div class="sec-left">
-                <span class="sec-pill cyan">BUY DEPLOYMENTS</span>
                 <h4 class="section-title">Recommended Fund Inflow Routing</h4>
+                <span class="sec-pill cyan">Buy deployments</span>
               </div>
-              <span class="section-badge text-emerald mono">OPTIMAL DRIFT RESTORATION</span>
+              <span class="section-badge text-emerald mono">Optimal drift restoration</span>
             </div>
 
             <div class="buy-buckets-container">
@@ -342,9 +342,9 @@
                       <div class="bb-right mono">
                         {#if alloc > 0}
                           <strong class="bb-alloc text-emerald">+{formatINR(alloc, quietMode)}</strong>
-                          <span class="action-pill buy">BUY</span>
+                          <span class="action-pill buy">Buy</span>
                         {:else}
-                          <span class="action-pill hold">HOLD (IN TARGET)</span>
+                          <span class="action-pill hold">Hold (in target)</span>
                         {/if}
                       </div>
                     </div>
@@ -353,8 +353,8 @@
                     {#if alloc > 0 && b.fund_breakdown && b.fund_breakdown.length > 0}
                       <div class="bb-funds-subtable">
                         <div class="funds-subtable-head mono">
-                          <span>SPECIFIC FUND TO BUY</span>
-                          <span class="mono-head-right">PRE ➔ POST IMPACT · ALLOCATION</span>
+                          <span>Specific fund to buy</span>
+                          <span class="mono-head-right">Pre ➔ post impact · allocation</span>
                         </div>
                         {#each b.fund_breakdown as fb}
                           <div class="fund-subrow">
@@ -409,26 +409,26 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(4, 7, 13, 0.82);
+    background: var(--color-paper-3);
     backdrop-filter: blur(12px);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: var(--z-modal);
     padding: 1.5rem;
-    animation: fadeIn var(--transition-fast) ease-out;
+    animation: fadeIn 0.15s ease-out;
   }
 
   .modal-container {
-    background: var(--surface-card);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-xl);
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
     width: 100%;
     max-width: 780px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85), 0 0 35px var(--glow-cyan);
+    box-shadow: none;
     overflow: hidden;
   }
 
@@ -437,45 +437,45 @@
     justify-content: space-between;
     align-items: flex-start;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--surface-card-hover);
+    border-bottom: 1px solid var(--color-rule);
+    background: var(--color-paper);
   }
 
   .tag-row {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    margin-bottom: 0.35rem;
+    margin-top: 0.35rem;
   }
 
   .hud-tag {
-    font-size: 0.68rem;
-    font-family: var(--font-mono);
-    color: var(--accent-cyan);
-    font-weight: 700;
-    letter-spacing: 0.05em;
+    font-size: 0.75rem;
+    font-family: var(--font-outlier);
+    color: var(--color-cool);
+    font-weight: 600;
   }
 
   .status-pill {
     padding: 0.12rem 0.45rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.65rem;
-    font-weight: 700;
-    background: hsla(185, 85%, 52%, 0.15);
-    color: var(--accent-cyan);
-    border: 1px solid hsla(185, 85%, 52%, 0.3);
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-family: var(--font-outlier);
+    font-weight: 600;
+    background: var(--color-cool-soft);
+    color: var(--color-cool);
+    border: 1px solid var(--color-cool);
   }
 
   .title {
     font-size: 1.25rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--color-ink);
     margin: 0;
   }
 
   .subtitle {
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--color-muted);
     margin: 0.2rem 0 0 0;
   }
 
@@ -485,11 +485,26 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--surface-glass);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
+    color: var(--color-muted);
     cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .close-btn:hover {
+    color: var(--color-ink);
+    background: var(--color-paper);
+  }
+
+  .close-btn:focus-visible,
+  .simulate-btn:focus-visible,
+  .preset-chip:focus-visible,
+  .mode-card:focus-visible,
+  .cancel-btn:focus-visible,
+  .apply-btn:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
   }
 
   /* Inputs */
@@ -498,8 +513,8 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    background: rgba(0, 0, 0, 0.2);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--color-paper-3);
+    border-bottom: 1px solid var(--color-rule);
   }
 
   .amount-field-wrapper {
@@ -511,24 +526,24 @@
   .input-label {
     font-size: 0.78rem;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--color-muted);
   }
 
   .input-with-symbol {
     display: flex;
     align-items: center;
     position: relative;
-    background: var(--surface-void);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-md);
+    background: var(--color-paper);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
     overflow: hidden;
   }
 
   .currency-prefix {
     padding-left: 1rem;
     font-size: 1.1rem;
-    font-family: var(--font-mono);
-    color: var(--accent-cyan);
+    font-family: var(--font-outlier);
+    color: var(--color-cool);
     font-weight: 700;
   }
 
@@ -538,8 +553,9 @@
     border: none;
     padding: 0.65rem 0.75rem;
     font-size: 1.2rem;
-    color: var(--text-primary);
+    color: var(--color-ink);
     outline: none;
+    font-family: var(--font-outlier);
   }
 
   .simulate-btn {
@@ -547,17 +563,17 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.65rem 1.2rem;
-    background: var(--surface-card-hover);
+    background: var(--color-paper-2);
     border: none;
-    border-left: 1px solid var(--border-subtle);
-    color: var(--accent-cyan);
+    border-left: 1px solid var(--color-rule);
+    color: var(--color-cool);
     font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all var(--transition-fast) ease;
+    transition: background 0.15s ease, color 0.15s ease;
   }
   .simulate-btn:hover {
-    background: hsla(185, 85%, 52%, 0.1);
+    background: var(--color-cool-soft);
   }
 
   .preset-chips {
@@ -569,25 +585,26 @@
 
   .chips-label {
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: var(--color-muted);
     margin-right: 0.25rem;
   }
 
   .preset-chip {
     padding: 0.25rem 0.6rem;
-    background: var(--surface-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
+    color: var(--color-ink-2);
     font-size: 0.75rem;
-    font-family: var(--font-mono);
+    font-family: var(--font-outlier);
     cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
   }
 
   .preset-chip.active {
-    background: hsla(185, 85%, 52%, 0.15);
-    color: var(--accent-cyan);
-    border-color: var(--accent-cyan);
+    background: var(--color-cool-soft);
+    color: var(--color-cool);
+    border-color: var(--color-cool);
   }
 
   /* Dual Mode Selection Grid */
@@ -602,41 +619,41 @@
     align-items: flex-start;
     gap: 12px;
     padding: 12px 14px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
     cursor: pointer;
     text-align: left;
-    transition: all 0.2s ease;
+    transition: background 0.15s ease, border-color 0.15s ease;
   }
   .mode-card:hover {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: var(--color-paper);
+    border-color: var(--color-rule-2);
   }
   .mode-card.active {
-    background: rgba(6, 182, 212, 0.08);
-    border-color: var(--accent-cyan);
-    box-shadow: 0 0 16px rgba(6, 182, 212, 0.15);
+    background: var(--color-cool-soft);
+    border-color: var(--color-cool);
+    box-shadow: none;
   }
 
   .mode-icon {
     width: 34px;
     height: 34px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   }
   .mode-icon.emerald {
-    background: rgba(16, 185, 129, 0.15);
-    color: var(--accent-emerald-bright);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
+    border: 1px solid var(--color-ok);
   }
   .mode-icon.amber {
-    background: rgba(245, 158, 11, 0.15);
-    color: var(--accent-amber);
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
   }
 
   .mode-text {
@@ -655,30 +672,30 @@
   .mode-title {
     font-size: 0.85rem;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--color-ink);
   }
 
   .mode-tax-badge {
-    font-size: 0.62rem;
-    font-weight: 700;
+    font-size: 0.75rem;
+    font-weight: 600;
     padding: 1px 6px;
     border-radius: var(--radius-pill);
-    font-family: var(--font-mono);
+    font-family: var(--font-outlier);
   }
   .mode-tax-badge.emerald {
-    background: rgba(16, 185, 129, 0.2);
-    color: var(--accent-emerald-bright);
-    border: 1px solid rgba(16, 185, 129, 0.4);
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
+    border: 1px solid var(--color-ok);
   }
   .mode-tax-badge.amber {
-    background: rgba(245, 158, 11, 0.2);
-    color: var(--accent-amber);
-    border: 1px solid rgba(245, 158, 11, 0.4);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
   }
 
   .mode-desc {
-    font-size: 0.72rem;
-    color: #94a3b8;
+    font-size: 0.75rem;
+    color: var(--color-muted);
     line-height: 1.4;
     margin: 0;
   }
@@ -693,36 +710,40 @@
     gap: 1.25rem;
   }
 
-  .summary-grid {
+  .summary-bar {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 0.75rem;
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
+    padding: 0.75rem 1rem;
   }
 
-  .sum-card {
+  .sum-item {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    padding: 0.75rem 1rem;
-    background: var(--surface-card-hover);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+  }
+
+  .sum-divider {
+    display: none;
   }
 
   .sum-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    color: var(--text-muted);
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    font-weight: 500;
   }
 
   .sum-val {
     font-size: 1.05rem;
-    color: var(--text-primary);
+    color: var(--color-ink);
   }
 
-  .text-cyan { color: var(--accent-cyan); }
-  .text-emerald { color: var(--accent-emerald); }
-  .text-rose { color: var(--accent-rose); }
+  .text-cyan { color: var(--color-cool); }
+  .text-emerald { color: var(--color-ok); }
+  .text-rose { color: var(--color-bad); }
 
   /* Sections */
   .results-table-section {
@@ -744,35 +765,33 @@
   }
 
   .sec-pill {
-    font-size: 0.65rem;
-    font-weight: 700;
+    font-size: 0.75rem;
+    font-weight: 600;
     padding: 2px 7px;
-    border-radius: 4px;
-    font-family: var(--font-mono);
+    border-radius: var(--radius-pill);
+    font-family: var(--font-outlier);
   }
   .sec-pill.rose {
-    background: rgba(244, 63, 94, 0.15);
-    color: var(--accent-rose-bright);
-    border: 1px solid rgba(244, 63, 94, 0.3);
+    background: var(--color-bad-soft);
+    color: var(--color-bad);
+    border: 1px solid var(--color-bad);
   }
   .sec-pill.cyan {
-    background: rgba(6, 182, 212, 0.15);
-    color: var(--accent-cyan);
-    border: 1px solid rgba(6, 182, 212, 0.3);
+    background: var(--color-cool-soft);
+    color: var(--color-cool);
+    border: 1px solid var(--color-cool);
   }
 
   .section-title {
     font-size: 0.85rem;
     font-weight: 600;
-    color: #e2e8f0;
+    color: var(--color-ink);
     margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
 
   .section-badge {
-    font-size: 0.65rem;
-    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-family: var(--font-outlier);
   }
 
   /* Sell Orders Cards */
@@ -786,9 +805,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(244, 63, 94, 0.04);
-    border: 1px solid rgba(244, 63, 94, 0.2);
-    border-radius: var(--radius-sm);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
     padding: 10px 14px;
     gap: 14px;
   }
@@ -801,22 +820,23 @@
 
   .so-name {
     font-size: 0.82rem;
-    color: #f1f5f9;
+    color: var(--color-ink);
   }
 
   .so-meta {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     flex-wrap: wrap;
+    font-family: var(--font-outlier);
   }
 
   .so-impact-pill {
     padding: 1px 6px;
-    background: rgba(244, 63, 94, 0.15);
-    border-radius: 3px;
-    color: #fca5a5;
+    background: var(--color-bad-soft);
+    border-radius: var(--radius-pill);
+    color: var(--color-bad);
   }
 
   .so-right {
@@ -831,8 +851,8 @@
   }
 
   .so-tax-tag {
-    font-size: 0.68rem;
-    color: #94a3b8;
+    font-size: 0.75rem;
+    color: var(--color-muted);
   }
 
   /* Buy Buckets Cards */
@@ -843,17 +863,17 @@
   }
 
   .buy-bucket-card {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
   .buy-bucket-card.active-alloc {
-    background: rgba(6, 182, 212, 0.03);
-    border-color: rgba(6, 182, 212, 0.25);
+    background: var(--color-paper-3);
+    border-color: var(--color-cool);
   }
 
   .bb-header {
@@ -870,11 +890,12 @@
 
   .bb-name {
     font-size: 0.85rem;
-    color: #ffffff;
+    color: var(--color-ink);
   }
 
   .bb-drift {
-    font-size: 0.72rem;
+    font-size: 0.75rem;
+    font-family: var(--font-outlier);
   }
 
   .bb-right {
@@ -889,18 +910,20 @@
 
   .action-pill {
     padding: 0.15rem 0.5rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.68rem;
-    font-weight: 700;
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: var(--font-outlier);
   }
   .action-pill.buy {
-    background: hsla(158, 85%, 45%, 0.15);
-    color: var(--accent-emerald-bright);
-    border: 1px solid hsla(158, 85%, 45%, 0.3);
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
+    border: 1px solid var(--color-ok);
   }
   .action-pill.hold {
-    background: hsla(215, 25%, 35%, 0.2);
-    color: var(--text-muted);
+    background: var(--color-paper);
+    color: var(--color-muted);
+    border: 1px solid var(--color-rule);
   }
 
   /* Specific Funds Subtable inside Bucket */
@@ -909,25 +932,24 @@
     flex-direction: column;
     gap: 6px;
     padding-top: 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--color-rule);
   }
 
   .funds-subtable-head {
     display: flex;
     justify-content: space-between;
-    font-size: 0.65rem;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    font-family: var(--font-outlier);
   }
 
   .fund-subrow {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    border-radius: var(--radius-sm);
+    background: var(--color-paper);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
     padding: 6px 10px;
     gap: 12px;
   }
@@ -941,30 +963,32 @@
   }
 
   .fs-arrow {
-    color: var(--accent-cyan);
+    color: var(--color-cool);
     font-weight: 700;
   }
 
   .fs-name {
-    color: #e2e8f0;
+    color: var(--color-ink-2);
   }
 
   .fs-impact-badge {
-    font-size: 0.68rem;
-    background: rgba(16, 185, 129, 0.12);
-    color: var(--accent-emerald-bright);
+    font-size: 0.75rem;
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
     padding: 1px 6px;
-    border-radius: 3px;
-    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-ok);
+    font-family: var(--font-outlier);
   }
 
   .fs-val-note {
-    font-size: 0.68rem;
+    font-size: 0.75rem;
   }
 
   .fs-amount {
     font-size: 0.85rem;
     white-space: nowrap;
+    font-family: var(--font-outlier);
   }
 
   .alert-box.error {
@@ -972,10 +996,10 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.65rem 1rem;
-    background: hsla(350, 85%, 60%, 0.1);
-    border: 1px solid hsla(350, 85%, 60%, 0.3);
-    border-radius: var(--radius-md);
-    color: var(--accent-crimson);
+    background: var(--color-bad-soft);
+    border: 1px solid var(--color-bad);
+    border-radius: var(--radius-card);
+    color: var(--color-bad);
     font-size: 0.82rem;
   }
 
@@ -985,7 +1009,7 @@
     align-items: center;
     justify-content: center;
     padding: 2.5rem 1rem;
-    color: var(--text-muted);
+    color: var(--color-muted);
     font-size: 0.85rem;
   }
 
@@ -996,18 +1020,23 @@
     align-items: center;
     gap: 0.75rem;
     padding: 1rem 1.5rem;
-    border-top: 1px solid var(--border-subtle);
-    background: var(--surface-card-hover);
+    border-top: 1px solid var(--color-rule);
+    background: var(--color-paper);
   }
 
   .cancel-btn {
     padding: 0.5rem 1.15rem;
     background: transparent;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    color: var(--text-secondary);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
+    color: var(--color-muted);
     font-size: 0.85rem;
     cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .cancel-btn:hover {
+    background: var(--color-paper-3);
+    color: var(--color-ink);
   }
 
   .apply-btn {
@@ -1015,13 +1044,17 @@
     align-items: center;
     gap: 0.45rem;
     padding: 0.5rem 1.35rem;
-    background: var(--accent-cyan);
+    background: var(--color-cool);
     border: none;
-    border-radius: var(--radius-md);
-    color: var(--surface-void);
+    border-radius: var(--radius-pill);
+    color: var(--color-paper-3);
     font-size: 0.85rem;
     font-weight: 600;
     cursor: pointer;
+    transition: filter 0.15s ease;
+  }
+  .apply-btn:hover:not(:disabled) {
+    filter: brightness(1.1);
   }
 
   .apply-btn:disabled {
@@ -1041,5 +1074,20 @@
 
   :global(.spin) {
     animation: spin 1s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .modal-backdrop,
+    :global(.spin) {
+      animation: none !important;
+    }
+    .close-btn,
+    .simulate-btn,
+    .preset-chip,
+    .mode-card,
+    .cancel-btn,
+    .apply-btn {
+      transition: none !important;
+    }
   }
 </style>

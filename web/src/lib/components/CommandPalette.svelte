@@ -248,7 +248,7 @@
         </div>
         <div class="brand-tag">
           <Command size={11} />
-          <span>PORTFOLIO OS</span>
+          <span>Portfolio OS</span>
         </div>
       </div>
     </div>
@@ -259,23 +259,23 @@
   .palette-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(4, 7, 13, 0.85);
+    background: var(--color-paper-3);
     backdrop-filter: blur(12px);
     display: flex;
     align-items: flex-start;
     justify-content: center;
     padding-top: 12vh;
-    z-index: 2000;
-    animation: fadeIn var(--transition-fast) ease-out;
+    z-index: var(--z-modal);
+    animation: fadeIn 0.15s ease-out;
   }
 
   .palette-card {
-    background: var(--surface-card);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-xl);
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
     width: 100%;
     max-width: 620px;
-    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9), 0 0 35px var(--glow-cyan);
+    box-shadow: none;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -286,12 +286,12 @@
     align-items: center;
     position: relative;
     padding: 0.85rem 1.25rem;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--surface-card-hover);
+    border-bottom: 1px solid var(--color-rule);
+    background: var(--color-paper);
   }
 
   :global(.search-icon) {
-    color: var(--text-muted);
+    color: var(--color-muted);
     margin-right: 0.85rem;
     flex-shrink: 0;
   }
@@ -300,20 +300,24 @@
     flex: 1;
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--color-ink);
     font-size: 1rem;
     outline: none;
     font-family: inherit;
   }
 
+  .palette-input:focus-visible {
+    outline: none;
+  }
+
   .esc-badge {
     padding: 0.15rem 0.4rem;
-    background: var(--surface-glass);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    font-size: 0.65rem;
-    font-family: var(--font-mono);
-    color: var(--text-muted);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-family: var(--font-outlier);
+    color: var(--color-muted);
   }
 
   .command-list {
@@ -330,14 +334,20 @@
     align-items: center;
     gap: 0.85rem;
     padding: 0.75rem 0.85rem;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-pill);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    border: 1px solid transparent;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .command-item:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
   }
 
   .command-item.selected {
-    background: hsla(185, 85%, 52%, 0.12);
-    box-shadow: inset 0 0 0 1px hsla(185, 85%, 52%, 0.35);
+    background: var(--color-cool-soft);
+    border-color: var(--color-cool);
   }
 
   .cmd-icon-wrapper {
@@ -346,17 +356,17 @@
     justify-content: center;
     width: 30px;
     height: 30px;
-    background: var(--surface-glass);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
+    color: var(--color-muted);
     flex-shrink: 0;
   }
 
   .cmd-icon-wrapper.selected {
-    background: var(--accent-cyan);
-    color: var(--surface-void);
-    border-color: var(--accent-cyan);
+    background: var(--color-cool);
+    color: var(--color-paper-3);
+    border-color: var(--color-cool);
   }
 
   .cmd-text {
@@ -370,12 +380,12 @@
   .cmd-title {
     font-size: 0.88rem;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--color-ink);
   }
 
   .cmd-subtitle {
-    font-size: 0.72rem;
-    color: var(--text-muted);
+    font-size: 0.75rem;
+    color: var(--color-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -383,16 +393,16 @@
 
   .cmd-shortcut {
     padding: 0.15rem 0.45rem;
-    background: var(--surface-void);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    font-size: 0.68rem;
-    color: var(--text-muted);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    color: var(--color-muted);
     flex-shrink: 0;
   }
 
   .enter-hint {
-    color: var(--accent-cyan);
+    color: var(--color-cool);
     display: flex;
     align-items: center;
     padding-left: 0.25rem;
@@ -401,7 +411,7 @@
   .no-results {
     padding: 2.5rem 1rem;
     text-align: center;
-    color: var(--text-muted);
+    color: var(--color-muted);
     font-size: 0.85rem;
   }
 
@@ -410,10 +420,10 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.6rem 1.25rem;
-    border-top: 1px solid var(--border-subtle);
-    background: var(--surface-card-hover);
-    font-size: 0.7rem;
-    color: var(--text-muted);
+    border-top: 1px solid var(--color-rule);
+    background: var(--color-paper);
+    font-size: 0.75rem;
+    color: var(--color-muted);
   }
 
   .nav-tips {
@@ -423,23 +433,32 @@
 
   .tip kbd {
     padding: 0.1rem 0.35rem;
-    background: var(--surface-glass);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    font-family: var(--font-mono);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
+    font-family: var(--font-outlier);
   }
 
   .brand-tag {
     display: flex;
     align-items: center;
     gap: 0.3rem;
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    color: var(--accent-cyan);
+    font-family: var(--font-outlier);
+    font-size: 0.75rem;
+    color: var(--color-cool);
   }
 
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-8px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .palette-backdrop {
+      animation: none !important;
+    }
+    .command-item {
+      transition: none !important;
+    }
   }
 </style>

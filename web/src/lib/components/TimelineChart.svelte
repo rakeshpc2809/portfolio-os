@@ -9,6 +9,7 @@
     type IChartApi, 
     type ISeriesApi 
   } from 'lightweight-charts';
+  import { TrendingUp, Shield } from '@lucide/svelte';
   import type { NetworthTrendDto } from '../api';
   import { formatCompactINR } from '../formatters';
 
@@ -227,7 +228,7 @@
 <div class="chart-panel obsidian-card">
   <div class="chart-header">
     <div class="title-wrap">
-      <span class="chart-icon">📈</span>
+      <TrendingUp size={18} class="chart-icon" />
       <h3 class="chart-title">Net Worth & Capital Invested Timeline</h3>
     </div>
     <div class="range-selector">
@@ -248,7 +249,7 @@
     {#if effectiveQuiet}
       <div class="quiet-chart-shield">
         <div class="shield-dialog">
-          <span class="shield-lock">🧘</span>
+          <Shield size={32} class="shield-lock" />
           <h4>Zen Mode Shield</h4>
           <p>Portfolio timeline and interim market fluctuations hidden for peace of mind</p>
         </div>
@@ -272,10 +273,9 @@
   .chart-panel {
     padding: 22px 24px;
     position: relative;
-    background: var(--surface-card);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
   }
 
   .chart-header {
@@ -291,53 +291,51 @@
     gap: 10px;
   }
 
-  .chart-icon {
-    font-size: 1.25rem;
+  :global(.chart-icon) {
+    color: var(--color-cool);
   }
 
   .chart-title {
-    font-family: var(--font-brand);
     font-size: 1.15rem;
     font-weight: 700;
-    color: #FFFFFF;
+    color: var(--color-ink);
     margin: 0;
-    letter-spacing: -0.01em;
   }
 
   .range-selector {
     display: flex;
     gap: 4px;
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--color-paper-3);
     padding: 3px;
     border-radius: var(--radius-pill);
-    border: 1px solid var(--border-hairline);
+    border: 1px solid var(--color-rule);
   }
 
   .range-btn {
     padding: 5px 12px;
-    font-family: var(--font-brand);
     font-size: 0.78rem;
-    font-weight: 700;
-    color: var(--text-muted);
+    font-weight: 600;
+    color: var(--color-muted);
     background: transparent;
     border: none;
     border-radius: var(--radius-pill);
     cursor: pointer;
-    transition: transform 0.18s var(--ease-bounce), 
-                color 0.18s ease, 
-                background 0.18s ease, 
-                box-shadow 0.18s ease;
+    transition: color 0.15s ease, background 0.15s ease;
   }
 
   .range-btn:hover {
-    color: #FFFFFF;
-    transform: scale(1.05);
+    color: var(--color-ink);
+    background: var(--color-paper);
+  }
+
+  .range-btn:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
   }
 
   .range-btn.active {
-    background: linear-gradient(135deg, var(--accent-cyan), #3B82F6);
-    color: #FFFFFF;
-    box-shadow: 0 3px 14px rgba(6, 182, 212, 0.45);
+    background: var(--color-cool);
+    color: var(--color-paper-3);
   }
 
   .chart-viewport-wrap {
@@ -354,12 +352,12 @@
   .quiet-chart-shield {
     position: absolute;
     inset: 0;
-    background: rgba(4, 7, 13, 0.88);
+    background: var(--color-paper-3);
     backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-card);
     z-index: 10;
   }
 
@@ -368,24 +366,24 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   }
 
-  .shield-lock {
-    font-size: 1.8rem;
+  :global(.shield-lock) {
+    color: var(--color-accent);
   }
 
   .shield-dialog h4 {
     margin: 0;
     font-size: 0.95rem;
     font-weight: 700;
-    color: var(--accent-amber);
+    color: var(--color-accent);
   }
 
   .shield-dialog p {
     margin: 0;
     font-size: 0.78rem;
-    color: var(--text-muted);
+    color: var(--color-muted);
   }
 
   .chart-legend {
@@ -393,10 +391,10 @@
     gap: 20px;
     margin-top: 14px;
     padding-top: 10px;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--color-rule);
     font-size: 0.75rem;
-    color: var(--text-muted);
-    font-family: var(--font-mono);
+    color: var(--color-muted);
+    font-family: var(--font-outlier);
   }
 
   .legend-item {
@@ -412,12 +410,17 @@
   }
 
   .line-cyan {
-    background: var(--accent-cyan);
-    box-shadow: 0 0 6px var(--glow-cyan);
+    background: var(--color-cool);
   }
 
   .line-grey {
-    background: #64748B;
-    border-top: 1px dashed #64748B;
+    background: var(--color-muted);
+    border-top: 1px dashed var(--color-muted);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .range-btn {
+      transition: none !important;
+    }
   }
 </style>

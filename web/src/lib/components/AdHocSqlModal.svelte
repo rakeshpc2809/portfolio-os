@@ -168,17 +168,17 @@
       <!-- Header -->
       <div class="modal-header">
         <div class="header-left">
+          <h2 id="sql-modal-title" class="title">Ad-Hoc SQL Cockpit</h2>
           <div class="badge-row">
             <span class="badge duckdb-badge">
               <Database size={13} />
-              <span>DUCKDB-WASM ENGINE</span>
+              <span>DuckDB-Wasm engine</span>
             </span>
             <span class="badge zero-copy-badge">
               <Sparkles size={13} />
-              <span>ZERO-COPY IN-BROWSER OPFS</span>
+              <span>Zero-copy in-browser OPFS</span>
             </span>
           </div>
-          <h2 id="sql-modal-title" class="title">Ad-Hoc SQL Cockpit</h2>
         </div>
         <button type="button" class="close-btn" onclick={onclose} aria-label="Close modal">
           <X size={18} />
@@ -307,25 +307,25 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: var(--color-paper-3);
     backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: var(--z-modal);
     padding: 1.5rem;
   }
 
   .sql-modal-card {
-    background: var(--bg-card, #11141c);
-    border: 1px solid var(--border-color, #232936);
-    border-radius: 12px;
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
     width: 100%;
     max-width: 950px;
     height: 85vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+    box-shadow: none;
     overflow: hidden;
   }
 
@@ -334,59 +334,67 @@
     justify-content: space-between;
     align-items: flex-start;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid var(--border-color, #232936);
-    background: rgba(255, 255, 255, 0.01);
+    border-bottom: 1px solid var(--color-rule);
+    background: var(--color-paper);
   }
 
   .badge-row {
     display: flex;
     gap: 0.5rem;
-    margin-bottom: 0.5rem;
+    margin-top: 0.4rem;
   }
 
   .badge {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: var(--font-outlier);
     padding: 0.2rem 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
   }
 
   .duckdb-badge {
-    background: rgba(245, 158, 11, 0.15);
-    color: #f59e0b;
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
   }
 
   .zero-copy-badge {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    background: var(--color-cool-soft);
+    color: var(--color-cool);
+    border: 1px solid var(--color-cool);
   }
 
   .title {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #fff;
+    color: var(--color-ink);
     margin: 0;
   }
 
   .close-btn {
     background: transparent;
     border: none;
-    color: var(--text-muted, #717d96);
+    color: var(--color-muted);
     cursor: pointer;
     padding: 0.4rem;
-    border-radius: 6px;
-    transition: all 0.15s ease;
+    border-radius: var(--radius-pill);
+    transition: color 0.15s ease, background 0.15s ease;
   }
 
   .close-btn:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.05);
+    color: var(--color-ink);
+    background: var(--color-paper-3);
+  }
+
+  .close-btn:focus-visible,
+  .preset-chip:focus-visible,
+  .run-btn:focus-visible,
+  .export-btn:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
   }
 
   .toolbar {
@@ -394,15 +402,14 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.65rem 1.5rem;
-    background: rgba(0, 0, 0, 0.2);
-    border-bottom: 1px solid var(--border-color, #232936);
+    background: var(--color-paper-3);
+    border-bottom: 1px solid var(--color-rule);
     overflow-x: auto;
   }
 
   .toolbar-label {
     font-size: 0.75rem;
-    color: var(--text-muted, #717d96);
-    text-transform: uppercase;
+    color: var(--color-muted);
     font-weight: 600;
   }
 
@@ -412,27 +419,27 @@
   }
 
   .preset-chip {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border-color, #232936);
-    color: #cbd5e1;
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    color: var(--color-ink-2);
     font-size: 0.75rem;
     padding: 0.25rem 0.6rem;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   }
 
   .preset-chip:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-    border-color: rgba(255, 255, 255, 0.2);
+    background: var(--color-paper);
+    color: var(--color-ink);
+    border-color: var(--color-cool);
   }
 
   .editor-pane {
     padding: 1rem 1.5rem;
-    border-bottom: 1px solid var(--border-color, #232936);
-    background: #090b10;
+    border-bottom: 1px solid var(--color-rule);
+    background: var(--color-paper-3);
   }
 
   .pane-header {
@@ -448,18 +455,17 @@
     gap: 0.4rem;
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--text-muted, #717d96);
-    text-transform: uppercase;
+    color: var(--color-muted);
   }
 
   .run-btn {
-    background: #10b981;
-    color: #000;
+    background: var(--color-ok);
+    color: var(--color-paper-3);
     border: none;
     font-size: 0.75rem;
     font-weight: 700;
     padding: 0.35rem 0.85rem;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
     display: flex;
     align-items: center;
     gap: 0.4rem;
@@ -468,7 +474,8 @@
   }
 
   .run-btn:hover:not(:disabled) {
-    background: #34d399;
+    background: var(--color-ok);
+    filter: brightness(1.1);
   }
 
   .run-btn:disabled {
@@ -478,20 +485,20 @@
 
   .sql-textarea {
     width: 100%;
-    background: #0d1117;
-    border: 1px solid #21262d;
-    border-radius: 6px;
-    color: #e6edf3;
+    background: var(--color-paper);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
+    color: var(--color-ink);
     font-size: 0.85rem;
     line-height: 1.45;
     padding: 0.75rem;
     resize: none;
     outline: none;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-outlier);
   }
 
   .sql-textarea:focus {
-    border-color: #3b82f6;
+    border-color: var(--color-cool);
   }
 
   .status-bar {
@@ -499,8 +506,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 1.5rem;
-    background: rgba(0, 0, 0, 0.4);
-    border-bottom: 1px solid var(--border-color, #232936);
+    background: var(--color-paper-3);
+    border-bottom: 1px solid var(--color-rule);
     font-size: 0.75rem;
   }
 
@@ -511,49 +518,50 @@
   }
 
   .status-pill.ok {
-    color: #10b981;
+    color: var(--color-ok);
   }
 
   .status-pill.error {
-    color: #ef4444;
+    color: var(--color-bad);
   }
 
   .status-right {
     display: flex;
     align-items: center;
     gap: 1rem;
-    color: var(--text-muted, #717d96);
+    color: var(--color-muted);
   }
 
   .timing-badge {
     display: flex;
     align-items: center;
     gap: 0.3rem;
-    color: #38bdf8;
+    color: var(--color-cool);
   }
 
   .export-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border-color, #232936);
-    color: #fff;
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    color: var(--color-ink);
     padding: 0.2rem 0.5rem;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
     display: flex;
     align-items: center;
     gap: 0.3rem;
     font-size: 0.7rem;
     cursor: pointer;
+    transition: background 0.15s ease;
   }
 
   .export-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-paper);
   }
 
   .results-container {
     flex: 1;
     overflow: hidden;
     position: relative;
-    background: #080a0f;
+    background: var(--color-paper-3);
   }
 
   .table-scroller {
@@ -572,24 +580,24 @@
   .results-table th {
     position: sticky;
     top: 0;
-    background: #11141c;
+    background: var(--color-paper);
     padding: 0.6rem 0.85rem;
-    color: #94a3b8;
-    border-bottom: 1px solid var(--border-color, #232936);
+    color: var(--color-muted);
+    border-bottom: 1px solid var(--color-rule);
     font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.7rem;
+    font-size: 0.75rem;
   }
 
   .results-table td {
     padding: 0.5rem 0.85rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    color: #e2e8f0;
+    border-bottom: 1px solid var(--color-rule);
+    color: var(--color-ink-2);
     white-space: nowrap;
+    font-family: var(--font-outlier);
   }
 
   .alt-row {
-    background: rgba(255, 255, 255, 0.015);
+    background: var(--color-paper-2);
   }
 
   .results-loading, .no-results {
@@ -599,19 +607,31 @@
     justify-content: center;
     height: 100%;
     gap: 0.75rem;
-    color: var(--text-muted, #717d96);
+    color: var(--color-muted);
   }
 
   .spinner {
     width: 24px;
     height: 24px;
-    border: 2px solid rgba(255, 255, 255, 0.1);
-    border-top-color: #3b82f6;
+    border: 2px solid var(--color-rule);
+    border-top-color: var(--color-cool);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
 
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: none !important;
+    }
+    .close-btn,
+    .preset-chip,
+    .run-btn,
+    .export-btn {
+      transition: none !important;
+    }
   }
 </style>

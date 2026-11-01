@@ -58,7 +58,7 @@ pub fn render_braille_sparkline(
         for col_pair in 0..cols {
             let mut bits: u32 = 0x2800; // Braille empty base
 
-            for side in 0..2usize {
+            for (side, side_dots) in dot_bits.iter().enumerate() {
                 let data_idx = col_pair * 2 + side;
                 if data_idx >= sampled.len() { continue; }
 
@@ -68,10 +68,10 @@ pub fn render_braille_sparkline(
                 let fill_up_to_dot = (normalized * total_dots as f64) as usize;
                 let dot_base = (cell_rows - 1 - row_idx) * 4;
 
-                for dot_row in 0..4usize {
+                for (dot_row, &dot_mask) in side_dots.iter().enumerate() {
                     let dot_abs = dot_base + dot_row;
                     if dot_abs < fill_up_to_dot {
-                        bits |= dot_bits[side][dot_row];
+                        bits |= dot_mask;
                     }
                 }
             }

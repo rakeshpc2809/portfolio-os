@@ -67,11 +67,11 @@ public class DuckDbProjector implements AutoCloseable {
             jdbcUrl = "jdbc:duckdb:" + file.getAbsolutePath();
         }
 
-        int duckDbThreads = 1;
+        int duckDbThreads = 4;
         String envThreads = System.getenv("DUCKDB_THREADS");
         if (envThreads != null && !envThreads.isBlank()) {
             try {
-                duckDbThreads = Integer.parseInt(envThreads.trim());
+                duckDbThreads = Math.max(1, Integer.parseInt(envThreads.trim()));
             } catch (NumberFormatException ignored) {}
         }
 
@@ -85,7 +85,7 @@ public class DuckDbProjector implements AutoCloseable {
         if (memLimit == null || memLimit.isBlank()) {
             memLimit = "1024MB";
         }
-        config.setConnectionInitSql("SET memory_limit = '" + memLimit.trim() + "'; SET threads = 4;");
+        config.setConnectionInitSql("SET memory_limit = '" + memLimit.trim() + "'; SET threads = " + duckDbThreads + ";");
 
         this.dataSource = new HikariDataSource(config);
         initReadSchema(duckDbThreads);

@@ -12,6 +12,7 @@ use crate::ui::MUTED;
 /// Tax Strategy deck:
 ///   - Sec 112A exemption progress bar (reads `exemption_utilized_pct` from API)
 ///   - Overlap warning badge (reads `overlap_summary.threshold_breached` from API)
+///
 /// Zero client-side arithmetic — all values pre-computed by core-node.
 pub fn render_tax_strategy(f: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     let block = Block::default()

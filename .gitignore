@@ -45,6 +45,7 @@ node_modules/
 dist/
 .svelte-kit/
 .vite/
+.hallmark/
 
 # Databases & local data files
 /data/

@@ -130,13 +130,13 @@
         <span class="header-sub">Dual-ring visual drift map (Outer: Actual vs Inner: Target)</span>
       </div>
     </div>
-    <span class="v23-pill mono">v2.3 POLICY</span>
+    <span class="v23-pill mono">v2.3 Policy</span>
   </div>
 
   <div class="donut-body">
     <!-- SVG Donut Graphic -->
     <div class="svg-container">
-      <svg viewBox="0 0 260 260" class="donut-svg">
+      <svg viewBox="0 0 260 260" class="donut-svg" aria-hidden="true">
         <defs>
           <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -145,7 +145,7 @@
         </defs>
 
         <!-- Inner target ring track -->
-        <circle cx={cx} cy={cy} r="60" fill="none" stroke="rgba(255, 255, 255, 0.05)" stroke-width="6" />
+        <circle cx={cx} cy={cy} r="60" fill="none" stroke="var(--color-rule)" stroke-width="6" />
 
         <!-- Outer Slices -->
         {#each slices() as s}
@@ -154,7 +154,7 @@
             d={s.path}
             fill={s.color}
             opacity={hoveredBucket && !isHovered ? 0.35 : 0.9}
-            stroke="#0a0f1d"
+            stroke="var(--color-paper)"
             stroke-width="2.5"
             class="slice-path"
             class:hovered={isHovered}
@@ -224,11 +224,11 @@
               <span class="target-pct text-muted">Goal: {s.targetPct.toFixed(1)}%</span>
             </div>
             {#if s.bucket === 'LEGACY_HOLDINGS'}
-              <span class="badge badge-rose">EXIT</span>
+              <span class="badge badge-rose">Exit</span>
             {:else if isDrift}
               <span class="badge badge-amber">{s.driftPct > 0 ? '+' : ''}{s.driftPct.toFixed(1)}%</span>
             {:else}
-              <span class="badge badge-green">IN-BAND</span>
+              <span class="badge badge-green">In-band</span>
             {/if}
           </div>
         </div>
@@ -241,9 +241,9 @@
   .donut-card {
     padding: 18px 20px;
     margin-top: 16px;
-    background: var(--surface-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-card);
   }
 
   .donut-header {
@@ -265,31 +265,31 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    background: rgba(6, 182, 212, 0.1);
-    border: 1px solid rgba(6, 182, 212, 0.25);
-    border-radius: var(--radius-md);
+    background: var(--color-cool-soft);
+    border: 1px solid var(--color-cool);
+    border-radius: var(--radius-pill);
   }
 
   .header-title {
     font-size: 0.95rem;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--color-ink);
     margin: 0;
   }
 
   .header-sub {
     font-size: 0.72rem;
-    color: var(--text-muted);
+    color: var(--color-muted);
   }
 
   .v23-pill {
-    font-size: 0.65rem;
-    font-weight: 700;
+    font-size: 0.75rem;
+    font-weight: 600;
     padding: 2px 8px;
-    border-radius: var(--radius-xs);
-    background: rgba(6, 182, 212, 0.1);
-    color: var(--accent-cyan);
-    border: 1px solid rgba(6, 182, 212, 0.3);
+    border-radius: var(--radius-pill);
+    background: var(--color-cool-soft);
+    color: var(--color-cool);
+    border: 1px solid var(--color-cool);
   }
 
   .donut-body {
@@ -313,7 +313,7 @@
 
   .slice-path {
     cursor: pointer;
-    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity 0.15s ease, transform 0.15s ease;
   }
   .slice-path:hover {
     transform: scale(1.02);
@@ -321,28 +321,27 @@
   }
 
   .center-main-text {
-    font-family: var(--font-mono);
+    font-family: var(--font-outlier);
     font-size: 1.25rem;
-    font-weight: 800;
-    fill: #ffffff;
+    font-weight: 700;
+    fill: var(--color-ink);
     text-anchor: middle;
     dominant-baseline: middle;
   }
 
   .center-sub-text {
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    font-weight: 700;
-    fill: var(--text-muted);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    fill: var(--color-muted);
     text-anchor: middle;
-    letter-spacing: 0.08em;
   }
 
   .center-drift-text {
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-family: var(--font-outlier);
+    font-size: 0.75rem;
     font-weight: 600;
-    fill: var(--text-muted);
+    fill: var(--color-muted);
     text-anchor: middle;
   }
 
@@ -357,16 +356,20 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-md);
+    background: var(--color-paper-3);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-pill);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
   }
   .legend-row:hover, .legend-row.active {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(6, 182, 212, 0.4);
+    background: var(--color-paper);
+    border-color: var(--color-accent);
     transform: translateX(3px);
+  }
+  .legend-row:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
   }
 
   .legend-left {
@@ -390,7 +393,7 @@
 
   .legend-name {
     font-size: 0.82rem;
-    color: #ffffff;
+    color: var(--color-ink);
   }
 
   .legend-val {
@@ -419,28 +422,36 @@
   }
 
   .badge {
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    font-weight: 700;
+    font-family: var(--font-outlier);
+    font-size: 0.75rem;
+    font-weight: 600;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-pill);
     white-space: nowrap;
   }
 
   .badge-green {
-    background: rgba(16, 185, 129, 0.15);
-    color: var(--accent-emerald-bright);
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
+    border: 1px solid var(--color-ok);
   }
   .badge-amber {
-    background: rgba(245, 158, 11, 0.15);
-    color: var(--accent-amber-bright);
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
   }
   .badge-rose {
-    background: rgba(244, 63, 94, 0.15);
-    color: var(--accent-rose);
-    border: 1px solid rgba(244, 63, 94, 0.3);
+    background: var(--color-bad-soft);
+    color: var(--color-bad);
+    border: 1px solid var(--color-bad);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .slice-path,
+    .legend-row {
+      transition: none !important;
+      transform: none !important;
+    }
   }
 
   @media (max-width: 840px) {

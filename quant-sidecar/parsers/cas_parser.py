@@ -1,9 +1,12 @@
+import logging
 import re
 import uuid
 from decimal import Decimal
 from typing import List, Optional
 from datetime import datetime, date
 from .models import TaxEventSchema, EventType
+
+logger = logging.getLogger("cas_parser")
 
 DATE_REGEX = re.compile(r"^(\d{2}-[A-Za-z]{3}-\d{4})\s+(.+)$")
 # Added support for both CAMS and KFintech PAN formats in CAS
@@ -129,8 +132,8 @@ class CasPdfParser:
                                             ev.declared_closing_units = current_closing_units
                                     else:
                                         break
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("Failed parsing closing balance '%s': %s", close_match.group(1), e)
                             continue
 
                         if any(
@@ -167,8 +170,8 @@ class CasPdfParser:
                                     if is_neg:
                                         val = -val
                                     clean_nums.append(val)
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.debug("Skipping unparseable numeric token '%s': %s", raw_val, e)
 
                             if len(clean_nums) >= 3:
                                 # Extract trailing numeric columns from the right to avoid matching numbers in scheme/tx descriptions

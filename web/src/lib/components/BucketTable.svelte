@@ -3,6 +3,7 @@
   import type { BucketAllocationDto } from '../api';
   import { fetchFactorBenchmarks, type FactorBenchmarkMetric } from '../api';
   import { formatINR } from '../formatters';
+  import { Scale, ChevronRight, ShieldCheck } from '@lucide/svelte';
 
   interface Props {
     buckets?: BucketAllocationDto[];
@@ -123,10 +124,10 @@
 <div class="bucket-card obsidian-card">
   <div class="bucket-header">
     <div class="title-wrap">
-      <span class="header-icon">⚖️</span>
+      <Scale size={16} class="header-icon" />
       <h3 class="header-title">Target Allocation & Drift Status</h3>
     </div>
-    <span class="version-tag">POLICY v2.3</span>
+    <span class="version-tag">Policy v2.3</span>
   </div>
 
   <div class="table-wrap">
@@ -169,28 +170,28 @@
           >
             <td>
               <div class="bucket-name-cell">
-                <span class="chevron" class:open={isExpanded}>▶</span>
+                <ChevronRight size={14} class="chevron {isExpanded ? 'open' : ''}" />
                 <span class="bucket-label">{formatBucketName(b.bucket)}</span>
                 <span class="fund-count-pill" style="color: {color}; border-color: {color}33;">
                   {hasFunds ? `${b.funds!.length} ${b.funds!.length === 1 ? 'Fund' : 'Funds'}` : '0 Funds'}
                 </span>
               </div>
             </td>
-            <td class="tnum" style="text-align: right; color: var(--text-muted); font-weight: 600;">
+            <td class="tnum" style="text-align: right; color: var(--text-muted); font-weight: 500;">
               {b.bucket === 'LEGACY_HOLDINGS' ? '0.0%' : (b.target_pct || 0).toFixed(1) + '%'}
             </td>
-            <td class="tnum" style="text-align: right; font-weight: 800; font-size: 0.95rem; color: {color};">
+            <td class="tnum" style="text-align: right; font-weight: 600; font-size: 0.95rem; color: {color};">
               {(b.current_pct || 0).toFixed(1)}%
             </td>
             <td>
               <div class="alloc-track">
                 <div
                   class="alloc-bar"
-                  style="width: {Math.min(100, Math.max(0, (b.current_pct || 0) * 1.5))}%; background: {gradient}; box-shadow: 0 0 12px {color}66;"
+                  style="transform: scaleX({Math.min(1, Math.max(0, (b.current_pct || 0) * 1.5 / 100))}); background: {gradient};"
                 ></div>
               </div>
             </td>
-            <td class="tnum" style="text-align: right; font-weight: 700; font-size: 0.92rem;">
+            <td class="tnum" style="text-align: right; font-weight: 600; font-size: 0.92rem;">
               {#if effectiveQuiet}
                 <span style="color: var(--text-muted);">₹ •••,•••</span>
               {:else}
@@ -199,11 +200,11 @@
             </td>
             <td style="text-align: center;">
               {#if b.bucket === 'LEGACY_HOLDINGS'}
-                <span class="badge badge-phaseout">PHASE-OUT</span>
+                <span class="badge badge-phaseout">Phase-out</span>
               {:else if isDrift}
-                <span class="badge badge-drift" class:negative={drift < 0}>DRIFT ({drift > 0 ? '+' : ''}{drift.toFixed(1)}%)</span>
+                <span class="badge badge-drift" class:negative={drift < 0}>Drift ({drift > 0 ? '+' : ''}{drift.toFixed(1)}%)</span>
               {:else}
-                <span class="badge badge-balanced">BALANCED</span>
+                <span class="badge badge-balanced">Balanced</span>
               {/if}
             </td>
           </tr>
@@ -236,7 +237,7 @@
                         <span class="fund-isin mono">{isin}</span>
                         {#if factor}
                           <span class="fund-bench-badge" title="Designated Benchmark: {factor.benchmarkName} ({factor.benchmarkId})">
-                            🎯 {factor.benchmarkName.replace(/TRI/g, '').trim()}
+                            {factor.benchmarkName.replace(/TRI/g, '').trim()}
                           </span>
                         {/if}
                       </div>
@@ -283,7 +284,7 @@
                         }}
                         title="View Tax Lots & FIFO acquisition history"
                       >
-                        Lots ➔
+                        Lots
                       </button>
                     </div>
                   </div>
@@ -291,12 +292,12 @@
               </tr>
             {/each}
           {:else if isExpanded}
-            <!-- Empty Bucket Informative Card -->
+            <!-- Empty Bucket Informative State -->
             <tr class="fund-subrow">
               <td colspan="6">
-                <div class="empty-bucket-card">
+                <div class="empty-bucket-state">
                   <div class="empty-bucket-left">
-                    <span class="empty-icon" style="color: {color};">🛡️</span>
+                    <ShieldCheck size={18} class="empty-icon" style="color: {color};" />
                     <div class="empty-text">
                       <span class="empty-title">No Active Holdings in {formatBucketName(b.bucket)}</span>
                       <span class="empty-desc">
@@ -307,7 +308,7 @@
                     </div>
                   </div>
                   <div class="empty-badge" style="border-color: {color}44; color: {color};">
-                    AWAITING DEPLOYMENT
+                    Awaiting deployment
                   </div>
                 </div>
               </td>
@@ -323,6 +324,9 @@
   .bucket-card {
     padding: 18px 20px;
     margin-top: 16px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
   }
 
   .bucket-header {
@@ -339,24 +343,24 @@
   }
 
   .header-icon {
-    font-size: 1.1rem;
+    color: var(--accent-cyan);
   }
 
   .header-title {
     font-family: var(--font-brand);
     font-size: 0.95rem;
-    font-weight: 700;
-    color: #ffffff;
+    font-weight: 600;
+    color: var(--text-main);
     letter-spacing: -0.01em;
   }
 
   .version-tag {
     font-family: var(--font-mono);
     font-size: 0.65rem;
-    font-weight: 700;
+    font-weight: 500;
     padding: 2px 8px;
     border-radius: var(--radius-xs);
-    background: oklch(1 0 0 / 0.05);
+    background: var(--surface-void);
     color: var(--text-muted);
     border: 1px solid var(--border-hairline);
   }
@@ -372,11 +376,11 @@
   }
 
   .obsidian-table th {
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
     color: var(--text-muted);
     padding: 8px 12px;
     border-bottom: 1px solid var(--border-hairline);
@@ -384,16 +388,16 @@
 
   .obsidian-table td {
     padding: 12px;
-    border-bottom: 1px solid oklch(1 0 0 / 0.04);
+    border-bottom: 1px solid var(--border-hairline);
   }
 
   .bucket-row {
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background-color 0.15s ease;
     user-select: none;
   }
   .bucket-row:hover {
-    background: oklch(1 0 0 / 0.035);
+    background: var(--surface-card-hover);
   }
   .bucket-row:focus-visible {
     outline: 2px solid var(--accent-cyan);
@@ -407,9 +411,8 @@
   }
 
   .chevron {
-    font-size: 0.62rem;
     color: var(--text-muted);
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.2s ease;
     display: inline-block;
   }
   .chevron.open {
@@ -417,69 +420,70 @@
   }
 
   .bucket-label {
-    font-weight: 600;
-    color: #ffffff;
-    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--text-main);
+    font-family: var(--font-sans);
   }
 
   .fund-count-pill {
     font-family: var(--font-mono);
     font-size: 0.68rem;
-    font-weight: 600;
+    font-weight: 500;
     padding: 1px 7px;
-    border-radius: 4px;
-    background: oklch(1 0 0 / 0.05);
+    border-radius: var(--radius-xs);
+    background: var(--surface-void);
     border: 1px solid var(--border-hairline);
   }
 
   .alloc-track {
     width: 100%;
-    height: 7px;
-    background: rgba(255, 255, 255, 0.08);
-    border-radius: var(--radius-pill);
+    height: 5px;
+    background: var(--surface-void);
+    border-radius: var(--radius-xs);
     overflow: hidden;
   }
 
   .alloc-bar {
     height: 100%;
-    border-radius: var(--radius-pill);
-    transition: width 0.4s var(--ease-bounce);
+    width: 100%;
+    transform-origin: left;
+    border-radius: var(--radius-xs);
+    transition: transform 0.3s ease;
   }
 
   .badge {
     font-family: var(--font-sans);
     font-size: 0.72rem;
-    font-weight: 700;
-    padding: 3px 9px;
-    border-radius: var(--radius-pill);
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: var(--radius-xs);
     display: inline-block;
-    letter-spacing: 0.03em;
   }
   .badge-balanced {
-    background: rgba(16, 185, 129, 0.16);
-    color: var(--accent-emerald-bright);
-    border: 1px solid rgba(16, 185, 129, 0.35);
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
+    border: 1px solid var(--border-hairline);
   }
   .badge-drift {
-    background: rgba(245, 158, 11, 0.16);
-    color: var(--accent-amber-bright);
-    border: 1px solid rgba(245, 158, 11, 0.35);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    border: 1px solid var(--border-hairline);
   }
   .badge-drift.negative {
-    background: rgba(244, 63, 94, 0.16);
-    color: var(--accent-rose);
-    border-color: rgba(244, 63, 94, 0.35);
+    background: var(--color-bad-soft);
+    color: var(--color-bad);
+    border: 1px solid var(--border-hairline);
   }
   .badge-phaseout {
-    background: rgba(244, 63, 94, 0.16);
-    color: var(--accent-rose);
-    border: 1px solid rgba(244, 63, 94, 0.4);
+    background: var(--color-bad-soft);
+    color: var(--color-bad);
+    border: 1px solid var(--border-hairline);
   }
 
   /* Subrows */
   .fund-subrow td {
     padding: 4px 12px 10px 32px;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--surface-void);
     border-bottom: 1px solid var(--border-hairline);
   }
 
@@ -487,17 +491,17 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-card);
     border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     padding: 10px 14px;
     margin-bottom: 6px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
   }
   .fund-item:hover {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.12);
+    background: var(--surface-card-hover);
+    border-color: var(--border-subtle);
   }
 
   .fund-info {
@@ -507,8 +511,8 @@
   }
 
   .fund-name {
-    font-weight: 600;
-    color: #ffffff;
+    font-weight: 500;
+    color: var(--text-main);
     font-size: 0.85rem;
   }
 
@@ -533,8 +537,8 @@
     margin-right: 4px;
   }
   .m-val {
-    color: #ffffff;
-    font-weight: 600;
+    color: var(--text-main);
+    font-weight: 500;
   }
 
   .fund-name-row {
@@ -555,44 +559,44 @@
   .fund-bench-badge {
     font-size: 0.68rem;
     color: var(--accent-cyan);
-    background: rgba(6, 182, 212, 0.1);
-    border: 1px solid rgba(6, 182, 212, 0.25);
-    border-radius: 4px;
+    background: var(--accent-cyan-bg);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
     padding: 1px 6px;
     font-weight: 500;
   }
   .view-lots-btn-inline {
     font-size: 0.72rem;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--accent-cyan);
-    background: rgba(6, 182, 212, 0.12);
-    border: 1px solid rgba(6, 182, 212, 0.3);
+    background: var(--accent-cyan-bg);
+    border: 1px solid var(--border-hairline);
     padding: 3px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
     margin-left: 4px;
   }
   .view-lots-btn-inline:hover {
-    background: rgba(6, 182, 212, 0.25);
+    background: var(--surface-card-hover);
     border-color: var(--accent-cyan);
-    color: #fff;
+    color: var(--text-main);
   }
   .factor-quick-pill {
     padding: 2px 8px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius-xs);
+    background: var(--surface-void);
     border: 1px solid var(--border-hairline);
   }
 
-  /* Empty bucket state card */
-  .empty-bucket-card {
+  /* Empty bucket state (not a nested card) */
+  .empty-bucket-state {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px dashed var(--border-subtle);
-    border-radius: var(--radius-md);
+    background: var(--surface-void);
+    border: 1px dashed var(--border-hairline);
+    border-radius: var(--radius-sm);
     padding: 14px 18px;
     margin: 4px 0 8px 0;
   }
@@ -602,7 +606,7 @@
     gap: 12px;
   }
   .empty-icon {
-    font-size: 1.3rem;
+    opacity: 0.9;
   }
   .empty-text {
     display: flex;
@@ -610,8 +614,8 @@
     gap: 3px;
   }
   .empty-title {
-    font-weight: 600;
-    color: #ffffff;
+    font-weight: 500;
+    color: var(--text-main);
     font-size: 0.85rem;
   }
   .empty-desc {
@@ -624,20 +628,27 @@
     font-family: var(--font-mono);
   }
   .empty-badge {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: 0.68rem;
-    font-weight: 700;
+    font-weight: 500;
     padding: 3px 8px;
-    border-radius: 4px;
-    border: 1px solid;
+    border-radius: var(--radius-xs);
+    background: var(--surface-card);
+    border: 1px solid var(--border-hairline);
     white-space: nowrap;
   }
 
   @media (max-width: 768px) {
-    .empty-bucket-card {
+    .empty-bucket-state {
       flex-direction: column;
       align-items: flex-start;
       gap: 10px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .alloc-bar, .chevron, .fund-item, .view-lots-btn-inline {
+      transition: none !important;
     }
   }
 </style>

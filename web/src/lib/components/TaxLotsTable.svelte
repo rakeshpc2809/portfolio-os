@@ -394,7 +394,6 @@
       >
         <div class="modal-header">
           <div>
-            <span class="modal-badge">TAX LOT INSPECTOR</span>
             <h3 id="lot-modal-title" class="modal-title">{selectedLot.holding.asset_name}</h3>
             <p class="modal-sub">Lot ID: <code class="mono">{selectedLot.lot.lot_id}</code> • ISIN: <code class="mono">{selectedLot.holding.isin}</code></p>
           </div>
@@ -403,21 +402,21 @@
 
         <div class="modal-body">
           <div class="inspector-grid">
-            <div class="ins-card">
+            <div class="ins-cell">
               <span class="ins-label">Acquisition Date</span>
               <span class="ins-val mono">{selectedLot.lot.acquisition_date}</span>
             </div>
-            <div class="ins-card">
+            <div class="ins-cell">
               <span class="ins-label">Holding Period</span>
               <span class="ins-val mono">{selectedLot.lot.holding_period_days ?? '—'} days</span>
             </div>
-            <div class="ins-card">
+            <div class="ins-cell">
               <span class="ins-label">Tax Regime</span>
               <span class="ins-val status">
                 {selectedLot.lot.tax_term === 'LONG_TERM' ? 'LTCG (>365d, 12.5% over ₹1.25L)' : 'STCG (≤365d, 20% Flat)'}
               </span>
             </div>
-            <div class="ins-card">
+            <div class="ins-cell">
               <span class="ins-label">Grandfathering</span>
               <span class="ins-val">
                 {selectedLot.lot.is_grandfathered ? `Applicable (FMV 31-Jan-2018: ₹${selectedLot.lot.fmv_2018})` : 'Not Applicable (Post-2018)'}
@@ -502,7 +501,7 @@
     font-size: 0.8rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
   }
 
   .chip:hover {
@@ -511,33 +510,33 @@
   }
 
   .chip.active {
-    background: var(--surface-glass);
+    background: var(--surface-card);
     color: var(--text-primary);
     border-color: var(--accent-cyan);
-    box-shadow: 0 0 12px var(--glow-cyan);
   }
 
   .chip-badge {
     padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     font-size: 0.72rem;
     font-family: var(--font-mono);
   }
 
   .chip-badge.positive {
-    background: hsla(158, 85%, 45%, 0.15);
-    color: var(--accent-emerald);
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
   }
 
   .chip-badge.neutral {
-    background: hsla(215, 25%, 35%, 0.3);
+    background: var(--surface-void);
     color: var(--text-secondary);
+    border: 1px solid var(--border-hairline);
   }
 
   .chip-badge.negative {
-    background: rgba(244, 63, 94, 0.16);
-    color: var(--accent-rose-bright, #FB7185);
-    border: 1px solid rgba(244, 63, 94, 0.35);
+    background: var(--color-bad-soft);
+    color: var(--color-bad);
+    border: 1px solid var(--border-hairline);
   }
 
   .search-box {
@@ -575,8 +574,8 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    background: hsla(158, 85%, 45%, 0.08);
-    border: 1px solid hsla(158, 85%, 45%, 0.25);
+    background: var(--surface-void);
+    border: 1px solid var(--border-hairline);
     border-radius: var(--radius-md);
     color: var(--text-primary);
     font-size: 0.85rem;
@@ -599,21 +598,21 @@
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    background: hsla(158, 85%, 45%, 0.15);
-    border: 1px solid hsla(158, 85%, 45%, 0.35);
-    color: var(--accent-emerald);
+    background: var(--color-ok-soft);
+    border: 1px solid var(--border-hairline);
+    color: var(--color-ok);
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 500;
     padding: 0.35rem 0.65rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     text-decoration: none;
     white-space: nowrap;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   }
 
   .calendar-feed-btn:hover {
-    background: hsla(158, 85%, 45%, 0.25);
-    color: #fff;
+    background: var(--surface-card-hover);
+    color: var(--text-main);
     border-color: var(--accent-emerald);
   }
 
@@ -656,19 +655,18 @@
 
   .scheme-group-card {
     background: var(--surface-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-md);
     overflow: hidden;
-    transition: all var(--transition-fast);
+    transition: border-color 0.15s ease;
   }
 
   .scheme-group-card:hover {
-    border-color: var(--border-medium);
+    border-color: var(--border-subtle);
   }
 
   .scheme-group-card.expanded {
-    border-color: hsla(185, 85%, 52%, 0.3);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    border-color: var(--border-highlight);
   }
 
   .scheme-header {
@@ -678,7 +676,7 @@
     padding: 1rem 1.25rem;
     cursor: pointer;
     user-select: none;
-    transition: background var(--transition-fast);
+    transition: background-color 0.15s ease;
   }
 
   .scheme-header:hover {
@@ -698,9 +696,9 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    background: var(--surface-glass);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
+    background: var(--surface-void);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
     color: var(--text-secondary);
     cursor: pointer;
     flex-shrink: 0;
@@ -720,28 +718,28 @@
   }
 
   .scheme-name {
-    font-weight: 600;
+    font-weight: 500;
     font-size: 0.95rem;
-    color: var(--text-primary);
+    color: var(--text-main);
   }
 
   .isin-pill, .bucket-pill {
     padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     font-size: 0.7rem;
     font-family: var(--font-mono);
   }
 
   .isin-pill {
-    background: var(--surface-glass);
+    background: var(--surface-void);
     color: var(--text-muted);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-hairline);
   }
 
   .bucket-pill {
-    background: hsla(215, 25%, 35%, 0.2);
+    background: var(--accent-cyan-bg);
     color: var(--accent-cyan);
-    border: 1px solid hsla(185, 85%, 52%, 0.2);
+    border: 1px solid var(--border-hairline);
   }
 
   .sub-row {
@@ -769,10 +767,9 @@
   }
 
   .metric-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
+    font-size: 0.72rem;
     color: var(--text-muted);
-    letter-spacing: 0.04em;
+    font-weight: 500;
   }
 
   .metric-val {
@@ -785,19 +782,19 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     font-size: 0.85rem;
   }
 
   .gain-badge.positive {
-    background: hsla(158, 85%, 45%, 0.12);
-    color: var(--accent-emerald);
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
   }
 
   .gain-badge.negative {
-    background: rgba(244, 63, 94, 0.16);
-    color: var(--accent-rose-bright, #FB7185);
-    border: 1px solid rgba(244, 63, 94, 0.35);
+    background: var(--color-bad-soft);
+    color: var(--color-bad);
+    border: 1px solid var(--border-hairline);
   }
 
   .gain-badge .pct {
@@ -808,7 +805,7 @@
   /* Lots Table */
   .lots-table-wrapper {
     overflow-x: auto;
-    border-top: 1px solid var(--border-subtle);
+    border-top: 1px solid var(--border-hairline);
     background: var(--surface-void);
   }
 
@@ -821,22 +818,22 @@
   .lots-table th {
     padding: 0.6rem 0.85rem;
     text-align: left;
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: var(--font-sans);
     color: var(--text-muted);
-    background: hsla(220, 25%, 8%, 0.6);
-    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-void);
+    border-bottom: 1px solid var(--border-hairline);
   }
 
   .lots-table td {
     padding: 0.65rem 0.85rem;
-    border-bottom: 1px solid hsla(215, 25%, 20%, 0.4);
+    border-bottom: 1px solid var(--border-hairline);
     color: var(--text-secondary);
   }
 
   .lots-table tr:hover td {
-    background: hsla(215, 25%, 25%, 0.15);
+    background: var(--surface-card-hover);
   }
 
   .lot-id {
@@ -856,8 +853,8 @@
   }
 
   .gain-val.negative {
-    color: var(--accent-rose-bright, #FB7185) !important;
-    font-weight: 700;
+    color: var(--accent-rose-bright) !important;
+    font-weight: 600;
   }
 
   .sub-pct {
@@ -873,70 +870,69 @@
   .tax-badge {
     display: inline-block;
     padding: 0.15rem 0.45rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     font-size: 0.7rem;
-    font-weight: 600;
+    font-weight: 500;
   }
 
   .tax-badge.ltcg {
-    background: hsla(158, 85%, 45%, 0.15);
-    color: var(--accent-emerald);
-    border: 1px solid hsla(158, 85%, 45%, 0.3);
+    background: var(--color-ok-soft);
+    color: var(--color-ok);
+    border: 1px solid var(--border-hairline);
   }
 
   .tax-badge.stcg {
-    background: hsla(38, 92%, 50%, 0.15);
-    color: var(--accent-amber);
-    border: 1px solid hsla(38, 92%, 50%, 0.3);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    border: 1px solid var(--border-hairline);
   }
 
   .grandfather-badge {
     margin-left: 0.3rem;
     padding: 0.1rem 0.3rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     font-size: 0.65rem;
-    background: hsla(270, 70%, 55%, 0.2);
-    color: hsl(270, 80%, 75%);
-    border: 1px solid hsla(270, 70%, 55%, 0.4);
+    background: var(--accent-violet-bg);
+    color: var(--accent-violet-bright);
+    border: 1px solid var(--border-hairline);
   }
 
   .inspect-btn {
     padding: 0.25rem 0.55rem;
-    background: var(--surface-glass);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
+    background: var(--surface-void);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
     color: var(--text-secondary);
     font-size: 0.72rem;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
   }
 
   .inspect-btn:hover {
     color: var(--accent-cyan);
     border-color: var(--accent-cyan);
+    background: var(--surface-card);
   }
 
   /* Modal Dialog */
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.75);
+    background: color-mix(in oklab, var(--color-paper-3) 85%, transparent);
     backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
     padding: 1rem;
-    animation: fadeIn var(--transition-fast) ease-out;
   }
 
   .modal-card {
     background: var(--surface-card);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-xl);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
     width: 100%;
     max-width: 540px;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px var(--glow-cyan);
     overflow: hidden;
   }
 
@@ -945,22 +941,14 @@
     justify-content: space-between;
     align-items: flex-start;
     padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .modal-badge {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--accent-cyan);
-    font-weight: 700;
+    border-bottom: 1px solid var(--border-hairline);
   }
 
   .modal-title {
     font-size: 1.1rem;
     font-weight: 600;
-    color: var(--text-primary);
-    margin: 0.25rem 0;
+    color: var(--text-main);
+    margin: 0 0 0.25rem 0;
   }
 
   .modal-sub {
@@ -978,7 +966,7 @@
   }
 
   .close-btn:hover {
-    color: var(--text-primary);
+    color: var(--text-main);
   }
 
   .modal-body {
@@ -994,26 +982,25 @@
     gap: 0.75rem;
   }
 
-  .ins-card {
+  .ins-cell {
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
     padding: 0.65rem 0.85rem;
     background: var(--surface-void);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
   }
 
   .ins-label {
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: 0.72rem;
     color: var(--text-muted);
+    font-weight: 500;
   }
 
   .ins-val {
     font-size: 0.85rem;
-    color: var(--text-primary);
+    color: var(--text-main);
   }
 
   .ins-val.status {
@@ -1027,8 +1014,8 @@
     gap: 0.5rem;
     padding: 0.85rem 1rem;
     background: var(--surface-void);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
   }
 
   .fin-row {
@@ -1040,7 +1027,7 @@
 
   .fin-row.divider {
     height: 1px;
-    background: var(--border-subtle);
+    background: var(--border-hairline);
     margin: 0.3rem 0;
   }
 
@@ -1054,7 +1041,7 @@
   }
 
   .fin-val {
-    color: var(--text-primary);
+    color: var(--text-main);
   }
 
   .fin-val.positive {
@@ -1062,16 +1049,16 @@
   }
 
   .fin-val.negative {
-    color: var(--accent-rose-bright, #FB7185) !important;
-    font-weight: 700;
+    color: var(--accent-rose-bright) !important;
+    font-weight: 600;
   }
 
   .modal-footer {
     display: flex;
     justify-content: flex-end;
     padding: 1rem 1.5rem;
-    border-top: 1px solid var(--border-subtle);
-    background: var(--surface-card-hover);
+    border-top: 1px solid var(--border-hairline);
+    background: var(--surface-void);
   }
 
   .primary-btn {
@@ -1079,20 +1066,15 @@
     background: var(--accent-cyan);
     color: var(--surface-void);
     border: none;
-    border-radius: var(--radius-md);
-    font-weight: 600;
+    border-radius: var(--radius-xs);
+    font-weight: 500;
     font-size: 0.85rem;
     cursor: pointer;
-    transition: opacity var(--transition-fast);
+    transition: opacity 0.15s ease;
   }
 
   .primary-btn:hover {
     opacity: 0.9;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
   }
 
   @media (max-width: 768px) {
@@ -1111,6 +1093,12 @@
     }
     .inspector-grid {
       grid-template-columns: 1fr;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chip, .calendar-feed-btn, .scheme-group-card, .inspect-btn, .primary-btn {
+      transition: none !important;
     }
   }
 </style>

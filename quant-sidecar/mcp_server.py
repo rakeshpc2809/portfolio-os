@@ -450,8 +450,8 @@ def query_duckdb_readonly(sql: str, limit: int = 100) -> str:
                     conn.execute("CREATE VIEW IF NOT EXISTS fund_holdings AS SELECT * FROM tax_db.fund_holdings")
                 if not (DATA_DIR / "nav_export.parquet").exists():
                     conn.execute("CREATE VIEW IF NOT EXISTS nav_export AS SELECT * FROM tax_db.nav_history")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Could not attach fallback tax_ledger.duckdb in query_duckdb_readonly: %s", e)
 
         bounded_sql = f"SELECT * FROM ({cleaned_sql}) AS _q LIMIT {min(max(1, limit), 500)}"
         rel = conn.sql(bounded_sql)
