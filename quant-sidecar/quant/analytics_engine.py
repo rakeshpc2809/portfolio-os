@@ -1,18 +1,18 @@
+import io
+import logging
+
 import numpy as np
 import pandas as pd
-import logging
-from typing import List, Optional
-from pydantic import BaseModel
-
-import io
 import pyarrow as pa
 import pyarrow.ipc as ipc
+from pydantic import BaseModel
 
 logger = logging.getLogger("quant.analytics_engine")
 try:
     import quantstats as qs
 except ImportError:
     qs = None
+
 
 class TrajectoryPoint(BaseModel):
     year: int
@@ -21,6 +21,7 @@ class TrajectoryPoint(BaseModel):
     p50: float
     p75: float
     p90: float
+
 
 class FireSimulationResponse(BaseModel):
     status: str
@@ -36,9 +37,10 @@ class FireSimulationResponse(BaseModel):
     tenth_percentile_final_ending_corpus: float
     median_ending_corpus: float
     tenth_percentile_corpus: float
-    fan_chart_trajectories: List[TrajectoryPoint]
-    regime_applied: Optional[str] = None
-    confidence_ramp_weight: Optional[float] = None
+    fan_chart_trajectories: list[TrajectoryPoint]
+    regime_applied: str | None = None
+    confidence_ramp_weight: float | None = None
+
 
 class BenchmarkAnalyticsResponse(BaseModel):
     status: str
@@ -57,7 +59,8 @@ class BenchmarkAnalyticsResponse(BaseModel):
     sharpe_ratio: float
     tracking_error_pct: float
     outperformance_pct: float
-    information_ratio: Optional[float] = 0.0
+    information_ratio: float | None = 0.0
+
 
 def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
     if len(nav_series) < 30:
@@ -71,7 +74,7 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
             "volatility_annual": 0.0,
             "var_95": 0.0,
             "cvar_95": 0.0,
-            "beta": 0.0
+            "beta": 0.0,
         }
 
     try:
@@ -99,7 +102,7 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
                 "volatility_annual": 0.0,
                 "var_95": 0.0,
                 "cvar_95": 0.0,
-                "beta": 0.0
+                "beta": 0.0,
             }
 
         if qs is not None:
@@ -123,10 +126,12 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
             mean_ret = returns.mean()
             std_ret = returns.std()
             sharpe = float((mean_ret / std_ret) * np.sqrt(252)) if std_ret > 0 else 0.0
-            
+
             downside_returns = returns[returns < 0]
             downside_std = downside_returns.std() if not downside_returns.empty else 0.0
-            sortino = float((mean_ret / downside_std) * np.sqrt(252)) if downside_std > 0 else sharpe
+            sortino = (
+                float((mean_ret / downside_std) * np.sqrt(252)) if downside_std > 0 else sharpe
+            )
 
             cum_returns = (1 + returns).cumprod()
             peak = cum_returns.cummax()
@@ -135,7 +140,11 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
             calmar = float(mean_ret * 252 / abs(max_dd)) if abs(max_dd) > 0 else 0.0
             vol = float(std_ret * np.sqrt(252))
             var95 = float(returns.quantile(0.05))
-            cvar95 = float(returns[returns <= var95].mean()) if not returns[returns <= var95].empty else var95
+            cvar95 = (
+                float(returns[returns <= var95].mean())
+                if not returns[returns <= var95].empty
+                else var95
+            )
             beta = 0.0
 
         return {
@@ -147,7 +156,7 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
             "volatility_annual": 0.0 if np.isnan(vol) else round(vol, 4),
             "var_95": 0.0 if np.isnan(var95) else round(var95, 4),
             "cvar_95": 0.0 if np.isnan(cvar95) else round(cvar95, 4),
-            "beta": 0.0 if np.isnan(beta) else round(beta, 2)
+            "beta": 0.0 if np.isnan(beta) else round(beta, 2),
         }
     except Exception as e:
         return {
@@ -160,10 +169,13 @@ def compute_fund_analytics(nav_series, dates=None, benchmark_returns=None):
             "volatility_annual": 0.0,
             "var_95": 0.0,
             "cvar_95": 0.0,
-            "beta": 0.0
+            "beta": 0.0,
         }
 
-def _calculate_regime_block_probabilities(returns: np.ndarray, block_size: int, regime: Optional[str]) -> np.ndarray:
+
+def _calculate_regime_block_probabilities(
+    returns: np.ndarray, block_size: int, regime: str | None
+) -> np.ndarray:
     n_returns = len(returns)
     max_start = max(1, n_returns - block_size + 1)
     if regime is None or regime == "CORRIDOR_NEUTRAL" or max_start <= 1:
@@ -193,6 +205,7 @@ def _calculate_regime_block_probabilities(returns: np.ndarray, block_size: int, 
     exp_score = np.exp(score - np.max(score))
     return exp_score / exp_score.sum()
 
+
 def run_monte_carlo_fire_simulation(
     daily_returns_list,
     current_corpus=1407122.81,
@@ -201,7 +214,7 @@ def run_monte_carlo_fire_simulation(
     years_to_retirement=13,
     retirement_duration_years=30,
     num_simulations=10000,
-    regime: Optional[str] = None
+    regime: str | None = None,
 ):
     n_emp = len(daily_returns_list) if daily_returns_list is not None else 0
 
@@ -217,7 +230,9 @@ def run_monte_carlo_fire_simulation(
         data_source_label = "Calibrated Synthetic Gaussian Prior (μ=11.3% p.a., σ=17.5% p.a. - Zero Empirical History)"
     elif w_ramp >= 1.0:
         data_source = "EMPIRICAL_PORTFOLIO"
-        data_source_label = f"Empirical Portfolio Return History ({n_emp} Days, 15-Day Block Bootstrap)"
+        data_source_label = (
+            f"Empirical Portfolio Return History ({n_emp} Days, 15-Day Block Bootstrap)"
+        )
     else:
         data_source = "BLENDED_CONFIDENCE_RAMP"
         pct_emp = round(w_ramp * 100.0, 1)
@@ -255,16 +270,24 @@ def run_monte_carlo_fire_simulation(
 
     # Sample block starting indices
     if w_ramp >= 1.0:
-        sampled_starts = np.random.choice(max_start_emp, size=(num_simulations, n_blocks_needed), p=emp_probs)
+        sampled_starts = np.random.choice(
+            max_start_emp, size=(num_simulations, n_blocks_needed), p=emp_probs
+        )
         source_returns = emp_returns
     elif w_ramp <= 0.0:
-        sampled_starts = np.random.choice(max_start_bench, size=(num_simulations, n_blocks_needed), p=bench_probs)
+        sampled_starts = np.random.choice(
+            max_start_bench, size=(num_simulations, n_blocks_needed), p=bench_probs
+        )
         source_returns = bench_returns
     else:
         # Mixture model sampling according to linear confidence ramp weight w_ramp
         is_emp_block = np.random.rand(num_simulations, n_blocks_needed) < w_ramp
-        sampled_emp = np.random.choice(max_start_emp, size=(num_simulations, n_blocks_needed), p=emp_probs)
-        sampled_bench = np.random.choice(max_start_bench, size=(num_simulations, n_blocks_needed), p=bench_probs)
+        sampled_emp = np.random.choice(
+            max_start_emp, size=(num_simulations, n_blocks_needed), p=emp_probs
+        )
+        sampled_bench = np.random.choice(
+            max_start_bench, size=(num_simulations, n_blocks_needed), p=bench_probs
+        )
 
         # Build block matrix
         offsets = np.arange(block_size)
@@ -282,20 +305,24 @@ def run_monte_carlo_fire_simulation(
     daily_inflation = 0.06 / 252.0
     real_sim_returns = sim_returns - daily_inflation
 
-    logger.info(f"Realized simulation returns: ramp_weight={w_ramp:.2f}, regime={regime}, daily_real_mean={real_sim_returns.mean():.6f}, annualized_real_mean={real_sim_returns.mean()*252:.4f}, annualized_std={real_sim_returns.std()*np.sqrt(252):.4f}")
+    logger.info(
+        f"Realized simulation returns: ramp_weight={w_ramp:.2f}, regime={regime}, daily_real_mean={real_sim_returns.mean():.6f}, annualized_real_mean={real_sim_returns.mean() * 252:.4f}, annualized_std={real_sim_returns.std() * np.sqrt(252):.4f}"
+    )
 
     corpuses = np.full(num_simulations, float(current_corpus))
     failed = np.zeros(num_simulations, dtype=bool)
 
     trajectories = []
-    trajectories.append({
-        "year": 0,
-        "p10": round(float(current_corpus), 2),
-        "p25": round(float(current_corpus), 2),
-        "p50": round(float(current_corpus), 2),
-        "p75": round(float(current_corpus), 2),
-        "p90": round(float(current_corpus), 2)
-    })
+    trajectories.append(
+        {
+            "year": 0,
+            "p10": round(float(current_corpus), 2),
+            "p25": round(float(current_corpus), 2),
+            "p50": round(float(current_corpus), 2),
+            "p75": round(float(current_corpus), 2),
+            "p90": round(float(current_corpus), 2),
+        }
+    )
 
     for y in range(1, total_years + 1):
         day_start = (y - 1) * 252
@@ -309,14 +336,16 @@ def run_monte_carlo_fire_simulation(
                 failed = failed | (corpuses <= 0)
                 corpuses = np.maximum(corpuses, 0.0)
 
-        trajectories.append({
-            "year": y,
-            "p10": round(float(np.percentile(corpuses, 10)), 2),
-            "p25": round(float(np.percentile(corpuses, 25)), 2),
-            "p50": round(float(np.median(corpuses)), 2),
-            "p75": round(float(np.percentile(corpuses, 75)), 2),
-            "p90": round(float(np.percentile(corpuses, 90)), 2)
-        })
+        trajectories.append(
+            {
+                "year": y,
+                "p10": round(float(np.percentile(corpuses, 10)), 2),
+                "p25": round(float(np.percentile(corpuses, 25)), 2),
+                "p50": round(float(np.median(corpuses)), 2),
+                "p75": round(float(np.percentile(corpuses, 75)), 2),
+                "p90": round(float(np.percentile(corpuses, 90)), 2),
+            }
+        )
 
     surviving = ~failed
     success_rate = float(np.mean(surviving) * 100.0)
@@ -345,18 +374,20 @@ def run_monte_carlo_fire_simulation(
         "tenth_percentile_corpus": round(p10_ret_start, 2),
         "fan_chart_trajectories": trajectories,
         "regime_applied": regime,
-        "confidence_ramp_weight": round(w_ramp, 4)
+        "confidence_ramp_weight": round(w_ramp, 4),
     }
 
 
-def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_name="NIFTY_50_TRI"):
+def compute_benchmark_analytics(
+    portfolio_returns, benchmark_returns, benchmark_name="NIFTY_50_TRI"
+):
     p_rets = np.array(portfolio_returns, dtype=float)
     b_rets = np.array(benchmark_returns, dtype=float)
 
     if len(p_rets) == 0 or len(b_rets) == 0 or len(p_rets) != len(b_rets):
         return {
             "status": "ERROR",
-            "message": "Mismatch or empty return series for benchmark analytics"
+            "message": "Mismatch or empty return series for benchmark analytics",
         }
 
     p_cagr = float(p_rets.mean() * 252.0 * 100.0)
@@ -368,7 +399,7 @@ def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_
     var_b = float(np.var(b_rets)) if len(b_rets) > 1 else 0.0
     beta = round(cov / var_b, 3) if var_b > 0 else 1.0
 
-    rf_pct = 6.50 # RBI 91-Day T-Bill Benchmark Rate
+    rf_pct = 6.50  # RBI 91-Day T-Bill Benchmark Rate
     alpha_ann = round(p_cagr - (rf_pct + beta * (b_cagr - rf_pct)), 2)
     tracking_err = round(float(np.std(p_rets - b_rets) * np.sqrt(252.0) * 100.0), 2)
     sharpe = round((p_cagr - rf_pct) / p_vol, 2) if p_vol > 0 else 0.0
@@ -385,7 +416,11 @@ def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_
     else:
         sample_status = "PROVISIONAL_SHORT_SAMPLE" if is_provisional else "MATURE_EMPIRICAL_SAMPLE"
 
-    data_source_label = f"Provisional Benchmark Metrics (Short Sample: {sample_days} Days < 3 Years)" if is_provisional else "Mature Benchmark Risk Metrics (3+ Years History)"
+    data_source_label = (
+        f"Provisional Benchmark Metrics (Short Sample: {sample_days} Days < 3 Years)"
+        if is_provisional
+        else "Mature Benchmark Risk Metrics (3+ Years History)"
+    )
 
     return {
         "status": "OK",
@@ -404,7 +439,7 @@ def compute_benchmark_analytics(portfolio_returns, benchmark_returns, benchmark_
         "sharpe_ratio": sharpe,
         "tracking_error_pct": tracking_err,
         "outperformance_pct": outperformance,
-        "information_ratio": info_ratio
+        "information_ratio": info_ratio,
     }
 
 
@@ -425,20 +460,20 @@ def deserialize_arrow_stream(data: bytes) -> pa.Table:
 
 def nav_records_to_arrow_stream(records: list) -> bytes:
     """Converts a list of dicts ({'isin': str, 'nav_date': str, 'nav_value': float}) into an Arrow IPC stream."""
-    schema = pa.schema([
-        ("isin", pa.string()),
-        ("nav_date", pa.string()),
-        ("nav_value", pa.float64())
-    ])
+    schema = pa.schema(
+        [("isin", pa.string()), ("nav_date", pa.string()), ("nav_value", pa.float64())]
+    )
     if not records:
         table = pa.Table.from_batches([], schema=schema)
     else:
         isins = [str(r.get("isin") or r.get("asset_id", "")) for r in records]
         dates = [str(r.get("nav_date") or r.get("date", "")) for r in records]
-        vals = [float(r.get("nav_value") if r.get("nav_value") is not None else r.get("nav", 0.0)) for r in records]
+        vals = [
+            float(r.get("nav_value") if r.get("nav_value") is not None else r.get("nav", 0.0))
+            for r in records
+        ]
         table = pa.Table.from_arrays(
-            [pa.array(isins), pa.array(dates), pa.array(vals)],
-            schema=schema
+            [pa.array(isins), pa.array(dates), pa.array(vals)], schema=schema
         )
     return serialize_arrow_stream(table)
 
@@ -464,22 +499,27 @@ def compute_arrow_stream_metrics(arrow_bytes: bytes) -> bytes:
     for isin, group in df.groupby("isin"):
         sorted_group = group.sort_values("nav_date") if "nav_date" in group.columns else group
         navs = sorted_group["nav_value"].astype(float).tolist()
-        dates = sorted_group["nav_date"].astype(str).tolist() if "nav_date" in sorted_group.columns else None
+        dates = (
+            sorted_group["nav_date"].astype(str).tolist()
+            if "nav_date" in sorted_group.columns
+            else None
+        )
         res = compute_fund_analytics(navs, dates=dates)
-        metrics_rows.append({
-            "isin": str(isin),
-            "status": str(res.get("status", "OK")),
-            "data_points": int(res.get("data_points", len(navs))),
-            "sharpe": float(res.get("sharpe", 0.0)),
-            "sortino": float(res.get("sortino", 0.0)),
-            "calmar": float(res.get("calmar", 0.0)),
-            "max_drawdown": float(res.get("max_drawdown", 0.0)),
-            "volatility_annual": float(res.get("volatility_annual", 0.0)),
-            "var_95": float(res.get("var_95", 0.0)),
-            "cvar_95": float(res.get("cvar_95", 0.0))
-        })
+        metrics_rows.append(
+            {
+                "isin": str(isin),
+                "status": str(res.get("status", "OK")),
+                "data_points": int(res.get("data_points", len(navs))),
+                "sharpe": float(res.get("sharpe", 0.0)),
+                "sortino": float(res.get("sortino", 0.0)),
+                "calmar": float(res.get("calmar", 0.0)),
+                "max_drawdown": float(res.get("max_drawdown", 0.0)),
+                "volatility_annual": float(res.get("volatility_annual", 0.0)),
+                "var_95": float(res.get("var_95", 0.0)),
+                "cvar_95": float(res.get("cvar_95", 0.0)),
+            }
+        )
 
     out_df = pd.DataFrame(metrics_rows)
     out_table = pa.Table.from_pandas(out_df)
     return serialize_arrow_stream(out_table)
-

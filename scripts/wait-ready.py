@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+import sys
 import time
 import urllib.request
-import sys
 
 print("[*] Waiting for Portfolio OS services to become healthy...")
 ready_quant = False

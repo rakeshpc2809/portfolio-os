@@ -1,21 +1,20 @@
+import tempfile
 import unittest
 import unittest.mock
-from datetime import datetime, date, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-import tempfile
+
 import yaml
 
 from scripts.gmail_cas_poller import (
     advance_business_days,
-    is_business_day,
-    find_next_sip_date,
     compute_units_validity,
-    secure_shred
+    find_next_sip_date,
+    secure_shred,
 )
 
 
 class TestSipLockoutAndRtaHeader(unittest.TestCase):
-
     def setUp(self):
         self.holidays = {
             "2026-01-26",
@@ -25,7 +24,7 @@ class TestSipLockoutAndRtaHeader(unittest.TestCase):
             "2026-04-14",
             "2026-05-01",
             "2026-08-15",
-            "2026-10-02"
+            "2026-10-02",
         }
 
     def test_advance_business_days_skips_weekends_and_holidays(self):
@@ -39,7 +38,7 @@ class TestSipLockoutAndRtaHeader(unittest.TestCase):
         sips = [
             {"isin": "INF109KC12U0", "sip_day_of_month": 10},
             {"isin": "INF879O01027", "sip_day_of_month": 15},
-            {"isin": "INF204K01K15", "sip_day_of_month": 20}
+            {"isin": "INF204K01K15", "sip_day_of_month": 20},
         ]
         # Current date: 2026-10-12 -> next upcoming SIP should be 15th
         cur = date(2026, 10, 12)
@@ -53,19 +52,23 @@ class TestSipLockoutAndRtaHeader(unittest.TestCase):
 
     def test_rta_allotment_header_within_24h_grace_window_remains_healthy(self):
         # Current time: 2026-10-16 14:00 UTC
-        cur_time = datetime(2026, 10, 16, 14, 0, tzinfo=timezone.utc)
+        cur_time = datetime(2026, 10, 16, 14, 0, tzinfo=UTC)
         last_cas_date = date(2026, 10, 10)  # Old CAS
 
         # RTA email received 10 hours ago: 2026-10-16 04:00 UTC (newer than last_cas_date)
-        rta_headers = [{
-            "from": "donotreply@camsonline.com",
-            "subject": "Allotment confirmation for your purchase",
-            "received_at": cur_time - timedelta(hours=10)
-        }]
+        rta_headers = [
+            {
+                "from": "donotreply@camsonline.com",
+                "subject": "Allotment confirmation for your purchase",
+                "received_at": cur_time - timedelta(hours=10),
+            }
+        ]
 
         # Create temporary mock configs
-        with tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_sip, \
-             tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_hol:
+        with (
+            tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_sip,
+            tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_hol,
+        ):
             yaml.dump({"sips": [{"isin": "INF109KC12U0", "sip_day_of_month": 20}]}, f_sip)
             yaml.dump({"holidays": []}, f_hol)
             sip_p, hol_p = Path(f_sip.name), Path(f_hol.name)
@@ -76,7 +79,7 @@ class TestSipLockoutAndRtaHeader(unittest.TestCase):
                 current_time=cur_time,
                 rta_headers=rta_headers,
                 sip_config_path=sip_p,
-                holidays_config_path=hol_p
+                holidays_config_path=hol_p,
             )
             # Within 24-hour grace window, status remains HEALTHY
             self.assertEqual(res["status"], "HEALTHY")
@@ -85,18 +88,22 @@ class TestSipLockoutAndRtaHeader(unittest.TestCase):
             hol_p.unlink(missing_ok=True)
 
     def test_rta_allotment_header_older_than_24h_flags_stale(self):
-        cur_time = datetime(2026, 10, 16, 14, 0, tzinfo=timezone.utc)
+        cur_time = datetime(2026, 10, 16, 14, 0, tzinfo=UTC)
         last_cas_date = date(2026, 10, 10)
 
         # RTA email received 30 hours ago: 2026-10-15 08:00 UTC (age >= 24h)
-        rta_headers = [{
-            "from": "samfS@kfintech.com",
-            "subject": "Purchase Transaction Allotment Advice",
-            "received_at": cur_time - timedelta(hours=30)
-        }]
+        rta_headers = [
+            {
+                "from": "samfS@kfintech.com",
+                "subject": "Purchase Transaction Allotment Advice",
+                "received_at": cur_time - timedelta(hours=30),
+            }
+        ]
 
-        with tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_sip, \
-             tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_hol:
+        with (
+            tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_sip,
+            tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_hol,
+        ):
             yaml.dump({"sips": [{"isin": "INF109KC12U0", "sip_day_of_month": 20}]}, f_sip)
             yaml.dump({"holidays": []}, f_hol)
             sip_p, hol_p = Path(f_sip.name), Path(f_hol.name)
@@ -107,7 +114,7 @@ class TestSipLockoutAndRtaHeader(unittest.TestCase):
                 current_time=cur_time,
                 rta_headers=rta_headers,
                 sip_config_path=sip_p,
-                holidays_config_path=hol_p
+                holidays_config_path=hol_p,
             )
             # Exceeded 24h grace window -> must flag UNITS_STALE_REQUEST_CAS
             self.assertEqual(res["status"], "UNITS_STALE_REQUEST_CAS")
@@ -117,18 +124,22 @@ class TestSipLockoutAndRtaHeader(unittest.TestCase):
             hol_p.unlink(missing_ok=True)
 
     def test_clears_stale_flag_when_cas_ingests_allotment_date(self):
-        cur_time = datetime(2026, 10, 16, 14, 0, tzinfo=timezone.utc)
+        cur_time = datetime(2026, 10, 16, 14, 0, tzinfo=UTC)
         # CAS has now been updated to 2026-10-15 (matching or newer than the allotment email date)
         updated_cas_date = date(2026, 10, 15)
 
-        rta_headers = [{
-            "from": "samfS@kfintech.com",
-            "subject": "Purchase Transaction Allotment Advice",
-            "received_at": cur_time - timedelta(hours=30)  # Received on 2026-10-15
-        }]
+        rta_headers = [
+            {
+                "from": "samfS@kfintech.com",
+                "subject": "Purchase Transaction Allotment Advice",
+                "received_at": cur_time - timedelta(hours=30),  # Received on 2026-10-15
+            }
+        ]
 
-        with tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_sip, \
-             tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_hol:
+        with (
+            tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_sip,
+            tempfile.NamedTemporaryFile("w+", suffix=".yaml", delete=False) as f_hol,
+        ):
             yaml.dump({"sips": [{"isin": "INF109KC12U0", "sip_day_of_month": 20}]}, f_sip)
             yaml.dump({"holidays": []}, f_hol)
             sip_p, hol_p = Path(f_sip.name), Path(f_hol.name)
@@ -139,7 +150,7 @@ class TestSipLockoutAndRtaHeader(unittest.TestCase):
                 current_time=cur_time,
                 rta_headers=rta_headers,
                 sip_config_path=sip_p,
-                holidays_config_path=hol_p
+                holidays_config_path=hol_p,
             )
             # CAS is >= allotment email date -> flag clears back to HEALTHY!
             self.assertEqual(res["status"], "HEALTHY")
@@ -158,13 +169,14 @@ class TestSipLockoutAndRtaHeader(unittest.TestCase):
 
 
 class TestImapPolling(unittest.TestCase):
-
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp_dir.name) / "test_ledger.db"
         import sqlite3
+
         conn = sqlite3.connect(str(self.db_path))
         from scripts.gmail_cas_poller import init_ingestion_tables
+
         init_ingestion_tables(conn)
         conn.close()
 
@@ -173,6 +185,7 @@ class TestImapPolling(unittest.TestCase):
 
     def test_decode_mime_header(self):
         from scripts.gmail_cas_poller import decode_mime_header
+
         raw = "=?UTF-8?B?Q0FTIFN0YXRlbWVudA==?="
         self.assertEqual(decode_mime_header(raw), "CAS Statement")
         self.assertEqual(decode_mime_header("Simple String"), "Simple String")
@@ -181,6 +194,7 @@ class TestImapPolling(unittest.TestCase):
     @unittest.mock.patch("imaplib.IMAP4_SSL")
     def test_connect_gmail_imap(self, mock_imap_cls):
         from scripts.gmail_cas_poller import connect_gmail_imap
+
         mock_instance = unittest.mock.MagicMock()
         mock_imap_cls.return_value = mock_instance
 
@@ -194,9 +208,10 @@ class TestImapPolling(unittest.TestCase):
     @unittest.mock.patch("scripts.gmail_cas_poller.connect_gmail_imap")
     def test_poll_gmail_via_imap_downloads_and_deduplicates(self, mock_connect, mock_ingest):
         import sqlite3
-        from email.mime.multipart import MIMEMultipart
         from email.mime.application import MIMEApplication
+        from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
+
         from scripts.gmail_cas_poller import poll_gmail_via_imap
 
         mock_mail = unittest.mock.MagicMock()
@@ -205,10 +220,18 @@ class TestImapPolling(unittest.TestCase):
         mock_mail.uid.side_effect = [
             ("OK", [b"101"]),  # CAS UID search
             # UID header fetch
-            ("OK", [(b"101 (BODY[HEADER.FIELDS (MESSAGE-ID DATE FROM SUBJECT)] {10}\r\n", b"Message-ID: <test-cas-msg-001@cams.com>\r\nSubject: CAS Statement\r\nDate: Wed, 21 Oct 2026 10:00:00 +0530\r\n\r\n")]),
+            (
+                "OK",
+                [
+                    (
+                        b"101 (BODY[HEADER.FIELDS (MESSAGE-ID DATE FROM SUBJECT)] {10}\r\n",
+                        b"Message-ID: <test-cas-msg-001@cams.com>\r\nSubject: CAS Statement\r\nDate: Wed, 21 Oct 2026 10:00:00 +0530\r\n\r\n",
+                    )
+                ],
+            ),
             # UID full body fetch
-            ("OK", [(b"101 (RFC822 {10}\r\n", None)]), # Will be filled below
-            ("OK", [b""])      # RTA UID search
+            ("OK", [(b"101 (RFC822 {10}\r\n", None)]),  # Will be filled below
+            ("OK", [b""]),  # RTA UID search
         ]
 
         # Build mock email with PDF attachment
@@ -224,14 +247,18 @@ class TestImapPolling(unittest.TestCase):
         msg.attach(pdf_part)
         raw_email_bytes = msg.as_bytes()
 
-        hdr_data = (b"101 (BODY[HEADER.FIELDS (MESSAGE-ID DATE FROM SUBJECT)] {%d}\r\n" % len(raw_email_bytes), raw_email_bytes)
+        hdr_data = (
+            b"101 (BODY[HEADER.FIELDS (MESSAGE-ID DATE FROM SUBJECT)] {%d}\r\n"
+            % len(raw_email_bytes),
+            raw_email_bytes,
+        )
         body_data = (b"101 (RFC822 {%d}\r\n" % len(raw_email_bytes), raw_email_bytes)
 
         mock_mail.uid.side_effect = [
-            ("OK", [b"101"]),   # CAS UID search
-            ("OK", [hdr_data]), # UID header fetch
-            ("OK", [body_data]),# UID body fetch
-            ("OK", [b""])       # RTA search
+            ("OK", [b"101"]),  # CAS UID search
+            ("OK", [hdr_data]),  # UID header fetch
+            ("OK", [body_data]),  # UID body fetch
+            ("OK", [b""]),  # RTA search
         ]
         mock_ingest.return_value = {"status": "SUCCESS", "ingested_rows": 12}
 
@@ -241,12 +268,14 @@ class TestImapPolling(unittest.TestCase):
             core_node_url="http://127.0.0.1:8080",
             auth_token="dev_token",
             user="user@gmail.com",
-            password="pwd"
+            password="pwd",
         )
 
         self.assertEqual(results["ingested_count"], 1)
         self.assertEqual(len(results["messages_processed"]), 1)
-        self.assertEqual(results["messages_processed"][0]["message_id"], "test-cas-msg-001@cams.com")
+        self.assertEqual(
+            results["messages_processed"][0]["message_id"], "test-cas-msg-001@cams.com"
+        )
         self.assertEqual(results["messages_processed"][0]["uid"], "101")
         mock_ingest.assert_called_once()
 
@@ -259,9 +288,9 @@ class TestImapPolling(unittest.TestCase):
 
         # Run poller a second time - verify idempotency / deduplication
         mock_mail.uid.side_effect = [
-            ("OK", [b"101"]),   # CAS UID search
-            ("OK", [hdr_data]), # header fetched
-            ("OK", [b""])       # RTA search
+            ("OK", [b"101"]),  # CAS UID search
+            ("OK", [hdr_data]),  # header fetched
+            ("OK", [b""]),  # RTA search
         ]
         mock_ingest.reset_mock()
 
@@ -270,7 +299,7 @@ class TestImapPolling(unittest.TestCase):
             core_node_url="http://127.0.0.1:8080",
             auth_token="dev_token",
             user="user@gmail.com",
-            password="pwd"
+            password="pwd",
         )
         self.assertEqual(results2["ingested_count"], 0)
         mock_ingest.assert_not_called()
@@ -278,11 +307,28 @@ class TestImapPolling(unittest.TestCase):
 
     def test_fetch_rta_allotment_headers_with_uid(self):
         from scripts.gmail_cas_poller import fetch_rta_allotment_headers
+
         mock_mail = unittest.mock.MagicMock()
         mock_mail.uid.side_effect = [
-            ("OK", [b"501 502"]), # RTA UID search
-            ("OK", [(b"502 (BODY[HEADER.FIELDS] {10}\r\n", b"Date: Thu, 22 Oct 2026 14:00:00 +0530\r\nSubject: Allotment Advice\r\nFrom: donotreply@camsonline.com\r\n\r\n")]),
-            ("OK", [(b"501 (BODY[HEADER.FIELDS] {10}\r\n", b"Date: Wed, 21 Oct 2026 11:00:00 +0530\r\nSubject: SIP Purchase\r\nFrom: samfS@kfintech.com\r\n\r\n")])
+            ("OK", [b"501 502"]),  # RTA UID search
+            (
+                "OK",
+                [
+                    (
+                        b"502 (BODY[HEADER.FIELDS] {10}\r\n",
+                        b"Date: Thu, 22 Oct 2026 14:00:00 +0530\r\nSubject: Allotment Advice\r\nFrom: donotreply@camsonline.com\r\n\r\n",
+                    )
+                ],
+            ),
+            (
+                "OK",
+                [
+                    (
+                        b"501 (BODY[HEADER.FIELDS] {10}\r\n",
+                        b"Date: Wed, 21 Oct 2026 11:00:00 +0530\r\nSubject: SIP Purchase\r\nFrom: samfS@kfintech.com\r\n\r\n",
+                    )
+                ],
+            ),
         ]
 
         headers = fetch_rta_allotment_headers(mock_mail)
@@ -294,4 +340,3 @@ class TestImapPolling(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

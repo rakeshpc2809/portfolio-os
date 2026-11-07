@@ -5,19 +5,20 @@ Simulates bucket_targets.yaml version transitions (v1.0 -> v2.0 -> v2.3) against
 Models DRAWDOWN > DRIFT > SCHEDULED rebalancing rules, FIFO lot tracking, and Indian tax drag (Sec 112A).
 """
 
+import argparse
 import os
 import sys
-import argparse
+from dataclasses import dataclass
+from datetime import date
+
 import duckdb
 import numpy as np
 import pandas as pd
-from datetime import datetime, date
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+
 
 def parse_bucket_targets_yaml(file_path: str) -> dict:
     """Native parser for bucket_targets.yaml without external PyYAML dependency."""
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         lines = f.readlines()
 
     versions = []
@@ -33,7 +34,7 @@ def parse_bucket_targets_yaml(file_path: str) -> dict:
         if not stripped or stripped.startswith("#") or stripped == "---":
             continue
 
-        indent = len(raw) - len(raw.lstrip())
+        _indent = len(raw) - len(raw.lstrip())
 
         if stripped.startswith("- version_id:"):
             vid = stripped.split(":", 1)[1].strip().strip('"').strip("'")
@@ -43,7 +44,9 @@ def parse_bucket_targets_yaml(file_path: str) -> dict:
             current_target = None
             current_preferred = None
         elif current_version and stripped.startswith("effective_from:"):
-            current_version["effective_from"] = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+            current_version["effective_from"] = (
+                stripped.split(":", 1)[1].strip().strip('"').strip("'")
+            )
         elif current_version and stripped.startswith("- bucket:"):
             bname = stripped.split(":", 1)[1].strip().strip('"').strip("'")
             current_target = {"bucket": bname, "preferred_funds": []}
@@ -69,11 +72,13 @@ def parse_bucket_targets_yaml(file_path: str) -> dict:
 
     return {"versions": versions}
 
-def find_file(relative_paths: List[str]) -> Optional[str]:
+
+def find_file(relative_paths: list[str]) -> str | None:
     for p in relative_paths:
         if os.path.exists(p):
             return os.path.abspath(p)
     return None
+
 
 @dataclass
 class Lot:
@@ -83,17 +88,19 @@ class Lot:
     cost_basis: float
     acquisition_date: date
 
+
 @dataclass
 class RebalanceEvent:
     event_date: date
     trigger_type: str  # DRAWDOWN, DRIFT, SCHEDULED
-    sold_assets: Dict[str, float]
-    bought_assets: Dict[str, float]
+    sold_assets: dict[str, float]
+    bought_assets: dict[str, float]
     turnover_amount: float
     realized_ltcg: float
     realized_stcg: float
     exemption_used: float
     tax_drag: float
+
 
 class PortfolioBacktester:
     def __init__(self, duckdb_path: str, config_path: str, initial_corpus: float = 1000000.0):
@@ -118,15 +125,17 @@ class PortfolioBacktester:
         return active
 
     def load_nav_data(self):
-        df = self.con.execute("SELECT asset_id, nav_date, nav FROM nav_history ORDER BY nav_date ASC").fetchdf()
+        df = self.con.execute(
+            "SELECT asset_id, nav_date, nav FROM nav_history ORDER BY nav_date ASC"
+        ).fetchdf()
         df["nav_date"] = pd.to_datetime(df["nav_date"]).dt.date
         self.nav_df = df
         self.unique_dates = sorted(df["nav_date"].unique())
         self.nav_pivot = df.pivot(index="nav_date", columns="asset_id", values="nav")
 
-    def get_fund_targets_for_date(self, version: dict, d: date) -> Dict[str, float]:
+    def get_fund_targets_for_date(self, version: dict, d: date) -> dict[str, float]:
         fund_targets = {}
-        liquid_fund = "INF205K01KR8" # Invesco Arbitrage / Liquid Buffer
+        liquid_fund = "INF205K01KR8"  # Invesco Arbitrage / Liquid Buffer
         unallocated_weight = 0.0
 
         for b in version.get("targets", []):
@@ -135,7 +144,7 @@ class PortfolioBacktester:
                 fid = f.get("fund_id")
                 weight = f.get("allocation_weight", 0.0)
                 target_w = b_target * weight
-                
+
                 # Check if fund has valid NAV on date d
                 if fid in self.nav_pivot.columns and pd.notna(self.nav_pivot.loc[d, fid]):
                     fund_targets[fid] = fund_targets.get(fid, 0.0) + target_w
@@ -155,21 +164,35 @@ class PortfolioBacktester:
 
     def run_backtest(
         self,
-        mode: str = "DYNAMIC_WALK_FORWARD", # DYNAMIC_WALK_FORWARD, STATIC_v1.0, STATIC_v2.0, STATIC_v2.3, BUY_AND_HOLD
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
+        mode: str = "DYNAMIC_WALK_FORWARD",  # DYNAMIC_WALK_FORWARD, STATIC_v1.0, STATIC_v2.0, STATIC_v2.3, BUY_AND_HOLD
+        start_date: date | None = None,
+        end_date: date | None = None,
         drift_rel_threshold: float = 0.15,
-        drawdown_threshold: float = -0.10
+        drawdown_threshold: float = -0.10,
     ) -> dict:
         # Determine valid date range where primary portfolio assets have NAV
-        all_dates = [d for d in self.unique_dates if (start_date is None or d >= start_date) and (end_date is None or d <= end_date)]
-        
+        all_dates = [
+            d
+            for d in self.unique_dates
+            if (start_date is None or d >= start_date) and (end_date is None or d <= end_date)
+        ]
+
         # Filter for dates where core funds are present
         core_funds = ["INF109KC12U0", "INF879O01027", "INF205K01KR8", "INF247L01BM8"]
-        valid_dates = [d for d in all_dates if all(pd.notna(self.nav_pivot.loc[d, cf]) for cf in core_funds if cf in self.nav_pivot.columns)]
-        
+        valid_dates = [
+            d
+            for d in all_dates
+            if all(
+                pd.notna(self.nav_pivot.loc[d, cf])
+                for cf in core_funds
+                if cf in self.nav_pivot.columns
+            )
+        ]
+
         if len(valid_dates) < 30:
-            raise ValueError(f"Insufficient history for backtest: {len(valid_dates)} trading days found.")
+            raise ValueError(
+                f"Insufficient history for backtest: {len(valid_dates)} trading days found."
+            )
 
         # Initialize portfolio on first date
         d0 = valid_dates[0]
@@ -183,8 +206,8 @@ class PortfolioBacktester:
             v0 = self.get_version_for_date(d0)
 
         initial_targets = self.get_fund_targets_for_date(v0, d0)
-        
-        lots: List[Lot] = []
+
+        lots: list[Lot] = []
         cash_balance = 0.0
 
         for fid, weight in initial_targets.items():
@@ -192,12 +215,14 @@ class PortfolioBacktester:
                 nav = float(self.nav_pivot.loc[d0, fid])
                 amount = self.initial_corpus * weight
                 units = amount / nav
-                lots.append(Lot(asset_id=fid, units=units, nav=nav, cost_basis=amount, acquisition_date=d0))
+                lots.append(
+                    Lot(asset_id=fid, units=units, nav=nav, cost_basis=amount, acquisition_date=d0)
+                )
             else:
                 cash_balance += self.initial_corpus * weight
 
         portfolio_history = []
-        rebalance_events: List[RebalanceEvent] = []
+        rebalance_events: list[RebalanceEvent] = []
         peak_value = self.initial_corpus
         current_fy = None
         fy_exempt_used = 0.0
@@ -206,10 +231,14 @@ class PortfolioBacktester:
         for i, d in enumerate(valid_dates):
             # Cash interest
             if cash_balance > 0:
-                cash_balance *= (1.0 + daily_cash_yield)
+                cash_balance *= 1.0 + daily_cash_yield
 
             # Track FY for LTCG exemption reset (April 1)
-            fy = f"{d.year}-{str(d.year+1)[-2:]}" if d.month >= 4 else f"{d.year-1}-{str(d.year)[-2:]}"
+            fy = (
+                f"{d.year}-{str(d.year + 1)[-2:]}"
+                if d.month >= 4
+                else f"{d.year - 1}-{str(d.year)[-2:]}"
+            )
             if fy != current_fy:
                 current_fy = fy
                 fy_exempt_used = 0.0
@@ -218,7 +247,9 @@ class PortfolioBacktester:
             fund_values = {}
             total_val = cash_balance
             for lot in lots:
-                if lot.asset_id in self.nav_pivot.columns and pd.notna(self.nav_pivot.loc[d, lot.asset_id]):
+                if lot.asset_id in self.nav_pivot.columns and pd.notna(
+                    self.nav_pivot.loc[d, lot.asset_id]
+                ):
                     nav = float(self.nav_pivot.loc[d, lot.asset_id])
                     lot.nav = nav
                     val = lot.units * nav
@@ -229,13 +260,15 @@ class PortfolioBacktester:
                 peak_value = total_val
             drawdown = (total_val - peak_value) / peak_value if peak_value > 0 else 0.0
 
-            portfolio_history.append({
-                "date": d,
-                "total_value": total_val,
-                "cash": cash_balance,
-                "peak_value": peak_value,
-                "drawdown": drawdown
-            })
+            portfolio_history.append(
+                {
+                    "date": d,
+                    "total_value": total_val,
+                    "cash": cash_balance,
+                    "peak_value": peak_value,
+                    "drawdown": drawdown,
+                }
+            )
 
             if mode == "BUY_AND_HOLD":
                 continue
@@ -258,7 +291,7 @@ class PortfolioBacktester:
                 # 1. Tier 1: Drawdown Trigger
                 if drawdown <= drawdown_threshold:
                     trigger = "DRAWDOWN"
-                
+
                 # 2. Tier 2: Asset Drift Trigger (>15% relative drift and >3% absolute drift)
                 if not trigger:
                     for fid, tw in target_weights.items():
@@ -270,12 +303,14 @@ class PortfolioBacktester:
 
                 # 3. Tier 3: Scheduled Annual Rebalance (late March / early April)
                 if not trigger and i > 0:
-                    prev_d = valid_dates[i-1]
+                    prev_d = valid_dates[i - 1]
                     if prev_d.month == 3 and d.month == 4:
                         trigger = "SCHEDULED"
 
             # Execute rebalancing if triggered (minimum interval of 60 days to prevent excessive churn)
-            last_reb_date = rebalance_events[-1].event_date if rebalance_events else date(2000, 1, 1)
+            last_reb_date = (
+                rebalance_events[-1].event_date if rebalance_events else date(2000, 1, 1)
+            )
             days_since_last = (d - last_reb_date).days
 
             if trigger and days_since_last >= 60:
@@ -296,13 +331,18 @@ class PortfolioBacktester:
 
                         # FIFO lot reduction & tax computation
                         amount_to_sell = sell_amount
-                        for lot in sorted([l for l in lots if l.asset_id == fid], key=lambda x: x.acquisition_date):
+                        for lot in sorted(
+                            [lt for lt in lots if lt.asset_id == fid],
+                            key=lambda x: x.acquisition_date,
+                        ):
                             if amount_to_sell <= 0:
                                 break
                             lot_val = lot.units * lot.nav
                             sell_from_lot = min(lot_val, amount_to_sell)
                             units_sold = sell_from_lot / lot.nav
-                            cost_of_sold = units_sold * (lot.cost_basis / lot.units if lot.units > 0 else lot.nav)
+                            cost_of_sold = units_sold * (
+                                lot.cost_basis / lot.units if lot.units > 0 else lot.nav
+                            )
                             gain = sell_from_lot - cost_of_sold
 
                             holding_days = (d - lot.acquisition_date).days
@@ -327,36 +367,49 @@ class PortfolioBacktester:
                 tax_drag = ltcg_tax + stcg_tax
 
                 # Proceeds flow into cash net of tax drag
-                cash_balance += (turnover - tax_drag)
+                cash_balance += turnover - tax_drag
 
                 # Deploy cash into under-allocated target funds
                 for fid, tw in target_weights.items():
                     target_val = total_val * tw
-                    current_v = sum(l.units * l.nav for l in lots if l.asset_id == fid)
-                    if target_val > current_v + 1000.0 and fid in self.nav_pivot.columns and pd.notna(self.nav_pivot.loc[d, fid]):
+                    current_v = sum(lt.units * lt.nav for lt in lots if lt.asset_id == fid)
+                    if (
+                        target_val > current_v + 1000.0
+                        and fid in self.nav_pivot.columns
+                        and pd.notna(self.nav_pivot.loc[d, fid])
+                    ):
                         buy_amount = min(target_val - current_v, cash_balance)
                         if buy_amount > 100.0:
                             nav = float(self.nav_pivot.loc[d, fid])
                             units = buy_amount / nav
-                            lots.append(Lot(asset_id=fid, units=units, nav=nav, cost_basis=buy_amount, acquisition_date=d))
+                            lots.append(
+                                Lot(
+                                    asset_id=fid,
+                                    units=units,
+                                    nav=nav,
+                                    cost_basis=buy_amount,
+                                    acquisition_date=d,
+                                )
+                            )
                             bought_assets[fid] = buy_amount
                             cash_balance -= buy_amount
 
                 # Clean depleted lots
-                lots = [l for l in lots if l.units > 0.0001]
+                lots = [lt for lt in lots if lt.units > 0.0001]
 
-                rebalance_events.append(RebalanceEvent(
-                    event_date=d,
-                    trigger_type=trigger,
-                    sold_assets=sold_assets,
-                    bought_assets=bought_assets,
-                    turnover_amount=turnover,
-                    realized_ltcg=realized_ltcg,
-                    realized_stcg=realized_stcg,
-                    exemption_used=exempt_consumed,
-                    tax_drag=tax_drag
-                ))
-
+                rebalance_events.append(
+                    RebalanceEvent(
+                        event_date=d,
+                        trigger_type=trigger,
+                        sold_assets=sold_assets,
+                        bought_assets=bought_assets,
+                        turnover_amount=turnover,
+                        realized_ltcg=realized_ltcg,
+                        realized_stcg=realized_stcg,
+                        exemption_used=exempt_consumed,
+                        tax_drag=tax_drag,
+                    )
+                )
 
         # Compile results
         hist_df = pd.DataFrame(portfolio_history)
@@ -365,7 +418,9 @@ class PortfolioBacktester:
         n_days = len(hist_df)
         years = n_days / 252.0
         final_val = hist_df["total_value"].iloc[-1]
-        cagr = ((final_val / self.initial_corpus) ** (1.0 / years) - 1.0) * 100.0 if years > 0 else 0.0
+        cagr = (
+            ((final_val / self.initial_corpus) ** (1.0 / years) - 1.0) * 100.0 if years > 0 else 0.0
+        )
         ann_vol = hist_df["daily_return"].std() * np.sqrt(252.0) * 100.0
         max_dd = hist_df["drawdown"].min() * 100.0
 
@@ -386,7 +441,7 @@ class PortfolioBacktester:
             "DRAWDOWN": sum(1 for e in rebalance_events if e.trigger_type == "DRAWDOWN"),
             "DRIFT": sum(1 for e in rebalance_events if e.trigger_type == "DRIFT"),
             "SCHEDULED": sum(1 for e in rebalance_events if e.trigger_type == "SCHEDULED"),
-            "TOTAL": len(rebalance_events)
+            "TOTAL": len(rebalance_events),
         }
 
         return {
@@ -404,37 +459,53 @@ class PortfolioBacktester:
             "calmar_ratio": round(calmar, 2),
             "rebalance_events_count": triggers_count,
             "total_turnover": round(total_turnover, 2),
-            "turnover_pct_ann": round((total_turnover / (self.initial_corpus * years)) * 100.0, 2) if years > 0 else 0.0,
+            "turnover_pct_ann": round((total_turnover / (self.initial_corpus * years)) * 100.0, 2)
+            if years > 0
+            else 0.0,
             "total_tax_drag": round(total_tax_drag, 2),
             "total_exempt_ltcg_harvested": round(total_exempt_used, 2),
             "total_realized_ltcg": round(total_realized_ltcg, 2),
-            "rebalance_events": rebalance_events
+            "rebalance_events": rebalance_events,
         }
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Portfolio OS - Allocation Walk-Forward Backtester")
-    parser.add_argument("--drift", type=float, default=0.15, help="Relative drift threshold (default: 0.15 for 15%%)")
-    parser.add_argument("--sweep", action="store_true", help="Run multi-threshold sensitivity sweep (15%%, 20%%, 25%%, 30%%, 35%%)")
-    parser.add_argument("--corpus", type=float, default=1000000.0, help="Initial corpus in INR (default: 1,000,000)")
+    parser = argparse.ArgumentParser(
+        description="Portfolio OS - Allocation Walk-Forward Backtester"
+    )
+    parser.add_argument(
+        "--drift",
+        type=float,
+        default=0.15,
+        help="Relative drift threshold (default: 0.15 for 15%%)",
+    )
+    parser.add_argument(
+        "--sweep",
+        action="store_true",
+        help="Run multi-threshold sensitivity sweep (15%%, 20%%, 25%%, 30%%, 35%%)",
+    )
+    parser.add_argument(
+        "--corpus", type=float, default=1000000.0, help="Initial corpus in INR (default: 1,000,000)"
+    )
     args = parser.parse_args()
 
     duckdb_candidates = [
         "data/tax_ledger.duckdb",
         "../data/tax_ledger.duckdb",
-        "../../data/tax_ledger.duckdb"
+        "../../data/tax_ledger.duckdb",
     ]
     config_candidates = [
         "core-node/rules/bucket_targets.yaml",
         "rules/bucket_targets.yaml",
         "../rules/bucket_targets.yaml",
-        "../core-node/rules/bucket_targets.yaml"
+        "../core-node/rules/bucket_targets.yaml",
     ]
 
     duckdb_path = find_file(duckdb_candidates)
     config_path = find_file(config_candidates)
 
     if not duckdb_path or not config_path:
-        print(f"Error: Could not locate DuckDB database or bucket_targets.yaml")
+        print("Error: Could not locate DuckDB database or bucket_targets.yaml")
         print(f"  DuckDB search: {duckdb_candidates} -> {duckdb_path}")
         print(f"  Config search: {config_candidates} -> {config_path}")
         sys.exit(1)
@@ -449,10 +520,14 @@ def main():
 
     if args.sweep:
         thresholds = [0.15, 0.20, 0.25, 0.30, 0.35]
-        print(f"\nSimulation Window: 2024-03-14 to 2026-09-13 (622 trading days)")
+        print("\nSimulation Window: 2024-03-14 to 2026-09-13 (622 trading days)")
         print("\n=== SENSITIVITY SWEEP: RELATIVE DRIFT THRESHOLD ===")
         for mode in ["DYNAMIC_WALK_FORWARD", "STATIC_v2.3"]:
-            mode_label = "Walk-Forward (v1.0 -> v2.0 -> v2.3)" if mode == "DYNAMIC_WALK_FORWARD" else "Static v2.3 Policy"
+            mode_label = (
+                "Walk-Forward (v1.0 -> v2.0 -> v2.3)"
+                if mode == "DYNAMIC_WALK_FORWARD"
+                else "Static v2.3 Policy"
+            )
             print(f"\n--- Mode: {mode_label} ---")
             header_sw = f"{'Drift Thresh':<12} | {'Rebalances (DD/Drift)':<22} | {'Turnover':<12} | {'Ann Turn':<10} | {'CAGR':<8} | {'Vol':<8} | {'MaxDD':<8} | {'Sharpe':<8} | {'Sortino':<8} | {'Tax Drag':<10}"
             print(header_sw)
@@ -461,7 +536,9 @@ def main():
                 res = tester.run_backtest(mode=mode, drift_rel_threshold=t)
                 tc = res["rebalance_events_count"]
                 rebs = f"{tc['TOTAL']} ({tc['DRAWDOWN']}/{tc['DRIFT']})"
-                print(f"{t*100:5.1f}%       | {rebs:<22} | ₹{res['total_turnover']:>10,.0f} | {res['turnover_pct_ann']:>7.1f}% | {res['cagr_pct']:>6.2f}% | {res['annualized_vol_pct']:>6.2f}% | {res['max_drawdown_pct']:>6.2f}% | {res['sharpe_ratio']:>6.2f} | {res['sortino_ratio']:>7.2f} | ₹{res['total_tax_drag']:>7,.0f}")
+                print(
+                    f"{t * 100:5.1f}%       | {rebs:<22} | ₹{res['total_turnover']:>10,.0f} | {res['turnover_pct_ann']:>7.1f}% | {res['cagr_pct']:>6.2f}% | {res['annualized_vol_pct']:>6.2f}% | {res['max_drawdown_pct']:>6.2f}% | {res['sharpe_ratio']:>6.2f} | {res['sortino_ratio']:>7.2f} | ₹{res['total_tax_drag']:>7,.0f}"
+                )
         return
 
     modes = ["DYNAMIC_WALK_FORWARD", "STATIC_v1.0", "STATIC_v2.0", "STATIC_v2.3", "BUY_AND_HOLD"]
@@ -472,8 +549,10 @@ def main():
         results.append(res)
 
     # Format side-by-side comparison table
-    print(f"\nSimulation Window: {results[0]['start_date']} to {results[0]['end_date']} ({results[0]['trading_days']} trading days)")
-    print(f"Drift Threshold: {args.drift*100:.1f}%\n")
+    print(
+        f"\nSimulation Window: {results[0]['start_date']} to {results[0]['end_date']} ({results[0]['trading_days']} trading days)"
+    )
+    print(f"Drift Threshold: {args.drift * 100:.1f}%\n")
 
     header = f"{'Metric':<32} | {'Walk-Forward':<14} | {'Static v1.0':<12} | {'Static v2.0':<12} | {'Static v2.3':<12} | {'Buy & Hold':<12}"
     divider = "-" * len(header)
@@ -494,12 +573,20 @@ def main():
     print(divider)
     print(row("Total Rebalance Events", "rebalance_events_count", lambda v: str(v["TOTAL"])))
     print(row("  - Drawdown Triggers", "rebalance_events_count", lambda v: str(v["DRAWDOWN"])))
-    print(row(f"  - Drift Triggers (>{args.drift*100:.0f}%)", "rebalance_events_count", lambda v: str(v["DRIFT"])))
+    print(
+        row(
+            f"  - Drift Triggers (>{args.drift * 100:.0f}%)",
+            "rebalance_events_count",
+            lambda v: str(v["DRIFT"]),
+        )
+    )
     print(row("  - Scheduled Harvest", "rebalance_events_count", lambda v: str(v["SCHEDULED"])))
     print(divider)
     print(row("Total Turnover (₹)", "total_turnover", lambda v: f"₹{v:,.0f}"))
     print(row("Annualized Turnover Rate (%)", "turnover_pct_ann", lambda v: f"{v:.1f}%"))
-    print(row("Sec 112A Exempt Harvested (₹)", "total_exempt_ltcg_harvested", lambda v: f"₹{v:,.0f}"))
+    print(
+        row("Sec 112A Exempt Harvested (₹)", "total_exempt_ltcg_harvested", lambda v: f"₹{v:,.0f}")
+    )
     print(row("Total Realized LTCG (₹)", "total_realized_ltcg", lambda v: f"₹{v:,.0f}"))
     print(row("Estimated Tax Drag Incurred (₹)", "total_tax_drag", lambda v: f"₹{v:,.0f}"))
     print(divider)
@@ -510,11 +597,14 @@ def main():
     for idx, e in enumerate(wf_events, 1):
         sells = ", ".join([f"{k[:12]}: ₹{v:,.0f}" for k, v in e.sold_assets.items()])
         buys = ", ".join([f"{k[:12]}: ₹{v:,.0f}" for k, v in e.bought_assets.items()])
-        print(f"  [{idx}] {e.event_date} | Trigger: {e.trigger_type:<9} | Turnover: ₹{e.turnover_amount:>8,.0f} | Tax Drag: ₹{e.tax_drag:>5,.0f} (Exempt: ₹{e.exemption_used:>6,.0f})")
+        print(
+            f"  [{idx}] {e.event_date} | Trigger: {e.trigger_type:<9} | Turnover: ₹{e.turnover_amount:>8,.0f} | Tax Drag: ₹{e.tax_drag:>5,.0f} (Exempt: ₹{e.exemption_used:>6,.0f})"
+        )
         if sells:
             print(f"      Sold: {sells}")
         if buys:
             print(f"      Bought: {buys}")
+
 
 if __name__ == "__main__":
     main()

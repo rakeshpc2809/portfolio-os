@@ -1,10 +1,10 @@
 import logging
 import re
 import uuid
+from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Optional
-from datetime import datetime, date
-from .models import TaxEventSchema, EventType
+
+from .models import EventType, TaxEventSchema
 
 logger = logging.getLogger("cas_parser")
 
@@ -12,25 +12,33 @@ DATE_REGEX = re.compile(r"^(\d{2}-[A-Za-z]{3}-\d{4})\s+(.+)$")
 # Added support for both CAMS and KFintech PAN formats in CAS
 ISIN_REGEX = re.compile(r"ISIN:\s*([A-Z0-9]{12})", re.IGNORECASE)
 FOLIO_REGEX = re.compile(r"Folio(?:\s+No)?[:\s]+([0-9a-zA-Z\/\-]+)", re.IGNORECASE)
-CLOSING_BAL_REGEX = re.compile(r"Closing(?:\s+Unit)?\s+Balance[:\s]+([0-9,]+(?:\.[0-9]+)?)", re.IGNORECASE)
-TOKEN_REGEX = re.compile(r"\((?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\)|\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b|\b\d+\.\d+\b")
+CLOSING_BAL_REGEX = re.compile(
+    r"Closing(?:\s+Unit)?\s+Balance[:\s]+([0-9,]+(?:\.[0-9]+)?)", re.IGNORECASE
+)
+TOKEN_REGEX = re.compile(
+    r"\((?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\)|\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b|\b\d+\.\d+\b"
+)
+
 
 class CasPdfParser:
-    def __init__(self, pdf_path: str, password: Optional[str] = None):
+    def __init__(self, pdf_path: str, password: str | None = None):
         self.pdf_path = pdf_path
         self.password = password
 
-    def parse_events(self) -> List[TaxEventSchema]:
-        events: List[TaxEventSchema] = []
+    def parse_events(self) -> list[TaxEventSchema]:
+        events: list[TaxEventSchema] = []
         if not self.pdf_path:
             return events
 
         # Try specialized casparser library first
         try:
             import casparser
+
             data = casparser.read_cas_pdf(self.pdf_path, self.password or "")
             for folio in data.folios:
-                folio_no = str(folio.folio).strip() if (hasattr(folio, "folio") and folio.folio) else None
+                folio_no = (
+                    str(folio.folio).strip() if (hasattr(folio, "folio") and folio.folio) else None
+                )
                 for scheme in folio.schemes:
                     isin = scheme.isin
                     scheme_name = scheme.scheme
@@ -41,7 +49,11 @@ class CasPdfParser:
                             closing_units = Decimal(str(scheme.close))
                         except Exception:
                             closing_units = None
-                    elif hasattr(scheme, "valuation") and hasattr(scheme.valuation, "units") and scheme.valuation.units is not None:
+                    elif (
+                        hasattr(scheme, "valuation")
+                        and hasattr(scheme.valuation, "units")
+                        and scheme.valuation.units is not None
+                    ):
                         try:
                             closing_units = Decimal(str(scheme.valuation.units))
                         except Exception:
@@ -49,7 +61,19 @@ class CasPdfParser:
 
                     for txn in scheme.transactions:
                         txn_type_str = str(txn.type).upper()
-                        if any(x in txn_type_str for x in ["REDEMPTION", "SWITCH_OUT", "SWITCH OUT", "SELL", "STP_OUT", "STP OUT", "SWP", "SYSTEMATIC WITHDRAWAL"]):
+                        if any(
+                            x in txn_type_str
+                            for x in [
+                                "REDEMPTION",
+                                "SWITCH_OUT",
+                                "SWITCH OUT",
+                                "SELL",
+                                "STP_OUT",
+                                "STP OUT",
+                                "SWP",
+                                "SYSTEMATIC WITHDRAWAL",
+                            ]
+                        ):
                             event_type = EventType.DISPOSAL
                         elif "BONUS" in txn_type_str:
                             event_type = EventType.BONUS
@@ -59,7 +83,9 @@ class CasPdfParser:
                             event_type = EventType.ACQUISITION
 
                         if not isinstance(txn.date, date):
-                            raise ValueError(f"Unparseable transaction date encountered in scheme: {scheme_name}")
+                            raise ValueError(
+                                f"Unparseable transaction date encountered in scheme: {scheme_name}"
+                            )
                         txn_date = txn.date
 
                         units = Decimal(str(abs(txn.units or 0)))
@@ -83,11 +109,12 @@ class CasPdfParser:
                                     grossAmount=amount,
                                     sourceDocumentId=self.pdf_path,
                                     ingestedAt=datetime.now(),
-                                    declaredClosingUnits=closing_units
+                                    declaredClosingUnits=closing_units,
                                 )
                             )
             if events:
                 from .sip_detector import detect_and_tag_sips
+
                 return detect_and_tag_sips(events)
         except ValueError:
             raise
@@ -99,9 +126,9 @@ class CasPdfParser:
             import pdfplumber
 
             current_scheme = "Mutual Fund Scheme"
-            current_isin: Optional[str] = None
-            current_folio: Optional[str] = None
-            current_closing_units: Optional[Decimal] = None
+            current_isin: str | None = None
+            current_folio: str | None = None
+            current_closing_units: Decimal | None = None
 
             with pdfplumber.open(self.pdf_path, password=self.password or "") as pdf:
                 for page in pdf.pages:
@@ -120,12 +147,16 @@ class CasPdfParser:
                             current_isin = isin_match.group(1)
 
                         if "ISIN:" in line_str or ("Fund" in line_str and "Registrar" in line_str):
-                            current_scheme = line_str.split(" - ISIN:")[0].split("(Advisor")[0].strip()
+                            current_scheme = (
+                                line_str.split(" - ISIN:")[0].split("(Advisor")[0].strip()
+                            )
 
                         close_match = CLOSING_BAL_REGEX.search(line_str)
                         if close_match:
                             try:
-                                current_closing_units = Decimal(close_match.group(1).replace(",", "").strip())
+                                current_closing_units = Decimal(
+                                    close_match.group(1).replace(",", "").strip()
+                                )
                                 for ev in reversed(events):
                                     if ev.isin == current_isin or ev.asset_name == current_scheme:
                                         if ev.declared_closing_units is None:
@@ -133,7 +164,11 @@ class CasPdfParser:
                                     else:
                                         break
                             except Exception as e:
-                                logger.debug("Failed parsing closing balance '%s': %s", close_match.group(1), e)
+                                logger.debug(
+                                    "Failed parsing closing balance '%s': %s",
+                                    close_match.group(1),
+                                    e,
+                                )
                             continue
 
                         if any(
@@ -157,40 +192,77 @@ class CasPdfParser:
                             try:
                                 event_date = datetime.strptime(date_str, "%d-%b-%Y").date()
                             except ValueError as e:
-                                raise ValueError(f"CRITICAL: Failed to parse date string '{date_str}' in CAS fallback parser. Raw line: {line_str}") from e
+                                raise ValueError(
+                                    f"CRITICAL: Failed to parse date string '{date_str}' in CAS fallback parser. Raw line: {line_str}"
+                                ) from e
 
                             num_tokens = TOKEN_REGEX.findall(rest)
 
                             clean_nums = []
                             for tok in num_tokens:
                                 is_neg = tok.startswith("(") and tok.endswith(")")
-                                raw_val = tok.replace("(", "").replace(")", "").replace(",", "").strip()
+                                raw_val = (
+                                    tok.replace("(", "").replace(")", "").replace(",", "").strip()
+                                )
                                 try:
                                     val = Decimal(raw_val)
                                     if is_neg:
                                         val = -val
                                     clean_nums.append(val)
                                 except Exception as e:
-                                    logger.debug("Skipping unparseable numeric token '%s': %s", raw_val, e)
+                                    logger.debug(
+                                        "Skipping unparseable numeric token '%s': %s", raw_val, e
+                                    )
 
                             if len(clean_nums) >= 3:
                                 # Extract trailing numeric columns from the right to avoid matching numbers in scheme/tx descriptions
                                 if len(clean_nums) >= 4:
-                                    cand_amt, cand_u, cand_p = abs(clean_nums[-4]), abs(clean_nums[-3]), abs(clean_nums[-2])
+                                    cand_amt, cand_u, cand_p = (
+                                        abs(clean_nums[-4]),
+                                        abs(clean_nums[-3]),
+                                        abs(clean_nums[-2]),
+                                    )
                                     # Check if [-4, -3, -2] is (amount, units, price) or (amount, price, units) with [-1] as balance
-                                    if cand_u * cand_p > Decimal("0") and abs(cand_u * cand_p - cand_amt) <= max(cand_amt * Decimal("0.02"), Decimal("10.0")):
+                                    if cand_u * cand_p > Decimal("0") and abs(
+                                        cand_u * cand_p - cand_amt
+                                    ) <= max(cand_amt * Decimal("0.02"), Decimal("10.0")):
                                         amount, units, price = cand_amt, cand_u, cand_p
                                     else:
-                                        amount, units, price = abs(clean_nums[-3]), abs(clean_nums[-2]), abs(clean_nums[-1])
+                                        amount, units, price = (
+                                            abs(clean_nums[-3]),
+                                            abs(clean_nums[-2]),
+                                            abs(clean_nums[-1]),
+                                        )
                                 else:
-                                    amount, units, price = abs(clean_nums[-3]), abs(clean_nums[-2]), abs(clean_nums[-1])
+                                    amount, units, price = (
+                                        abs(clean_nums[-3]),
+                                        abs(clean_nums[-2]),
+                                        abs(clean_nums[-1]),
+                                    )
                                 # Handle CAMS/KFintech column order (Amount | Price/NAV | Units) vs (Amount | Units | Price/NAV)
-                                if units > Decimal("0") and price > Decimal("0") and abs(units * price - amount) > max(amount * Decimal("0.02"), Decimal("10.0")):
+                                if (
+                                    units > Decimal("0")
+                                    and price > Decimal("0")
+                                    and abs(units * price - amount)
+                                    > max(amount * Decimal("0.02"), Decimal("10.0"))
+                                ):
                                     # Swap if needed or let downstream gate catch truly corrupted rows
                                     pass
 
                                 line_upper = rest.upper()
-                                if any(x in line_upper for x in ["REDEMPTION", "SWITCH OUT", "SWITCH_OUT", "SELL", "STP OUT", "STP_OUT", "SWP", "SYSTEMATIC WITHDRAWAL"]):
+                                if any(
+                                    x in line_upper
+                                    for x in [
+                                        "REDEMPTION",
+                                        "SWITCH OUT",
+                                        "SWITCH_OUT",
+                                        "SELL",
+                                        "STP OUT",
+                                        "STP_OUT",
+                                        "SWP",
+                                        "SYSTEMATIC WITHDRAWAL",
+                                    ]
+                                ):
                                     event_type = EventType.DISPOSAL
                                 elif "BONUS" in line_upper:
                                     event_type = EventType.BONUS
@@ -202,7 +274,8 @@ class CasPdfParser:
                                 events.append(
                                     TaxEventSchema(
                                         id=str(uuid.uuid4()),
-                                        assetId=current_isin or current_scheme.replace(" ", "_").upper()[:20],
+                                        assetId=current_isin
+                                        or current_scheme.replace(" ", "_").upper()[:20],
                                         assetName=current_scheme,
                                         isin=current_isin,
                                         folioNo=current_folio,
@@ -213,11 +286,12 @@ class CasPdfParser:
                                         grossAmount=amount,
                                         sourceDocumentId=self.pdf_path,
                                         ingestedAt=datetime.now(),
-                                        declaredClosingUnits=current_closing_units
+                                        declaredClosingUnits=current_closing_units,
                                     )
                                 )
         except Exception as err:
             print(f"Fallback parser error: {err}")
 
         from .sip_detector import detect_and_tag_sips
+
         return detect_and_tag_sips(events)

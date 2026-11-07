@@ -1,10 +1,11 @@
-from enum import Enum
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional
+from enum import StrEnum
+
 from pydantic import BaseModel, Field
 
-class EventType(str, Enum):
+
+class EventType(StrEnum):
     ACQUISITION = "ACQUISITION"
     SIP_INSTALMENT = "SIP_INSTALMENT"
     DISPOSAL = "DISPOSAL"
@@ -15,11 +16,12 @@ class EventType(str, Enum):
     SGB_MATURITY = "SGB_MATURITY"
     MERGER = "MERGER"
 
+
 class TaxEventSchema(BaseModel):
     id: str
     asset_id: str = Field(..., alias="assetId")
     asset_name: str = Field(..., alias="assetName")
-    isin: Optional[str] = None
+    isin: str | None = None
     event_type: EventType = Field(..., alias="eventType")
     event_date: date = Field(..., alias="eventDate")
     units: Decimal
@@ -27,9 +29,9 @@ class TaxEventSchema(BaseModel):
     gross_amount: Decimal = Field(..., alias="grossAmount")
     source_document_id: str = Field(..., alias="sourceDocumentId")
     ingested_at: datetime = Field(default_factory=datetime.utcnow, alias="ingestedAt")
-    declared_closing_units: Optional[Decimal] = Field(default=None, alias="declaredClosingUnits")
-    folio_no: Optional[str] = Field(default=None, alias="folioNo")
-    tx_fingerprint: Optional[str] = Field(default=None, alias="txFingerprint")
+    declared_closing_units: Decimal | None = Field(default=None, alias="declaredClosingUnits")
+    folio_no: str | None = Field(default=None, alias="folioNo")
+    tx_fingerprint: str | None = Field(default=None, alias="txFingerprint")
 
     class Config:
         populate_by_name = True

@@ -1,12 +1,12 @@
-import unittest
 import os
 import tempfile
+import unittest
 from datetime import date
+
 from parsers.broker_csv_parser import BrokerCsvParser
-from parsers.cas_parser import CasPdfParser
+
 
 class TestBrokerCsvParser(unittest.TestCase):
-
     def test_missing_units_raises_value_error(self):
         content = "date,symbol,type,qty,price\n2024-01-15,INF109KC12U0,BUY,,100.0\n"
         with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tf:
@@ -52,8 +52,8 @@ class TestBrokerCsvParser(unittest.TestCase):
             if os.path.exists(tf_path):
                 os.remove(tf_path)
 
-class TestCasPdfParser(unittest.TestCase):
 
+class TestCasPdfParser(unittest.TestCase):
     def test_cas_parser_non_date_txn_raises_value_error(self):
         class MockTxn:
             def __init__(self):
@@ -82,14 +82,19 @@ class TestCasPdfParser(unittest.TestCase):
         txn = MockTxn()
         with self.assertRaises(ValueError) as ctx:
             if not isinstance(txn.date, date):
-                raise ValueError(f"Unparseable transaction date encountered in scheme: {scheme_name}")
+                raise ValueError(
+                    f"Unparseable transaction date encountered in scheme: {scheme_name}"
+                )
         self.assertIn("Unparseable transaction date encountered in scheme", str(ctx.exception))
 
     def test_cas_parser_fallback_numeric_extraction_right_to_left(self):
         from decimal import Decimal
+
         from parsers.cas_parser import TOKEN_REGEX
 
-        line_str = "10-Jan-2026 Systematic Investment Nifty 250 Index 10,000.00 656.168 15.24 1,312.336"
+        line_str = (
+            "10-Jan-2026 Systematic Investment Nifty 250 Index 10,000.00 656.168 15.24 1,312.336"
+        )
         num_tokens = TOKEN_REGEX.findall(line_str)
         clean_nums = []
         for tok in num_tokens:
@@ -105,12 +110,16 @@ class TestCasPdfParser(unittest.TestCase):
 
         self.assertGreaterEqual(len(clean_nums), 4)
         cand_amt, cand_u, cand_p = abs(clean_nums[-4]), abs(clean_nums[-3]), abs(clean_nums[-2])
-        if cand_u * cand_p > Decimal("0") and abs(cand_u * cand_p - cand_amt) <= max(cand_amt * Decimal("0.02"), Decimal("10.0")):
+        if cand_u * cand_p > Decimal("0") and abs(cand_u * cand_p - cand_amt) <= max(
+            cand_amt * Decimal("0.02"), Decimal("10.0")
+        ):
             amount, units, price = cand_amt, cand_u, cand_p
         else:
             amount, units, price = abs(clean_nums[-3]), abs(clean_nums[-2]), abs(clean_nums[-1])
 
-        self.assertEqual(amount, Decimal("10000.00"), "Must extract 10,000.00, ignoring '250' in scheme title")
+        self.assertEqual(
+            amount, Decimal("10000.00"), "Must extract 10,000.00, ignoring '250' in scheme title"
+        )
         self.assertEqual(units, Decimal("656.168"))
         self.assertEqual(price, Decimal("15.24"))
 
@@ -120,17 +129,24 @@ class TestCasPdfParser(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             try:
                 from datetime import datetime
+
                 datetime.strptime(date_str, "%d-%b-%Y").date()
             except ValueError as e:
-                raise ValueError(f"CRITICAL: Failed to parse date string '{date_str}' in CAS fallback parser. Raw line: {line_str}") from e
-        self.assertIn("CRITICAL: Failed to parse date string '99-XYZ-2024' in CAS fallback parser", str(ctx.exception))
+                raise ValueError(
+                    f"CRITICAL: Failed to parse date string '{date_str}' in CAS fallback parser. Raw line: {line_str}"
+                ) from e
+        self.assertIn(
+            "CRITICAL: Failed to parse date string '99-XYZ-2024' in CAS fallback parser",
+            str(ctx.exception),
+        )
 
 
 class TestParseEndpointSanitization(unittest.IsolatedAsyncioTestCase):
-
     async def test_unsupported_format_does_not_leak_tmp_path(self):
         import io
-        from fastapi import UploadFile, HTTPException
+
+        from fastapi import HTTPException, UploadFile
+
         from app import parse_statement
 
         f = UploadFile(filename="test_upload.xyz", file=io.BytesIO(b"content"))
@@ -141,12 +157,17 @@ class TestParseEndpointSanitization(unittest.IsolatedAsyncioTestCase):
 
     async def test_internal_error_sanitizes_500_response(self):
         import io
-        from fastapi import UploadFile, HTTPException
         from unittest.mock import patch
+
+        from fastapi import HTTPException, UploadFile
+
         from app import parse_statement
 
         f = UploadFile(filename="statement.pdf", file=io.BytesIO(b"%PDF-1.4"))
-        with patch("parsers.cas_parser.CasPdfParser", side_effect=Exception("Disk error on /tmp/cas_secret/xyz.pdf")):
+        with patch(
+            "parsers.cas_parser.CasPdfParser",
+            side_effect=Exception("Disk error on /tmp/cas_secret/xyz.pdf"),
+        ):
             with self.assertRaises(HTTPException) as ctx:
                 await parse_statement(file=f)
             self.assertEqual(ctx.exception.status_code, 500)
@@ -156,4 +177,3 @@ class TestParseEndpointSanitization(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -4,11 +4,12 @@ Populates `nav_history` in `data/tax_ledger.duckdb` and exports the aligned
 series to `quant-sidecar/data/nav_export.parquet`.
 """
 
-from datetime import datetime
 import json
-from pathlib import Path
 import sys
 import urllib.request
+from datetime import datetime
+from pathlib import Path
+
 import duckdb
 import polars as pl
 
@@ -22,6 +23,7 @@ SCHEMES = {
     "INF247L01BM8": (150642, "Motilal Gold and Silver FoF"),
     "INF205K01KR8": (120401, "Invesco Arbitrage"),
 }
+
 
 def fetch_nav_series(scheme_code: int, isin: str, name: str) -> list[dict]:
     url = f"https://api.mfapi.in/mf/{scheme_code}"
@@ -38,17 +40,20 @@ def fetch_nav_series(scheme_code: int, isin: str, name: str) -> list[dict]:
                     if nav_val <= 0:
                         continue
                     iso_date = datetime.strptime(raw_date, "%d-%m-%Y").strftime("%Y-%m-%d")
-                    records.append({
-                        "asset_id": isin,
-                        "nav_date": iso_date,
-                        "nav": nav_val,
-                    })
+                    records.append(
+                        {
+                            "asset_id": isin,
+                            "nav_date": iso_date,
+                            "nav": nav_val,
+                        }
+                    )
                 except Exception:
                     continue
             return records
     except Exception as e:
         print(f"[-] Error fetching {name} ({isin}, code {scheme_code}): {e}", file=sys.stderr)
         return []
+
 
 def main():
     repo_root = Path(__file__).resolve().parent.parent.parent
@@ -73,13 +78,15 @@ def main():
         if records:
             all_records.extend(records)
             dates = [r["nav_date"] for r in records]
-            summary.append({
-                "isin": isin,
-                "name": name,
-                "records": len(records),
-                "min_date": min(dates),
-                "max_date": max(dates),
-            })
+            summary.append(
+                {
+                    "isin": isin,
+                    "name": name,
+                    "records": len(records),
+                    "min_date": min(dates),
+                    "max_date": max(dates),
+                }
+            )
             print(f"    -> Received {len(records)} records ({min(dates)} to {max(dates)})")
         else:
             print(f"    -> WARNING: No records returned for {name}!")
@@ -116,12 +123,18 @@ def main():
 
     # 2. Write/Overwrite Parquet export directly
     # Even if DuckDB had an active lock from running core-node, we write direct parquet
-    export_df = pl.DataFrame(all_records).select([
-        pl.col("nav_date"),
-        pl.col("asset_id").alias("isin"),
-        pl.col("nav").alias("nav_value"),
-    ]).sort(["isin", "nav_date"])
-    
+    export_df = (
+        pl.DataFrame(all_records)
+        .select(
+            [
+                pl.col("nav_date"),
+                pl.col("asset_id").alias("isin"),
+                pl.col("nav").alias("nav_value"),
+            ]
+        )
+        .sort(["isin", "nav_date"])
+    )
+
     for p in parquet_paths:
         export_df.write_parquet(p)
         print(f"[+] Wrote {len(export_df)} total records to {p}")
@@ -134,22 +147,28 @@ def main():
     max_common_end = min(s["max_date"] for s in summary)
 
     for s in summary:
-        print(f"  {s['isin']} | {s['name'][:30]:<30} | {s['records']:>5} records | {s['min_date']} to {s['max_date']}")
+        print(
+            f"  {s['isin']} | {s['name'][:30]:<30} | {s['records']:>5} records | {s['min_date']} to {s['max_date']}"
+        )
 
     print("-" * 72)
     print(f"Common Intersection Window: {min_common_start} to {max_common_end}")
-    
+
     # Calculate how many rows survive intersection across all 7 funds
     pivot_check = (
-        export_df
-        .filter((pl.col("nav_date") >= min_common_start) & (pl.col("nav_date") <= max_common_end))
+        export_df.filter(
+            (pl.col("nav_date") >= min_common_start) & (pl.col("nav_date") <= max_common_end)
+        )
         .pivot(index="nav_date", on="isin", values="nav_value")
         .fill_null(strategy="forward")
         .drop_nulls()
     )
     print(f"Common Aligned Trading Days:  {len(pivot_check)} days")
-    print(f"DuckDB Persistence Status:   {'UPDATED' if duckdb_updated else 'BYPASSED (Direct Parquet Write)'}")
+    print(
+        f"DuckDB Persistence Status:   {'UPDATED' if duckdb_updated else 'BYPASSED (Direct Parquet Write)'}"
+    )
     print("=" * 72)
+
 
 if __name__ == "__main__":
     main()

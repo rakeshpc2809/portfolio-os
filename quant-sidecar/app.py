@@ -1,45 +1,55 @@
-import os
-import tempfile
-import threading
+import asyncio
 import logging
+import os
+import secrets
+import tempfile
 from contextlib import asynccontextmanager
-from typing import List, Optional
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Header, Depends, Request, Response
-from pydantic import BaseModel
+
 import polars as pl
 import uvicorn
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
+from pydantic import BaseModel
 
-import asyncio
-from parsers.cas_parser import CasPdfParser
-from parsers.broker_csv_parser import BrokerCsvParser
-from parsers.sip_detector import detect_and_tag_sips
 from parsers.models import TaxEventSchema
+from parsers.sip_detector import detect_and_tag_sips
 from quant.analytics_engine import (
-    run_monte_carlo_fire_simulation,
+    BenchmarkAnalyticsResponse,
+    FireSimulationResponse,
+    compute_arrow_stream_metrics,
     compute_benchmark_analytics,
     compute_fund_analytics,
-    FireSimulationResponse,
-    BenchmarkAnalyticsResponse,
-    serialize_arrow_stream,
     nav_records_to_arrow_stream,
-    compute_arrow_stream_metrics
+    run_monte_carlo_fire_simulation,
+    serialize_arrow_stream,
 )
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("quant-sidecar")
 
-import secrets
 
-def verify_auth_token(x_api_auth_token: Optional[str] = Header(None)):
+def verify_auth_token(x_api_auth_token: str | None = Header(None)):
     expected_token = os.getenv("API_AUTH_TOKEN")
     if not expected_token or not expected_token.strip():
         raise HTTPException(
             status_code=500,
-            detail="SECURITY CRITICAL: API_AUTH_TOKEN environment variable is not configured on Quant Sidecar"
+            detail="SECURITY CRITICAL: API_AUTH_TOKEN environment variable is not configured on Quant Sidecar",
         )
     if not x_api_auth_token or not secrets.compare_digest(x_api_auth_token, expected_token):
-        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-Api-Auth-Token header")
+        raise HTTPException(
+            status_code=401, detail="Unauthorized: Invalid or missing X-Api-Auth-Token header"
+        )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,13 +57,17 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Portfolio OS Quant & Parser Sidecar shutting down...")
 
+
 app = FastAPI(title="Portfolio OS Quant & Parser Sidecar", version="3.0.0", lifespan=lifespan)
+
 
 @app.get("/health")
 def health_check():
     return {"status": "UP", "engine": "Polars + FastAPI + Direct IPC", "version": "3.0.0"}
 
+
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
+
 
 def _secure_remove(path: str) -> None:
     try:
@@ -69,29 +83,36 @@ def _secure_remove(path: str) -> None:
         if os.path.exists(path):
             os.remove(path)
 
-@app.post("/api/v1/parse", response_model=List[TaxEventSchema], dependencies=[Depends(verify_auth_token)])
-async def parse_statement(
-    file: UploadFile = File(...),
-    password: Optional[str] = Form(None)
-):
+
+@app.post(
+    "/api/v1/parse", response_model=list[TaxEventSchema], dependencies=[Depends(verify_auth_token)]
+)
+async def parse_statement(file: UploadFile = File(...), password: str | None = Form(None)):
     filename = os.path.basename(file.filename or "statement")
     ext = os.path.splitext(filename)[1].lower()
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Uploaded file exceeds 25 MB limit.")
-    logger.info(f"Received statement upload: {filename} ({len(content)} bytes) with extension {ext}")
+    logger.info(
+        f"Received statement upload: {filename} ({len(content)} bytes) with extension {ext}"
+    )
     fd, tmp_path = tempfile.mkstemp(suffix=ext)
     os.chmod(tmp_path, 0o600)
     with os.fdopen(fd, "wb") as tmp:
         tmp.write(content)
     try:
+
         def _do_parse():
             if ext == ".pdf":
                 from parsers.cas_parser import CasPdfParser
+
                 parser = CasPdfParser(tmp_path, password=password)
-                raw_events = parser.parse_events() if hasattr(parser, 'parse_events') else parser.parse()
+                raw_events = (
+                    parser.parse_events() if hasattr(parser, "parse_events") else parser.parse()
+                )
             elif ext == ".csv":
                 from parsers.broker_csv_parser import BrokerCsvParser
+
                 parser = BrokerCsvParser(tmp_path)
                 raw_events = parser.parse()
             else:
@@ -100,7 +121,15 @@ async def parse_statement(
             tagged_events = detect_and_tag_sips(raw_events)
             if tagged_events:
                 df = pl.DataFrame([e.model_dump(by_alias=True) for e in tagged_events])
-                required_cols = ["id", "assetId", "assetName", "eventType", "eventDate", "units", "grossAmount"]
+                required_cols = [
+                    "id",
+                    "assetId",
+                    "assetName",
+                    "eventType",
+                    "eventDate",
+                    "units",
+                    "grossAmount",
+                ]
                 for col in required_cols:
                     if col not in df.columns:
                         raise ValueError(f"Missing column in parsed dataframe: {col}")
@@ -114,28 +143,44 @@ async def parse_statement(
     except Exception as err:
         err_msg = str(err)
         logger.error(f"Error parsing statement: {err_msg}", exc_info=True)
-        is_client_error = "CRITICAL:" in err_msg or "Unsupported" in err_msg or "password" in err_msg.lower() or isinstance(err, ValueError)
+        is_client_error = (
+            "CRITICAL:" in err_msg
+            or "Unsupported" in err_msg
+            or "password" in err_msg.lower()
+            or isinstance(err, ValueError)
+        )
         status_code = 422 if is_client_error else 500
-        safe_detail = err_msg.replace(tmp_path, "<redacted_path>") if is_client_error else "Internal statement parser error."
+        safe_detail = (
+            err_msg.replace(tmp_path, "<redacted_path>")
+            if is_client_error
+            else "Internal statement parser error."
+        )
         raise HTTPException(status_code=status_code, detail=safe_detail)
     finally:
         _secure_remove(tmp_path)
 
+
 class FireSimulationRequest(BaseModel):
-    daily_returns: List[float] = []
+    daily_returns: list[float] = []
     current_corpus: float
     annual_expense: float
     monthly_contribution: float
     years_to_retirement: int
     num_simulations: int = 10000
-    regime: Optional[str] = None
+    regime: str | None = None
+
 
 class BenchmarkAnalyticsRequest(BaseModel):
-    portfolio_returns: List[float]
-    benchmark_returns: List[float]
+    portfolio_returns: list[float]
+    benchmark_returns: list[float]
     benchmark_name: str = "NIFTY_50_TRI"
 
-@app.post("/api/v1/simulate_fire", response_model=FireSimulationResponse, dependencies=[Depends(verify_auth_token)])
+
+@app.post(
+    "/api/v1/simulate_fire",
+    response_model=FireSimulationResponse,
+    dependencies=[Depends(verify_auth_token)],
+)
 async def simulate_fire(req: FireSimulationRequest):
     return await asyncio.to_thread(
         run_monte_carlo_fire_simulation,
@@ -145,28 +190,38 @@ async def simulate_fire(req: FireSimulationRequest):
         monthly_contribution=req.monthly_contribution,
         years_to_retirement=req.years_to_retirement,
         num_simulations=req.num_simulations,
-        regime=req.regime
+        regime=req.regime,
     )
 
-@app.post("/api/v1/analytics/benchmark", response_model=BenchmarkAnalyticsResponse, dependencies=[Depends(verify_auth_token)])
+
+@app.post(
+    "/api/v1/analytics/benchmark",
+    response_model=BenchmarkAnalyticsResponse,
+    dependencies=[Depends(verify_auth_token)],
+)
 async def analyze_benchmark(req: BenchmarkAnalyticsRequest):
     result = await asyncio.to_thread(
         compute_benchmark_analytics,
         portfolio_returns=req.portfolio_returns,
         benchmark_returns=req.benchmark_returns,
-        benchmark_name=req.benchmark_name
+        benchmark_name=req.benchmark_name,
     )
     if result.get("status") == "ERROR":
-        raise HTTPException(status_code=422, detail=result.get("message", "Benchmark analytics computation error"))
+        raise HTTPException(
+            status_code=422, detail=result.get("message", "Benchmark analytics computation error")
+        )
     return result
+
 
 class FundSeriesItem(BaseModel):
     amfi_code: str
-    nav_values: List[float]
-    nav_dates: Optional[List[str]] = None
+    nav_values: list[float]
+    nav_dates: list[str] | None = None
+
 
 class FundMetricsBatchRequest(BaseModel):
-    funds: List[FundSeriesItem]
+    funds: list[FundSeriesItem]
+
 
 @app.post("/api/v1/analytics/fund_metrics", dependencies=[Depends(verify_auth_token)])
 def compute_batch_fund_metrics(req: FundMetricsBatchRequest):
@@ -176,13 +231,14 @@ def compute_batch_fund_metrics(req: FundMetricsBatchRequest):
         results[item.amfi_code] = analytics
     return results
 
+
 @app.get("/api/v1/analytics/nav_arrow_stream", dependencies=[Depends(verify_auth_token)])
-def get_nav_arrow_stream(isin: Optional[str] = None, limit: Optional[int] = None):
+def get_nav_arrow_stream(isin: str | None = None, limit: int | None = None):
     """Zero-copy Apache Arrow stream endpoint for historical mutual fund NAVs."""
     candidates = [
         "data/nav_export.parquet",
         "../data/nav_export.parquet",
-        "../../data/nav_export.parquet"
+        "../../data/nav_export.parquet",
     ]
     target_parquet = None
     for cand in candidates:
@@ -205,28 +261,32 @@ def get_nav_arrow_stream(isin: Optional[str] = None, limit: Optional[int] = None
         return Response(
             content=stream_bytes,
             media_type="application/vnd.apache.arrow.stream",
-            headers={"Content-Disposition": "attachment; filename=nav_stream.arrow"}
+            headers={"Content-Disposition": "attachment; filename=nav_stream.arrow"},
         )
     except Exception as e:
         logger.error(f"Failed to generate Arrow stream: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Arrow IPC streaming failed: {str(e)}")
+
 
 @app.post("/api/v1/analytics/nav_arrow_stream", dependencies=[Depends(verify_auth_token)])
 async def stream_nav_analytics(request: Request):
     """Processes an incoming Arrow IPC stream of NAV records and returns an Arrow stream of fund metrics."""
     body = await request.body()
     if not body:
-        raise HTTPException(status_code=400, detail="Empty request body. Expected Arrow IPC stream.")
+        raise HTTPException(
+            status_code=400, detail="Empty request body. Expected Arrow IPC stream."
+        )
     try:
         output_bytes = await asyncio.to_thread(compute_arrow_stream_metrics, body)
         return Response(
             content=output_bytes,
             media_type="application/vnd.apache.arrow.stream",
-            headers={"Content-Disposition": "attachment; filename=analytics_stream.arrow"}
+            headers={"Content-Disposition": "attachment; filename=analytics_stream.arrow"},
         )
     except Exception as e:
         logger.error(f"Arrow streaming analytics failed: {e}", exc_info=True)
         raise HTTPException(status_code=422, detail=f"Arrow IPC stream processing failed: {str(e)}")
+
 
 if __name__ == "__main__":
     uds_path = os.getenv("QUANT_SOCKET_PATH", os.getenv("UDS_PATH"))
@@ -242,4 +302,3 @@ if __name__ == "__main__":
     else:
         logger.info("Starting FastAPI HTTP Server on port 8000...")
         uvicorn.run(app, host="127.0.0.1", port=8000)
-

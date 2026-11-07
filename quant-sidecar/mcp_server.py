@@ -25,7 +25,7 @@ import urllib.error
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import duckdb
 
@@ -87,7 +87,10 @@ PREFERRED_FUNDS = {
 # Core Data Access (REST with Offline DuckDB/SQLite fallback)
 # ---------------------------------------------------------------------------
 
-def _call_core_api(path: str, method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+
+def _call_core_api(
+    path: str, method: str = "GET", payload: dict[str, Any] | None = None
+) -> dict[str, Any]:
     url = f"{CORE_NODE_URL.rstrip('/')}/{path.lstrip('/')}"
     headers = {
         "X-Api-Auth-Token": API_AUTH_TOKEN,
@@ -113,7 +116,7 @@ def _call_core_api(path: str, method: str = "GET", payload: Optional[Dict[str, A
         return {"status": "OFFLINE_OR_ERROR", "message": str(e)}
 
 
-def _query_core_node_snapshot() -> Optional[Dict[str, Any]]:
+def _query_core_node_snapshot() -> dict[str, Any] | None:
     """Attempts to query live snapshot from core-node REST API."""
     data = _call_core_api("/api/v1/sync/snapshot")
     if data.get("status") in ("HTTP_ERROR", "OFFLINE_OR_ERROR"):
@@ -128,7 +131,7 @@ def _query_core_node_snapshot() -> Optional[Dict[str, Any]]:
     return data
 
 
-def _get_offline_nav_map() -> Dict[str, float]:
+def _get_offline_nav_map() -> dict[str, float]:
     """Reads latest NAVs per asset from DuckDB nav_history, Core Node, or SQLite."""
     nav_map = {}
     if DUCKDB_PATH.exists():
@@ -166,6 +169,7 @@ def _get_offline_nav_map() -> Dict[str, float]:
     if SQLITE_PATH.exists():
         try:
             import sqlite3
+
             s_conn = sqlite3.connect(f"file:{SQLITE_PATH}?mode=ro", uri=True)
             rows = s_conn.execute("""
                 SELECT isin, CAST(price_per_unit AS REAL)
@@ -183,7 +187,7 @@ def _get_offline_nav_map() -> Dict[str, float]:
     return nav_map
 
 
-def _get_offline_open_lots() -> List[Dict[str, Any]]:
+def _get_offline_open_lots() -> list[dict[str, Any]]:
     """Computes open lots using deterministic FIFO from DuckDB projected_events or SQLite tax_events."""
     events = []
     if DUCKDB_PATH.exists():
@@ -204,6 +208,7 @@ def _get_offline_open_lots() -> List[Dict[str, Any]]:
     if not events and SQLITE_PATH.exists():
         try:
             import sqlite3
+
             s_conn = sqlite3.connect(f"file:{SQLITE_PATH}?mode=ro", uri=True)
             events = s_conn.execute("""
                 SELECT id, asset_id, asset_name, isin, event_type, event_date, 
@@ -220,22 +225,24 @@ def _get_offline_open_lots() -> List[Dict[str, Any]]:
     if not events:
         return []
 
-    lots_by_asset: Dict[str, List[Dict[str, Any]]] = {}
+    lots_by_asset: dict[str, list[dict[str, Any]]] = {}
     for ev in events:
         eid, aid, name, isin, etype, edate, units, price, amount = ev
         key = isin or aid
         if key not in lots_by_asset:
             lots_by_asset[key] = []
         if etype in ("ACQUISITION", "SIP_INSTALMENT", "BONUS"):
-            lots_by_asset[key].append({
-                "lot_id": eid,
-                "asset_id": key,
-                "asset_name": name,
-                "acquisition_date": edate,
-                "units": float(units),
-                "cost_nav": float(price),
-                "cost_basis": float(units) * float(price),
-            })
+            lots_by_asset[key].append(
+                {
+                    "lot_id": eid,
+                    "asset_id": key,
+                    "asset_name": name,
+                    "acquisition_date": edate,
+                    "units": float(units),
+                    "cost_nav": float(price),
+                    "cost_basis": float(units) * float(price),
+                }
+            )
         elif etype in ("DISPOSAL", "REDEMPTION", "SWITCH_OUT"):
             rem = abs(float(units))
             while rem > 1e-6 and lots_by_asset[key]:
@@ -254,7 +261,7 @@ def _get_offline_open_lots() -> List[Dict[str, Any]]:
     return open_lots
 
 
-def _get_live_or_offline_state() -> Dict[str, Any]:
+def _get_live_or_offline_state() -> dict[str, Any]:
     """Combines live or offline data into a canonical portfolio state."""
     live = _query_core_node_snapshot()
     if live and "portfolio_summary" in live:
@@ -265,7 +272,9 @@ def _get_live_or_offline_state() -> Dict[str, Any]:
             "total_invested": float(live["portfolio_summary"].get("total_invested", 0.0)),
             "unrealized_gain": float(live["portfolio_summary"].get("unrealized_gain", 0.0)),
             "unrealized_gain_pct": float(live["portfolio_summary"].get("unrealized_gain_pct", 0.0)),
-            "xirr": float(str(live["portfolio_summary"].get("xirr_percentage", "0.0")).replace("%", "")),
+            "xirr": float(
+                str(live["portfolio_summary"].get("xirr_percentage", "0.0")).replace("%", "")
+            ),
             "buckets": live.get("rebalance_plan", {}).get("buckets", []),
             "holdings": live.get("holdings", []),
             "open_lots": [lot for h in live.get("holdings", []) for lot in h.get("lots", [])],
@@ -275,7 +284,7 @@ def _get_live_or_offline_state() -> Dict[str, Any]:
     nav_map = _get_offline_nav_map()
     open_lots = _get_offline_open_lots()
 
-    holdings_by_asset: Dict[str, Dict[str, Any]] = {}
+    holdings_by_asset: dict[str, dict[str, Any]] = {}
     for lot in open_lots:
         aid = lot["asset_id"]
         if aid not in holdings_by_asset:
@@ -294,7 +303,7 @@ def _get_live_or_offline_state() -> Dict[str, Any]:
     holdings_list = []
     net_worth = 0.0
     total_invested = 0.0
-    bucket_values: Dict[str, float] = {b: 0.0 for b in BUCKET_TARGETS.keys()}
+    bucket_values: dict[str, float] = {b: 0.0 for b in BUCKET_TARGETS.keys()}
     bucket_values["LEGACY_HOLDINGS"] = 0.0
 
     for aid, h in holdings_by_asset.items():
@@ -321,15 +330,19 @@ def _get_live_or_offline_state() -> Dict[str, Any]:
         val = bucket_values.get(b_name, 0.0)
         curr_pct = (val / net_worth * 100.0) if net_worth > 0 else 0.0
         drift_pct = curr_pct - target
-        buckets_summary.append({
-            "bucket_name": b_name,
-            "target_pct": target,
-            "current_pct": round(curr_pct, 2),
-            "drift_pct": round(drift_pct, 2),
-            "current_value": round(val, 2),
-            "target_value": round((target / 100.0) * net_worth, 2),
-            "status": "OVERWEIGHT" if drift_pct > 2.0 else ("UNDERWEIGHT" if drift_pct < -2.0 else "IN_POLICY")
-        })
+        buckets_summary.append(
+            {
+                "bucket_name": b_name,
+                "target_pct": target,
+                "current_pct": round(curr_pct, 2),
+                "drift_pct": round(drift_pct, 2),
+                "current_value": round(val, 2),
+                "target_value": round((target / 100.0) * net_worth, 2),
+                "status": "OVERWEIGHT"
+                if drift_pct > 2.0
+                else ("UNDERWEIGHT" if drift_pct < -2.0 else "IN_POLICY"),
+            }
+        )
 
     return {
         "source": "DUCKDB_OFFLINE_ANALYTICS",
@@ -348,6 +361,7 @@ def _get_live_or_offline_state() -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # MCP Tool Implementations
 # ---------------------------------------------------------------------------
+
 
 def get_portfolio_status(trigger: str = "SCHEDULED") -> str:
     """
@@ -371,8 +385,8 @@ def simulate_trade_or_lumpsum(
     mode: str = "LUMPSUM",
     amount: float = 50000.0,
     include_rebalance: bool = False,
-    isin: Optional[str] = None,
-    scheme_name: Optional[str] = None,
+    isin: str | None = None,
+    scheme_name: str | None = None,
     units: float = 0.0,
     price_per_unit: float = 0.0,
     trade_type: str = "DISPOSAL",
@@ -392,7 +406,11 @@ def simulate_trade_or_lumpsum(
         return json.dumps(res, indent=2)
     elif mode_upper == "TRADE":
         if not isin or units <= 0 or price_per_unit <= 0:
-            return json.dumps({"error": "For mode='TRADE', provide valid isin, units > 0, and price_per_unit > 0."})
+            return json.dumps(
+                {
+                    "error": "For mode='TRADE', provide valid isin, units > 0, and price_per_unit > 0."
+                }
+            )
         res = _call_core_api(
             "/api/v1/simulate/trade",
             method="POST",
@@ -416,9 +434,15 @@ def query_duckdb_readonly(sql: str, limit: int = 100) -> str:
     """
     cleaned_sql = sql.strip().rstrip(";")
     if not cleaned_sql.upper().startswith(("SELECT", "WITH", "DESCRIBE", "SHOW", "EXPLAIN")):
-        return json.dumps({"error": "Only read-only SELECT / WITH / DESCRIBE queries are permitted."})
+        return json.dumps(
+            {"error": "Only read-only SELECT / WITH / DESCRIBE queries are permitted."}
+        )
     if FORBIDDEN_SQL_PATTERN.search(cleaned_sql):
-        return json.dumps({"error": "Query rejected by read-only security gate (mutating or file keyword detected)."})
+        return json.dumps(
+            {
+                "error": "Query rejected by read-only security gate (mutating or file keyword detected)."
+            }
+        )
     if PII_COLUMN_PATTERN.search(cleaned_sql):
         return json.dumps({"error": "Query rejected by Zero-PII gate: folio_no is restricted."})
 
@@ -432,7 +456,9 @@ def query_duckdb_readonly(sql: str, limit: int = 100) -> str:
         }
         for view_name, file_path in parquet_mappings.items():
             if file_path.exists():
-                conn.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_parquet('{file_path.as_posix()}')")
+                conn.execute(
+                    f"CREATE VIEW {view_name} AS SELECT * FROM read_parquet('{file_path.as_posix()}')"
+                )
 
         csv_mappings = {
             "holdings_snapshot": DATA_DIR / "sheets_export" / "holdings_snapshot.csv",
@@ -440,18 +466,28 @@ def query_duckdb_readonly(sql: str, limit: int = 100) -> str:
         }
         for view_name, file_path in csv_mappings.items():
             if file_path.exists():
-                conn.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_csv_auto('{file_path.as_posix()}')")
+                conn.execute(
+                    f"CREATE VIEW {view_name} AS SELECT * FROM read_csv_auto('{file_path.as_posix()}')"
+                )
 
         # Fallback views from tax_ledger.duckdb if parquet views were not created
         if (DATA_DIR / "tax_ledger.duckdb").exists():
             try:
-                conn.execute(f"ATTACH '{(DATA_DIR / 'tax_ledger.duckdb').as_posix()}' AS tax_db (READ_ONLY)")
+                conn.execute(
+                    f"ATTACH '{(DATA_DIR / 'tax_ledger.duckdb').as_posix()}' AS tax_db (READ_ONLY)"
+                )
                 if not (DATA_DIR / "fund_holdings.parquet").exists():
-                    conn.execute("CREATE VIEW IF NOT EXISTS fund_holdings AS SELECT * FROM tax_db.fund_holdings")
+                    conn.execute(
+                        "CREATE VIEW IF NOT EXISTS fund_holdings AS SELECT * FROM tax_db.fund_holdings"
+                    )
                 if not (DATA_DIR / "nav_export.parquet").exists():
-                    conn.execute("CREATE VIEW IF NOT EXISTS nav_export AS SELECT * FROM tax_db.nav_history")
+                    conn.execute(
+                        "CREATE VIEW IF NOT EXISTS nav_export AS SELECT * FROM tax_db.nav_history"
+                    )
             except Exception as e:
-                logger.warning("Could not attach fallback tax_ledger.duckdb in query_duckdb_readonly: %s", e)
+                logger.warning(
+                    "Could not attach fallback tax_ledger.duckdb in query_duckdb_readonly: %s", e
+                )
 
         bounded_sql = f"SELECT * FROM ({cleaned_sql}) AS _q LIMIT {min(max(1, limit), 500)}"
         rel = conn.sql(bounded_sql)
@@ -460,7 +496,9 @@ def query_duckdb_readonly(sql: str, limit: int = 100) -> str:
         for row in rows:
             row.pop("folio_no", None)
             row.pop("folioNo", None)
-        return json.dumps({"row_count": len(rows), "columns": columns, "rows": rows}, default=str, indent=2)
+        return json.dumps(
+            {"row_count": len(rows), "columns": columns, "rows": rows}, default=str, indent=2
+        )
     except Exception as e:
         return json.dumps({"error": str(e)})
     finally:
@@ -470,41 +508,49 @@ def query_duckdb_readonly(sql: str, limit: int = 100) -> str:
 def get_portfolio_snapshot() -> str:
     """Returns net worth, total invested, gain %, XIRR, and asset bucket allocations."""
     state = _get_live_or_offline_state()
-    return json.dumps({
-        "status": "SUCCESS",
-        "data_source": state["source"],
-        "as_of": state["as_of"],
-        "portfolio_summary": {
-            "net_worth": state["net_worth"],
-            "total_invested": state["total_invested"],
-            "unrealized_gain": state["unrealized_gain"],
-            "unrealized_gain_pct": state["unrealized_gain_pct"],
-            "xirr_percentage": f"{state['xirr']}%",
+    return json.dumps(
+        {
+            "status": "SUCCESS",
+            "data_source": state["source"],
+            "as_of": state["as_of"],
+            "portfolio_summary": {
+                "net_worth": state["net_worth"],
+                "total_invested": state["total_invested"],
+                "unrealized_gain": state["unrealized_gain"],
+                "unrealized_gain_pct": state["unrealized_gain_pct"],
+                "xirr_percentage": f"{state['xirr']}%",
+            },
+            "bucket_allocations": state["buckets"],
         },
-        "bucket_allocations": state["buckets"],
-    }, indent=2)
+        indent=2,
+    )
 
 
 def simulate_trade_what_if(asset_id: str, units_to_sell: float, simulated_nav: float = 0.0) -> str:
     """Simulates selling units of an asset under strict FIFO tax rules (STCG @ 20% vs LTCG @ 12.5%)."""
     if units_to_sell <= 0:
-        return json.dumps({"status": "ERROR", "message": "units_to_sell must be strictly positive."})
+        return json.dumps(
+            {"status": "ERROR", "message": "units_to_sell must be strictly positive."}
+        )
 
     state = _get_live_or_offline_state()
     matching_lots = [
-        lot for lot in state["open_lots"]
+        lot
+        for lot in state["open_lots"]
         if lot.get("asset_id") == asset_id or lot.get("isin") == asset_id
     ]
 
     # Ensure chronological order for FIFO
     matching_lots.sort(key=lambda x: str(x.get("acquisition_date") or x.get("buyDate", "")))
 
-    total_avail = sum(float(l.get("units", 0.0)) for l in matching_lots)
+    total_avail = sum(float(lot.get("units", 0.0)) for lot in matching_lots)
     if units_to_sell > total_avail + 1e-4:
-        return json.dumps({
-            "status": "ERROR",
-            "message": f"Requested {units_to_sell} units exceeds total available units ({total_avail}) for asset {asset_id}"
-        })
+        return json.dumps(
+            {
+                "status": "ERROR",
+                "message": f"Requested {units_to_sell} units exceeds total available units ({total_avail}) for asset {asset_id}",
+            }
+        )
 
     # Determine sale price
     nav = simulated_nav
@@ -547,16 +593,18 @@ def simulate_trade_what_if(asset_id: str, units_to_sell: float, simulated_nav: f
         else:
             stcg_taxable += gain
 
-        consumed.append({
-            "lot_id": lot.get("lot_id") or lot.get("id"),
-            "acquisition_date": acq_str,
-            "holding_period_days": holding_days,
-            "tax_classification": "LTCG" if is_ltcg else "STCG",
-            "units_consumed": round(take_units, 4),
-            "cost_nav": round(cost_nav, 2),
-            "sale_nav": round(nav, 2),
-            "gain": round(gain, 2),
-        })
+        consumed.append(
+            {
+                "lot_id": lot.get("lot_id") or lot.get("id"),
+                "acquisition_date": acq_str,
+                "holding_period_days": holding_days,
+                "tax_classification": "LTCG" if is_ltcg else "STCG",
+                "units_consumed": round(take_units, 4),
+                "cost_nav": round(cost_nav, 2),
+                "sale_nav": round(nav, 2),
+                "gain": round(gain, 2),
+            }
+        )
         rem -= take_units
 
     stcg_tax = max(0.0, stcg_taxable) * 0.20  # Section 111A post July 2024
@@ -579,38 +627,45 @@ def simulate_trade_what_if(asset_id: str, units_to_sell: float, simulated_nav: f
             val = max(0.0, val - gross_proceeds)
         pct = (val / new_nw * 100.0) if new_nw > 0 else 0.0
         drift = pct - b["target_pct"]
-        new_buckets.append({
-            "bucket_name": b_name,
-            "target_pct": b["target_pct"],
-            "new_pct": round(pct, 2),
-            "drift_pct": round(drift, 2),
-        })
+        new_buckets.append(
+            {
+                "bucket_name": b_name,
+                "target_pct": b["target_pct"],
+                "new_pct": round(pct, 2),
+                "drift_pct": round(drift, 2),
+            }
+        )
 
-    return json.dumps({
-        "status": "SUCCESS",
-        "asset_id": asset_id,
-        "units_sold": round(units_to_sell, 4),
-        "sale_nav": round(nav, 2),
-        "gross_proceeds": round(gross_proceeds, 2),
-        "tax_liability": {
-            "stcg_gain": round(stcg_taxable, 2),
-            "stcg_tax_rate": "20.0%",
-            "stcg_tax_amount": round(stcg_tax, 2),
-            "ltcg_gain": round(ltcg_taxable, 2),
-            "ltcg_tax_rate": "12.5%",
-            "ltcg_tax_amount": round(ltcg_tax, 2),
-            "total_estimated_tax": round(total_tax, 2),
+    return json.dumps(
+        {
+            "status": "SUCCESS",
+            "asset_id": asset_id,
+            "units_sold": round(units_to_sell, 4),
+            "sale_nav": round(nav, 2),
+            "gross_proceeds": round(gross_proceeds, 2),
+            "tax_liability": {
+                "stcg_gain": round(stcg_taxable, 2),
+                "stcg_tax_rate": "20.0%",
+                "stcg_tax_amount": round(stcg_tax, 2),
+                "ltcg_gain": round(ltcg_taxable, 2),
+                "ltcg_tax_rate": "12.5%",
+                "ltcg_tax_amount": round(ltcg_tax, 2),
+                "total_estimated_tax": round(total_tax, 2),
+            },
+            "net_proceeds": round(net_proceeds, 2),
+            "lots_consumed": consumed,
+            "resulting_bucket_drift": new_buckets,
         },
-        "net_proceeds": round(net_proceeds, 2),
-        "lots_consumed": consumed,
-        "resulting_bucket_drift": new_buckets,
-    }, indent=2)
+        indent=2,
+    )
 
 
 def simulate_lumpsum_inflow(amount: float) -> str:
     """Calculates optimal cash distribution across underweight buckets to eliminate drift."""
     if amount <= 0:
-        return json.dumps({"status": "ERROR", "message": "Inflow amount must be strictly positive."})
+        return json.dumps(
+            {"status": "ERROR", "message": "Inflow amount must be strictly positive."}
+        )
 
     state = _get_live_or_offline_state()
     curr_nw = state["net_worth"]
@@ -634,36 +689,41 @@ def simulate_lumpsum_inflow(amount: float) -> str:
             alloc = min(amount, (shortfall / total_deficit) * amount)
             funds = PREFERRED_FUNDS.get(b_name, [])
             per_fund = alloc / len(funds) if funds else 0.0
-            allocations.append({
-                "bucket_name": b_name,
-                "allocated_amount": round(alloc, 2),
-                "preferred_fund_split": [
-                    {"isin": f, "suggested_inflow": round(per_fund, 2)}
-                    for f in funds
-                ]
-            })
+            allocations.append(
+                {
+                    "bucket_name": b_name,
+                    "allocated_amount": round(alloc, 2),
+                    "preferred_fund_split": [
+                        {"isin": f, "suggested_inflow": round(per_fund, 2)} for f in funds
+                    ],
+                }
+            )
     else:
         for b in state["buckets"]:
             b_name = b["bucket_name"]
             alloc = amount * (b["target_pct"] / 100.0)
             funds = PREFERRED_FUNDS.get(b_name, [])
             per_fund = alloc / len(funds) if funds else 0.0
-            allocations.append({
-                "bucket_name": b_name,
-                "allocated_amount": round(alloc, 2),
-                "preferred_fund_split": [
-                    {"isin": f, "suggested_inflow": round(per_fund, 2)}
-                    for f in funds
-                ]
-            })
+            allocations.append(
+                {
+                    "bucket_name": b_name,
+                    "allocated_amount": round(alloc, 2),
+                    "preferred_fund_split": [
+                        {"isin": f, "suggested_inflow": round(per_fund, 2)} for f in funds
+                    ],
+                }
+            )
 
-    return json.dumps({
-        "status": "SUCCESS",
-        "current_net_worth": curr_nw,
-        "inflow_amount": amount,
-        "projected_net_worth": proj_nw,
-        "recommended_allocations": allocations,
-    }, indent=2)
+    return json.dumps(
+        {
+            "status": "SUCCESS",
+            "current_net_worth": curr_nw,
+            "inflow_amount": amount,
+            "projected_net_worth": proj_nw,
+            "recommended_allocations": allocations,
+        },
+        indent=2,
+    )
 
 
 def get_sec112a_harvest_candidates() -> str:
@@ -693,17 +753,19 @@ def get_sec112a_harvest_candidates() -> str:
             gain = units * (nav - cost_nav)
 
             if gain > 500.0:
-                candidates.append({
-                    "lot_id": lot.get("lot_id") or lot.get("id"),
-                    "asset_id": aid,
-                    "asset_name": lot.get("asset_name"),
-                    "acquisition_date": acq_str,
-                    "holding_days": holding_days,
-                    "units": round(units, 4),
-                    "cost_nav": round(cost_nav, 2),
-                    "current_nav": round(nav, 2),
-                    "unrealized_ltcg": round(gain, 2),
-                })
+                candidates.append(
+                    {
+                        "lot_id": lot.get("lot_id") or lot.get("id"),
+                        "asset_id": aid,
+                        "asset_name": lot.get("asset_name"),
+                        "acquisition_date": acq_str,
+                        "holding_days": holding_days,
+                        "units": round(units, 4),
+                        "cost_nav": round(cost_nav, 2),
+                        "current_nav": round(nav, 2),
+                        "unrealized_ltcg": round(gain, 2),
+                    }
+                )
                 total_potential_gain += gain
 
     candidates.sort(key=lambda x: x["unrealized_ltcg"], reverse=True)
@@ -726,23 +788,28 @@ def get_sec112a_harvest_candidates() -> str:
             harvest_gain = headroom
 
         accumulated_gain += harvest_gain
-        actionable_plan.append({
-            "asset_id": c["asset_id"],
-            "asset_name": c["asset_name"],
-            "units_to_sell_and_repurchase": round(harvest_units, 4),
-            "exempt_capital_gain": round(harvest_gain, 2),
-            "tax_saved": round(harvest_gain * 0.125, 2)
-        })
+        actionable_plan.append(
+            {
+                "asset_id": c["asset_id"],
+                "asset_name": c["asset_name"],
+                "units_to_sell_and_repurchase": round(harvest_units, 4),
+                "exempt_capital_gain": round(harvest_gain, 2),
+                "tax_saved": round(harvest_gain * 0.125, 2),
+            }
+        )
 
-    return json.dumps({
-        "status": "SUCCESS",
-        "statutory_limit": STATUTORY_EXEMPTION_LIMIT,
-        "eligible_long_term_candidates_count": len(candidates),
-        "total_unrealized_ltcg_available": round(total_potential_gain, 2),
-        "harvestable_gain_under_cap": round(accumulated_gain, 2),
-        "total_tax_savings_inr": round(accumulated_gain * 0.125, 2),
-        "actionable_harvest_plan": actionable_plan,
-    }, indent=2)
+    return json.dumps(
+        {
+            "status": "SUCCESS",
+            "statutory_limit": STATUTORY_EXEMPTION_LIMIT,
+            "eligible_long_term_candidates_count": len(candidates),
+            "total_unrealized_ltcg_available": round(total_potential_gain, 2),
+            "harvestable_gain_under_cap": round(accumulated_gain, 2),
+            "total_tax_savings_inr": round(accumulated_gain * 0.125, 2),
+            "actionable_harvest_plan": actionable_plan,
+        },
+        indent=2,
+    )
 
 
 def get_guyton_klinger_fire_status(annual_expenses: float = 600000.0) -> str:
@@ -769,25 +836,28 @@ def get_guyton_klinger_fire_status(annual_expenses: float = 600000.0) -> str:
             "Policy mandate: Safe to increase baseline withdrawal by 10% for discretionary living."
         )
 
-    return json.dumps({
-        "status": "SUCCESS",
-        "current_net_worth": nw,
-        "annual_expenses_inr": annual_expenses,
-        "current_live_swr_pct": round(live_swr, 2),
-        "baseline_swr_target_pct": BASELINE_SWR,
-        "capital_preservation_threshold_pct": round(BASELINE_SWR * 1.20, 2),
-        "prosperity_threshold_pct": round(BASELINE_SWR * 0.80, 2),
-        "capital_preservation_active": capital_preservation,
-        "prosperity_rule_active": prosperity_rule,
-        "decumulation_guidance": guidance,
-    }, indent=2)
+    return json.dumps(
+        {
+            "status": "SUCCESS",
+            "current_net_worth": nw,
+            "annual_expenses_inr": annual_expenses,
+            "current_live_swr_pct": round(live_swr, 2),
+            "baseline_swr_target_pct": BASELINE_SWR,
+            "capital_preservation_threshold_pct": round(BASELINE_SWR * 1.20, 2),
+            "prosperity_threshold_pct": round(BASELINE_SWR * 0.80, 2),
+            "capital_preservation_active": capital_preservation,
+            "prosperity_rule_active": prosperity_rule,
+            "decumulation_guidance": guidance,
+        },
+        indent=2,
+    )
 
 
 def verify_financial_narration(
-    claimed_net_worth: Optional[float] = None,
-    claimed_gain_pct: Optional[float] = None,
-    claimed_swr_pct: Optional[float] = None,
-    narration_text: Optional[str] = None
+    claimed_net_worth: float | None = None,
+    claimed_gain_pct: float | None = None,
+    claimed_swr_pct: float | None = None,
+    narration_text: str | None = None,
 ) -> str:
     """Strictly fact-checks narration claims against ledger ground truth (tolerance 0.5%)."""
     state = _get_live_or_offline_state()
@@ -801,66 +871,81 @@ def verify_financial_narration(
     if claimed_net_worth is not None:
         diff_pct = abs(claimed_net_worth - actual_nw) / actual_nw * 100.0 if actual_nw > 0 else 0.0
         if diff_pct > tolerance_pct:
-            discrepancies.append({
-                "metric": "net_worth",
-                "claimed": claimed_net_worth,
-                "ground_truth": actual_nw,
-                "divergence_pct": round(diff_pct, 2),
-                "verdict": "HALLUCINATION_DETECTED: Exceeds 0.5% tolerance"
-            })
+            discrepancies.append(
+                {
+                    "metric": "net_worth",
+                    "claimed": claimed_net_worth,
+                    "ground_truth": actual_nw,
+                    "divergence_pct": round(diff_pct, 2),
+                    "verdict": "HALLUCINATION_DETECTED: Exceeds 0.5% tolerance",
+                }
+            )
 
     if claimed_gain_pct is not None:
         diff_pts = abs(claimed_gain_pct - actual_gain_pct)
         if diff_pts > tolerance_pct:
-            discrepancies.append({
-                "metric": "unrealized_gain_pct",
-                "claimed": claimed_gain_pct,
-                "ground_truth": actual_gain_pct,
-                "divergence_percentage_points": round(diff_pts, 2),
-                "verdict": "HALLUCINATION_DETECTED: Exceeds 0.5% tolerance"
-            })
+            discrepancies.append(
+                {
+                    "metric": "unrealized_gain_pct",
+                    "claimed": claimed_gain_pct,
+                    "ground_truth": actual_gain_pct,
+                    "divergence_percentage_points": round(diff_pts, 2),
+                    "verdict": "HALLUCINATION_DETECTED: Exceeds 0.5% tolerance",
+                }
+            )
 
     if claimed_swr_pct is not None:
         diff_pts = abs(claimed_swr_pct - actual_swr)
         if diff_pts > tolerance_pct:
-            discrepancies.append({
-                "metric": "live_swr_pct",
-                "claimed": claimed_swr_pct,
-                "ground_truth": actual_swr,
-                "divergence_percentage_points": round(diff_pts, 2),
-                "verdict": "HALLUCINATION_DETECTED: Exceeds 0.5% tolerance"
-            })
+            discrepancies.append(
+                {
+                    "metric": "live_swr_pct",
+                    "claimed": claimed_swr_pct,
+                    "ground_truth": actual_swr,
+                    "divergence_percentage_points": round(diff_pts, 2),
+                    "verdict": "HALLUCINATION_DETECTED: Exceeds 0.5% tolerance",
+                }
+            )
 
     if narration_text:
-        match_nw = re.search(r"(?:net\s*worth|portfolio\s*value).*?(?:inr|rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)", narration_text, re.IGNORECASE)
+        match_nw = re.search(
+            r"(?:net\s*worth|portfolio\s*value).*?(?:inr|rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)",
+            narration_text,
+            re.IGNORECASE,
+        )
         if match_nw:
             val = float(match_nw.group(1).replace(",", ""))
             diff_pct = abs(val - actual_nw) / actual_nw * 100.0 if actual_nw > 0 else 0.0
             if diff_pct > tolerance_pct:
-                discrepancies.append({
-                    "metric": "narration_extracted_net_worth",
-                    "claimed": val,
-                    "ground_truth": actual_nw,
-                    "divergence_pct": round(diff_pct, 2),
-                    "verdict": "HALLUCINATION_DETECTED: Exceeds 0.5% tolerance"
-                })
+                discrepancies.append(
+                    {
+                        "metric": "narration_extracted_net_worth",
+                        "claimed": val,
+                        "ground_truth": actual_nw,
+                        "divergence_pct": round(diff_pct, 2),
+                        "verdict": "HALLUCINATION_DETECTED: Exceeds 0.5% tolerance",
+                    }
+                )
 
     is_verified = len(discrepancies) == 0
 
-    return json.dumps({
-        "status": "SUCCESS",
-        "verified": is_verified,
-        "tolerance_threshold_pct": tolerance_pct,
-        "discrepancies_found": len(discrepancies),
-        "discrepancies": discrepancies,
-        "ground_truth": {
-            "as_of": state["as_of"],
-            "net_worth": actual_nw,
-            "unrealized_gain_pct": actual_gain_pct,
-            "live_swr_pct": actual_swr,
-            "data_source": state["source"]
-        }
-    }, indent=2)
+    return json.dumps(
+        {
+            "status": "SUCCESS",
+            "verified": is_verified,
+            "tolerance_threshold_pct": tolerance_pct,
+            "discrepancies_found": len(discrepancies),
+            "discrepancies": discrepancies,
+            "ground_truth": {
+                "as_of": state["as_of"],
+                "net_worth": actual_nw,
+                "unrealized_gain_pct": actual_gain_pct,
+                "live_swr_pct": actual_swr,
+                "data_source": state["source"],
+            },
+        },
+        indent=2,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,6 @@ import re
 import socket
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -32,13 +31,15 @@ if VENV_PYTHON.exists() and sys.executable != str(VENV_PYTHON):
 sys.path.insert(0, str(REPO_ROOT / "quant-sidecar"))
 
 PAN_PATTERN = re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b")
-FOLIO_PATTERN = re.compile(r"\b\d{6,12}/\d{2}\b|\bfolio(?:[_\s]*(?:no|num|number))?\b", re.IGNORECASE)
+FOLIO_PATTERN = re.compile(
+    r"\b\d{6,12}/\d{2}\b|\bfolio(?:[_\s]*(?:no|num|number))?\b", re.IGNORECASE
+)
 
 
 def log_step(name: str):
-    print(f"\n========================================================")
+    print("\n========================================================")
     print(f"[*] {name}")
-    print(f"========================================================")
+    print("========================================================")
 
 
 def hkdf_derive(ikm: bytes, salt: bytes, info: bytes, length: int) -> bytes:
@@ -56,14 +57,16 @@ def hkdf_derive(ikm: bytes, salt: bytes, info: bytes, length: int) -> bytes:
 
 def test_bundle_crypto_and_pii():
     log_step("1. VERIFYING AEAD CLOUD BUNDLE CRYPTO & ZERO-PII POLICY")
-    passphrase = os.environ.get("CLOUD_SYNC_SECRET_KEY", "f8a129d2b7e56c3401928374a5b6c7d8e9f0123456789abcdef0123456789abc")
-    
+    passphrase = os.environ.get(
+        "CLOUD_SYNC_SECRET_KEY", "f8a129d2b7e56c3401928374a5b6c7d8e9f0123456789abcdef0123456789abc"
+    )
+
     # Generate representative mobile state bundle
     sample_bundle = {
         "sync_info": {
             "status": "HEALTHY",
             "generated_at": "2026-10-24T23:00:00Z",
-            "ledger_hmac_root": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+            "ledger_hmac_root": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
         },
         "holdings": [
             {
@@ -73,7 +76,7 @@ def test_bundle_crypto_and_pii():
                 "units": 61879.528,
                 "current_nav": 11.4431,
                 "peak_52w_nav": 12.1050,
-                "exit_load_free_units": 61879.528
+                "exit_load_free_units": 61879.528,
             },
             {
                 "isin": "INF879O01027",
@@ -82,17 +85,27 @@ def test_bundle_crypto_and_pii():
                 "units": 6831.371,
                 "current_nav": 88.9695,
                 "peak_52w_nav": 92.4500,
-                "exit_load_free_units": 6831.371
-            }
+                "exit_load_free_units": 6831.371,
+            },
         ],
         "buckets": [
-            {"bucket": "EQUITY_CORE", "target_pct": 50.0, "current_pct": 51.2, "status": "BALANCED"},
-            {"bucket": "EQUITY_SATELLITE", "target_pct": 35.0, "current_pct": 34.1, "status": "BALANCED"}
-        ]
+            {
+                "bucket": "EQUITY_CORE",
+                "target_pct": 50.0,
+                "current_pct": 51.2,
+                "status": "BALANCED",
+            },
+            {
+                "bucket": "EQUITY_SATELLITE",
+                "target_pct": 35.0,
+                "current_pct": 34.1,
+                "status": "BALANCED",
+            },
+        ],
     }
-    
+
     raw_json = json.dumps(sample_bundle).encode("utf-8")
-    
+
     # 1. Assert no PII in plaintext bundle
     raw_str = raw_json.decode("utf-8")
     assert not FOLIO_PATTERN.search(raw_str), "Folio pattern detected in state bundle!"
@@ -106,8 +119,10 @@ def test_bundle_crypto_and_pii():
     compressed = gzip.compress(raw_json)
     ciphertext = AESGCM(derived_key).encrypt(iv, compressed, None)
     bundle_bytes = b"POS1" + salt + iv + ciphertext
-    
-    print(f"  ✓ State bundle encrypted: {len(raw_json)} bytes -> {len(compressed)} bytes (gzip) -> {len(bundle_bytes)} bytes (AEAD)")
+
+    print(
+        f"  ✓ State bundle encrypted: {len(raw_json)} bytes -> {len(compressed)} bytes (gzip) -> {len(bundle_bytes)} bytes (AEAD)"
+    )
     assert bundle_bytes.startswith(b"POS1")
 
     # 3. Decrypt bundle
@@ -117,7 +132,7 @@ def test_bundle_crypto_and_pii():
     dec_key = hkdf_derive(passphrase.encode("utf-8"), d_salt, b"portfolio-os-cloud-sync-v1", 32)
     decrypted_gzip = AESGCM(dec_key).decrypt(d_iv, d_ct, None)
     recovered_json = gzip.decompress(decrypted_gzip)
-    
+
     assert recovered_json == raw_json, "Decrypted payload mismatch!"
     print("  ✓ Cryptographic roundtrip verified: GCM tag verified and payload matches perfectly.")
 
@@ -125,9 +140,9 @@ def test_bundle_crypto_and_pii():
 def test_arrow_ipc_and_socket():
     log_step("2. VERIFYING ARROW IPC ZERO-COPY & UNIX SOCKET")
     from quant.analytics_engine import (
-        nav_records_to_arrow_stream,
+        compute_arrow_stream_metrics,
         deserialize_arrow_stream,
-        compute_arrow_stream_metrics
+        nav_records_to_arrow_stream,
     )
 
     records = [
@@ -145,7 +160,9 @@ def test_arrow_ipc_and_socket():
     metrics_table = deserialize_arrow_stream(metrics_bytes)
     assert metrics_table.num_rows == 1
     assert "sharpe" in metrics_table.column_names
-    print(f"  ✓ Arrow IPC stream verified: {table.num_rows} records in, {metrics_table.num_rows} fund metric rows computed zero-copy.")
+    print(
+        f"  ✓ Arrow IPC stream verified: {table.num_rows} records in, {metrics_table.num_rows} fund metric rows computed zero-copy."
+    )
 
     # Test Unix Domain Socket binding in /tmp
     test_sock_path = f"/tmp/portfolio_smoke_{os.getpid()}.sock"
@@ -157,7 +174,7 @@ def test_arrow_ipc_and_socket():
         stat = os.stat(test_sock_path)
         assert stat.st_mode & 0o777 == 0o600, "Unix socket permissions not restricted to 0600!"
         sock.close()
-        print(f"  ✓ Unix domain socket verified: Bound and restricted to 0600 permissions.")
+        print("  ✓ Unix domain socket verified: Bound and restricted to 0600 permissions.")
     finally:
         if os.path.exists(test_sock_path):
             os.remove(test_sock_path)
@@ -166,11 +183,11 @@ def test_arrow_ipc_and_socket():
 def test_fastmcp_tools():
     log_step("3. VERIFYING FASTMCP PORTFOLIO SERVER TOOLS")
     from mcp_server import (
-        tool_get_portfolio_snapshot,
-        tool_simulate_trade_what_if,
-        tool_simulate_lumpsum_inflow,
-        tool_get_sec112a_harvest_candidates,
         tool_get_guyton_klinger_fire_status,
+        tool_get_portfolio_snapshot,
+        tool_get_sec112a_harvest_candidates,
+        tool_simulate_lumpsum_inflow,
+        tool_simulate_trade_what_if,
         tool_verify_financial_narration,
     )
 
@@ -184,27 +201,35 @@ def test_fastmcp_tools():
     trade = json.loads(tool_simulate_trade_what_if("INF879O01027", 100.0))
     assert trade["status"] == "SUCCESS"
     assert trade["gross_proceeds"] > 0
-    print(f"  ✓ tool_simulate_trade_what_if: Calculated tax drag ₹{trade['total_tax_drag']} on 100 units.")
+    print(
+        f"  ✓ tool_simulate_trade_what_if: Calculated tax drag ₹{trade['total_tax_drag']} on 100 units."
+    )
 
     # 3. Lumpsum simulation
     lump = json.loads(tool_simulate_lumpsum_inflow(50000.0))
     assert lump["status"] == "SUCCESS"
     alloc_sum = sum(a["allocated_amount"] for a in lump["recommended_allocations"])
     assert abs(alloc_sum - 50000.0) < 1.0
-    print(f"  ✓ tool_simulate_lumpsum_inflow: Conservation verified for ₹50,000 inflow.")
+    print("  ✓ tool_simulate_lumpsum_inflow: Conservation verified for ₹50,000 inflow.")
 
     # 4. Sec 112A harvest
     harv = json.loads(tool_get_sec112a_harvest_candidates())
     assert harv["status"] == "SUCCESS"
-    print(f"  ✓ tool_get_sec112a_harvest_candidates: Found ₹{harv['total_eligible_ltcg_available']} eligible LTCG.")
+    print(
+        f"  ✓ tool_get_sec112a_harvest_candidates: Found ₹{harv['total_eligible_ltcg_available']} eligible LTCG."
+    )
 
     # 5. Guyton-Klinger FIRE
     gk = json.loads(tool_get_guyton_klinger_fire_status(600000.0))
     assert gk["status"] == "SUCCESS"
-    print(f"  ✓ tool_get_guyton_klinger_fire_status: Live SWR {gk['current_live_swr_pct']}%, runway {gk['cash_runway_months']} months.")
+    print(
+        f"  ✓ tool_get_guyton_klinger_fire_status: Live SWR {gk['current_live_swr_pct']}%, runway {gk['cash_runway_months']} months."
+    )
 
     # 6. Verify narration
-    ver = json.loads(tool_verify_financial_narration(claimed_net_worth=snap["portfolio_summary"]["net_worth"]))
+    ver = json.loads(
+        tool_verify_financial_narration(claimed_net_worth=snap["portfolio_summary"]["net_worth"])
+    )
     assert ver["status"] == "SUCCESS"
     assert ver["verified"] is True
     print("  ✓ tool_verify_financial_narration: Ground-truth verification engine verified.")
@@ -223,7 +248,7 @@ def main():
     print("==================================================================")
     print("      PORTFOLIO OS v4.1+ PRE-RELEASE PRODUCTION SMOKE TEST        ")
     print("==================================================================")
-    
+
     # 1. Bundle Crypto & PII Scan
     test_bundle_crypto_and_pii()
 
@@ -239,7 +264,9 @@ def main():
     # 5. Mobile APK Compilation Gate
     run_command("just build-mobile", "5. COMPILING PRODUCTION ANDROID APK (JUST BUILD-MOBILE)")
 
-    apk_path = REPO_ROOT / "mobile-app" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+    apk_path = (
+        REPO_ROOT / "mobile-app" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+    )
     if apk_path.exists():
         size_mb = apk_path.stat().st_size / (1024 * 1024)
         print(f"\n[SUCCESS] Android debug APK generated: {apk_path} ({size_mb:.2f} MB)")

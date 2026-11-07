@@ -10,8 +10,7 @@ import csv
 import os
 import sqlite3
 import sys
-from typing import List, Dict, Any
-
+from typing import Any
 
 INIT_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS tax_events (
@@ -40,11 +39,14 @@ def restore_from_csv(csv_path: str, target_db: str, force: bool = False) -> int:
         return 1
 
     if os.path.exists(target_db) and not force:
-        print(f"[ERROR] Target database {target_db} already exists. Use --force to overwrite.", file=sys.stderr)
+        print(
+            f"[ERROR] Target database {target_db} already exists. Use --force to overwrite.",
+            file=sys.stderr,
+        )
         return 1
 
-    events: List[Dict[str, Any]] = []
-    with open(csv_path, "r", encoding="utf-8") as f:
+    events: list[dict[str, Any]] = []
+    with open(csv_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             events.append(row)
@@ -106,8 +108,12 @@ def restore_from_csv(csv_path: str, target_db: str, force: bool = False) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Restore tax_events ledger from Sheets export")
-    parser.add_argument("--csv", default="data/sheets_export/ledger_events.csv", help="Path to ledger_events.csv")
-    parser.add_argument("--target-db", default="data/restored_tax_ledger.db", help="Path to restored SQLite DB")
+    parser.add_argument(
+        "--csv", default="data/sheets_export/ledger_events.csv", help="Path to ledger_events.csv"
+    )
+    parser.add_argument(
+        "--target-db", default="data/restored_tax_ledger.db", help="Path to restored SQLite DB"
+    )
     parser.add_argument("--force", action="store_true", help="Overwrite target DB if it exists")
     args = parser.parse_args()
 

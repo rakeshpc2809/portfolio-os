@@ -5,14 +5,14 @@ Uses Ollama (phi4-mini) with strict pre-formatted grounding strings,
 hard-gated verification, and automatic model unloading (keep_alive: 0).
 """
 
-from datetime import datetime
 import json
 import os
-from pathlib import Path
 import re
 import sys
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 CORE_NODE_URL = os.getenv("CORE_NODE_URL", "http://127.0.0.1:8080")
@@ -47,7 +47,7 @@ def pct_format(val: float, include_sign: bool = False) -> str:
     return f"{prefix}{val:.2f}%"
 
 
-def generate_mock_or_offline_snapshot() -> Dict[str, Any]:
+def generate_mock_or_offline_snapshot() -> dict[str, Any]:
     """Generates snapshot payload with dual value/display fields for grounding and verification."""
     today = datetime.now().strftime("%Y-%m-%d")
 
@@ -118,7 +118,10 @@ def generate_mock_or_offline_snapshot() -> Dict[str, Any]:
         "rebalance_action": "NO_OP (All buckets within +/- 5% corridor)",
         "fire_tracker": {
             "target_corpus": {"value": fire_target, "display": inr_format(fire_target)},
-            "progress_pct": {"value": round(fire_progress, 2), "display": pct_format(fire_progress)},
+            "progress_pct": {
+                "value": round(fire_progress, 2),
+                "display": pct_format(fire_progress),
+            },
             "swr_pct": {"value": 3.5, "display": "3.5%"},
             "projected_years_to_fi": {"value": years_to_fi, "display": f"{years_to_fi} years"},
         },
@@ -127,7 +130,7 @@ def generate_mock_or_offline_snapshot() -> Dict[str, Any]:
     return snapshot
 
 
-def fetch_live_snapshot() -> Optional[Dict[str, Any]]:
+def fetch_live_snapshot() -> dict[str, Any] | None:
     """Attempts to pull live snapshot from running core-node."""
     if not AUTH_TOKEN:
         print("[-] API_AUTH_TOKEN environment variable not set. Live snapshot fetch disabled.")
@@ -143,7 +146,12 @@ def fetch_live_snapshot() -> Optional[Dict[str, Any]]:
                 nw = float(sync_info.get("current_value", 0.0))
                 inv = float(sync_info.get("total_invested", 0.0))
                 gain = float(sync_info.get("unrealized_gain", 0.0))
-                xirr_raw = float(str(sync_info.get("portfolio_xirr", sync_info.get("xirr_percentage", "0.0"))).replace("%", "").strip() or 0.0)
+                xirr_raw = float(
+                    str(sync_info.get("portfolio_xirr", sync_info.get("xirr_percentage", "0.0")))
+                    .replace("%", "")
+                    .strip()
+                    or 0.0
+                )
 
                 rebalance_plan = data.get("rebalance_plan", {})
                 buckets_raw = rebalance_plan.get("buy_side", {}).get("buckets", [])
@@ -151,19 +159,28 @@ def fetch_live_snapshot() -> Optional[Dict[str, Any]]:
                 for b in buckets_raw:
                     raw_b_name = b.get("bucket", "UNKNOWN")
                     # Canonicalize bucket naming (e.g. EQUITY_CORE -> CORE)
-                    b_name = "CORE" if "CORE" in raw_b_name else ("SATELLITE" if "SATELLITE" in raw_b_name else raw_b_name)
+                    b_name = (
+                        "CORE"
+                        if "CORE" in raw_b_name
+                        else ("SATELLITE" if "SATELLITE" in raw_b_name else raw_b_name)
+                    )
                     c_pct = float(b.get("current_pct", 0.0))
                     t_pct = float(b.get("target_pct", 0.0))
                     d_pct = round(c_pct - t_pct, 2)
                     c_val = round(nw * (c_pct / 100.0), 2)
-                    buckets.append({
-                        "bucket": b_name,
-                        "current_val": {"value": c_val, "display": inr_format(c_val)},
-                        "current_pct": {"value": c_pct, "display": pct_format(c_pct)},
-                        "target_pct": {"value": t_pct, "display": pct_format(t_pct)},
-                        "drift_pct": {"value": d_pct, "display": pct_format(d_pct, include_sign=True)},
-                        "status": "IN_BAND" if abs(d_pct) <= 5.0 else "TRIGGERED",
-                    })
+                    buckets.append(
+                        {
+                            "bucket": b_name,
+                            "current_val": {"value": c_val, "display": inr_format(c_val)},
+                            "current_pct": {"value": c_pct, "display": pct_format(c_pct)},
+                            "target_pct": {"value": t_pct, "display": pct_format(t_pct)},
+                            "drift_pct": {
+                                "value": d_pct,
+                                "display": pct_format(d_pct, include_sign=True),
+                            },
+                            "status": "IN_BAND" if abs(d_pct) <= 5.0 else "TRIGGERED",
+                        }
+                    )
 
                 tax = rebalance_plan.get("sell_side", {}).get("tax_summary", {})
                 rem_ltcg = float(tax.get("exemption_headroom_after", 105590.36))
@@ -206,7 +223,10 @@ def fetch_live_snapshot() -> Optional[Dict[str, Any]]:
                     "rebalance_action": action_str,
                     "fire_tracker": {
                         "target_corpus": {"value": 30000000.0, "display": "₹3,00,00,000.00"},
-                        "progress_pct": {"value": round((nw / 30000000.0) * 100, 2), "display": f"{(nw / 30000000.0) * 100:.2f}%"},
+                        "progress_pct": {
+                            "value": round((nw / 30000000.0) * 100, 2),
+                            "display": f"{(nw / 30000000.0) * 100:.2f}%",
+                        },
                         "swr_pct": {"value": 3.5, "display": "3.5%"},
                         "projected_years_to_fi": {"value": 9.4, "display": "9.4 years"},
                     },
@@ -216,7 +236,7 @@ def fetch_live_snapshot() -> Optional[Dict[str, Any]]:
     return None
 
 
-def extract_expected_numbers(snapshot: Dict[str, Any]) -> Dict[str, float]:
+def extract_expected_numbers(snapshot: dict[str, Any]) -> dict[str, float]:
     """Flattens all expected numbers into a mapping of {context_key: numeric_value}."""
     registry = {}
     registry["net_worth"] = snapshot["net_worth"]["value"]
@@ -238,7 +258,9 @@ def extract_expected_numbers(snapshot: Dict[str, Any]) -> Dict[str, float]:
     return registry
 
 
-def verify_narration(output_text: str, expected_numbers: Dict[str, float]) -> Tuple[bool, List[str]]:
+def verify_narration(
+    output_text: str, expected_numbers: dict[str, float]
+) -> tuple[bool, list[str]]:
     """
     Hard-gated verifier:
     1. Unescapes raw unicode (e.g. \\u20b9 -> ₹).
@@ -250,6 +272,7 @@ def verify_narration(output_text: str, expected_numbers: Dict[str, float]) -> Tu
     # Ensure unicode escape sequences are decoded
     try:
         import codecs
+
         if "\\u" in output_text:
             output_text = codecs.decode(output_text, "unicode_escape")
     except Exception:
@@ -274,15 +297,30 @@ def verify_narration(output_text: str, expected_numbers: Dict[str, float]) -> Tu
     # - Years / Ratios: 0.05 (exact to 1 decimal place)
 
     # Statutory references allowed in text (e.g. Section 112A, 5.0% threshold)
-    STATUTORY_ALLOWLIST = {112.0, 112.00, 80.0, 5.0}
+    STATUTORY_ALLOWLIST = {112.0, 80.0, 5.0}
 
-    pct_expected = [round(abs(v), 2) for k, v in expected_numbers.items() if "pct" in k or "drift" in k or "target" in k or "current" in k or "xirr" in k or "progress" in k]
-    curr_expected = [round(abs(v), 2) for k, v in expected_numbers.items() if "val" in k or "worth" in k or "capital" in k or "change" in k or "remaining" in k]
+    pct_expected = [
+        round(abs(v), 2)
+        for k, v in expected_numbers.items()
+        if "pct" in k
+        or "drift" in k
+        or "target" in k
+        or "current" in k
+        or "xirr" in k
+        or "progress" in k
+    ]
+    curr_expected = [
+        round(abs(v), 2)
+        for k, v in expected_numbers.items()
+        if "val" in k or "worth" in k or "capital" in k or "change" in k or "remaining" in k
+    ]
     year_expected = [round(abs(v), 2) for k, v in expected_numbers.items() if "year" in k]
 
     for raw_token, num_val in parsed_nums:
         # Ignore small stylistic bullet numbers (e.g. 1., 2., 3.) or statutory references (112A)
-        if (num_val in [1.0, 2.0, 3.0, 4.0] and ("." not in raw_token or raw_token.endswith("."))) or num_val in STATUTORY_ALLOWLIST:
+        if (
+            num_val in [1.0, 2.0, 3.0, 4.0] and ("." not in raw_token or raw_token.endswith("."))
+        ) or num_val in STATUTORY_ALLOWLIST:
             continue
 
         matched = False
@@ -296,40 +334,63 @@ def verify_narration(output_text: str, expected_numbers: Dict[str, float]) -> Tu
             matched = any(abs(rounded_val - exp) <= 0.01 for exp in curr_expected)
         else:
             # General / years check: tolerance 0.05
-            matched = any(abs(rounded_val - exp) <= 0.05 for exp in (year_expected + pct_expected + curr_expected))
+            matched = any(
+                abs(rounded_val - exp) <= 0.05
+                for exp in (year_expected + pct_expected + curr_expected)
+            )
 
         if not matched:
-            errors.append(f"Unrecognized or miscalculated number in brief: '{raw_token}' (parsed as {num_val})")
+            errors.append(
+                f"Unrecognized or miscalculated number in brief: '{raw_token}' (parsed as {num_val})"
+            )
 
     # Context-pairing assertions: strictly parse line-by-line bucket statements
     # Catches transpositions like swapping CORE (50% / -2%) with SATELLITE (30% / +2%)
     for line in output_text.splitlines():
-        for bucket in ["CORE", "SATELLITE", "GOLD_SILVER", "GOLD/SILVER", "LIQUID_BUFFER", "LIQUID BUFFER"]:
-            canon_bucket = "GOLD_SILVER" if "GOLD" in bucket else ("LIQUID_BUFFER" if "LIQUID" in bucket else bucket)
+        for bucket in [
+            "CORE",
+            "SATELLITE",
+            "GOLD_SILVER",
+            "GOLD/SILVER",
+            "LIQUID_BUFFER",
+            "LIQUID BUFFER",
+        ]:
+            canon_bucket = (
+                "GOLD_SILVER"
+                if "GOLD" in bucket
+                else ("LIQUID_BUFFER" if "LIQUID" in bucket else bucket)
+            )
             if bucket in line:
                 expected_target = expected_numbers.get(f"{canon_bucket}_target")
                 expected_drift = expected_numbers.get(f"{canon_bucket}_drift")
 
                 # Extract all percentages on this specific bucket line
-                line_pcts = [float(p.replace("%", "").strip()) for p in re.findall(r"[-+]?\d+(?:\.\d+)?%", line)]
+                line_pcts = [
+                    float(p.replace("%", "").strip())
+                    for p in re.findall(r"[-+]?\d+(?:\.\d+)?%", line)
+                ]
 
                 if expected_target is not None:
                     # Check if expected target is present on this line (exact within 0.01%)
                     has_target = any(abs(p - expected_target) <= 0.01 for p in line_pcts)
                     if not has_target:
-                        errors.append(f"Context mismatch: {bucket} line stated percentages {line_pcts}, but expected target {expected_target}%.")
+                        errors.append(
+                            f"Context mismatch: {bucket} line stated percentages {line_pcts}, but expected target {expected_target}%."
+                        )
 
                 if expected_drift is not None:
                     # Check if expected drift is present on this line (exact within 0.01%)
                     has_drift = any(abs(p - expected_drift) <= 0.01 for p in line_pcts)
                     if not has_drift:
-                        errors.append(f"Context mismatch: {bucket} line stated percentages {line_pcts}, but expected drift {expected_drift:+.2f}%.")
+                        errors.append(
+                            f"Context mismatch: {bucket} line stated percentages {line_pcts}, but expected drift {expected_drift:+.2f}%."
+                        )
 
     is_valid = len(errors) == 0
     return is_valid, errors
 
 
-def render_plain_fallback(snapshot: Dict[str, Any]) -> str:
+def render_plain_fallback(snapshot: dict[str, Any]) -> str:
     """Deterministic, unembellished templated fallback dump when verification fails."""
     nw = snapshot["net_worth"]["display"]
     dc = snapshot["day_change"]["display"]
@@ -353,12 +414,14 @@ def render_plain_fallback(snapshot: Dict[str, Any]) -> str:
             f"  • {b['bucket']:<14}: Current {b['current_pct']['display']} (Target {b['target_pct']['display']}, Drift {b['drift_pct']['display']}) [{b['status']}]"
         )
     lines.append("-" * 60)
-    lines.append(f"FIRE Timeline:      {snapshot['fire_tracker']['progress_pct']['display']} funded · {snapshot['fire_tracker']['projected_years_to_fi']['display']} to FI")
+    lines.append(
+        f"FIRE Timeline:      {snapshot['fire_tracker']['progress_pct']['display']} funded · {snapshot['fire_tracker']['projected_years_to_fi']['display']} to FI"
+    )
     lines.append("=" * 60)
     return "\n".join(lines)
 
 
-def generate_executive_brief(snapshot: Dict[str, Any]) -> Tuple[str, bool, Dict[str, Any]]:
+def generate_executive_brief(snapshot: dict[str, Any]) -> tuple[str, bool, dict[str, Any]]:
     """Calls Ollama phi4-mini with keep_alive=0, then validates output."""
     system_prompt = (
         "You are the executive portfolio intelligence narrator for Portfolio OS.\n"
@@ -372,9 +435,8 @@ def generate_executive_brief(snapshot: Dict[str, Any]) -> Tuple[str, bool, Dict[
         "4. Tone is institutional, neutral, and precise."
     )
 
-    prompt = (
-        "Generate the daily executive brief using these exact display values:\n"
-        + json.dumps(snapshot, indent=2)
+    prompt = "Generate the daily executive brief using these exact display values:\n" + json.dumps(
+        snapshot, indent=2
     )
 
     payload = {
@@ -401,13 +463,16 @@ def generate_executive_brief(snapshot: Dict[str, Any]) -> Tuple[str, bool, Dict[
             text = res.get("response", "").strip()
             if "\\u" in text:
                 import codecs
+
                 try:
                     text = codecs.decode(text, "unicode_escape")
                 except Exception:
                     pass
             telemetry = {
                 "total_sec": round(res.get("total_duration", 0) / 1e9, 2),
-                "eval_tok_per_sec": round(res.get("eval_count", 0) / (res.get("eval_duration", 1) / 1e9), 2),
+                "eval_tok_per_sec": round(
+                    res.get("eval_count", 0) / (res.get("eval_duration", 1) / 1e9), 2
+                ),
                 "eval_tokens": res.get("eval_count", 0),
             }
             return text, True, telemetry
@@ -429,8 +494,12 @@ def main():
         print("[*] Sourced from offline/mock test generator.")
         snapshot = generate_mock_or_offline_snapshot()
     else:
-        print("[-] FATAL: Could not fetch live snapshot from Core-Node (live server unreachable or missing API_AUTH_TOKEN).")
-        print("    To fabricate a local testing snapshot, pass explicit '--mock' or '--verify-only' CLI flag.")
+        print(
+            "[-] FATAL: Could not fetch live snapshot from Core-Node (live server unreachable or missing API_AUTH_TOKEN)."
+        )
+        print(
+            "    To fabricate a local testing snapshot, pass explicit '--mock' or '--verify-only' CLI flag."
+        )
         sys.exit(1)
 
     expected_registry = extract_expected_numbers(snapshot)
@@ -443,7 +512,9 @@ def main():
 
     # 2. Invoke phi4-mini or simulate adversarial failures
     if "--verify-only" in sys.argv:
-        print("[*] MODE: --verify-only execution requested. Constructing canonical verified brief...")
+        print(
+            "[*] MODE: --verify-only execution requested. Constructing canonical verified brief..."
+        )
         narrative = (
             f"**Executive Health**:\n- Net worth: {snapshot['net_worth']['display']}\n- Day change: {snapshot['day_change']['display']}\n- Overall XIRR: {snapshot['overall_xirr']['display']}\n\n"
             f"**Rebalance Corridors**:\n- CORE: Target pct: {core_b['target_pct']['display']}, Drift pct: {core_b['drift_pct']['display']}\n"
@@ -458,8 +529,10 @@ def main():
         # Corrupt one single number: drop a zero from remaining LTCG (e.g. ₹1,05,590.36 -> ₹10,559.03 or ₹80,000 -> ₹8,000)
         ltcg_str = snapshot["ltcg_budget"]["remaining_allowance"]["display"]
         corrupted_ltcg = ltcg_str.replace("0", "", 1) if "0" in ltcg_str else "₹9,999.00"
-        print(f"[*] TEST MODE: Simulating model dropping a digit in LTCG ({ltcg_str} -> {corrupted_ltcg})...")
-        
+        print(
+            f"[*] TEST MODE: Simulating model dropping a digit in LTCG ({ltcg_str} -> {corrupted_ltcg})..."
+        )
+
         narrative = (
             f"**Executive Health**:\n- Net worth: {snapshot['net_worth']['display']}\n- Day change: {snapshot['day_change']['display']}\n- Overall XIRR: {snapshot['overall_xirr']['display']}\n\n"
             f"**Rebalance Corridors**:\n- CORE: Target pct: {core_b['target_pct']['display']}, Drift pct: {core_b['drift_pct']['display']}\n"
@@ -471,7 +544,9 @@ def main():
         success = True
         telemetry = {"eval_tok_per_sec": 18.5}
     elif "--simulate-bucket-swap" in sys.argv:
-        print(f"[*] TEST MODE: Simulating model swapping CORE ({core_b['target_pct']['display']} / {core_b['drift_pct']['display']}) with SATELLITE ({sat_b['target_pct']['display']} / {sat_b['drift_pct']['display']})...")
+        print(
+            f"[*] TEST MODE: Simulating model swapping CORE ({core_b['target_pct']['display']} / {core_b['drift_pct']['display']}) with SATELLITE ({sat_b['target_pct']['display']} / {sat_b['drift_pct']['display']})..."
+        )
         narrative = (
             f"**Executive Health**:\n- Net worth: {snapshot['net_worth']['display']}\n- Day change: {snapshot['day_change']['display']}\n- Overall XIRR: {snapshot['overall_xirr']['display']}\n\n"
             f"**Rebalance Corridors**:\n- CORE: Target pct: {sat_b['target_pct']['display']}, Drift pct: {sat_b['drift_pct']['display']}\n"
@@ -515,7 +590,7 @@ def main():
                 "day_change": snapshot["day_change"]["value"],
                 "overall_xirr": snapshot["overall_xirr"]["value"],
                 "ltcg_remaining": snapshot["ltcg_budget"]["remaining_allowance"]["value"],
-            }
+            },
         }
         cache_file = Path("data/daily_brief_cache.json")
         cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -540,7 +615,9 @@ def main():
         print(render_plain_fallback(snapshot))
         sys.exit(1)
     else:
-        print(f"\n[✓] Verification PASSED: All numbers and contexts reconciled ({telemetry.get('eval_tok_per_sec')} tok/s).")
+        print(
+            f"\n[✓] Verification PASSED: All numbers and contexts reconciled ({telemetry.get('eval_tok_per_sec')} tok/s)."
+        )
         print("=" * 64)
         print(narrative)
         print("=" * 64)
@@ -556,7 +633,7 @@ def main():
                 "day_change": snapshot["day_change"]["value"],
                 "overall_xirr": snapshot["overall_xirr"]["value"],
                 "ltcg_remaining": snapshot["ltcg_budget"]["remaining_allowance"]["value"],
-            }
+            },
         }
         cache_file = Path("data/daily_brief_cache.json")
         cache_file.parent.mkdir(parents=True, exist_ok=True)

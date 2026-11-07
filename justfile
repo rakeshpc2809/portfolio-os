@@ -147,7 +147,7 @@ lint:
 
 # Auto-format and fix all frontend JS and Python code
 format:
-    biome format --write core-node/src/main/resources/static/
+    biome format --write *.json
     ruff format quant-sidecar/ scripts/
     ruff check quant-sidecar/ scripts/ --fix
 

@@ -1,14 +1,14 @@
-import unittest
 import json
+import unittest
+
 from scripts.sheets_snapshot_publisher import (
-    scan_for_pii,
+    ALLOWED_HOLDING_FIELDS,
     sanitize_holding_item,
-    PiiViolationException,
-    ALLOWED_HOLDING_FIELDS
+    scan_for_pii,
 )
 
-class TestSheetsPiiGuard(unittest.TestCase):
 
+class TestSheetsPiiGuard(unittest.TestCase):
     def test_high_precision_numbers_and_timestamps_do_not_trigger_pii_violation(self):
         """
         Fix #4 Verification:
@@ -22,11 +22,13 @@ class TestSheetsPiiGuard(unittest.TestCase):
             "total_units": 50996.30456789,
             "timestamp_ms": 1730000000000,
             "large_id_number": 987654321012345,
-            "as_of_date": "2026-10-23T16:14:04.308581Z"
+            "as_of_date": "2026-10-23T16:14:04.308581Z",
         }
         text = json.dumps(payload)
         violations = scan_for_pii(text)
-        self.assertEqual(len(violations), 0, f"False-positive PII detected on valid numbers: {violations}")
+        self.assertEqual(
+            len(violations), 0, f"False-positive PII detected on valid numbers: {violations}"
+        )
 
     def test_real_pan_triggers_pii_violation(self):
         """Confirm that a 10-character Indian PAN pattern [A-Z]{5}[0-9]{4}[A-Z]{1} is strictly detected."""
@@ -74,7 +76,7 @@ class TestSheetsPiiGuard(unittest.TestCase):
             # Injected sensitive fields that MUST be stripped:
             "folio_no": "99988877/11",
             "pan": "ABCDE1234F",
-            "investor_email": "test@domain.com"
+            "investor_email": "test@domain.com",
         }
         sanitized = sanitize_holding_item(raw_holding, "2026-10-23")
         self.assertEqual(set(sanitized.keys()), set(ALLOWED_HOLDING_FIELDS))
@@ -84,6 +86,7 @@ class TestSheetsPiiGuard(unittest.TestCase):
 
         # Scanning sanitized output must produce 0 violations
         self.assertEqual(len(scan_for_pii(json.dumps(sanitized))), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

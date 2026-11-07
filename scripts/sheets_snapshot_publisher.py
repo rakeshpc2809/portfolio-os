@@ -18,16 +18,16 @@ import os
 import re
 import sqlite3
 import sys
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 import urllib.request
+from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = str(REPO_ROOT / "data" / "tax_ledger.db")
 DEFAULT_EXPORT_DIR = str(REPO_ROOT / "data" / "sheets_export")
 
 
-def load_events_from_db(db_path: str) -> List[Dict[str, Any]]:
+def load_events_from_db(db_path: str) -> list[dict[str, Any]]:
     if not os.path.exists(db_path):
         return []
     conn = sqlite3.connect(db_path)
@@ -50,11 +50,10 @@ def load_events_from_db(db_path: str) -> List[Dict[str, Any]]:
         conn.close()
 
 
-def fetch_snapshot_from_api(api_url: str, token: str) -> Optional[Dict[str, Any]]:
+def fetch_snapshot_from_api(api_url: str, token: str) -> dict[str, Any] | None:
     try:
         req = urllib.request.Request(
-            f"{api_url.rstrip('/')}/api/v1/sync/snapshot",
-            headers={"X-Api-Auth-Token": token}
+            f"{api_url.rstrip('/')}/api/v1/sync/snapshot", headers={"X-Api-Auth-Token": token}
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             if resp.status == 200:
@@ -64,7 +63,9 @@ def fetch_snapshot_from_api(api_url: str, token: str) -> Optional[Dict[str, Any]
     return None
 
 
-def export_to_csv_files(output_dir: str, snapshot: Dict[str, Any], events: List[Dict[str, Any]]) -> None:
+def export_to_csv_files(
+    output_dir: str, snapshot: dict[str, Any], events: list[dict[str, Any]]
+) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     # 1. holdings_snapshot.csv
@@ -73,8 +74,15 @@ def export_to_csv_files(output_dir: str, snapshot: Dict[str, Any], events: List[
     if holdings:
         with open(holdings_path, "w", newline="", encoding="utf-8") as f:
             fieldnames = [
-                "isin", "fund_name", "asset_bucket", "total_units", "avg_cost",
-                "current_nav", "current_value", "invested_value", "exit_load_free_units"
+                "isin",
+                "fund_name",
+                "asset_bucket",
+                "total_units",
+                "avg_cost",
+                "current_nav",
+                "current_value",
+                "invested_value",
+                "exit_load_free_units",
             ]
             writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
@@ -97,9 +105,20 @@ def export_to_csv_files(output_dir: str, snapshot: Dict[str, Any], events: List[
     if events:
         with open(events_path, "w", newline="", encoding="utf-8") as f:
             fieldnames = [
-                "id", "asset_id", "asset_name", "isin", "event_type", "event_date",
-                "units", "price_per_unit", "gross_amount", "source_document_id",
-                "ingested_at", "previous_hash", "event_hash", "tx_fingerprint"
+                "id",
+                "asset_id",
+                "asset_name",
+                "isin",
+                "event_type",
+                "event_date",
+                "units",
+                "price_per_unit",
+                "gross_amount",
+                "source_document_id",
+                "ingested_at",
+                "previous_hash",
+                "event_hash",
+                "tx_fingerprint",
             ]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -116,8 +135,12 @@ def main() -> int:
     parser.add_argument("--db-path", default=DEFAULT_DB, help="Path to SQLite tax_ledger.db")
     parser.add_argument("--api-url", default="http://localhost:8080", help="Core Node base URL")
     parser.add_argument("--token", default="dev_secret_key_123", help="API authentication token")
-    parser.add_argument("--export-dir", default=DEFAULT_EXPORT_DIR, help="Directory for CSV exports")
-    parser.add_argument("--dry-run", action="store_true", help="Perform export locally without Google API call")
+    parser.add_argument(
+        "--export-dir", default=DEFAULT_EXPORT_DIR, help="Directory for CSV exports"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Perform export locally without Google API call"
+    )
     args = parser.parse_args()
 
     print("[INFO] Starting Sheets Snapshot & Ledger Events Publisher...")
@@ -134,21 +157,25 @@ def main() -> int:
                 "generated_at": "OFFLINE_FALLBACK",
                 "status": "OFFLINE",
                 "total_invested": 0.0,
-                "current_value": 0.0
+                "current_value": 0.0,
             },
-            "holdings": []
+            "holdings": [],
         }
 
     # Always generate local CSV bundle for offline/Sheets manual sync
     export_to_csv_files(args.export_dir, snapshot, events)
 
     # Check for Google Sheets credentials
-    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "/home/rakeshpc/Projects/portfolio-os/service_account.json")
+    creds_path = os.getenv(
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "/home/rakeshpc/Projects/portfolio-os/service_account.json",
+    )
     raw_sheet_id = os.getenv("PORTFOLIO_SHEET_ID")
 
     if not args.dry_run and raw_sheet_id and os.path.exists(creds_path):
         try:
             import gspread  # type: ignore
+
             # Handle full URL or pure spreadsheet ID
             sheet_id_match = re.search(r"/d/([a-zA-Z0-9-_]+)", raw_sheet_id)
             sheet_id = sheet_id_match.group(1) if sheet_id_match else raw_sheet_id
@@ -163,12 +190,23 @@ def main() -> int:
                 try:
                     ws_holdings = sh.worksheet("holdings_snapshot")
                 except gspread.exceptions.WorksheetNotFound:
-                    ws_holdings = sh.add_worksheet(title="holdings_snapshot", rows=len(holdings) + 20, cols=12)
+                    ws_holdings = sh.add_worksheet(
+                        title="holdings_snapshot", rows=len(holdings) + 20, cols=12
+                    )
                 h_fields = [
-                    "isin", "fund_name", "asset_bucket", "total_units", "avg_cost",
-                    "current_nav", "current_value", "invested_value", "exit_load_free_units"
+                    "isin",
+                    "fund_name",
+                    "asset_bucket",
+                    "total_units",
+                    "avg_cost",
+                    "current_nav",
+                    "current_value",
+                    "invested_value",
+                    "exit_load_free_units",
                 ]
-                h_rows = [h_fields] + [[str(h.get(c, "") or "") for c in h_fields] for h in holdings]
+                h_rows = [h_fields] + [
+                    [str(h.get(c, "") or "") for c in h_fields] for h in holdings
+                ]
                 ws_holdings.clear()
                 ws_holdings.update(h_rows)
 
@@ -178,7 +216,9 @@ def main() -> int:
                 try:
                     ws_state = sh.worksheet("system_state")
                 except gspread.exceptions.WorksheetNotFound:
-                    ws_state = sh.add_worksheet(title="system_state", rows=len(sync_info) + 20, cols=4)
+                    ws_state = sh.add_worksheet(
+                        title="system_state", rows=len(sync_info) + 20, cols=4
+                    )
                 s_rows = [["key", "value"]] + [[str(k), str(v)] for k, v in sync_info.items()]
                 ws_state.clear()
                 ws_state.update(s_rows)
@@ -188,12 +228,25 @@ def main() -> int:
                 try:
                     ws_events = sh.worksheet("ledger_events")
                 except gspread.exceptions.WorksheetNotFound:
-                    ws_events = sh.add_worksheet(title="ledger_events", rows=len(events) + 50, cols=15)
+                    ws_events = sh.add_worksheet(
+                        title="ledger_events", rows=len(events) + 50, cols=15
+                    )
 
                 fieldnames = [
-                    "id", "asset_id", "asset_name", "isin", "event_type", "event_date",
-                    "units", "price_per_unit", "gross_amount", "source_document_id",
-                    "ingested_at", "previous_hash", "event_hash", "tx_fingerprint"
+                    "id",
+                    "asset_id",
+                    "asset_name",
+                    "isin",
+                    "event_type",
+                    "event_date",
+                    "units",
+                    "price_per_unit",
+                    "gross_amount",
+                    "source_document_id",
+                    "ingested_at",
+                    "previous_hash",
+                    "event_hash",
+                    "tx_fingerprint",
                 ]
                 rows_to_upload = [fieldnames]
                 for ev in events:
@@ -202,14 +255,18 @@ def main() -> int:
 
                 ws_events.clear()
                 ws_events.update(rows_to_upload)
-                print(f"[SUCCESS] Uploaded {len(events)} transactions to Google Sheet tab 'ledger_events' (ZERO PII).")
+                print(
+                    f"[SUCCESS] Uploaded {len(events)} transactions to Google Sheet tab 'ledger_events' (ZERO PII)."
+                )
 
         except ImportError:
             print("[INFO] gspread not installed. CSV export ready for import.")
         except Exception as e:
             print(f"[WARN] Google Sheets API sync failed: {e}")
     else:
-        print(f"[INFO] Dry-run or no Google credentials configured. Output CSVs ready at: {args.export_dir}")
+        print(
+            f"[INFO] Dry-run or no Google credentials configured. Output CSVs ready at: {args.export_dir}"
+        )
 
     print("[SUCCESS] Sheets snapshot & ledger events sync finished.")
     return 0

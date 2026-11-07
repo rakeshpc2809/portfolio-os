@@ -4,9 +4,9 @@ Scans data/factsheets for disclosure spreadsheets, parses holdings,
 and pushes them to Core Node's DuckDB store with audit timestamps.
 """
 
+import json
 import os
 import sys
-import json
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +16,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(SCRIPT_DIR.parent))
 
-from quant.disclosure_parser import parse_amc_portfolio_disclosure
+from quant.disclosure_parser import parse_amc_portfolio_disclosure  # noqa: E402
 
 SCHEME_FACTSHEET_MAP = {
     "INF879O01027": ("ppfas_flexicap_full.xlsx", "Parag Parikh Flexi Cap Fund"),
@@ -52,17 +52,14 @@ def ingest_disclosures(core_node_url: str = "http://127.0.0.1:8080"):
                 "fund_id": isin,
                 "disclosure_date": os.getenv("DISCLOSURE_DATE", mtime_date),
                 "source_type": "FACTSHEET_POI_PARSED",
-                "holdings": holdings
+                "holdings": holdings,
             }
 
             req = urllib.request.Request(
                 f"{core_node_url}/api/v1/analytics/holdings/ingest",
                 data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Api-Auth-Token": token
-                },
-                method="POST"
+                headers={"Content-Type": "application/json", "X-Api-Auth-Token": token},
+                method="POST",
             )
 
             try:
@@ -70,7 +67,9 @@ def ingest_disclosures(core_node_url: str = "http://127.0.0.1:8080"):
                     res = json.loads(resp.read().decode())
                     print(f"    -> Ingestion Response: {res}")
             except Exception as e:
-                print(f"    [!] Core Node online ingest skipped ({e}). Holdings verified parsed locally.")
+                print(
+                    f"    [!] Core Node online ingest skipped ({e}). Holdings verified parsed locally."
+                )
 
         except Exception as e:
             print(f"[-] Failed to parse {filename}: {e}", file=sys.stderr)

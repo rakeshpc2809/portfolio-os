@@ -7,11 +7,13 @@ instrument name, sector, and % weight to NAV.
 
 import os
 import re
-from typing import Dict, List, Optional
+
 import pandas as pd
 
 
-def parse_amc_portfolio_disclosure(file_path: str, fund_id: Optional[str] = None) -> List[Dict[str, any]]:
+def parse_amc_portfolio_disclosure(
+    file_path: str, fund_id: str | None = None
+) -> list[dict[str, any]]:
     """Parses an AMC disclosure file and returns a list of normalized holding dicts.
 
     Each dict contains:
@@ -42,7 +44,10 @@ def parse_amc_portfolio_disclosure(file_path: str, fund_id: Optional[str] = None
         c_str = str(col).strip().upper()
         if "ISIN" in c_str:
             isin_col = col
-        elif any(k in c_str for k in ("NAME OF THE INSTRUMENT", "COMPANY NAME", "INSTRUMENT NAME", "SECURITY NAME")):
+        elif any(
+            k in c_str
+            for k in ("NAME OF THE INSTRUMENT", "COMPANY NAME", "INSTRUMENT NAME", "SECURITY NAME")
+        ):
             name_col = col
         elif any(k in c_str for k in ("% TO NAV", "% OF NAV", "WEIGHT", "PERCENTAGE")):
             weight_col = col
@@ -53,7 +58,7 @@ def parse_amc_portfolio_disclosure(file_path: str, fund_id: Optional[str] = None
             row_vals = [str(v).strip().upper() for v in df.iloc[idx].values]
             if any("ISIN" in v for v in row_vals):
                 df.columns = df.iloc[idx]
-                df = df.iloc[idx + 1:].reset_index(drop=True)
+                df = df.iloc[idx + 1 :].reset_index(drop=True)
                 for col in df.columns:
                     c_str = str(col).strip().upper()
                     if "ISIN" in c_str:
@@ -65,9 +70,11 @@ def parse_amc_portfolio_disclosure(file_path: str, fund_id: Optional[str] = None
                 break
 
     if not isin_col or not weight_col:
-        raise ValueError(f"Could not identify required columns ('ISIN' and '% to NAV') in {file_path}")
+        raise ValueError(
+            f"Could not identify required columns ('ISIN' and '% to NAV') in {file_path}"
+        )
 
-    holdings: List[Dict[str, any]] = []
+    holdings: list[dict[str, any]] = []
     isin_pattern = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}\d$")
 
     for _, row in df.iterrows():
@@ -92,12 +99,14 @@ def parse_amc_portfolio_disclosure(file_path: str, fund_id: Optional[str] = None
             if not raw_isin.startswith("INE") and not raw_isin.startswith("INF"):
                 market = "US"
 
-        holdings.append({
-            "stock_symbol": raw_name[:64],
-            "stock_isin": raw_isin,
-            "weight_pct": round(weight, 3),
-            "market": market,
-            "source_type": "FACTSHEET_POI_PARSED"
-        })
+        holdings.append(
+            {
+                "stock_symbol": raw_name[:64],
+                "stock_isin": raw_isin,
+                "weight_pct": round(weight, 3),
+                "market": market,
+                "source_type": "FACTSHEET_POI_PARSED",
+            }
+        )
 
     return holdings

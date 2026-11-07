@@ -18,7 +18,6 @@ Drill 2: Zero-Knowledge Google Sheets Recovery
   * Conserved unit balances match source ledger.
 """
 
-import os
 import shutil
 import sqlite3
 import subprocess
@@ -33,9 +32,9 @@ RESTORE_SCRIPT = REPO_ROOT / "scripts" / "restore_ledger_from_sheets.py"
 
 
 def log_header(title: str):
-    print(f"\n========================================================")
+    print("\n========================================================")
     print(f"[*] {title}")
-    print(f"========================================================")
+    print("========================================================")
 
 
 def drill_litestream_recovery(sandbox: Path):
@@ -79,7 +78,9 @@ def drill_litestream_recovery(sandbox: Path):
     conn_orig.close()
 
     assert count == orig_count, f"Count mismatch! Restored: {count}, Original: {orig_count}"
-    print(f"  ✓ Litestream restoration verified: {count}/{orig_count} transactions restored intact.")
+    print(
+        f"  ✓ Litestream restoration verified: {count}/{orig_count} transactions restored intact."
+    )
 
 
 def drill_sheets_recovery(sandbox: Path):
@@ -91,15 +92,19 @@ def drill_sheets_recovery(sandbox: Path):
     restored_db = sandbox / "sheets_restored.db"
 
     # 1. Chaos: All SQLite DBs and WALs are completely lost.
-    print("  ✓ Chaos triggered: SQLite databases destroyed; initiating recovery from Google Sheets CSV.")
+    print(
+        "  ✓ Chaos triggered: SQLite databases destroyed; initiating recovery from Google Sheets CSV."
+    )
 
     # 2. Run restore_ledger_from_sheets.py
     cmd = [
         sys.executable,
         str(RESTORE_SCRIPT),
-        "--csv", str(SHEETS_CSV),
-        "--target-db", str(restored_db),
-        "--force"
+        "--csv",
+        str(SHEETS_CSV),
+        "--target-db",
+        str(restored_db),
+        "--force",
     ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
@@ -118,9 +123,11 @@ def drill_sheets_recovery(sandbox: Path):
     """).fetchall()
     conn.close()
 
-    with open(SHEETS_CSV, "r", encoding="utf-8") as f:
+    with open(SHEETS_CSV, encoding="utf-8") as f:
         expected_count = max(0, sum(1 for _ in f) - 1)
-    assert len(events) == expected_count, f"Expected {expected_count} events from CSV, found {len(events)}!"
+    assert len(events) == expected_count, (
+        f"Expected {expected_count} events from CSV, found {len(events)}!"
+    )
     print(f"  ✓ Event count verified: Exactly {len(events)} transactions restored.")
 
     # 4. Hash-Chain Continuity Verification
@@ -134,7 +141,9 @@ def drill_sheets_recovery(sandbox: Path):
 
     # 5. Zero-PII Policy Verification
     folio_leaks = [ev for ev in events if ev[5] is not None and str(ev[5]).strip() != ""]
-    assert len(folio_leaks) == 0, f"PII Leak! {len(folio_leaks)} events have non-null folio_no in restored DB!"
+    assert len(folio_leaks) == 0, (
+        f"PII Leak! {len(folio_leaks)} events have non-null folio_no in restored DB!"
+    )
     print("  ✓ Zero-PII policy verified: 0 folio_no values leaked into cloud relay.")
 
 

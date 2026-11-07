@@ -1,8 +1,11 @@
-from typing import List
 from collections import defaultdict
-from .models import TaxEventSchema, EventType
 
-def detect_and_tag_sips(events: List[TaxEventSchema], min_consecutive_matches: int = 3) -> List[TaxEventSchema]:
+from .models import EventType, TaxEventSchema
+
+
+def detect_and_tag_sips(
+    events: list[TaxEventSchema], min_consecutive_matches: int = 3
+) -> list[TaxEventSchema]:
     """
     Auto-detects Systematic Investment Plans (SIPs) by grouping transactions by ISIN/Asset ID,
     checking date spacing (25 to 35 days for monthly recurring investments), and amount variation (<= 5%).

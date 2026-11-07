@@ -5,16 +5,17 @@ zero-PII leakage guarantees (Fix #4: DTO allowlisting + specific PAN/Email/Folio
 NO broken \b\d{9,18}\b regex).
 """
 
-import os
-import re
-import sys
 import json
 import logging
+import os
+import re
 import sqlite3
-import requests
-from datetime import datetime, date, timedelta, timezone
+import sys
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Any
+
+import requests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("sheets-snapshot-publisher")
@@ -23,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_DB_PATH = REPO_ROOT / "data" / "tax_ledger.db"
 
 
-def load_env_file(filepath: Optional[Path] = None):
+def load_env_file(filepath: Path | None = None):
     """Loads environment variables from ~/.config/portfolio-os/secrets.env or .env if not already present."""
     if filepath is None:
         cfg_secrets = Path.home() / ".config" / "portfolio-os" / "secrets.env"
@@ -31,7 +32,7 @@ def load_env_file(filepath: Optional[Path] = None):
     if not filepath.exists():
         return
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#") or "=" not in line:
@@ -60,7 +61,9 @@ def extract_sheet_id(sheet_id_or_url: str) -> str:
 # Explicitly avoids \b\d{9,18}\b which false-positives on timestamps and high-precision decimal units
 PAN_PATTERN = re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b")
 EMAIL_PATTERN = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
-FOLIO_PATTERN = re.compile(r"\b\d{6,12}/\d{2}\b|\bfolio(?:[_\s]*(?:no|num|number))?\b", re.IGNORECASE)
+FOLIO_PATTERN = re.compile(
+    r"\b\d{6,12}/\d{2}\b|\bfolio(?:[_\s]*(?:no|num|number))?\b", re.IGNORECASE
+)
 
 # Strict DTO Allowlisted Fields for holdings_snapshot
 ALLOWED_HOLDING_FIELDS = [
@@ -88,7 +91,7 @@ ALLOWED_HOLDING_FIELDS = [
     "invested_value",
     "xirr",
     "expense_ratio",
-    "as_of_date"
+    "as_of_date",
 ]
 
 ISIN_TO_AMFI = {
@@ -116,29 +119,34 @@ ISIN_TO_BUCKET = {
 
 class PiiViolationException(Exception):
     """Raised when outbound payload fails cryptographic PII inspection."""
+
     pass
 
 
-def scan_for_pii(text: str) -> List[str]:
+def scan_for_pii(text: str) -> list[str]:
     """Scans text for PAN, email, and folio patterns. Returns list of violation messages."""
     violations = []
-    
+
     pan_matches = PAN_PATTERN.findall(text)
     if pan_matches:
         violations.append(f"PAN detected in outbound payload: {len(pan_matches)} instances")
 
     email_matches = EMAIL_PATTERN.findall(text)
     if email_matches:
-        violations.append(f"Email address detected in outbound payload: {len(email_matches)} instances")
+        violations.append(
+            f"Email address detected in outbound payload: {len(email_matches)} instances"
+        )
 
     folio_matches = FOLIO_PATTERN.findall(text)
     if folio_matches:
-        violations.append(f"Folio pattern detected in outbound payload: {len(folio_matches)} instances")
+        violations.append(
+            f"Folio pattern detected in outbound payload: {len(folio_matches)} instances"
+        )
 
     return violations
 
 
-def sanitize_holding_item(raw_item: Dict[str, Any], today_str: str) -> Dict[str, Any]:
+def sanitize_holding_item(raw_item: dict[str, Any], today_str: str) -> dict[str, Any]:
     """Strictly allowlists fields to construct a PII-free holding record."""
     total_units = float(raw_item.get("total_units", 0.0))
     free_units = float(raw_item.get("exit_load_free_units", total_units))
@@ -154,7 +162,9 @@ def sanitize_holding_item(raw_item: Dict[str, Any], today_str: str) -> Dict[str,
 
     isin_val = str(raw_item.get("isin", "")).strip()
     amfi_code = ISIN_TO_AMFI.get(isin_val, str(raw_item.get("amfi_code", "0")))
-    bucket_val = ISIN_TO_BUCKET.get(isin_val, str(raw_item.get("asset_bucket") or raw_item.get("bucket", "UNASSIGNED")))
+    bucket_val = ISIN_TO_BUCKET.get(
+        isin_val, str(raw_item.get("asset_bucket") or raw_item.get("bucket", "UNASSIGNED"))
+    )
     scheme_name = str(raw_item.get("fund_name") or raw_item.get("scheme_name", "")).strip()
 
     return {
@@ -182,11 +192,11 @@ def sanitize_holding_item(raw_item: Dict[str, Any], today_str: str) -> Dict[str,
         "invested_value": round(float(raw_item.get("invested_value", 0.0)), 2),
         "xirr": round(float(raw_item.get("xirr", 0.0)), 2),
         "expense_ratio": round(float(raw_item.get("expense_ratio", 0.20)), 2),
-        "as_of_date": today_str
+        "as_of_date": today_str,
     }
 
 
-def build_system_state(db_path: Path, sync_info: Dict[str, Any]) -> Dict[str, Any]:
+def build_system_state(db_path: Path, sync_info: dict[str, Any]) -> dict[str, Any]:
     """Extracts system operational state and SIP validity for Google Sheets timer consumption."""
     last_cas_tx_date = "2026-01-01"
     reconciliation_status = "MATCHED"
@@ -197,9 +207,11 @@ def build_system_state(db_path: Path, sync_info: Dict[str, Any]) -> Dict[str, An
             row = conn.execute("SELECT MAX(event_date) FROM tax_events").fetchone()
             if row and row[0]:
                 last_cas_tx_date = row[0]
-            
+
             # Check reconciliation status
-            rec_row = conn.execute("SELECT status FROM reconciliation_log ORDER BY rowid DESC LIMIT 1").fetchone()
+            rec_row = conn.execute(
+                "SELECT status FROM reconciliation_log ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
             if rec_row and rec_row[0]:
                 reconciliation_status = rec_row[0]
             conn.close()
@@ -212,7 +224,7 @@ def build_system_state(db_path: Path, sync_info: Dict[str, Any]) -> Dict[str, An
             from scripts.gmail_cas_poller import compute_units_validity
         except ModuleNotFoundError:
             from gmail_cas_poller import compute_units_validity
-        validity = compute_units_validity(date.fromisoformat(last_cas_tx_date), datetime.now(timezone.utc))
+        validity = compute_units_validity(date.fromisoformat(last_cas_tx_date), datetime.now(UTC))
         sip_pipeline_status = validity["status"]
         valid_until = validity["units_valid_until_date"]
         next_sip = validity["next_sip_date"]
@@ -236,6 +248,7 @@ def build_system_state(db_path: Path, sync_info: Dict[str, Any]) -> Dict[str, An
     if duckdb_path.exists():
         try:
             import duckdb
+
             dconn = duckdb.connect(str(duckdb_path), read_only=True)
             brow = dconn.execute("""
                 WITH recent_bench AS (
@@ -266,19 +279,19 @@ def build_system_state(db_path: Path, sync_info: Dict[str, Any]) -> Dict[str, An
         "benchmark_peak_52w_nav": bench_peak,
         "benchmark_current_nav": bench_cur,
         "status": sip_pipeline_status,
-        "last_sync_timestamp": datetime.now(timezone.utc).isoformat(),
+        "last_sync_timestamp": datetime.now(UTC).isoformat(),
         "ledger_hash": str(sync_info.get("ledger_hash", "GENESIS")),
         "portfolio_xirr": float(sync_info.get("portfolio_xirr", 0.0)),
         "total_current_value": float(sync_info.get("current_value", 0.0)),
         "total_invested": float(sync_info.get("total_invested", 0.0)),
         "next_sip_date": next_sip,
         "last_cas_tx_date": last_cas_tx_date,
-        "nifty_500_proxy_amfi": "147625", # Motilal Oswal Nifty 500 Direct Growth proxy
-        "lumpsum_ladder_active": True
+        "nifty_500_proxy_amfi": "147625",  # Motilal Oswal Nifty 500 Direct Growth proxy
+        "lumpsum_ladder_active": True,
     }
 
 
-def publish_to_google_sheets_api(payload: Dict[str, Any], creds_path: str, sheet_id: str):
+def publish_to_google_sheets_api(payload: dict[str, Any], creds_path: str, sheet_id: str):
     """Pushes holdings_snapshot and system_state directly to Google Sheets via Google Sheets API."""
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
@@ -296,7 +309,9 @@ def publish_to_google_sheets_api(payload: Dict[str, Any], creds_path: str, sheet
         if needed not in existing_sheets:
             requests_body.append({"addSheet": {"properties": {"title": needed}}})
     if requests_body:
-        service.spreadsheets().batchUpdate(spreadsheetId=clean_sheet_id, body={"requests": requests_body}).execute()
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=clean_sheet_id, body={"requests": requests_body}
+        ).execute()
 
     holdings = payload.get("holdings_snapshot", [])
     system_state = payload.get("system_state", {})
@@ -312,35 +327,39 @@ def publish_to_google_sheets_api(payload: Dict[str, Any], creds_path: str, sheet
         "Current_NAV",
         "Current_Value",
         "Drawdown_Pct",
-        "As_Of_Date"
+        "As_Of_Date",
     ]
     holdings_rows = [holdings_headers]
     for h in holdings:
-        holdings_rows.append([
-            h.get("ISIN", ""),
-            str(h.get("AMFI_Code", "")),
-            h.get("Scheme_Name", ""),
-            h.get("Bucket", ""),
-            h.get("Total_Units", 0.0),
-            h.get("Exit_Load_Free_Units", 0.0),
-            h.get("Peak_52W_NAV", 0.0),
-            h.get("current_nav", 0.0),
-            h.get("current_value", 0.0),
-            h.get("drawdown_from_peak_pct", 0.0),
-            h.get("as_of_date", "")
-        ])
+        holdings_rows.append(
+            [
+                h.get("ISIN", ""),
+                str(h.get("AMFI_Code", "")),
+                h.get("Scheme_Name", ""),
+                h.get("Bucket", ""),
+                h.get("Total_Units", 0.0),
+                h.get("Exit_Load_Free_Units", 0.0),
+                h.get("Peak_52W_NAV", 0.0),
+                h.get("current_nav", 0.0),
+                h.get("current_value", 0.0),
+                h.get("drawdown_from_peak_pct", 0.0),
+                h.get("as_of_date", ""),
+            ]
+        )
 
     system_state_rows = [["System State Key", "Value"]]
     for k, v in system_state.items():
         system_state_rows.append([str(k), str(v)])
 
     # Clear and update holdings_snapshot
-    service.spreadsheets().values().clear(spreadsheetId=clean_sheet_id, range="holdings_snapshot!A1:Z100").execute()
+    service.spreadsheets().values().clear(
+        spreadsheetId=clean_sheet_id, range="holdings_snapshot!A1:Z100"
+    ).execute()
     service.spreadsheets().values().update(
         spreadsheetId=clean_sheet_id,
         range="holdings_snapshot!A1",
         valueInputOption="USER_ENTERED",
-        body={"values": holdings_rows}
+        body={"values": holdings_rows},
     ).execute()
 
     # Write system state metadata table to columns M1:N on holdings_snapshot
@@ -348,28 +367,32 @@ def publish_to_google_sheets_api(payload: Dict[str, Any], creds_path: str, sheet
         spreadsheetId=clean_sheet_id,
         range="holdings_snapshot!M1",
         valueInputOption="USER_ENTERED",
-        body={"values": system_state_rows}
+        body={"values": system_state_rows},
     ).execute()
 
     # Clear and update system_state tab
-    service.spreadsheets().values().clear(spreadsheetId=clean_sheet_id, range="system_state!A1:Z100").execute()
+    service.spreadsheets().values().clear(
+        spreadsheetId=clean_sheet_id, range="system_state!A1:Z100"
+    ).execute()
     service.spreadsheets().values().update(
         spreadsheetId=clean_sheet_id,
         range="system_state!A1",
         valueInputOption="USER_ENTERED",
-        body={"values": system_state_rows}
+        body={"values": system_state_rows},
     ).execute()
 
-    logger.info(f"Successfully published {len(holdings)} holdings and system_state metadata to Google Sheets (ID: {clean_sheet_id}).")
+    logger.info(
+        f"Successfully published {len(holdings)} holdings and system_state metadata to Google Sheets (ID: {clean_sheet_id})."
+    )
 
 
 def fetch_and_publish_snapshot(
     core_node_url: str = "http://127.0.0.1:8080",
-    auth_token: Optional[str] = None,
+    auth_token: str | None = None,
     db_path: Path = DEFAULT_DB_PATH,
-    webhook_url: Optional[str] = None,
-    dry_run: bool = False
-) -> Dict[str, Any]:
+    webhook_url: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
     """Fetches snapshot from Core Node, sanitizes PII, verifies safety, and pushes to Google Sheets."""
     load_env_file()
     token = (auth_token or os.getenv("API_AUTH_TOKEN", "")).strip()
@@ -390,35 +413,42 @@ def fetch_and_publish_snapshot(
     sanitized_holdings = [sanitize_holding_item(h, today_str) for h in raw_holdings]
     system_state = build_system_state(db_path, sync_info)
 
-    payload = {
-        "holdings_snapshot": sanitized_holdings,
-        "system_state": system_state
-    }
+    payload = {"holdings_snapshot": sanitized_holdings, "system_state": system_state}
 
     # Execute Mandatory PII Verification Guard (Fix #4)
     serialized_payload = json.dumps(payload, indent=2)
     violations = scan_for_pii(serialized_payload)
     if violations:
-        logger.error(f"SECURITY CRITICAL: PII Scan Failed! Outbound publication blocked: {violations}")
+        logger.error(
+            f"SECURITY CRITICAL: PII Scan Failed! Outbound publication blocked: {violations}"
+        )
         raise PiiViolationException(f"PII Leakage Blocked: {'; '.join(violations)}")
 
-    logger.info(f"✓ PII Scan Passed: 0 violations detected across {len(sanitized_holdings)} holdings.")
+    logger.info(
+        f"✓ PII Scan Passed: 0 violations detected across {len(sanitized_holdings)} holdings."
+    )
 
     target_webhook = webhook_url or os.getenv("GOOGLE_SHEET_WEBHOOK_URL", "")
     sheet_id = os.getenv("PORTFOLIO_SHEET_ID", "")
     creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 
     if not dry_run and creds_path and os.path.exists(creds_path) and sheet_id:
-        logger.info("Publishing snapshot to Google Sheets via Google Sheets API (Service Account)...")
+        logger.info(
+            "Publishing snapshot to Google Sheets via Google Sheets API (Service Account)..."
+        )
         publish_to_google_sheets_api(payload, creds_path, sheet_id)
     elif target_webhook and not dry_run:
-        logger.info(f"Publishing snapshot to Google Sheets via Apps Script Webhook...")
+        logger.info("Publishing snapshot to Google Sheets via Apps Script Webhook...")
         wh_resp = requests.post(target_webhook, json=payload, timeout=30)
         wh_resp.raise_for_status()
         logger.info(f"Successfully published snapshot to Google Sheets: {wh_resp.status_code}")
     else:
-        logger.info(f"Dry-run/Local mode: Saving snapshot payload to /tmp/holdings_snapshot_dryrun.json")
-        fd = os.open("/tmp/holdings_snapshot_dryrun.json", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        logger.info(
+            "Dry-run/Local mode: Saving snapshot payload to /tmp/holdings_snapshot_dryrun.json"
+        )
+        fd = os.open(
+            "/tmp/holdings_snapshot_dryrun.json", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+        )
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(serialized_payload)
 
@@ -430,11 +460,11 @@ if __name__ == "__main__":
     dry_run_flag = "--dry-run" in sys.argv
     try:
         res = fetch_and_publish_snapshot(dry_run=dry_run_flag)
-        num_holdings = len(res['holdings_snapshot'])
-        print(f"\n========================================================")
+        num_holdings = len(res["holdings_snapshot"])
+        print("\n========================================================")
         print(f"CONFIRMATION: {num_holdings} holdings and the system_state metadata table")
-        print(f"were written to your holdings_snapshot tab and system_state tab.")
-        print(f"========================================================\n")
+        print("were written to your holdings_snapshot tab and system_state tab.")
+        print("========================================================\n")
     except Exception as err:
         logger.error(f"Publishing failed: {err}")
         sys.exit(1)

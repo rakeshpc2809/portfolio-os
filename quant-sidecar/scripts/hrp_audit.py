@@ -1,4 +1,6 @@
+import json
 from pathlib import Path
+
 import polars as pl
 from skfolio import RiskMeasure
 from skfolio.optimization import HierarchicalRiskParity
@@ -24,8 +26,7 @@ parquet_path = next((p for p in parquet_candidates if p.exists()), Path("data/na
 
 if not parquet_path.exists():
     raise FileNotFoundError(
-        f"NAV parquet export not found at {parquet_path}. "
-        "Run the DuckDB export command first."
+        f"NAV parquet export not found at {parquet_path}. Run the DuckDB export command first."
     )
 
 df = pl.read_parquet(parquet_path)
@@ -51,13 +52,10 @@ wide_df = (
 
 # 3. Compute daily log returns
 active_isins = [isin for isin in target_isins if isin in wide_df.columns]
-returns_pl = (
-    wide_df.select([pl.col("nav_date")] + [
-        (pl.col(isin) / pl.col(isin).shift(1)).log().alias(isin)
-        for isin in active_isins
-    ])
-    .drop_nulls()
-)
+returns_pl = wide_df.select(
+    [pl.col("nav_date")]
+    + [(pl.col(isin) / pl.col(isin).shift(1)).log().alias(isin) for isin in active_isins]
+).drop_nulls()
 
 returns_df = returns_pl.to_pandas().set_index("nav_date")
 n_obs = len(returns_df)
@@ -69,7 +67,9 @@ print("=" * 72)
 print("SAMPLE SIZE & ALIGNMENT AUDIT")
 print("=" * 72)
 print(f"Alignment Window:             {min_date} to {max_date}")
-print(f"Calendar Days in Window:      {(wide_df['nav_date'].max() - wide_df['nav_date'].min()).days + 1}")
+print(
+    f"Calendar Days in Window:      {(wide_df['nav_date'].max() - wide_df['nav_date'].min()).days + 1}"
+)
 print(f"Aligned NAV Days (survived):  {len(wide_df)}")
 print(f"Daily Return Observations:    {n_obs}")
 
@@ -82,7 +82,9 @@ print(f"Expected 95% CVaR Tail Obs:   {cvar_tail_count:.2f} observations (N * 5%
 if n_obs < 252 or non_zero_days < 20:
     print("\n" + "!" * 72)
     print("WARNING: EXTREMELY THIN SAMPLE SIZE!")
-    print(f"  Only {n_obs} daily return observations ({non_zero_days} active trading days) survived.")
+    print(
+        f"  Only {n_obs} daily return observations ({non_zero_days} active trading days) survived."
+    )
     print("  Estimating 95% CVaR on fewer than ~250 trading days produces highly")
     print("  unstable covariance estimates and arbitrary tail measures.")
     print("  Treat HRP allocations as PROOF-OF-CONCEPT ONLY, not decision-grade.")
@@ -110,7 +112,9 @@ for i, isin in enumerate(returns_df.columns):
     drift = round(hrp_pct - target["target_pct"], 2)
     bucket = target["bucket"]
     bucket_hrp_totals[bucket] = bucket_hrp_totals.get(bucket, 0.0) + hrp_pct
-    print(f"| `{isin}` | {target['name']} | {bucket} | {target['target_pct']:.1f}% | {hrp_pct:.1f}% | {drift:+.2f}% |")
+    print(
+        f"| `{isin}` | {target['name']} | {bucket} | {target['target_pct']:.1f}% | {hrp_pct:.1f}% | {drift:+.2f}% |"
+    )
 
 print("\n**Bucket-Level Aggregate Comparison:**")
 bucket_summary = {}
@@ -125,8 +129,6 @@ for bucket, hrp_total in bucket_hrp_totals.items():
     print(f"- **{bucket}**: Target {v23_total:.1f}% vs HRP {hrp_total:.1f}% (Δ {diff:+.2f}%)")
 
 # 7. Dump lightweight JSON cache for TUI / UI read-if-present display
-import json
-
 repo_root = Path(__file__).resolve().parent.parent.parent
 json_path = repo_root / "data" / "hrp_audit.json"
 json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -149,7 +151,9 @@ audit_payload = {
             "bucket": V23_TARGETS[isin]["bucket"],
             "target_pct": V23_TARGETS[isin]["target_pct"],
             "hrp_pct": round(float(weights[i]) * 100.0, 2),
-            "drift_pct": round(round(float(weights[i]) * 100.0, 2) - V23_TARGETS[isin]["target_pct"], 2),
+            "drift_pct": round(
+                round(float(weights[i]) * 100.0, 2) - V23_TARGETS[isin]["target_pct"], 2
+            ),
         }
         for i, isin in enumerate(returns_df.columns)
     ],

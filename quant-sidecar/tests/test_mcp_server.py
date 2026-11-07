@@ -1,8 +1,7 @@
 import json
 import re
 import unittest
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from mcp_server import (
     create_mcp_server,
@@ -20,12 +19,13 @@ from mcp_server import (
     tool_verify_financial_narration,
 )
 
-FOLIO_PATTERN = re.compile(r"\b\d{6,12}/\d{2}\b|\bfolio(?:[_\s]*(?:no|num|number))?\b", re.IGNORECASE)
+FOLIO_PATTERN = re.compile(
+    r"\b\d{6,12}/\d{2}\b|\bfolio(?:[_\s]*(?:no|num|number))?\b", re.IGNORECASE
+)
 PAN_PATTERN = re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b")
 
 
 class TestMcpServer(unittest.TestCase):
-
     def test_mcp_server_initialization(self):
         srv = create_mcp_server()
         self.assertIsNotNone(srv)
@@ -45,7 +45,9 @@ class TestMcpServer(unittest.TestCase):
     def test_get_portfolio_status_mock_and_zero_pii(self):
         mock_snapshot = {
             "sync_info": {"last_synced_at": "2026-10-25T10:00:00Z"},
-            "bucket_allocation": [{"bucket": "EQUITY_CORE", "target_pct": 50.0, "current_pct": 51.2}],
+            "bucket_allocation": [
+                {"bucket": "EQUITY_CORE", "target_pct": 50.0, "current_pct": 51.2}
+            ],
             "rebalance_plan": {"actions": []},
             "daily_brief": {"nifty_500_drawdown_pct": -4.2},
         }
@@ -60,15 +62,22 @@ class TestMcpServer(unittest.TestCase):
             self.assertIsNone(PAN_PATTERN.search(res_str))
 
     def test_get_portfolio_status_offline_fallback(self):
-        with patch("mcp_server._call_core_api", return_value={"status": "OFFLINE_OR_ERROR", "message": "Connection refused"}):
+        with patch(
+            "mcp_server._call_core_api",
+            return_value={"status": "OFFLINE_OR_ERROR", "message": "Connection refused"},
+        ):
             res_str = tool_get_portfolio_status()
             data = json.loads(res_str)
             self.assertEqual(data.get("status"), "OFFLINE_OR_ERROR")
 
     def test_simulate_trade_or_lumpsum_modes(self):
         # LUMPSUM mode
-        with patch("mcp_server._call_core_api", return_value={"status": "SUCCESS", "allocated": 50000.0}) as mock_call:
-            res_str = simulate_trade_or_lumpsum(mode="LUMPSUM", amount=50000.0, include_rebalance=True)
+        with patch(
+            "mcp_server._call_core_api", return_value={"status": "SUCCESS", "allocated": 50000.0}
+        ) as mock_call:
+            res_str = simulate_trade_or_lumpsum(
+                mode="LUMPSUM", amount=50000.0, include_rebalance=True
+            )
             data = json.loads(res_str)
             self.assertEqual(data["status"], "SUCCESS")
             mock_call.assert_called_with(
@@ -83,7 +92,9 @@ class TestMcpServer(unittest.TestCase):
         self.assertIn("error", err_data)
 
         # TRADE mode valid
-        with patch("mcp_server._call_core_api", return_value={"status": "SUCCESS", "tax_drag": 1200.0}) as mock_call:
+        with patch(
+            "mcp_server._call_core_api", return_value={"status": "SUCCESS", "tax_drag": 1200.0}
+        ) as mock_call:
             res_str = tool_simulate_trade_or_lumpsum(
                 mode="TRADE",
                 isin="INF879O01027",
@@ -192,7 +203,9 @@ class TestMcpServer(unittest.TestCase):
         true_gain_pct = snapshot["portfolio_summary"]["unrealized_gain_pct"]
 
         # Exact match should verify
-        res_str = tool_verify_financial_narration(claimed_net_worth=true_nw, claimed_gain_pct=true_gain_pct)
+        res_str = tool_verify_financial_narration(
+            claimed_net_worth=true_nw, claimed_gain_pct=true_gain_pct
+        )
         data = json.loads(res_str)
         self.assertTrue(data["verified"])
         self.assertEqual(data["discrepancies_found"], 0)

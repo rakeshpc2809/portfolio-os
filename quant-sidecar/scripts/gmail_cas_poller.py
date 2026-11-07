@@ -6,23 +6,23 @@ securely uploads to Core Node, shreds temporary files, and computes settlement l
 based on NSE holidays and RTA allotment alerts.
 """
 
-import os
-import sys
-import glob
-import uuid
-import yaml
-import json
-import sqlite3
-import shutil
-import logging
-import requests
-import imaplib
 import email
+import imaplib
+import json
+import logging
+import os
+import shutil
+import sqlite3
+import sys
+import uuid
+from datetime import UTC, date, datetime, timedelta
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
-from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
+
+import requests
+import yaml
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("gmail-cas-poller")
@@ -33,7 +33,7 @@ DEFAULT_SIP_SCHEDULE = REPO_ROOT / "config" / "sip_schedule.yaml"
 DEFAULT_NSE_HOLIDAYS = REPO_ROOT / "config" / "nse_holidays_2026_2027.yaml"
 
 
-def load_env_file(filepath: Optional[Path] = None):
+def load_env_file(filepath: Path | None = None):
     """Loads environment variables from ~/.config/portfolio-os/secrets.env or .env if not already present."""
     if filepath is None:
         cfg_secrets = Path.home() / ".config" / "portfolio-os" / "secrets.env"
@@ -41,7 +41,7 @@ def load_env_file(filepath: Optional[Path] = None):
     if not filepath.exists():
         return
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#") or "=" not in line:
@@ -55,15 +55,15 @@ def load_env_file(filepath: Optional[Path] = None):
         logger.warning(f"Failed to parse env file at {filepath}: {e}")
 
 
-def load_yaml(filepath: Path) -> Dict[str, Any]:
+def load_yaml(filepath: Path) -> dict[str, Any]:
     if not filepath.exists():
         logger.warning(f"Config file not found: {filepath}")
         return {}
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
-def decode_mime_header(val: Optional[str]) -> str:
+def decode_mime_header(val: str | None) -> str:
     """Safely decodes RFC 2047 encoded email headers."""
     if not val:
         return ""
@@ -135,7 +135,7 @@ def advance_business_days(start_date: date, n_days: int, holidays: set) -> date:
     return cur
 
 
-def find_next_sip_date(schedule: List[Dict[str, Any]], current_date: date) -> date:
+def find_next_sip_date(schedule: list[dict[str, Any]], current_date: date) -> date:
     """Finds the next upcoming SIP execution date across all active schedules."""
     if not schedule:
         return current_date + timedelta(days=30)
@@ -168,10 +168,10 @@ def find_next_sip_date(schedule: List[Dict[str, Any]], current_date: date) -> da
 def compute_units_validity(
     last_cas_tx_date: date,
     current_time: datetime,
-    rta_headers: Optional[List[Dict[str, Any]]] = None,
+    rta_headers: list[dict[str, Any]] | None = None,
     sip_config_path: Path = DEFAULT_SIP_SCHEDULE,
-    holidays_config_path: Path = DEFAULT_NSE_HOLIDAYS
-) -> Dict[str, Any]:
+    holidays_config_path: Path = DEFAULT_NSE_HOLIDAYS,
+) -> dict[str, Any]:
     """
     Computes units_valid_until_date and pipeline status:
     1. Next upcoming SIP date + 4 business days (skipping weekends & NSE holidays).
@@ -199,11 +199,11 @@ def compute_units_validity(
             if isinstance(received_at, str):
                 received_at = datetime.fromisoformat(received_at)
             if received_at.tzinfo is None:
-                received_at = received_at.replace(tzinfo=timezone.utc)
+                received_at = received_at.replace(tzinfo=UTC)
 
             email_date = received_at.date()
             if email_date > last_cas_tx_date:
-                now_utc = current_time if current_time.tzinfo else current_time.replace(tzinfo=timezone.utc)
+                now_utc = current_time if current_time.tzinfo else current_time.replace(tzinfo=UTC)
                 age = now_utc - received_at
 
                 if age >= timedelta(hours=24):
@@ -224,11 +224,13 @@ def compute_units_validity(
         "status": status,
         "units_valid_until_date": valid_until.isoformat(),
         "next_sip_date": next_sip.isoformat(),
-        "last_cas_tx_date": last_cas_tx_date.isoformat()
+        "last_cas_tx_date": last_cas_tx_date.isoformat(),
     }
 
 
-def ingest_pdf_to_core(pdf_path: str, core_node_url: str, auth_token: str, password: str = "") -> Dict[str, Any]:
+def ingest_pdf_to_core(
+    pdf_path: str, core_node_url: str, auth_token: str, password: str = ""
+) -> dict[str, Any]:
     """Posts a CAS PDF to Portfolio OS Core Node /api/v1/statements/upload."""
     url = f"{core_node_url.rstrip('/')}/api/v1/statements/upload"
     headers = {"X-Api-Auth-Token": auth_token}
@@ -241,7 +243,9 @@ def ingest_pdf_to_core(pdf_path: str, core_node_url: str, auth_token: str, passw
         return resp.json()
 
 
-def connect_gmail_imap(user: str, password: str, host: str = "imap.gmail.com", port: int = 993) -> imaplib.IMAP4_SSL:
+def connect_gmail_imap(
+    user: str, password: str, host: str = "imap.gmail.com", port: int = 993
+) -> imaplib.IMAP4_SSL:
     """Connects to Gmail via standard library IMAP4_SSL on port 993 and logs in."""
     clean_password = password.replace(" ", "").strip()
     logger.info(f"Connecting to Gmail IMAP ({host}:{port}) for user {user}...")
@@ -251,19 +255,21 @@ def connect_gmail_imap(user: str, password: str, host: str = "imap.gmail.com", p
     return mail
 
 
-def fetch_rta_allotment_headers(mail: imaplib.IMAP4_SSL) -> List[Dict[str, Any]]:
+def fetch_rta_allotment_headers(mail: imaplib.IMAP4_SSL) -> list[dict[str, Any]]:
     """
     Scans Gmail for recent RTA allotment confirmation headers using:
     mail.uid('search', None, 'X-GM-RAW "from:(donotreply@camsonline.com OR samfS@kfintech.com OR camsonline.com OR kfintech.com) subject:(allotment OR purchase)"')
     Fetches only (BODY.PEEK[HEADER.FIELDS (DATE SUBJECT MESSAGE-ID)]) without downloading bodies.
     """
-    rta_headers: List[Dict[str, Any]] = []
+    rta_headers: list[dict[str, Any]] = []
     try:
-        query = 'from:(donotreply@camsonline.com OR samfS@kfintech.com OR camsonline.com OR kfintech.com) subject:(allotment OR purchase)'
+        query = "from:(donotreply@camsonline.com OR samfS@kfintech.com OR camsonline.com OR kfintech.com) subject:(allotment OR purchase)"
         try:
-            status, data = mail.uid('search', None, f'X-GM-RAW "{query}"')
+            status, data = mail.uid("search", None, f'X-GM-RAW "{query}"')
         except Exception:
-            status, data = mail.uid('search', None, '(OR (SUBJECT "allotment") (SUBJECT "purchase"))')
+            status, data = mail.uid(
+                "search", None, '(OR (SUBJECT "allotment") (SUBJECT "purchase"))'
+            )
 
         if status != "OK" or not data or not data[0]:
             return rta_headers
@@ -272,7 +278,9 @@ def fetch_rta_allotment_headers(mail: imaplib.IMAP4_SSL) -> List[Dict[str, Any]]
         for uid in reversed(uids[-10:]):
             try:
                 uid_str = uid.decode() if isinstance(uid, bytes) else str(uid)
-                res, hdata = mail.uid('fetch', uid, "(BODY.PEEK[HEADER.FIELDS (DATE SUBJECT MESSAGE-ID)])")
+                res, hdata = mail.uid(
+                    "fetch", uid, "(BODY.PEEK[HEADER.FIELDS (DATE SUBJECT MESSAGE-ID)])"
+                )
                 if res != "OK" or not hdata or not hdata[0]:
                     continue
                 raw_header = hdata[0][1]
@@ -284,13 +292,10 @@ def fetch_rta_allotment_headers(mail: imaplib.IMAP4_SSL) -> List[Dict[str, Any]]
                     continue
                 parsed_dt = parsedate_to_datetime(date_str)
                 if parsed_dt.tzinfo is None:
-                    parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
-                rta_headers.append({
-                    "uid": uid_str,
-                    "received_at": parsed_dt,
-                    "subject": subj,
-                    "from": sender
-                })
+                    parsed_dt = parsed_dt.replace(tzinfo=UTC)
+                rta_headers.append(
+                    {"uid": uid_str, "received_at": parsed_dt, "subject": subj, "from": sender}
+                )
             except Exception as e:
                 logger.debug(f"Failed to parse RTA email header for UID {uid}: {e}")
     except Exception as e:
@@ -305,8 +310,8 @@ def poll_gmail_via_imap(
     auth_token: str,
     user: str,
     password: str,
-    cas_password: str = ""
-) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    cas_password: str = "",
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """
     Polls Gmail via IMAP4_SSL for CAS PDF statements:
     1. Connects to imap.gmail.com:993 and selects INBOX in readonly mode.
@@ -318,7 +323,7 @@ def poll_gmail_via_imap(
     """
     mail = None
     results = {"ingested_count": 0, "messages_processed": []}
-    rta_headers: List[Dict[str, Any]] = []
+    rta_headers: list[dict[str, Any]] = []
 
     try:
         mail = connect_gmail_imap(user, password)
@@ -327,12 +332,16 @@ def poll_gmail_via_imap(
             logger.error("Failed to select INBOX in Gmail IMAP.")
             return results, rta_headers
 
-        cas_query = 'from:(camsonline.com OR kfintech.com OR nsdl.co.in OR cdslindia.com) filename:pdf has:attachment'
+        cas_query = "from:(camsonline.com OR kfintech.com OR nsdl.co.in OR cdslindia.com) filename:pdf has:attachment"
         try:
-            status, data = mail.uid('search', None, f'X-GM-RAW "{cas_query}"')
+            status, data = mail.uid("search", None, f'X-GM-RAW "{cas_query}"')
         except Exception as e:
-            logger.warning(f"X-GM-RAW UID search failed ({e}), falling back to standard IMAP search...")
-            status, data = mail.uid('search', None, '(OR (OR (SUBJECT "CAS") (FROM "camsonline")) (FROM "kfintech"))')
+            logger.warning(
+                f"X-GM-RAW UID search failed ({e}), falling back to standard IMAP search..."
+            )
+            status, data = mail.uid(
+                "search", None, '(OR (OR (SUBJECT "CAS") (FROM "camsonline")) (FROM "kfintech"))'
+            )
 
         if status == "OK" and data and data[0]:
             candidate_uids = data[0].split()
@@ -341,7 +350,9 @@ def poll_gmail_via_imap(
             for uid in candidate_uids:
                 try:
                     uid_str = uid.decode() if isinstance(uid, bytes) else str(uid)
-                    h_res, h_data = mail.uid('fetch', uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID DATE FROM SUBJECT)])")
+                    h_res, h_data = mail.uid(
+                        "fetch", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID DATE FROM SUBJECT)])"
+                    )
                     if h_res != "OK" or not h_data or not h_data[0]:
                         continue
 
@@ -355,14 +366,18 @@ def poll_gmail_via_imap(
                     cur = conn.cursor()
                     cur.execute(
                         "SELECT 1 FROM ingested_cas_emails WHERE message_id IN (?, ?, ?)",
-                        (clean_msg_id, uid_str, f"UID_{uid_str}")
+                        (clean_msg_id, uid_str, f"UID_{uid_str}"),
                     )
                     if cur.fetchone():
-                        logger.debug(f"Skipping already ingested CAS message: UID {uid_str} ({clean_msg_id})")
+                        logger.debug(
+                            f"Skipping already ingested CAS message: UID {uid_str} ({clean_msg_id})"
+                        )
                         continue
 
-                    logger.info(f"New CAS email candidate found: UID {uid_str} ({clean_msg_id}) - '{subj}'. Fetching body...")
-                    f_res, f_data = mail.uid('fetch', uid, "(RFC822)")
+                    logger.info(
+                        f"New CAS email candidate found: UID {uid_str} ({clean_msg_id}) - '{subj}'. Fetching body..."
+                    )
+                    f_res, f_data = mail.uid("fetch", uid, "(RFC822)")
                     if f_res != "OK" or not f_data or not f_data[0]:
                         continue
 
@@ -387,44 +402,55 @@ def poll_gmail_via_imap(
                             with os.fdopen(fd, "wb") as pf:
                                 pf.write(pdf_bytes)
 
-                            received_iso = datetime.now(timezone.utc).isoformat()
+                            received_iso = datetime.now(UTC).isoformat()
                             if date_str:
                                 try:
                                     p_dt = parsedate_to_datetime(date_str)
                                     if p_dt.tzinfo is None:
-                                        p_dt = p_dt.replace(tzinfo=timezone.utc)
+                                        p_dt = p_dt.replace(tzinfo=UTC)
                                     received_iso = p_dt.isoformat()
                                 except Exception:
                                     pass
 
-                            now_iso = datetime.now(timezone.utc).isoformat()
+                            now_iso = datetime.now(UTC).isoformat()
 
                             try:
-                                logger.info(f"Uploading statement attachment '{decoded_filename}' to Core Node...")
-                                upload_resp = ingest_pdf_to_core(tmp_target, core_node_url, auth_token, cas_password)
+                                logger.info(
+                                    f"Uploading statement attachment '{decoded_filename}' to Core Node..."
+                                )
+                                upload_resp = ingest_pdf_to_core(
+                                    tmp_target, core_node_url, auth_token, cas_password
+                                )
                                 logger.info(f"Upload successful: {upload_resp}")
 
                                 conn.execute(
                                     "INSERT INTO ingested_cas_emails (message_id, received_at, processed_at, file_name) VALUES (?, ?, ?, ?)",
-                                    (clean_msg_id, received_iso, now_iso, decoded_filename)
+                                    (clean_msg_id, received_iso, now_iso, decoded_filename),
                                 )
                                 conn.commit()
                                 results["ingested_count"] += 1
-                                results["messages_processed"].append({
-                                    "uid": uid_str,
-                                    "message_id": clean_msg_id,
-                                    "file_name": decoded_filename,
-                                    "response": upload_resp
-                                })
+                                results["messages_processed"].append(
+                                    {
+                                        "uid": uid_str,
+                                        "message_id": clean_msg_id,
+                                        "file_name": decoded_filename,
+                                        "response": upload_resp,
+                                    }
+                                )
                                 pdf_found = True
-                            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as conn_err:
+                            except (
+                                requests.exceptions.ConnectionError,
+                                requests.exceptions.Timeout,
+                            ) as conn_err:
                                 logger.warning(
                                     f"Core Node is currently unreachable at {core_node_url} ({conn_err}). "
                                     f"Halting statement ingestion cycle; statements will be uploaded when Core Node is online."
                                 )
                                 return results, fetch_rta_allotment_headers(mail)
                             except requests.RequestException as req_err:
-                                status_code = getattr(getattr(req_err, "response", None), "status_code", None)
+                                status_code = getattr(
+                                    getattr(req_err, "response", None), "status_code", None
+                                )
                                 if status_code in (400, 415):
                                     logger.warning(
                                         f"Core Node rejected unsupported attachment '{decoded_filename}' (HTTP {status_code}, UID: {uid_str}): {req_err}. "
@@ -432,7 +458,12 @@ def poll_gmail_via_imap(
                                     )
                                     conn.execute(
                                         "INSERT INTO ingested_cas_emails (message_id, received_at, processed_at, file_name) VALUES (?, ?, ?, ?)",
-                                        (clean_msg_id, received_iso, now_iso, f"SKIPPED_UNSUPPORTED_{decoded_filename}")
+                                        (
+                                            clean_msg_id,
+                                            received_iso,
+                                            now_iso,
+                                            f"SKIPPED_UNSUPPORTED_{decoded_filename}",
+                                        ),
                                     )
                                     conn.commit()
                                     pdf_found = True
@@ -470,12 +501,12 @@ def poll_gmail_via_imap(
 def run_poller_mock_or_live(
     db_path: Path = DEFAULT_DB_PATH,
     core_node_url: str = "http://127.0.0.1:8080",
-    auth_token: Optional[str] = None,
+    auth_token: str | None = None,
     cas_password: str = "",
-    gmail_user: Optional[str] = None,
-    gmail_app_password: Optional[str] = None,
-    incoming_test_pdf: Optional[str] = None
-) -> Dict[str, Any]:
+    gmail_user: str | None = None,
+    gmail_app_password: str | None = None,
+    incoming_test_pdf: str | None = None,
+) -> dict[str, Any]:
     """
     Executes one ingestion cycle:
     1. Loads .env if present.
@@ -496,7 +527,7 @@ def run_poller_mock_or_live(
     init_ingestion_tables(conn)
 
     results = {"ingested_count": 0, "messages_processed": []}
-    rta_headers: List[Dict[str, Any]] = []
+    rta_headers: list[dict[str, Any]] = []
 
     if incoming_test_pdf and os.path.exists(incoming_test_pdf):
         msg_id = f"test_msg_{uuid.uuid4().hex[:8]}"
@@ -510,10 +541,10 @@ def run_poller_mock_or_live(
             upload_resp = ingest_pdf_to_core(tmp_target, core_node_url, token, pwd)
             logger.info(f"Upload successful: {upload_resp}")
 
-            now_iso = datetime.now(timezone.utc).isoformat()
+            now_iso = datetime.now(UTC).isoformat()
             conn.execute(
                 "INSERT INTO ingested_cas_emails (message_id, received_at, processed_at, file_name) VALUES (?, ?, ?, ?)",
-                (msg_id, now_iso, now_iso, os.path.basename(incoming_test_pdf))
+                (msg_id, now_iso, now_iso, os.path.basename(incoming_test_pdf)),
             )
             conn.commit()
             results["ingested_count"] += 1
@@ -528,20 +559,22 @@ def run_poller_mock_or_live(
             auth_token=token,
             user=user,
             password=g_pass,
-            cas_password=pwd
+            cas_password=pwd,
         )
         results["ingested_count"] = poll_res.get("ingested_count", 0)
         results["messages_processed"] = poll_res.get("messages_processed", [])
         rta_headers = rta_hdrs
     else:
-        logger.info("No incoming test PDF and no GMAIL_USER/GMAIL_APP_PASSWORD configured. Skipping email fetch.")
+        logger.info(
+            "No incoming test PDF and no GMAIL_USER/GMAIL_APP_PASSWORD configured. Skipping email fetch."
+        )
 
     # Compute latest CAS transaction date from database
     row = conn.execute("SELECT MAX(event_date) FROM tax_events").fetchone()
     last_tx_date_str = row[0] if (row and row[0]) else "2026-01-01"
     last_tx_date = date.fromisoformat(last_tx_date_str)
 
-    validity = compute_units_validity(last_tx_date, datetime.now(timezone.utc), rta_headers=rta_headers)
+    validity = compute_units_validity(last_tx_date, datetime.now(UTC), rta_headers=rta_headers)
     results["validity"] = validity
     conn.close()
     return results
@@ -561,7 +594,7 @@ if __name__ == "__main__":
         logger.error(f"Gmail CAS polling encountered error: {e}", exc_info=True)
         try:
             with open(error_flag, "w", encoding="utf-8") as f:
-                json.dump({"error": str(e), "timestamp": datetime.now(timezone.utc).isoformat()}, f)
+                json.dump({"error": str(e), "timestamp": datetime.now(UTC).isoformat()}, f)
         except Exception:
             pass
         sys.exit(1)

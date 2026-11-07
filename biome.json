@@ -1,9 +1,10 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.10/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.5/schema.json",
   "files": {
     "includes": [
       "core-node/src/main/resources/static/**",
       "*.json",
+      "!core-node/src/main/resources/static/assets/**",
       "!**/target/**",
       "!**/build/**",
       "!**/.gradle/**"
@@ -18,7 +19,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "preset": "recommended"
     }
   }
 }

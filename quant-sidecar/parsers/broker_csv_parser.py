@@ -1,17 +1,19 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+
 import polars as pl
-from .models import TaxEventSchema, EventType
+
+from .models import EventType, TaxEventSchema
+
 
 class BrokerCsvParser:
     def __init__(self, csv_path: str, broker_type: str = "generic"):
         self.csv_path = csv_path
         self.broker_type = broker_type
 
-    def parse(self) -> List[TaxEventSchema]:
-        events: List[TaxEventSchema] = []
+    def parse(self) -> list[TaxEventSchema]:
+        events: list[TaxEventSchema] = []
         try:
             df = pl.read_csv(self.csv_path, infer_schema_length=0)
             if df.is_empty():
@@ -19,16 +21,49 @@ class BrokerCsvParser:
 
             col_map = {str(c).strip().lower(): c for c in df.columns}
 
-            date_col = next((col_map[k] for k in col_map if any(x in k for x in ["date", "txn_date", "trade_date"])), None)
-            symbol_col = next((col_map[k] for k in col_map if any(x in k for x in ["symbol", "scheme", "scrip", "asset", "description"])), None)
-            type_col = next((col_map[k] for k in col_map if any(x in k for x in ["type", "buy/sell", "transaction", "action"])), None)
-            qty_col = next((col_map[k] for k in col_map if any(x in k for x in ["qty", "quantity", "units"])), None)
-            price_col = next((col_map[k] for k in col_map if any(x in k for x in ["price", "nav", "rate"])), None)
-            amount_col = next((col_map[k] for k in col_map if any(x in k for x in ["amount", "value", "total"])), None)
+            date_col = next(
+                (
+                    col_map[k]
+                    for k in col_map
+                    if any(x in k for x in ["date", "txn_date", "trade_date"])
+                ),
+                None,
+            )
+            symbol_col = next(
+                (
+                    col_map[k]
+                    for k in col_map
+                    if any(x in k for x in ["symbol", "scheme", "scrip", "asset", "description"])
+                ),
+                None,
+            )
+            type_col = next(
+                (
+                    col_map[k]
+                    for k in col_map
+                    if any(x in k for x in ["type", "buy/sell", "transaction", "action"])
+                ),
+                None,
+            )
+            qty_col = next(
+                (col_map[k] for k in col_map if any(x in k for x in ["qty", "quantity", "units"])),
+                None,
+            )
+            price_col = next(
+                (col_map[k] for k in col_map if any(x in k for x in ["price", "nav", "rate"])), None
+            )
+            amount_col = next(
+                (col_map[k] for k in col_map if any(x in k for x in ["amount", "value", "total"])),
+                None,
+            )
 
             for row in df.to_dicts():
                 try:
-                    asset_name = str(row[symbol_col]) if symbol_col and row.get(symbol_col) else "Broker Asset"
+                    asset_name = (
+                        str(row[symbol_col])
+                        if symbol_col and row.get(symbol_col)
+                        else "Broker Asset"
+                    )
                     date_str = str(row[date_col]) if date_col and row.get(date_col) else ""
 
                     event_date = None
@@ -41,10 +76,16 @@ class BrokerCsvParser:
                                 pass
 
                     if event_date is None:
-                        raise ValueError(f"CRITICAL: Missing or unparseable transaction date for asset {asset_name} in CSV row: {row}. Ingestion aborted.")
+                        raise ValueError(
+                            f"CRITICAL: Missing or unparseable transaction date for asset {asset_name} in CSV row: {row}. Ingestion aborted."
+                        )
 
-                    txn_type_str = str(row[type_col]).upper() if type_col and row.get(type_col) else "BUY"
-                    if any(x in txn_type_str for x in ["SELL", "REDEMPTION", "DISPOSAL", "SWITCH OUT"]):
+                    txn_type_str = (
+                        str(row[type_col]).upper() if type_col and row.get(type_col) else "BUY"
+                    )
+                    if any(
+                        x in txn_type_str for x in ["SELL", "REDEMPTION", "DISPOSAL", "SWITCH OUT"]
+                    ):
                         event_type = EventType.DISPOSAL
                     elif "BONUS" in txn_type_str:
                         event_type = EventType.BONUS
@@ -55,16 +96,24 @@ class BrokerCsvParser:
 
                     units_val = row.get(qty_col)
                     if units_val is None or str(units_val).strip() == "":
-                        raise ValueError(f"CRITICAL: Missing or unparseable unit quantity for asset {asset_name} on {event_date}. Ingestion aborted.")
-                    units = Decimal(str(abs(float(str(units_val).replace(',', '').strip()))))
+                        raise ValueError(
+                            f"CRITICAL: Missing or unparseable unit quantity for asset {asset_name} on {event_date}. Ingestion aborted."
+                        )
+                    units = Decimal(str(abs(float(str(units_val).replace(",", "").strip()))))
 
                     price_val = row.get(price_col)
                     if price_val is None or str(price_val).strip() == "":
-                        raise ValueError(f"CRITICAL: Missing or unparseable price/NAV for asset {asset_name} on {event_date}. Ingestion aborted.")
-                    price = Decimal(str(abs(float(str(price_val).replace(',', '').strip()))))
+                        raise ValueError(
+                            f"CRITICAL: Missing or unparseable price/NAV for asset {asset_name} on {event_date}. Ingestion aborted."
+                        )
+                    price = Decimal(str(abs(float(str(price_val).replace(",", "").strip()))))
 
                     amt_val = row.get(amount_col)
-                    amount = Decimal(str(abs(float(str(amt_val).replace(',', '').strip())))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
+                    amount = (
+                        Decimal(str(abs(float(str(amt_val).replace(",", "").strip()))))
+                        if amt_val is not None and str(amt_val).strip() != ""
+                        else (units * price)
+                    )
 
                     events.append(
                         TaxEventSchema(
@@ -78,7 +127,7 @@ class BrokerCsvParser:
                             pricePerUnit=price,
                             grossAmount=amount,
                             sourceDocumentId=self.csv_path,
-                            ingestedAt=datetime.now()
+                            ingestedAt=datetime.now(),
                         )
                     )
                 except ValueError:
@@ -91,4 +140,5 @@ class BrokerCsvParser:
             pass
 
         from .sip_detector import detect_and_tag_sips
+
         return detect_and_tag_sips(events)
