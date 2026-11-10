@@ -1,0 +1,33 @@
+[package]
+name = "portfolio-gpui"
+version = "0.1.0"
+edition = "2021"
+authors = ["Portfolio OS Architects"]
+license = "MIT"
+
+[dependencies]
+# GPUI Native Framework (Vulkan / Wayland hardware acceleration from crates.io)
+gpui = "0.2.2"
+
+# Data Serialization & HTTP Networking
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ureq = { version = "2.10", features = ["json"] }
+
+# Asynchronous Runtime & Channel Orchestration
+smol = "2.0"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Formatting & Numerical Computation
+num-format = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[patch.crates-io]
+xattr = { path = "patches/xattr" }
+

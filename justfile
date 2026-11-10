@@ -113,6 +113,26 @@ run-mcp:
 
 
 # -------------------------------------------------------------
+# Portfolio OS Native GPUI Cockpit (144Hz Vulkan / Wayland HUD)
+# -------------------------------------------------------------
+
+# Fast type-check GPUI Cockpit
+check-cockpit:
+    cargo check --manifest-path cockpit-gpui/Cargo.toml
+
+# Build GPUI Cockpit release binary (stripped)
+build-cockpit:
+    cargo build --release --manifest-path cockpit-gpui/Cargo.toml
+
+# Install Cockpit binary to ~/.cargo/bin (for Umbriel Mod+P scratchpad)
+install-cockpit:
+    cargo install --path cockpit-gpui
+
+# Launch GPUI Cockpit directly
+cockpit-gpui:
+    cargo run --release --manifest-path cockpit-gpui/Cargo.toml
+
+# -------------------------------------------------------------
 # Portfolio OS TUI Terminal Cockpit (Textual)
 # -------------------------------------------------------------
 
