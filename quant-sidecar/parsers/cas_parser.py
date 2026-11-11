@@ -119,6 +119,13 @@ class CasPdfParser:
         except ValueError:
             raise
         except Exception as e:
+            if "password" in str(e).lower() or type(e).__name__ in (
+                "IncorrectPasswordError",
+                "PasswordError",
+            ):
+                raise ValueError(
+                    f"INCORRECT_OR_MISSING_PASSWORD: CAS PDF is password protected. {e}"
+                )
             print(f"casparser notice: {e}, falling back to custom line parser.")
 
         # Fallback to pdfplumber regex line parser

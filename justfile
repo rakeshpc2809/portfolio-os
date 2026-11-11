@@ -192,6 +192,11 @@ up:
     systemctl --user start portfolio-os.target
     @just wait-ready
 
+# Run manual Gmail CAS email poller and Google Sheets publisher
+sync:
+    @./quant-sidecar/.venv/bin/python quant-sidecar/scripts/gmail_cas_poller.py
+    @./quant-sidecar/.venv/bin/python quant-sidecar/scripts/sheets_snapshot_publisher.py
+
 # Stop all backend services
 down:
     systemctl --user stop portfolio-os.target portfolio-os-core.service portfolio-os-quant.service

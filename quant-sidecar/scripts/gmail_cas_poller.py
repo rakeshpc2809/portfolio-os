@@ -332,7 +332,7 @@ def poll_gmail_via_imap(
             logger.error("Failed to select INBOX in Gmail IMAP.")
             return results, rta_headers
 
-        cas_query = "from:(camsonline.com OR kfintech.com OR nsdl.co.in OR cdslindia.com) filename:pdf has:attachment"
+        cas_query = 'from:(camsonline.com OR kfintech.com OR nsdl.co.in OR cdslindia.com) filename:pdf has:attachment subject:(CAS OR Consolidated)'
         try:
             status, data = mail.uid("search", None, f'X-GM-RAW "{cas_query}"')
         except Exception as e:
@@ -340,14 +340,14 @@ def poll_gmail_via_imap(
                 f"X-GM-RAW UID search failed ({e}), falling back to standard IMAP search..."
             )
             status, data = mail.uid(
-                "search", None, '(OR (OR (SUBJECT "CAS") (FROM "camsonline")) (FROM "kfintech"))'
+                "search", None, '(OR (SUBJECT "CAS") (SUBJECT "Consolidated"))'
             )
 
         if status == "OK" and data and data[0]:
             candidate_uids = data[0].split()
             logger.info(f"Found {len(candidate_uids)} potential CAS email candidate UIDs.")
 
-            for uid in candidate_uids:
+            for uid in reversed(candidate_uids):
                 try:
                     uid_str = uid.decode() if isinstance(uid, bytes) else str(uid)
                     h_res, h_data = mail.uid(
@@ -451,7 +451,13 @@ def poll_gmail_via_imap(
                                 status_code = getattr(
                                     getattr(req_err, "response", None), "status_code", None
                                 )
-                                if status_code in (400, 415):
+                                err_text = getattr(getattr(req_err, "response", None), "text", str(req_err))
+                                if "password" in err_text.lower():
+                                    logger.error(
+                                        f"Core Node statement ingestion failed for '{decoded_filename}' (HTTP {status_code}, UID: {uid_str}): "
+                                        f"INCORRECT OR MISSING PDF PASSWORD. Ensure CAS_PDF_PASSWORD is set in ~/.config/portfolio-os/secrets.env."
+                                    )
+                                elif status_code in (400, 415):
                                     logger.warning(
                                         f"Core Node rejected unsupported attachment '{decoded_filename}' (HTTP {status_code}, UID: {uid_str}): {req_err}. "
                                         f"Marking as skipped."
@@ -520,6 +526,11 @@ def run_poller_mock_or_live(
     if not token:
         raise RuntimeError("SECURITY CRITICAL: API_AUTH_TOKEN environment variable is required.")
     pwd = cas_password or os.getenv("CAS_PDF_PASSWORD", "")
+    if not pwd:
+        logger.warning(
+            "CAS_PDF_PASSWORD is not set in environment or secrets.env. "
+            "Encrypted CAS PDFs (e.g. from CAMS/KFintech) will fail to unlock."
+        )
     user = gmail_user or os.getenv("GMAIL_USER", "")
     g_pass = gmail_app_password or os.getenv("GMAIL_APP_PASSWORD", "")
 
