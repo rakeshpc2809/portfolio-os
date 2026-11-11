@@ -16,10 +16,6 @@ ureq = { version = "2.10", features = ["json"] }
 
 # Asynchronous Runtime & Channel Orchestration
 smol = "2.0"
-chrono = { version = "0.4", features = ["serde"] }
-
-# Formatting & Numerical Computation
-num-format = "0.4"
 
 [profile.release]
 opt-level = 3

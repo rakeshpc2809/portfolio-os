@@ -120,6 +120,10 @@ run-mcp:
 check-cockpit:
     cargo check --manifest-path cockpit-gpui/Cargo.toml
 
+# Run GPUI Cockpit unit test suite
+test-cockpit:
+    cargo test --manifest-path cockpit-gpui/Cargo.toml
+
 # Build GPUI Cockpit release binary (stripped)
 build-cockpit:
     cargo build --release --manifest-path cockpit-gpui/Cargo.toml

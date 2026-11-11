@@ -31,6 +31,47 @@ pub struct PortfolioHud {
     pub pending_inflow_rupees: f64,
 }
 
+pub fn get_api_config() -> (String, Option<String>) {
+    let base_url = std::env::var("PORTFOLIO_OS_API_BASE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+
+    let mut token = std::env::var("PORTFOLIO_OS_API_TOKEN")
+        .or_else(|_| std::env::var("API_AUTH_TOKEN"))
+        .or_else(|_| std::env::var("API_TOKEN"))
+        .ok()
+        .filter(|t| !t.trim().is_empty());
+
+    if token.is_none() {
+        let candidates = ["tui/tui_config.yaml", "../tui/tui_config.yaml", "tui_config.yaml"];
+        for path in &candidates {
+            if let Ok(text) = std::fs::read_to_string(path) {
+                for line in text.lines() {
+                    let line = line.trim();
+                    if line.starts_with('#') {
+                        continue;
+                    }
+                    if let Some((k, v)) = line.split_once(':') {
+                        if k.trim() == "api_token_env" {
+                            let env_name = v.trim().trim_matches('"').trim_matches('\'');
+                            if let Ok(val) = std::env::var(env_name) {
+                                if !val.trim().is_empty() {
+                                    token = Some(val.trim().to_string());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if token.is_some() {
+                    break;
+                }
+            }
+        }
+    }
+
+    (base_url, token)
+}
+
 impl PortfolioHud {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
@@ -59,9 +100,13 @@ impl PortfolioHud {
 
         cx.spawn(async move |this, cx| {
             let res = smol::unblock(|| {
-                ureq::get("http://127.0.0.1:8080/api/v1/sync/snapshot")
-                    .timeout(std::time::Duration::from_millis(800))
-                    .call()
+                let (base_url, token) = get_api_config();
+                let url = format!("{}/api/v1/sync/snapshot", base_url.trim_end_matches('/'));
+                let mut req = ureq::get(&url).timeout(std::time::Duration::from_millis(1500));
+                if let Some(ref tok) = token {
+                    req = req.set("X-Api-Auth-Token", tok);
+                }
+                req.call()
                     .map_err(|e| e.to_string())?
                     .into_json::<Snapshot>()
                     .map_err(|e| e.to_string())
@@ -121,7 +166,13 @@ impl Render for PortfolioHud {
             .on_action(cx.listener(|_, _: &ExportItr2, _window, cx| {
                 cx.spawn(async move |this, cx| {
                     let _ = smol::unblock(|| {
-                        ureq::post("http://127.0.0.1:8080/api/v1/tax/itr2-export").call()
+                        let (base_url, token) = get_api_config();
+                        let url = format!("{}/api/v1/tax/export/itr2/zip", base_url.trim_end_matches('/'));
+                        let mut req = ureq::get(&url).timeout(std::time::Duration::from_secs(5));
+                        if let Some(ref tok) = token {
+                            req = req.set("X-Api-Auth-Token", tok);
+                        }
+                        req.call()
                     }).await;
                     this.update(cx, |_, cx| cx.notify()).ok();
                 }).detach();
