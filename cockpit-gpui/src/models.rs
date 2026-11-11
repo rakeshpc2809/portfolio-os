@@ -183,3 +183,61 @@ pub struct ReasoningNarrative {
     pub paragraphs: Vec<String>,
 }
 
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simulate_lumpsum_dto_deserialization() {
+        let raw_json = r#"{
+            "plan_id": "ac2e15e6-7e8f-4ad9-b649-372d167461b7",
+            "generated_at": "2026-11-12T00:00:00",
+            "trigger": {
+                "type": "MANUAL_LUMPSUM",
+                "reason_label": "Manual Lump-Sum Entry"
+            },
+            "sell_side": {
+                "total_required": 0.0,
+                "tax_summary": {
+                    "total_ltcg_exempt": 0.0,
+                    "statutory_exemption_cap": 125000.0,
+                    "exemption_headroom_after": 92758.90,
+                    "exemption_utilized_pct": 0.0
+                }
+            },
+            "buy_side": {
+                "total_to_invest": 50000.0,
+                "buckets": [
+                    {
+                        "bucket": "EQUITY_CORE",
+                        "target_pct": 50.37,
+                        "current_pct": 49.54,
+                        "post_rebalance_pct": 49.6,
+                        "amount_allocated": 25374.06,
+                        "fund_breakdown": [
+                            {
+                                "fund_id": "INF109KC12U0",
+                                "fund_name": "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
+                                "amount": 15224.44
+                            }
+                        ]
+                    }
+                ]
+            },
+            "reasoning_narrative": {
+                "headline": "Manual Lump-Sum Inflow (₹50,000)",
+                "paragraphs": ["Entered manual capital inflow of ₹50,000"]
+            }
+        }"#;
+
+        let plan: Result<RebalancePlan, _> = serde_json::from_str(raw_json);
+        assert!(plan.is_ok(), "Failed to deserialize RebalancePlan: {:?}", plan.err());
+        let plan = plan.unwrap();
+        assert_eq!(plan.plan_id, "ac2e15e6-7e8f-4ad9-b649-372d167461b7");
+        assert_eq!(plan.buy_side.as_ref().unwrap().total_to_invest, Some(50000.0));
+        assert_eq!(plan.buy_side.as_ref().unwrap().buckets.len(), 1);
+        assert_eq!(plan.buy_side.as_ref().unwrap().buckets[0].amount_allocated, Some(25374.06));
+    }
+}

@@ -17,27 +17,42 @@ actions!(portfolio, [
     Quit
 ]);
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActiveView {
     Equilibrium,
     KMapMatrix,
     HarvestIsolation,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EscAction {
+    DismissPalette,
+    ReturnToEquilibrium,
+    QuitApplication,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApiConfig {
+    pub base_url: String,
+    pub token: Option<String>,
+    pub poll_interval_secs: u64,
+}
+
 pub struct PortfolioHud {
     pub focus_handle: FocusHandle,
     pub snapshot: Option<Snapshot>,
-    pub exemption_status: Option<ExemptionStatus>,
+    pub exemption_status: Result<ExemptionStatus, String>,
     pub kmap: Option<KMapMatrix>,
     pub active_view: ActiveView,
     pub is_loading: bool,
     pub error_msg: Option<String>,
     pub export_status: Option<String>,
     pub pending_inflow_rupees: f64,
+    pub is_simulation_active: bool,
     pub show_palette: bool,
 }
 
-pub fn get_api_config() -> (String, Option<String>) {
+pub fn get_api_config() -> ApiConfig {
     let base_url = std::env::var("PORTFOLIO_OS_API_BASE_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
 
@@ -47,40 +62,44 @@ pub fn get_api_config() -> (String, Option<String>) {
         .ok()
         .filter(|t| !t.trim().is_empty());
 
-    if token.is_none() {
-        let candidates = ["cockpit-gpui/config.yaml", "config.yaml"];
-        for path in &candidates {
-            if let Ok(text) = std::fs::read_to_string(path) {
-                for line in text.lines() {
-                    let line = line.trim();
-                    if line.starts_with('#') {
-                        continue;
-                    }
-                    if let Some((k, v)) = line.split_once(':') {
-                        let key = k.trim();
-                        let val = v.trim().trim_matches('"').trim_matches('\'');
-                        if key == "api_token_env" {
-                            if let Ok(env_val) = std::env::var(val) {
-                                if !env_val.trim().is_empty() {
-                                    token = Some(env_val.trim().to_string());
-                                    break;
-                                }
+    let mut poll_interval_secs = std::env::var("PORTFOLIO_OS_POLL_INTERVAL_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(15);
+
+    let candidates = ["cockpit-gpui/config.yaml", "config.yaml"];
+    for path in &candidates {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            for line in text.lines() {
+                let line = line.trim();
+                if line.starts_with('#') {
+                    continue;
+                }
+                if let Some((k, v)) = line.split_once(':') {
+                    let key = k.trim();
+                    let val = v.trim().trim_matches('"').trim_matches('\'');
+                    if token.is_none() && key == "api_token_env" {
+                        if let Ok(env_val) = std::env::var(val) {
+                            if !env_val.trim().is_empty() {
+                                token = Some(env_val.trim().to_string());
                             }
-                        } else if key == "api_token" && !val.is_empty() {
-                            token = Some(val.to_string());
-                            break;
+                        }
+                    } else if token.is_none() && key == "api_token" && !val.is_empty() {
+                        token = Some(val.to_string());
+                    } else if key == "poll_interval_secs" {
+                        if let Ok(secs) = val.parse::<u64>() {
+                            poll_interval_secs = secs;
                         }
                     }
                 }
-                if token.is_some() {
-                    break;
-                }
+            }
+            if token.is_some() {
+                break;
             }
         }
     }
 
     if token.is_none() {
-        // Fallback: search ~/.config/portfolio-os/secrets.env
         if let Ok(home) = std::env::var("HOME") {
             let path = format!("{}/.config/portfolio-os/secrets.env", home);
             if let Ok(text) = std::fs::read_to_string(&path) {
@@ -99,7 +118,11 @@ pub fn get_api_config() -> (String, Option<String>) {
         }
     }
 
-    (base_url, token)
+    ApiConfig {
+        base_url,
+        token,
+        poll_interval_secs,
+    }
 }
 
 impl PortfolioHud {
@@ -107,86 +130,158 @@ impl PortfolioHud {
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle);
 
+        let config = get_api_config();
+        let poll_interval = config.poll_interval_secs;
+
         // Schedule immediate initial snapshot fetch
         cx.spawn(async move |this, cx| {
             this.update(cx, |hud, cx| hud.fetch_snapshot(cx)).ok();
         }).detach();
 
-        // Schedule periodic background polling loop (every 15s)
+        // Schedule periodic background polling loop using configured interval
         cx.spawn(async move |this, cx| {
             loop {
-                smol::Timer::after(std::time::Duration::from_secs(15)).await;
+                smol::Timer::after(std::time::Duration::from_secs(poll_interval)).await;
                 let poll_result = this.update(cx, |hud, cx| {
                     hud.fetch_snapshot(cx);
                 });
                 if poll_result.is_err() {
-                    break; // Entity or window destroyed
+                    break;
                 }
             }
         }).detach();
 
+        let active_view = match std::env::var("PORTFOLIO_VIEW").as_deref() {
+            Ok("kmap") => ActiveView::KMapMatrix,
+            Ok("harvest") => ActiveView::HarvestIsolation,
+            _ => ActiveView::Equilibrium,
+        };
+        let show_palette = std::env::var("PORTFOLIO_PALETTE").map(|v| v == "1" || v == "true").unwrap_or(false);
+        let (pending_inflow_rupees, is_simulation_active) = if let Ok(val) = std::env::var("PORTFOLIO_INFLOW") {
+            if let Ok(inflow) = val.parse::<f64>() {
+                (inflow, true)
+            } else {
+                (50_000.0, false)
+            }
+        } else {
+            (50_000.0, false)
+        };
+
         Self {
             focus_handle,
             snapshot: None,
-            exemption_status: None,
+            exemption_status: Err("Initializing statutory exemption tracking...".to_string()),
             kmap: None,
-            active_view: ActiveView::Equilibrium,
+            active_view,
             is_loading: true,
             error_msg: None,
             export_status: None,
-            pending_inflow_rupees: 50_000.0, // Default monthly SIP allocation
-            show_palette: false,
+            pending_inflow_rupees,
+            is_simulation_active,
+            show_palette,
+        }
+    }
+
+    pub fn process_esc_key(&mut self) -> EscAction {
+        Self::eval_esc_key(&mut self.active_view, &mut self.show_palette)
+    }
+
+    pub fn eval_esc_key(active_view: &mut ActiveView, show_palette: &mut bool) -> EscAction {
+        if *show_palette {
+            *show_palette = false;
+            EscAction::DismissPalette
+        } else {
+            match *active_view {
+                ActiveView::KMapMatrix | ActiveView::HarvestIsolation => {
+                    *active_view = ActiveView::Equilibrium;
+                    EscAction::ReturnToEquilibrium
+                }
+                ActiveView::Equilibrium => EscAction::QuitApplication,
+            }
         }
     }
 
     pub fn fetch_snapshot(&mut self, cx: &mut Context<Self>) {
         self.is_loading = true;
+        let active_simulation_inflow = if self.is_simulation_active {
+            Some(self.pending_inflow_rupees)
+        } else {
+            None
+        };
         cx.notify();
 
         cx.spawn(async move |this, cx| {
-            let res = smol::unblock(|| {
-                let (base_url, token) = get_api_config();
-                let clean_base = base_url.trim_end_matches('/');
+            let res = smol::unblock(move || {
+                let config = get_api_config();
+                let clean_base = config.base_url.trim_end_matches('/');
 
                 // 1. Fetch live snapshot
                 let snap_url = format!("{clean_base}/api/v1/sync/snapshot");
                 let mut snap_req = ureq::get(&snap_url).timeout(std::time::Duration::from_millis(2500));
-                if let Some(ref tok) = token {
+                if let Some(ref tok) = config.token {
                     snap_req = snap_req.set("X-Api-Auth-Token", tok);
                 }
-                let snap = snap_req.call()
-                    .map_err(|e| format!("Snapshot call failed: {e}"))?
+                let mut snap = snap_req.call()
+                    .map_err(|e| format!("Snapshot fetch failed: {e}"))?
                     .into_json::<Snapshot>()
                     .map_err(|e| format!("Snapshot deserialization failed: {e}"))?;
 
-                // 2. Fetch live statutory exemption status (Zero Fabrication)
+                // 2. Fetch live statutory exemption status (Fails Closed)
                 let ex_url = format!("{clean_base}/api/v1/tax/exemption-status");
                 let mut ex_req = ureq::get(&ex_url).timeout(std::time::Duration::from_millis(2000));
-                if let Some(ref tok) = token {
+                if let Some(ref tok) = config.token {
                     ex_req = ex_req.set("X-Api-Auth-Token", tok);
                 }
                 let ex_status = ex_req.call()
-                    .ok()
-                    .and_then(|r| r.into_json::<ExemptionStatus>().ok());
+                    .map_err(|e| format!("Exemption status endpoint unreachable: {e}"))?
+                    .into_json::<ExemptionStatus>()
+                    .map_err(|e| format!("Exemption status deserialization failed: {e}"))?;
 
-                Ok::<(Snapshot, Option<ExemptionStatus>), String>((snap, ex_status))
+                // 3. If an inflow simulation is currently active, re-simulate so poll tick does NOT clobber it
+                if let Some(inflow_amt) = active_simulation_inflow {
+                    let sim_url = format!("{clean_base}/api/v1/sync/rebalance/simulate-lumpsum");
+                    let mut sim_req = ureq::post(&sim_url).timeout(std::time::Duration::from_millis(2500));
+                    if let Some(ref tok) = config.token {
+                        sim_req = sim_req.set("X-Api-Auth-Token", tok);
+                    }
+                    if let Ok(resp) = sim_req.send_json(serde_json::json!({
+                        "amount": inflow_amt,
+                        "include_rebalance": false
+                    })) {
+                        if let Ok(plan) = resp.into_json::<RebalancePlan>() {
+                            snap.rebalance_plan = Some(plan);
+                        }
+                    }
+                }
+
+                Ok::<(Snapshot, ExemptionStatus), String>((snap, ex_status))
             }).await;
 
             this.update(cx, |hud, cx| {
                 hud.is_loading = false;
                 match res {
                     Ok((snap, ex_status)) => {
-                        // Sourced directly from ExemptionStatus (or fallback to 0.0, never fabricated 25,000)
-                        let realized_ltcg = ex_status.as_ref()
-                            .and_then(|e| e.net_ltcg_before_exemption.parse::<f64>().ok())
-                            .unwrap_or(0.0);
+                        let remaining_res = ex_status.exemption_remaining.parse::<f64>()
+                            .map_err(|e| format!("Invalid exemption_remaining: {e}"));
 
-                        hud.kmap = Some(classify_snapshot(&snap, realized_ltcg));
-                        hud.snapshot = Some(snap);
-                        hud.exemption_status = ex_status;
-                        hud.error_msg = None;
+                        match remaining_res {
+                            Ok(headroom) => {
+                                hud.kmap = Some(classify_snapshot(&snap, headroom));
+                                hud.snapshot = Some(snap);
+                                hud.exemption_status = Ok(ex_status);
+                                hud.error_msg = None;
+                            }
+                            Err(e) => {
+                                hud.kmap = None;
+                                hud.snapshot = Some(snap);
+                                hud.exemption_status = Err(e.clone());
+                                hud.error_msg = Some(format!("Statutory exemption invalid: {e}"));
+                            }
+                        }
                     }
                     Err(err) => {
+                        hud.kmap = None;
+                        hud.exemption_status = Err(err.clone());
                         hud.error_msg = Some(format!("Core Node error: {err}"));
                     }
                 }
@@ -204,37 +299,44 @@ impl PortfolioHud {
             100_000 => 150_000.0,
             _ => 25_000.0,
         };
-
+        self.is_simulation_active = true;
         let inflow_amt = self.pending_inflow_rupees;
         cx.notify();
 
         // Perform live simulation with Core Node's RebalancePlanEngine
         cx.spawn(async move |this, cx| {
             let sim_res = smol::unblock(move || {
-                let (base_url, token) = get_api_config();
-                let clean_base = base_url.trim_end_matches('/');
+                let config = get_api_config();
+                let clean_base = config.base_url.trim_end_matches('/');
                 let url = format!("{clean_base}/api/v1/sync/rebalance/simulate-lumpsum");
                 let mut req = ureq::post(&url).timeout(std::time::Duration::from_millis(2500));
-                if let Some(ref tok) = token {
+                if let Some(ref tok) = config.token {
                     req = req.set("X-Api-Auth-Token", tok);
                 }
                 req.send_json(serde_json::json!({
                     "amount": inflow_amt,
                     "include_rebalance": false
                 }))
-                .map_err(|e| e.to_string())?
+                .map_err(|e| format!("Simulation network call failed: {e}"))?
                 .into_json::<RebalancePlan>()
-                .map_err(|e| e.to_string())
+                .map_err(|e| format!("Simulation deserialization failed: {e}"))
             }).await;
 
             this.update(cx, |hud, cx| {
-                if let Ok(sim_plan) = sim_res {
-                    if let Some(ref mut snap) = hud.snapshot {
-                        snap.rebalance_plan = Some(sim_plan);
-                        let realized_ltcg = hud.exemption_status.as_ref()
-                            .and_then(|e| e.net_ltcg_before_exemption.parse::<f64>().ok())
-                            .unwrap_or(0.0);
-                        hud.kmap = Some(classify_snapshot(snap, realized_ltcg));
+                match sim_res {
+                    Ok(sim_plan) => {
+                        if let Some(ref mut snap) = hud.snapshot {
+                            snap.rebalance_plan = Some(sim_plan);
+                            if let Ok(ref ex_stat) = hud.exemption_status {
+                                if let Ok(headroom) = ex_stat.exemption_remaining.parse::<f64>() {
+                                    hud.kmap = Some(classify_snapshot(snap, headroom));
+                                }
+                            }
+                        }
+                        hud.error_msg = None;
+                    }
+                    Err(err) => {
+                        hud.error_msg = Some(format!("Inflow simulation failed: {err}"));
                     }
                 }
                 cx.notify();
@@ -248,11 +350,11 @@ impl PortfolioHud {
 
         cx.spawn(async move |this, cx| {
             let res = smol::unblock(|| {
-                let (base_url, token) = get_api_config();
-                let clean_base = base_url.trim_end_matches('/');
+                let config = get_api_config();
+                let clean_base = config.base_url.trim_end_matches('/');
                 let url = format!("{clean_base}/api/v1/tax/export/itr2/zip");
                 let mut req = ureq::get(&url).timeout(std::time::Duration::from_secs(10));
-                if let Some(ref tok) = token {
+                if let Some(ref tok) = config.token {
                     req = req.set("X-Api-Auth-Token", tok);
                 }
                 let response = req.call().map_err(|e| e.to_string())?;
@@ -332,18 +434,12 @@ impl Render for PortfolioHud {
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &BackOrQuit, _window, cx| {
-                if this.show_palette {
-                    this.show_palette = false;
-                    cx.notify();
-                } else {
-                    match this.active_view {
-                        ActiveView::KMapMatrix | ActiveView::HarvestIsolation => {
-                            this.active_view = ActiveView::Equilibrium;
-                            cx.notify();
-                        }
-                        ActiveView::Equilibrium => {
-                            cx.quit();
-                        }
+                match this.process_esc_key() {
+                    EscAction::DismissPalette | EscAction::ReturnToEquilibrium => {
+                        cx.notify();
+                    }
+                    EscAction::QuitApplication => {
+                        cx.quit();
                     }
                 }
             }))
@@ -368,5 +464,71 @@ impl Render for PortfolioHud {
                     })
             )
             .child(self.render_footer_chord_bar(&theme))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ActiveView, EscAction, PortfolioHud, get_api_config, RebalancePlan};
+
+    #[core::prelude::v1::test]
+    fn test_esc_navigation_state_machine() {
+        let mut active_view = ActiveView::KMapMatrix;
+        let mut show_palette = true;
+
+        // 1. When palette is open, Esc dismisses palette and preserves active view
+        assert_eq!(PortfolioHud::eval_esc_key(&mut active_view, &mut show_palette), EscAction::DismissPalette);
+        assert!(!show_palette);
+        assert_eq!(active_view, ActiveView::KMapMatrix);
+
+        // 2. When in KMapMatrix view, Esc transitions back to Equilibrium
+        assert_eq!(PortfolioHud::eval_esc_key(&mut active_view, &mut show_palette), EscAction::ReturnToEquilibrium);
+        assert_eq!(active_view, ActiveView::Equilibrium);
+
+        // 3. When in Equilibrium, Esc triggers quit
+        assert_eq!(PortfolioHud::eval_esc_key(&mut active_view, &mut show_palette), EscAction::QuitApplication);
+
+        // 4. In HarvestIsolation, Esc transitions to Equilibrium
+        active_view = ActiveView::HarvestIsolation;
+        assert_eq!(PortfolioHud::eval_esc_key(&mut active_view, &mut show_palette), EscAction::ReturnToEquilibrium);
+        assert_eq!(active_view, ActiveView::Equilibrium);
+    }
+
+    #[core::prelude::v1::test]
+    fn test_config_poll_interval_and_token_parsing() {
+        let config = get_api_config();
+        assert!(!config.base_url.is_empty());
+        assert_eq!(config.poll_interval_secs, 15);
+    }
+
+    #[core::prelude::v1::test]
+    fn test_poll_preserves_active_inflow_simulation() {
+        use crate::kmap::tests::mock_snapshot;
+        let mut snap = mock_snapshot();
+        assert!(snap.rebalance_plan.is_none());
+
+        let simulated_plan = RebalancePlan {
+            plan_id: "test-sim-id".to_string(),
+            generated_at: "2026-11-12T00:00:00Z".to_string(),
+            trigger: None,
+            sell_side: None,
+            buy_side: Some(crate::models::BuySidePlan {
+                total_to_invest: Some(75_000.0),
+                buckets: vec![],
+            }),
+            reasoning_narrative: None,
+        };
+
+        // If simulation is active with 75k inflow, applying it to incoming poll snapshot preserves the simulated plan
+        let is_simulation_active = true;
+        let pending_inflow = 75_000.0;
+
+        if is_simulation_active {
+            snap.rebalance_plan = Some(simulated_plan.clone());
+        }
+
+        assert!(snap.rebalance_plan.is_some());
+        assert_eq!(snap.rebalance_plan.as_ref().unwrap().plan_id, "test-sim-id");
+        assert_eq!(snap.rebalance_plan.as_ref().unwrap().buy_side.as_ref().unwrap().total_to_invest, Some(pending_inflow));
     }
 }

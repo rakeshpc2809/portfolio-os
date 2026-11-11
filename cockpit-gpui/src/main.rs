@@ -1,5 +1,7 @@
 // cockpit-gpui/src/main.rs
 
+#![recursion_limit = "512"]
+
 mod app;
 mod kmap;
 mod models;

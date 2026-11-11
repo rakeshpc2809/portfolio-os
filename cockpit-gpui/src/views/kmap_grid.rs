@@ -8,7 +8,13 @@ impl PortfolioHud {
     pub fn render_kmap_view(&self, theme: &Theme) -> impl IntoElement {
         let kmap = match &self.kmap {
             Some(m) => m,
-            None => return div().child("Computing K-Map reduction...").into_any_element(),
+            None => {
+                let msg = match &self.exemption_status {
+                    Err(e) => format!("Statutory exemption status unavailable: {e}"),
+                    Ok(_) => "Computing K-Map reduction...".to_string(),
+                };
+                return div().p_6().rounded_md().bg(theme.bg_surface).border_1().border_color(theme.accent_amber.opacity(0.4)).text_xs().text_color(theme.accent_amber).child(msg).into_any_element();
+            }
         };
 
         div()
@@ -131,7 +137,13 @@ impl PortfolioHud {
     pub fn render_harvest_isolation_view(&self, theme: &Theme) -> impl IntoElement {
         let kmap = match &self.kmap {
             Some(m) => m,
-            None => return div().child("Computing Harvest Isolation...").into_any_element(),
+            None => {
+                let msg = match &self.exemption_status {
+                    Err(e) => format!("Statutory exemption status unavailable: {e}"),
+                    Ok(_) => "Computing Harvest Isolation...".to_string(),
+                };
+                return div().p_6().rounded_md().bg(theme.bg_surface).border_1().border_color(theme.accent_amber.opacity(0.4)).text_xs().text_color(theme.accent_amber).child(msg).into_any_element();
+            }
         };
 
         let prime_cell = kmap.cells.iter().find(|c| c.is_prime_implicant());

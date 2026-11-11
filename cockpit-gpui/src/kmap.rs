@@ -4,8 +4,6 @@ use crate::models::Snapshot;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-pub const SEC_112A_EXEMPTION_LIMIT: f64 = 125_000.0;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassifiedLot {
     pub isin: String,
@@ -99,12 +97,13 @@ pub fn required_exit_load_days(isin: &str, fund_name: &str) -> i64 {
 /// - Predicate A: Sourced from backend `b.is_drifted && b.drift_pct > 0.0` (overweight breach under 5/25 relative or liquid ±2.5% absolute band).
 /// - Predicate B: Equity LTCG under Section 112A (>365d, >=65% domestic equity). Excludes Gold/Silver FoF and specified debt.
 /// - Predicate C: Scheme-specific exit load rules (PPFAS 730d, Small Cap 365d, Arbitrage 15d, Index 0d).
-/// - Predicate D: Section 112A room remaining after backend Section 70 loss netting.
-/// - Prioritization: Overweight holdings sorted first to claim 112A headroom for rebalance trimming (Prime Implicant m15).
+/// - Predicate D: Section 112A room remaining, sourced directly from `ExemptionStatus.exemption_remaining`.
+/// - Prioritization: Overweight holdings sorted first, ranked by highest drift percentage descending,
+///   preventing alphabetical bias so the most drifted schemes claim 112A headroom first for m15 trims.
 /// - RTA FIFO Law (Sec 45(2A)): Within each scheme, lots are evaluated strictly chronologically (buy_date ascending).
 ///   If an older lot in a scheme exceeds remaining headroom (D=0), all newer lots in that scheme receive D=0
 ///   (cherry-picking prohibited by law).
-pub fn classify_snapshot(snapshot: &Snapshot, realized_ltcg_ytd: f64) -> KMapMatrix {
+pub fn classify_snapshot(snapshot: &Snapshot, available_exemption_room: f64) -> KMapMatrix {
     let mut cells: [KMapCell; 16] = Default::default();
 
     // Initialize 4x4 matrix in Gray-code order (Rows: AB, Cols: CD)
@@ -125,35 +124,31 @@ pub fn classify_snapshot(snapshot: &Snapshot, realized_ltcg_ytd: f64) -> KMapMat
         }
     }
 
-    // Source Section 112A headroom from backend rebalance plan (which nets losses under Sec 70)
-    let initial_headroom = snapshot
-        .rebalance_plan
-        .as_ref()
-        .and_then(|p| p.sell_side.as_ref())
-        .and_then(|s| s.tax_summary.as_ref())
-        .and_then(|t| t.exemption_headroom_after)
-        .unwrap_or_else(|| (SEC_112A_EXEMPTION_LIMIT - realized_ltcg_ytd).max(0.0));
-
-    let mut remaining_harvest_room = initial_headroom;
+    let mut remaining_harvest_room = available_exemption_room;
 
     // Prioritized Sorting Order:
     // 1. Overweight buckets first (A = 1 lots get first priority to consume 112A room for m15 Prime Implicant).
-    // 2. Group by ISIN to maintain scheme coherence.
-    // 3. Strict FIFO ascending buy_date within each scheme (RTA FIFO Law Sec 45(2A)).
+    // 2. Highest positive drift percentage descending within the overweight group (severely drifted trimmed first).
+    // 3. Group by ISIN to maintain scheme coherence.
+    // 4. Strict FIFO ascending buy_date within each scheme (RTA FIFO Law Sec 45(2A)).
     let mut sorted_lots = snapshot.tax_lots.clone();
     sorted_lots.sort_by(|a, b| {
         let a_holding = snapshot.holdings.iter().find(|h| h.isin == a.isin);
         let b_holding = snapshot.holdings.iter().find(|h| h.isin == b.isin);
         let a_bucket = a_holding.map(|h| h.asset_bucket.as_str()).unwrap_or("");
         let b_bucket = b_holding.map(|h| h.asset_bucket.as_str()).unwrap_or("");
-        let a_overweight = snapshot.bucket_allocation.iter().any(|bk| {
-            bk.bucket == a_bucket && bk.is_drifted && bk.drift_pct > 0.0
-        });
-        let b_overweight = snapshot.bucket_allocation.iter().any(|bk| {
-            bk.bucket == b_bucket && bk.is_drifted && bk.drift_pct > 0.0
-        });
+
+        let a_b_stat = snapshot.bucket_allocation.iter().find(|bk| bk.bucket == a_bucket);
+        let b_b_stat = snapshot.bucket_allocation.iter().find(|bk| bk.bucket == b_bucket);
+
+        let a_overweight = a_b_stat.map(|bk| bk.is_drifted && bk.drift_pct > 0.0).unwrap_or(false);
+        let b_overweight = b_b_stat.map(|bk| bk.is_drifted && bk.drift_pct > 0.0).unwrap_or(false);
+
+        let a_drift = a_b_stat.map(|bk| bk.drift_pct).unwrap_or(0.0);
+        let b_drift = b_b_stat.map(|bk| bk.drift_pct).unwrap_or(0.0);
 
         b_overweight.cmp(&a_overweight)
+            .then_with(|| b_drift.partial_cmp(&a_drift).unwrap_or(std::cmp::Ordering::Equal))
             .then_with(|| a.isin.cmp(&b.isin))
             .then_with(|| a.buy_date.cmp(&b.buy_date))
     });
@@ -256,11 +251,11 @@ pub fn classify_snapshot(snapshot: &Snapshot, realized_ltcg_ytd: f64) -> KMapMat
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::models::*;
 
-    fn mock_snapshot() -> Snapshot {
+    pub fn mock_snapshot() -> Snapshot {
         Snapshot {
             sync_info: SyncInfo {
                 fiscal_year: "2026-2027".to_string(),
@@ -338,17 +333,15 @@ mod tests {
 
     #[test]
     fn test_exit_load_calculator_parity() {
-        // Direct ISIN parity matching ExitLoadCalculator.java
         assert_eq!(required_exit_load_days("INF205K01KR8", ""), 15);
         assert_eq!(required_exit_load_days("INF879O01027", ""), 730);
         assert_eq!(required_exit_load_days("INF204K01K15", ""), 365);
         assert_eq!(required_exit_load_days("INF247L01BM8", ""), 15);
 
-        // Fallback substring heuristics parity matching ExitLoadCalculator.java
         assert_eq!(required_exit_load_days("UNKNOWN", "Parag Parikh Flexi Cap Fund Direct Growth"), 730);
         assert_eq!(required_exit_load_days("UNKNOWN", "Tata Small Cap Fund Direct Growth"), 365);
         assert_eq!(required_exit_load_days("UNKNOWN", "Nippon India Small Cap Fund Direct Growth"), 365);
-        assert_eq!(required_exit_load_days("UNKNOWN", "Nifty Smallcap 250 Index Fund Direct Growth"), 0); // Contains Index
+        assert_eq!(required_exit_load_days("UNKNOWN", "Nifty Smallcap 250 Index Fund Direct Growth"), 0);
         assert_eq!(required_exit_load_days("UNKNOWN", "Invesco India Arbitrage Fund Direct Growth"), 15);
         assert_eq!(required_exit_load_days("UNKNOWN", "Motilal Oswal Gold and Silver Passive FoF"), 15);
         assert_eq!(required_exit_load_days("UNKNOWN", "ICICI Prudential Liquid Fund Direct Growth"), 7);
@@ -359,11 +352,6 @@ mod tests {
     #[test]
     fn test_ppfas_730_day_exit_load_and_decoupled_predicates() {
         let mut snap = mock_snapshot();
-        // Lot at 400 days: LTCG (>365d) but NOT exit-load free (requires 730d for PPFAS)
-        // Gain = 100 * (200 - 80) = 12,000 <= 125,000 headroom
-        // With decoupled C and D:
-        // A=1 (EQUITY_CORE drifted), B=1 (LTCG), C=0 (Exit load locked <730d), D=1 (Gain fits headroom)
-        // Minterm: 0b1101 = 13 (Cell m13 is fully reachable!)
         snap.tax_lots = vec![FlatTaxLot {
             isin: "INF879O01027".to_string(),
             buy_date: "2025-10-01".to_string(),
@@ -378,19 +366,17 @@ mod tests {
             is_harvest_candidate: true,
         }];
 
-        let matrix = classify_snapshot(&snap, 0.0);
+        let matrix = classify_snapshot(&snap, 125_000.0);
         let cell_1101 = matrix.cells.iter().find(|c| c.minterm == 0b1101).unwrap();
         assert_eq!(cell_1101.lots.len(), 1);
         assert_eq!(cell_1101.lots[0].bitmask, 0b1101);
-        // Headroom should NOT have been consumed by exit-locked lot
-        assert_eq!(matrix.total_harvest_room_remaining, SEC_112A_EXEMPTION_LIMIT);
+        assert_eq!(matrix.total_harvest_room_remaining, 125_000.0);
     }
 
     #[test]
     fn test_prime_implicant_and_march_harvest() {
         let mut snap = mock_snapshot();
         snap.tax_lots = vec![
-            // Lot 1: PPFAS 800 days, Overweight bucket (EQUITY_CORE) -> Prime Implicant (1111)
             FlatTaxLot {
                 isin: "INF879O01027".to_string(),
                 buy_date: "2024-01-01".to_string(),
@@ -404,7 +390,6 @@ mod tests {
                 estimated_tax_drag: None,
                 is_harvest_candidate: true,
             },
-            // Lot 2: Nippon Small Cap 400 days, Equilibrium bucket (EQUITY_SATELLITE) -> March Harvest (0111)
             FlatTaxLot {
                 isin: "INF204K01K15".to_string(),
                 buy_date: "2025-01-01".to_string(),
@@ -420,7 +405,7 @@ mod tests {
             },
         ];
 
-        let matrix = classify_snapshot(&snap, 0.0);
+        let matrix = classify_snapshot(&snap, 125_000.0);
         let prime_cell = matrix.cells.iter().find(|c| c.is_prime_implicant()).unwrap();
         assert_eq!(prime_cell.lots.len(), 1);
         assert_eq!(prime_cell.lots[0].isin, "INF879O01027");
@@ -433,14 +418,6 @@ mod tests {
     #[test]
     fn test_fifo_headroom_scheme_gating_prevents_cherry_picking() {
         let mut snap = mock_snapshot();
-        // ISIN: INF204K01K15 (Nippon Small Cap, 365d exit load, NAV = 150)
-        // Headroom = 20,000
-        // Older Lot 1: buy_date 2024-01-01, 400 days (>365d exit-free)
-        //   units: 1000, cost: 100, nav: 150 -> gain = 50,000 > 20,000 headroom -> D = 0!
-        // Newer Lot 2: buy_date 2024-06-01, 380 days (>365d exit-free)
-        //   units: 100, cost: 140, nav: 150 -> gain = 1,000 <= 20,000 headroom.
-        // Under FIFO law (Sec 45(2A)), Lot 2 CANNOT be cherry-picked ahead of Lot 1.
-        // Once Lot 1 exceeds remaining headroom, Lot 2 MUST have D = 0.
         snap.tax_lots = vec![
             FlatTaxLot {
                 isin: "INF204K01K15".to_string(),
@@ -470,16 +447,107 @@ mod tests {
             },
         ];
 
-        // Realized LTCG = 105,000 -> Initial headroom = 125,000 - 105,000 = 20,000
-        let matrix = classify_snapshot(&snap, 105_000.0);
+        // Available headroom = 20,000 (Lot 1 gain = 50,000 exceeds it)
+        let matrix = classify_snapshot(&snap, 20_000.0);
 
-        // Both lots must have D = 0 (bit 0 of ABCD is 0).
-        // Neither lot should be in 0111 (March Harvest). Both should be in 0110.
         let march_cell = matrix.cells.iter().find(|c| c.is_march_harvest()).unwrap();
         assert_eq!(march_cell.lots.len(), 0, "Newer lot must not cherry-pick 112A headroom ahead of older lot");
 
         let cell_0110 = matrix.cells.iter().find(|c| c.minterm == 0b0110).unwrap();
         assert_eq!(cell_0110.lots.len(), 2, "Both lots must reside in 0110 (LTCG, exit-free, headroom-exhausted)");
+    }
+
+    #[test]
+    fn test_overweight_drift_severity_sort_overrides_alphabetical() {
+        let mut snap = mock_snapshot();
+        // Setup two overweight buckets:
+        // Bucket 1: EQUITY_CORE has +5.0% drift (Scheme: ZZZ_FUND)
+        // Bucket 2: EQUITY_SATELLITE has +15.0% drift (Scheme: AAA_FUND)
+        // Alphabetically, AAA_FUND < ZZZ_FUND.
+        // But EQUITY_SATELLITE is more severely drifted (+15% vs +5%).
+        // The classifier must evaluate AAA_FUND first because of drift severity (+15% > +5%).
+        snap.bucket_allocation = vec![
+            BucketStatus {
+                bucket: "EQUITY_CORE".to_string(),
+                current_pct: 55.0,
+                target_pct: 50.0,
+                drift_pct: 5.0,
+                is_drifted: true,
+            },
+            BucketStatus {
+                bucket: "EQUITY_SATELLITE".to_string(),
+                current_pct: 45.0,
+                target_pct: 30.0,
+                drift_pct: 15.0,
+                is_drifted: true,
+            },
+        ];
+        snap.holdings = vec![
+            FlatHolding {
+                isin: "ZZZ_ISIN".to_string(),
+                fund_name: "ZZZ Fund".to_string(),
+                asset_bucket: "EQUITY_CORE".to_string(),
+                current_value: 100_000.0,
+                invested_value: 50_000.0,
+                xirr: 15.0,
+                formatted_current_value: "₹ 1,00,000".to_string(),
+                formatted_invested_value: "₹ 50,000".to_string(),
+                current_nav: 100.0,
+                expense_ratio: None,
+                ter_status: None,
+            },
+            FlatHolding {
+                isin: "AAA_ISIN".to_string(),
+                fund_name: "AAA Fund".to_string(),
+                asset_bucket: "EQUITY_SATELLITE".to_string(),
+                current_value: 100_000.0,
+                invested_value: 50_000.0,
+                xirr: 15.0,
+                formatted_current_value: "₹ 1,00,000".to_string(),
+                formatted_invested_value: "₹ 50,000".to_string(),
+                current_nav: 100.0,
+                expense_ratio: None,
+                ter_status: None,
+            },
+        ];
+        // Both lots have gain = 10,000. Headroom = 15,000.
+        // The scheme evaluated first will consume 10,000 room (leaving 5,000),
+        // and get into Prime Implicant m15 (1111).
+        // The scheme evaluated second will exceed remaining 5,000 room and get D=0 (m14: 1110).
+        snap.tax_lots = vec![
+            FlatTaxLot {
+                isin: "ZZZ_ISIN".to_string(),
+                buy_date: "2024-01-01".to_string(),
+                units: 200.0,
+                tax_classification: "LTCG".to_string(),
+                is_long_term: true,
+                cost_per_unit: 50.0, // cost 10k, nav 20k -> gain 10k
+                grandfathered_nav: None,
+                holding_days: 500,
+                days_to_ltcg: 0,
+                estimated_tax_drag: None,
+                is_harvest_candidate: true,
+            },
+            FlatTaxLot {
+                isin: "AAA_ISIN".to_string(),
+                buy_date: "2024-01-01".to_string(),
+                units: 200.0,
+                tax_classification: "LTCG".to_string(),
+                is_long_term: true,
+                cost_per_unit: 50.0, // cost 10k, nav 20k -> gain 10k
+                grandfathered_nav: None,
+                holding_days: 500,
+                days_to_ltcg: 0,
+                estimated_tax_drag: None,
+                is_harvest_candidate: true,
+            },
+        ];
+
+        let matrix = classify_snapshot(&snap, 15_000.0);
+        let prime_cell = matrix.cells.iter().find(|c| c.is_prime_implicant()).unwrap();
+        assert_eq!(prime_cell.lots.len(), 1);
+        // AAA_ISIN belongs to EQUITY_SATELLITE (+15% drift), so it must be selected first over ZZZ_ISIN (+5% drift)
+        assert_eq!(prime_cell.lots[0].isin, "AAA_ISIN", "More severely drifted bucket (+15%) must be trimmed ahead of lower drift (+5%)");
     }
 
     #[test]
@@ -502,7 +570,6 @@ mod tests {
             }
         }
 
-        // B=0, D=1 states are Don't Care: m1 (0001), m3 (0011), m9 (1001), m11 (1011)
         for cell in &matrix {
             let b = (cell.minterm >> 2) & 1;
             let d = cell.minterm & 1;
