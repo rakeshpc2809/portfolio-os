@@ -126,16 +126,20 @@ The classifier in `cockpit-gpui/src/kmap.rs` must strictly enforce all quant and
   - **Motilal Oswal Gold and Silver FoF (`INF247L01BM8`)**: $15\text{ days}$
   - **Liquid / Overnight Funds**: $7\text{ days}$
   - **Direct Passive Index Funds & ETFs**: $0\text{ days}$
-- **RTA FIFO Scheme Gating (`Sec 45(2A)` Invariant 2)**:
-  Indian RTAs (CAMS/KFintech) execute redemptions strictly FIFO per Folio/ISIN.
-  Lots are sorted strictly by `(isin, buy_date)` ascending. If an older lot of a scheme has holding days $< \text{required\_days}$, subsequent newer lots of that scheme cannot be redeemed without first redeeming the locked older units. Thus, newer lots inherit the lock and cannot be cherry-picked ($C = 0$).
+- **Parity with `core-node`**: Verified by unit test `test_exit_load_calculator_parity` against `ExitLoadCalculator.java`.
 
-#### 4. Predicate $D$: Section 112A Exemption Room Available
-- Applies only to equity LTCG lots ($B = 1 \land C = 1$).
-- Sourced primarily from backend:
-  $$\text{InitialRoom} = \text{rebalance\_plan.sell\_side.tax\_summary.exemption\_headroom\_after}$$
-  falling back to $(\text{₹1,25,000} - \text{realized\_ltcg\_ytd})$ if rebalance plan is null.
-- **Section 70 Statutory Loss Netting**: The backend calculates headroom after netting capital losses against capital gains. In `cockpit-gpui`, capital loss lots ($\text{lot\_gain} < 0.0$) do not consume headroom, so $D = 1$ without diminishing available room.
+#### 4. Predicate $D$: Section 112A Exemption Room Available & FIFO Headroom Gating
+- Applies strictly to equity LTCG lots ($B = 1$). Under statutory law (Income-tax Act, Section 112A), exemption room is inapplicable to Short-Term Capital Gains ($B = 0$).
+- **Zero Fabrication**: Sourced directly from `GET /api/v1/tax/exemption-status` (`net_ltcg_before_exemption` and `exemption_remaining`), never hardcoding fallback figures.
+- **Section 70 Statutory Loss Netting**: Headroom calculation accounts for intra-head capital loss netting. Loss lots ($\text{lot\_gain} < 0.0$) do not consume headroom.
+- **Decoupled $C$ and $D$ Predicates**: Exit load status ($C$) and exemption room eligibility ($D$) are orthogonal. A lot can be LTCG with available headroom but exit-locked ($m_5$ `0101` and $m_{13}$ `1101`, such as PPFAS between 365 and 730 days). Exit-locked lots do not consume the actionable harvest room today, but enable maturation tracking.
+- **RTA FIFO Law (`Sec 45(2A)` Anti-Cherry-Picking Invariant)**:
+  Mutual fund RTAs redeem strictly FIFO per Folio/ISIN. If an older lot has capital gain exceeding the remaining Section 112A headroom ($D = 0$), newer lots in the same scheme with smaller gains cannot be cherry-picked ($D = 0$). Once a scheme exhausts available headroom, all subsequent lots in that scheme receive $D = 0$.
+- **Prioritization Order**:
+  Lots are prioritized:
+  1. Overweight buckets first ($A = 1$ lots claim 112A headroom first for $m_{15}$ Prime Implicant).
+  2. Grouped by ISIN.
+  3. Strictly ascending `buy_date` (FIFO).
 
 #### 5. Rebalance Waterfall Routing (Invariant 4)
 - Cell $m_{15}$ (`1111`) indicates units that are structurally ready to harvest without tax friction or exit load.
@@ -145,16 +149,18 @@ The classifier in `cockpit-gpui/src/kmap.rs` must strictly enforce all quant and
 
 ---
 
-## 4. The 4x4 Gray-Code Grid Mapping
+## 4. The 4x4 Gray-Code Grid Mapping & Don't Care ($X$) States
 
 Rows are defined by predicates $AB$ and columns by predicates $CD$:
 
 | $AB \backslash CD$ | **00** | **01** | **11** | **10** |
 | :---: | :---: | :---: | :---: | :---: |
-| **00** (Equilibrium, STCG) | $m_0$ (`0000`) | $m_1$ (`0001`) | $m_3$ (`0011`) | $m_2$ (`0010`) |
-| **01** (Equilibrium, LTCG) | $m_4$ (`0100`) | $m_5$ (`0101`) | **$m_7$ (`0111: March Harvest`)** | $m_6$ (`0110`) |
-| **11** (Breached, LTCG) | $m_{12}$ (`1100`) | $m_{13}$ (`1101`) | **$m_{15}$ (`1111: PRIME IMPLICANT`)** | $m_{14}$ (`1110`) |
-| **10** (Breached, STCG) | $m_8$ (`1000`) | $m_9$ (`1001`) | $m_{11}$ (`1011`) | $m_{10}$ (`1010`) |
+| **00** (Equilibrium, STCG) | $m_0$ (`0000`) | $m_1$ (`[X] Don't Care`)* | $m_3$ (`[X] Don't Care`)* | $m_2$ (`0010`) |
+| **01** (Equilibrium, LTCG) | $m_4$ (`0100`) | $m_5$ (`0101: Exit Locked`) | **$m_7$ (`0111: March Harvest`)** | $m_6$ (`0110: Room Exhausted`) |
+| **11** (Breached, LTCG) | $m_{12}$ (`1100`) | $m_{13}$ (`1101: Exit Locked`) | **$m_{15}$ (`1111: PRIME IMPLICANT`)** | $m_{14}$ (`1110: Room Exhausted`) |
+| **10** (Breached, STCG) | $m_8$ (`1000`) | $m_9$ (`[X] Don't Care`)* | $m_{11}$ (`[X] Don't Care`)* | $m_{10}$ (`1010`) |
+
+\* **Don't Care ($X$) Minterms**: Because Section 112A statutory exemption applies strictly to Equity LTCG ($B = 1$), states where $B = 0$ (STCG) and $D = 1$ ($m_1, m_3, m_9, m_{11}$) are classical Boolean Don't Care conditions. The HUD renders these cells subdued with `[X]` indicators.
 
 ---
 
@@ -346,6 +352,6 @@ cockpit-gpui/
 3. **Phase 3: Visual & Wayland Verification (`just cockpit-gpui`)**:
    - Launch binary via `cargo run --release --manifest-path cockpit-gpui/Cargo.toml` under Umbriel compositor.
    - Verify Wayland window floating rules, 1180x720 window dimensions.
-   - Confirm keyboard action shortcuts: `[Space+k]` toggles K-Map grid, `[Space+i]` adjusts inflow rung, `[Space+e]` triggers authenticated tax export, `[Esc]` quits.
+   - Confirm keyboard action shortcuts: `[Space+k]` toggles 4x4 K-Map grid, `[Space+h]` isolates Section 112A harvest lots, `[Space+i]` simulates SIP inflow rungs, `[Space+e]` exports ITR-2 zip to `~/Downloads`, `[Space+c]` opens command palette, `[r]` refreshes NAVs, `[Esc]` navigates back or quits.
 4. **Phase 4: Decommissioning Execution**:
    Once operational confidence is established, execute Steps 5.1–5.4 to decommission `web/` and `tui/`.

@@ -50,6 +50,29 @@ impl PortfolioHud {
                             .text_color(theme.text_secondary)
                             .child(format!("XIRR: {xirr}"))
                     )
+                    .child(
+                        if let Some(ref status) = self.export_status {
+                            div()
+                                .text_xs()
+                                .px_2()
+                                .py_0p5()
+                                .rounded_sm()
+                                .bg(theme.accent_emerald.opacity(0.15))
+                                .text_color(theme.accent_emerald)
+                                .child(status.clone())
+                        } else if let Some(ref err) = self.error_msg {
+                            div()
+                                .text_xs()
+                                .px_2()
+                                .py_0p5()
+                                .rounded_sm()
+                                .bg(theme.accent_amber.opacity(0.15))
+                                .text_color(theme.accent_amber)
+                                .child(err.clone())
+                        } else {
+                            div()
+                        }
+                    )
             )
             .child(
                 div()
@@ -177,6 +200,78 @@ impl PortfolioHud {
             )
     }
 
+    pub fn render_palette_overlay(&self, theme: &Theme) -> impl IntoElement {
+        div()
+            .absolute()
+            .inset_0()
+            .bg(theme.bg_base.opacity(0.85))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                div()
+                    .w(px(540.0))
+                    .p_6()
+                    .rounded_lg()
+                    .bg(theme.bg_surface)
+                    .border_1()
+                    .border_color(theme.accent_emerald.opacity(0.5))
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .justify_between()
+                            .items_center()
+                            .child(
+                                div().text_sm().font_weight(FontWeight::BOLD).text_color(theme.accent_emerald).child(
+                                    "COMMAND PALETTE / MODAL CHORDS"
+                                )
+                            )
+                            .child(
+                                div().text_xs().text_color(theme.text_secondary).child("[Esc] Close")
+                            )
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_2()
+                            .child(self.palette_row("[Space+k]", "Toggle 4-Bit Karnaugh Map Grid", "Tax friction reduction matrix", theme))
+                            .child(self.palette_row("[Space+h]", "Tax Harvest Isolation View", "Isolate m15 Prime + m7 March lots", theme))
+                            .child(self.palette_row("[Space+i]", "Adjust Inflow Rung (Live Simulation)", "Cycle & simulate capped water-filling", theme))
+                            .child(self.palette_row("[Space+e]", "Export ITR-2 / Schedule CG Zip", "Save official archive to ~/Downloads", theme))
+                            .child(self.palette_row("[r]", "Force Refresh Snapshot", "Poll NAVs & ledger from Core Node", theme))
+                            .child(self.palette_row("[q] / [Esc]", "Back / Quit HUD", "Return to equilibrium or exit", theme))
+                    )
+            )
+    }
+
+    fn palette_row(&self, chord: &str, title: &str, desc: &str, theme: &Theme) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_row()
+            .justify_between()
+            .items_center()
+            .p_2()
+            .rounded_sm()
+            .bg(theme.bg_base)
+            .border_1()
+            .border_color(theme.border_subtle)
+            .child(
+                div().flex().flex_col().child(
+                    div().text_xs().font_weight(FontWeight::BOLD).text_color(theme.text_primary).child(title.to_string())
+                ).child(
+                    div().text_xs().text_color(theme.text_secondary.opacity(0.7)).child(desc.to_string())
+                )
+            )
+            .child(
+                div().text_xs().font_weight(FontWeight::BOLD).text_color(theme.accent_amber).child(chord.to_string())
+            )
+    }
+
     pub fn render_footer_chord_bar(&self, theme: &Theme) -> impl IntoElement {
         div()
             .flex()
@@ -196,10 +291,12 @@ impl PortfolioHud {
                     .flex()
                     .flex_row()
                     .gap_4()
-                    .child("[Space+k] Toggle 4x4 K-Map")
+                    .child("[Space+k] 4x4 K-Map")
+                    .child("[Space+h] 112A Harvest")
                     .child("[Space+i] Adjust Inflow")
-                    .child("[Space+h] March 112A Harvest")
                     .child("[Space+e] ITR-2 Export")
+                    .child("[Space+c] Palette")
+                    .child("[Esc] Back / Quit")
             )
             .child("144Hz Vulkan | Wayland")
     }

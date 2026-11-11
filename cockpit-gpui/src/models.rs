@@ -1,5 +1,24 @@
 #![allow(dead_code)]
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+// ---------------------------------------------------------------------------
+// /api/v1/tax/exemption-status
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ExemptionStatus {
+    pub fiscal_year: String,
+    pub gross_ltcg: String,
+    pub gross_ltcl: String,
+    pub gross_stcg: String,
+    pub gross_stcl: String,
+    pub net_stcg: String,
+    pub net_ltcg_before_exemption: String,
+    pub exemption_limit: String,
+    pub exemption_used: String,
+    pub exemption_remaining: String,
+    pub taxable_ltcg: String,
+}
 
 // ---------------------------------------------------------------------------
 // /api/v1/sync/snapshot

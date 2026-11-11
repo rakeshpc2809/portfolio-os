@@ -1,0 +1,5 @@
+# Portfolio OS Cockpit Configuration
+base_url: "http://127.0.0.1:8080"
+api_token_env: "PORTFOLIO_OS_API_TOKEN"
+poll_interval_secs: 15
+

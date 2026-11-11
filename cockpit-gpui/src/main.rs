@@ -17,9 +17,10 @@ fn main() {
             KeyBinding::new("space i", TriggerInflowModal, None),
             KeyBinding::new("space h", IsolateHarvest, None),
             KeyBinding::new("space e", ExportItr2, None),
+            KeyBinding::new("space c", ToggleCommandPalette, None),
             KeyBinding::new("r", RefreshSnapshot, None),
             KeyBinding::new("q", Quit, None),
-            KeyBinding::new("escape", Quit, None),
+            KeyBinding::new("escape", BackOrQuit, None),
         ]);
 
         let bounds = Bounds::centered(None, size(px(1180.0), px(720.0)), cx);
@@ -35,4 +36,3 @@ fn main() {
         .unwrap();
     });
 }
-
