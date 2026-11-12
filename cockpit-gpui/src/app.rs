@@ -51,6 +51,7 @@ pub struct PortfolioHud {
     pub pending_inflow_rupees: f64,
     pub is_simulation_active: bool,
     pub show_palette: bool,
+    pub sim_generation: u64,
 }
 
 pub fn get_api_config() -> ApiConfig {
@@ -195,6 +196,7 @@ impl PortfolioHud {
             pending_inflow_rupees,
             is_simulation_active,
             show_palette,
+            sim_generation: 0,
         }
     }
 
@@ -237,8 +239,20 @@ impl PortfolioHud {
         }
     }
 
+    pub fn set_view(&mut self, view: ActiveView, cx: &mut Context<Self>) {
+        self.active_view = view;
+        self.show_palette = false;
+        cx.notify();
+    }
+
+    pub fn toggle_palette(&mut self, cx: &mut Context<Self>) {
+        self.show_palette = !self.show_palette;
+        cx.notify();
+    }
+
     pub fn fetch_snapshot(&mut self, cx: &mut Context<Self>) {
         self.is_loading = true;
+        let poll_gen = self.sim_generation;
         let active_simulation_inflow = if self.is_simulation_active {
             Some(self.pending_inflow_rupees)
         } else {
@@ -310,8 +324,17 @@ impl PortfolioHud {
             this.update(cx, |hud, cx| {
                 hud.is_loading = false;
                 match res {
-                    Ok((snap, ex_status, sim_err)) => {
-                        hud.simulation_error = sim_err;
+                    Ok((mut snap, ex_status, sim_err)) => {
+                        // Guard against race condition: if user triggered adjust_inflow while poll was in flight,
+                        // preserve the user's latest plan instead of overwriting with the poll's older simulation
+                        if hud.sim_generation != poll_gen {
+                            if let Some(ref current_snap) = hud.snapshot {
+                                snap.rebalance_plan = current_snap.rebalance_plan.clone();
+                            }
+                        } else {
+                            hud.simulation_error = sim_err;
+                        }
+
                         let remaining_res = ex_status.exemption_remaining.parse::<f64>()
                             .map_err(|e| format!("Invalid exemption_remaining: {e}"));
 
@@ -352,6 +375,8 @@ impl PortfolioHud {
             100_000 => 150_000.0,
             _ => 25_000.0,
         };
+        self.sim_generation += 1;
+        let current_gen = self.sim_generation;
         self.is_simulation_active = true;
         let inflow_amt = self.pending_inflow_rupees;
         cx.notify();
@@ -376,6 +401,9 @@ impl PortfolioHud {
             }).await;
 
             this.update(cx, |hud, cx| {
+                if hud.sim_generation != current_gen {
+                    return; // Stale simulation superseded by newer user request
+                }
                 match sim_res {
                     Ok(sim_plan) => {
                         if let Some(ref mut snap) = hud.snapshot {
@@ -508,11 +536,11 @@ impl Render for PortfolioHud {
                     .relative()
                     .child(match self.active_view {
                         ActiveView::Equilibrium => self.render_equilibrium_view(&theme).into_any_element(),
-                        ActiveView::KMapMatrix => self.render_kmap_view(&theme).into_any_element(),
+                        ActiveView::KMapMatrix => self.render_kmap_view(&theme, cx).into_any_element(),
                         ActiveView::HarvestIsolation => self.render_harvest_isolation_view(&theme).into_any_element(),
                     })
                     .child(if self.show_palette {
-                        self.render_palette_overlay(&theme).into_any_element()
+                        self.render_palette_overlay(&theme, cx).into_any_element()
                     } else {
                         div().into_any_element()
                     })
