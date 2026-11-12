@@ -103,13 +103,18 @@ impl PortfolioHud {
                                         div().text_xs().text_color(theme.text_secondary.opacity(0.4)).child("STCG (No 112A)")
                                     )
                                 } else {
+                                    let gross_gain: f64 = cell.lots.iter().filter(|l| l.unrealized_gain > 0.0).map(|l| l.unrealized_gain).sum();
                                     div().flex().flex_col().child(
                                         div().text_xs().font_weight(FontWeight::BOLD).child(
                                             format!("₹ {:.0}", cell.total_value)
                                         )
                                     ).child(
                                         div().text_xs().text_color(theme.text_secondary).child(
-                                            format!("Gain: ₹ {:.0}", cell.total_gain)
+                                            if (gross_gain - cell.total_gain).abs() > 1.0 && (is_prime || is_harvest) {
+                                                format!("Net: ₹ {:.0} (Gross: ₹ {:.0})", cell.total_gain, gross_gain)
+                                            } else {
+                                                format!("Gain: ₹ {:.0}", cell.total_gain)
+                                            }
                                         )
                                     )
                                 }
@@ -182,7 +187,7 @@ impl PortfolioHud {
                             )
                         ).child(
                             div().text_xs().text_color(theme.accent_amber).child(
-                                format!("Harvestable Gain: ₹ {:.0}", total_harvest_gain)
+                                format!("Harvestable Gain: ₹ {:.0} (Gross)", total_harvest_gain)
                             )
                         )
                     )

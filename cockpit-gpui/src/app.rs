@@ -46,6 +46,7 @@ pub struct PortfolioHud {
     pub active_view: ActiveView,
     pub is_loading: bool,
     pub error_msg: Option<String>,
+    pub simulation_error: Option<String>,
     pub export_status: Option<String>,
     pub pending_inflow_rupees: f64,
     pub is_simulation_active: bool,
@@ -189,6 +190,7 @@ impl PortfolioHud {
             active_view,
             is_loading: true,
             error_msg: None,
+            simulation_error: None,
             export_status: None,
             pending_inflow_rupees,
             is_simulation_active,
@@ -290,18 +292,26 @@ impl PortfolioHud {
                     None
                 };
 
-                let resolved_snap = Self::resolve_poll_simulation(active_simulation_inflow, sim_result, snap)?;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-                eprintln!("[POLL_TICK ts={ts}] Snapshot fetched and resolved. Inflow active: {:?}. Plan attached: {}",
-                    active_simulation_inflow, resolved_snap.rebalance_plan.is_some());
+                let base_snap_copy = snap.clone();
+                let (resolved_snap, sim_err) = match Self::resolve_poll_simulation(active_simulation_inflow, sim_result, snap) {
+                    Ok(s) => (s, None),
+                    Err(e) => (base_snap_copy, Some(e)),
+                };
 
-                Ok::<(Snapshot, ExemptionStatus), String>((resolved_snap, ex_status))
+                if std::env::var("PORTFOLIO_OS_DEBUG_POLL").map(|v| v == "1" || v == "true").unwrap_or(false) {
+                    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+                    eprintln!("[POLL_TICK ts={ts}] Snapshot fetched and resolved. Inflow active: {:?}. Plan attached: {}",
+                        active_simulation_inflow, resolved_snap.rebalance_plan.is_some());
+                }
+
+                Ok::<(Snapshot, ExemptionStatus, Option<String>), String>((resolved_snap, ex_status, sim_err))
             }).await;
 
             this.update(cx, |hud, cx| {
                 hud.is_loading = false;
                 match res {
-                    Ok((snap, ex_status)) => {
+                    Ok((snap, ex_status, sim_err)) => {
+                        hud.simulation_error = sim_err;
                         let remaining_res = ex_status.exemption_remaining.parse::<f64>()
                             .map_err(|e| format!("Invalid exemption_remaining: {e}"));
 
@@ -322,7 +332,9 @@ impl PortfolioHud {
                     }
                     Err(err) => {
                         hud.kmap = None;
+                        hud.snapshot = None;
                         hud.exemption_status = Err(err.clone());
+                        hud.simulation_error = None;
                         hud.error_msg = Some(format!("Core Node error: {err}"));
                     }
                 }
@@ -374,10 +386,11 @@ impl PortfolioHud {
                                 }
                             }
                         }
+                        hud.simulation_error = None;
                         hud.error_msg = None;
                     }
                     Err(err) => {
-                        hud.error_msg = Some(format!("Inflow simulation failed: {err}"));
+                        hud.simulation_error = Some(format!("Inflow simulation failed: {err}"));
                     }
                 }
                 cx.notify();
@@ -607,5 +620,29 @@ mod tests {
         assert!(merged.is_ok());
         let snap = merged.unwrap();
         assert!(snap.rebalance_plan.is_none());
+    }
+
+    #[core::prelude::v1::test]
+    fn test_simulation_failure_does_not_corrupt_kmap_or_exemption_blast_radius() {
+        use crate::kmap::tests::mock_snapshot;
+        use crate::kmap::classify_snapshot;
+
+        let base_snap = mock_snapshot();
+        let sim_err = "Core Node timeout".to_string();
+
+        // 1. Simulation failure gives an Err from resolve_poll_simulation
+        let merged = PortfolioHud::resolve_poll_simulation(
+            Some(50_000.0),
+            Some(Err(sim_err.clone())),
+            base_snap.clone(),
+        );
+        assert!(merged.is_err());
+
+        // 2. Error blast radius isolation:
+        // Even when simulation fails, base snapshot and statutory headroom are intact.
+        // K-Map classifies cleanly without crashing or blanking.
+        let kmap = classify_snapshot(&base_snap, 92_758.90);
+        assert_eq!(kmap.cells.len(), 16);
+        assert_eq!(kmap.statutory_exemption_room_before, 92_758.90);
     }
 }

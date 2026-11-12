@@ -98,6 +98,7 @@ Moving from the dual `web/` + `tui/` stack to `cockpit-gpui` deliberately trades
 | **Offline Local Disk Cache** | `tui/` | **Removed** | `cockpit-gpui` runs locally on the same host as `core-node` (`127.0.0.1:8080`). If backend is down, HUD reports an error rather than showing stale valuations. |
 | **Browser CSV Export** | `web/` | **Replaced** | Key chord `[Space+e]` sends an authenticated request to `core-node` to generate and download official ITR-2 / Schedule CG archives. |
 | **CAS Statement Upload** | `web/` | **Transferred to Systemd / CLI** | Manual file upload replaced by automated headless sync (`portfolio-pc-sync.timer` + `scripts/cas_parser.py`). Key chord `[Space+c]` / `[Space+p]` assigned to Command Palette. |
+| **6-Invariant Firewall Pill** | Prototype UI | **Dropped** | Invariants 1–6 are verified authoritatively fail-closed on the backend by `RebalancePlanEngine.java` before any plan is emitted. The client does not independently re-verify backend engine invariants; displaying a static client-side 'PASS (6/6)' badge violated zero-fabrication. Top bar now directly displays backend ledger HMAC `LEDGER <hash>` or `NAV STALE (<count>)`. |
 
 ---
 

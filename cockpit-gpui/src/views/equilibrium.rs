@@ -6,27 +6,31 @@ use crate::theme::Theme;
 
 impl PortfolioHud {
     pub fn render_top_bar(&self, theme: &Theme) -> impl IntoElement {
-        let (nw_formatted, xirr, status_badge) = if let Some(ref s) = self.snapshot {
-            let badge = if s.sync_info.has_stale_nav.unwrap_or(false) {
-                format!("NAV STALE ({})", s.sync_info.stale_nav_count.unwrap_or(1))
+        let (nw_formatted, xirr, status_badge, badge_color) = if let Some(ref s) = self.snapshot {
+            let (badge, color) = if s.sync_info.has_stale_nav == Some(true) {
+                (format!("NAV STALE ({})", s.sync_info.stale_nav_count.unwrap_or(1)), theme.accent_amber)
             } else if let Some(ref hash) = s.sync_info.ledger_hash {
-                if hash.len() >= 8 {
-                    format!("SYNCED · {}", &hash[..8])
+                let short = if hash.len() >= 8 { &hash[..8] } else { hash.as_str() };
+                if s.sync_info.has_stale_nav.is_none() {
+                    (format!("LEDGER {} (NAV UNKNOWN)", short), theme.text_secondary)
                 } else {
-                    "SYNCED".to_string()
+                    (format!("LEDGER {}", short), theme.accent_emerald)
                 }
+            } else if s.sync_info.has_stale_nav.is_none() {
+                ("UNKNOWN".to_string(), theme.text_secondary)
             } else {
-                "LIVE SYNCED".to_string()
+                ("LEDGER UNKNOWN".to_string(), theme.text_secondary)
             };
             (
                 s.sync_info.formatted_current_value.clone(),
                 s.sync_info.xirr_percentage.clone(),
                 badge,
+                color,
             )
         } else if self.is_loading {
-            ("₹ --,--,---".into(), "--%".into(), "CONNECTING...".into())
+            ("₹ --,--,---".into(), "--%".into(), "CONNECTING...".into(), theme.text_secondary)
         } else {
-            ("₹ --,--,---".into(), "--%".into(), "DISCONNECTED".into())
+            ("₹ --,--,---".into(), "--%".into(), "DISCONNECTED".into(), theme.accent_amber)
         };
 
         div()
@@ -81,6 +85,8 @@ impl PortfolioHud {
                                 .rounded_sm()
                                 .bg(theme.accent_amber.opacity(0.15))
                                 .text_color(theme.accent_amber)
+                                .max_w(px(380.0))
+                                .truncate()
                                 .child(err.clone())
                         } else {
                             div()
@@ -99,8 +105,8 @@ impl PortfolioHud {
                             .px_2()
                             .py_0p5()
                             .rounded_full()
-                            .bg(theme.accent_emerald.opacity(0.15))
-                            .text_color(theme.accent_emerald)
+                            .bg(badge_color.opacity(0.15))
+                            .text_color(badge_color)
                             .child(status_badge)
                     )
             )
@@ -143,31 +149,36 @@ impl PortfolioHud {
                 )
             }).collect();
 
-            if breached {
+            let (b_text, b_border, b_text_col) = if let Some(ref sim_err) = self.simulation_error {
                 (
-                    "⚠ POLICY DRIFT DETECTED — REBALANCE ACTION RECOMMENDED IN K-MAP",
+                    format!("⚠ INFLOW SIMULATION FAILED: {} — SHOWING BASE PORTFOLIO", sim_err),
                     theme.accent_amber.opacity(0.4),
                     theme.accent_amber,
-                    cards,
+                )
+            } else if breached {
+                (
+                    "⚠ POLICY DRIFT DETECTED — REBALANCE ACTION RECOMMENDED IN K-MAP".to_string(),
+                    theme.accent_amber.opacity(0.4),
+                    theme.accent_amber,
                 )
             } else {
                 (
-                    "● ALL BUCKETS WITHIN 5/25 DRIFT BAND — ZERO REBALANCE FRICTION",
+                    "● ALL BUCKETS WITHIN 5/25 DRIFT BAND — ZERO REBALANCE FRICTION".to_string(),
                     theme.accent_emerald.opacity(0.3),
                     theme.accent_emerald,
-                    cards,
                 )
-            }
+            };
+            (b_text, b_border, b_text_col, cards)
         } else if self.is_loading {
             (
-                "◌ CONNECTING TO CORE NODE — POLLING SNAPSHOT...",
+                "◌ CONNECTING TO CORE NODE — POLLING SNAPSHOT...".to_string(),
                 theme.border_subtle,
                 theme.text_secondary,
                 vec![],
             )
         } else {
             (
-                "⚠ CORE NODE DISCONNECTED — VALUATION & REBALANCE STATUS UNKNOWN",
+                "⚠ CORE NODE DISCONNECTED — VALUATION & REBALANCE STATUS UNKNOWN".to_string(),
                 theme.accent_amber.opacity(0.4),
                 theme.accent_amber,
                 vec![],
