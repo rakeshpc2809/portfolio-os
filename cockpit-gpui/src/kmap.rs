@@ -49,7 +49,8 @@ impl KMapCell {
 
 pub struct KMapMatrix {
     pub cells: [KMapCell; 16],
-    pub total_harvest_room_remaining: f64,
+    pub statutory_exemption_room_before: f64,
+    pub projected_harvest_room_remaining: f64,
     pub prime_implicant_liquidable_value: f64,
     pub march_harvest_liquidable_value: f64,
 }
@@ -244,7 +245,8 @@ pub fn classify_snapshot(snapshot: &Snapshot, available_exemption_room: f64) -> 
 
     KMapMatrix {
         cells,
-        total_harvest_room_remaining: remaining_harvest_room.max(0.0),
+        statutory_exemption_room_before: available_exemption_room,
+        projected_harvest_room_remaining: remaining_harvest_room.max(0.0),
         prime_implicant_liquidable_value: prime_val,
         march_harvest_liquidable_value: march_val,
     }
@@ -270,6 +272,8 @@ pub mod tests {
                 formatted_unrealized_gain: "₹ 2,00,000".to_string(),
                 stale_nav_count: None,
                 has_stale_nav: None,
+                ledger_hash: Some("d705e9b28a1c".to_string()),
+                drawdown_status: Some("NORMAL".to_string()),
             },
             holdings: vec![
                 FlatHolding {
@@ -370,7 +374,8 @@ pub mod tests {
         let cell_1101 = matrix.cells.iter().find(|c| c.minterm == 0b1101).unwrap();
         assert_eq!(cell_1101.lots.len(), 1);
         assert_eq!(cell_1101.lots[0].bitmask, 0b1101);
-        assert_eq!(matrix.total_harvest_room_remaining, 125_000.0);
+        assert_eq!(matrix.statutory_exemption_room_before, 125_000.0);
+        assert_eq!(matrix.projected_harvest_room_remaining, 125_000.0);
     }
 
     #[test]

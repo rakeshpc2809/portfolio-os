@@ -63,6 +63,10 @@ pub struct SyncInfo {
     pub formatted_unrealized_gain: String,
     pub stale_nav_count: Option<i32>,
     pub has_stale_nav: Option<bool>,
+    #[serde(default)]
+    pub ledger_hash: Option<String>,
+    #[serde(default)]
+    pub drawdown_status: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

@@ -53,19 +53,9 @@ pub struct PortfolioHud {
 }
 
 pub fn get_api_config() -> ApiConfig {
-    let base_url = std::env::var("PORTFOLIO_OS_API_BASE_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
-
-    let mut token = std::env::var("PORTFOLIO_OS_API_TOKEN")
-        .or_else(|_| std::env::var("API_AUTH_TOKEN"))
-        .or_else(|_| std::env::var("API_TOKEN"))
-        .ok()
-        .filter(|t| !t.trim().is_empty());
-
-    let mut poll_interval_secs = std::env::var("PORTFOLIO_OS_POLL_INTERVAL_SECS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(15);
+    let mut base_url = "http://127.0.0.1:8080".to_string();
+    let mut token = None;
+    let mut poll_interval_secs = 15;
 
     let candidates = ["cockpit-gpui/config.yaml", "config.yaml"];
     for path in &candidates {
@@ -78,7 +68,9 @@ pub fn get_api_config() -> ApiConfig {
                 if let Some((k, v)) = line.split_once(':') {
                     let key = k.trim();
                     let val = v.trim().trim_matches('"').trim_matches('\'');
-                    if token.is_none() && key == "api_token_env" {
+                    if key == "base_url" && !val.is_empty() {
+                        base_url = val.to_string();
+                    } else if token.is_none() && key == "api_token_env" {
                         if let Ok(env_val) = std::env::var(val) {
                             if !env_val.trim().is_empty() {
                                 token = Some(env_val.trim().to_string());
@@ -96,6 +88,28 @@ pub fn get_api_config() -> ApiConfig {
             if token.is_some() {
                 break;
             }
+        }
+    }
+
+    // Explicit environment variable overrides
+    if let Ok(url) = std::env::var("PORTFOLIO_OS_API_BASE_URL") {
+        if !url.trim().is_empty() {
+            base_url = url;
+        }
+    }
+
+    if let Some(t) = std::env::var("PORTFOLIO_OS_API_TOKEN")
+        .or_else(|_| std::env::var("API_AUTH_TOKEN"))
+        .or_else(|_| std::env::var("API_TOKEN"))
+        .ok()
+        .filter(|t| !t.trim().is_empty())
+    {
+        token = Some(t);
+    }
+
+    if let Ok(secs) = std::env::var("PORTFOLIO_OS_POLL_INTERVAL_SECS") {
+        if let Ok(s) = secs.parse::<u64>() {
+            poll_interval_secs = s;
         }
     }
 
@@ -201,6 +215,26 @@ impl PortfolioHud {
         }
     }
 
+    pub fn resolve_poll_simulation(
+        active_inflow: Option<f64>,
+        sim_result: Option<Result<RebalancePlan, String>>,
+        mut base_snapshot: Snapshot,
+    ) -> Result<Snapshot, String> {
+        match (active_inflow, sim_result) {
+            (Some(_), Some(Ok(plan))) => {
+                base_snapshot.rebalance_plan = Some(plan);
+                Ok(base_snapshot)
+            }
+            (Some(inflow), Some(Err(err))) => {
+                Err(format!("Re-simulation for ₹{:.0} failed during poll: {}", inflow, err))
+            }
+            (Some(inflow), None) => {
+                Err(format!("Re-simulation for ₹{:.0} was active but simulation call was skipped", inflow))
+            }
+            (None, _) => Ok(base_snapshot),
+        }
+    }
+
     pub fn fetch_snapshot(&mut self, cx: &mut Context<Self>) {
         self.is_loading = true;
         let active_simulation_inflow = if self.is_simulation_active {
@@ -221,7 +255,7 @@ impl PortfolioHud {
                 if let Some(ref tok) = config.token {
                     snap_req = snap_req.set("X-Api-Auth-Token", tok);
                 }
-                let mut snap = snap_req.call()
+                let snap = snap_req.call()
                     .map_err(|e| format!("Snapshot fetch failed: {e}"))?
                     .into_json::<Snapshot>()
                     .map_err(|e| format!("Snapshot deserialization failed: {e}"))?;
@@ -237,24 +271,31 @@ impl PortfolioHud {
                     .into_json::<ExemptionStatus>()
                     .map_err(|e| format!("Exemption status deserialization failed: {e}"))?;
 
-                // 3. If an inflow simulation is currently active, re-simulate so poll tick does NOT clobber it
-                if let Some(inflow_amt) = active_simulation_inflow {
+                // 3. If an inflow simulation is currently active, re-simulate without silent revert
+                let sim_result = if let Some(inflow_amt) = active_simulation_inflow {
                     let sim_url = format!("{clean_base}/api/v1/sync/rebalance/simulate-lumpsum");
                     let mut sim_req = ureq::post(&sim_url).timeout(std::time::Duration::from_millis(2500));
                     if let Some(ref tok) = config.token {
                         sim_req = sim_req.set("X-Api-Auth-Token", tok);
                     }
-                    if let Ok(resp) = sim_req.send_json(serde_json::json!({
+                    let res = sim_req.send_json(serde_json::json!({
                         "amount": inflow_amt,
                         "include_rebalance": false
-                    })) {
-                        if let Ok(plan) = resp.into_json::<RebalancePlan>() {
-                            snap.rebalance_plan = Some(plan);
-                        }
-                    }
-                }
+                    }))
+                    .map_err(|e| format!("Network error: {e}"))
+                    .and_then(|resp| resp.into_json::<RebalancePlan>()
+                        .map_err(|e| format!("Deserialization error: {e}")));
+                    Some(res)
+                } else {
+                    None
+                };
 
-                Ok::<(Snapshot, ExemptionStatus), String>((snap, ex_status))
+                let resolved_snap = Self::resolve_poll_simulation(active_simulation_inflow, sim_result, snap)?;
+                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+                eprintln!("[POLL_TICK ts={ts}] Snapshot fetched and resolved. Inflow active: {:?}. Plan attached: {}",
+                    active_simulation_inflow, resolved_snap.rebalance_plan.is_some());
+
+                Ok::<(Snapshot, ExemptionStatus), String>((resolved_snap, ex_status))
             }).await;
 
             this.update(cx, |hud, cx| {
@@ -502,10 +543,10 @@ mod tests {
     }
 
     #[core::prelude::v1::test]
-    fn test_poll_preserves_active_inflow_simulation() {
+    fn test_poll_merge_applies_simulated_plan_when_active() {
         use crate::kmap::tests::mock_snapshot;
-        let mut snap = mock_snapshot();
-        assert!(snap.rebalance_plan.is_none());
+        let base_snap = mock_snapshot();
+        assert!(base_snap.rebalance_plan.is_none());
 
         let simulated_plan = RebalancePlan {
             plan_id: "test-sim-id".to_string(),
@@ -519,16 +560,52 @@ mod tests {
             reasoning_narrative: None,
         };
 
-        // If simulation is active with 75k inflow, applying it to incoming poll snapshot preserves the simulated plan
-        let is_simulation_active = true;
-        let pending_inflow = 75_000.0;
+        // Call production resolve_poll_simulation with active simulation
+        let merged = PortfolioHud::resolve_poll_simulation(
+            Some(75_000.0),
+            Some(Ok(simulated_plan.clone())),
+            base_snap,
+        );
 
-        if is_simulation_active {
-            snap.rebalance_plan = Some(simulated_plan.clone());
-        }
-
+        assert!(merged.is_ok());
+        let snap = merged.unwrap();
         assert!(snap.rebalance_plan.is_some());
         assert_eq!(snap.rebalance_plan.as_ref().unwrap().plan_id, "test-sim-id");
-        assert_eq!(snap.rebalance_plan.as_ref().unwrap().buy_side.as_ref().unwrap().total_to_invest, Some(pending_inflow));
+        assert_eq!(snap.rebalance_plan.as_ref().unwrap().buy_side.as_ref().unwrap().total_to_invest, Some(75_000.0));
+    }
+
+    #[core::prelude::v1::test]
+    fn test_poll_merge_fails_closed_when_resimulation_fails() {
+        use crate::kmap::tests::mock_snapshot;
+        let base_snap = mock_snapshot();
+
+        // Call production resolve_poll_simulation when re-simulation returns an error
+        let merged = PortfolioHud::resolve_poll_simulation(
+            Some(50_000.0),
+            Some(Err("timeout contacting quant engine".to_string())),
+            base_snap,
+        );
+
+        // Must FAIL CLOSED: return Err rather than silently reverting to base snapshot
+        assert!(merged.is_err(), "Must return Err when re-simulation fails");
+        let err = merged.err().unwrap();
+        assert!(err.contains("Re-simulation for ₹50000 failed during poll"));
+        assert!(err.contains("timeout contacting quant engine"));
+    }
+
+    #[core::prelude::v1::test]
+    fn test_poll_merge_preserves_base_snapshot_when_no_simulation_active() {
+        use crate::kmap::tests::mock_snapshot;
+        let base_snap = mock_snapshot();
+
+        let merged = PortfolioHud::resolve_poll_simulation(
+            None,
+            None,
+            base_snap,
+        );
+
+        assert!(merged.is_ok());
+        let snap = merged.unwrap();
+        assert!(snap.rebalance_plan.is_none());
     }
 }

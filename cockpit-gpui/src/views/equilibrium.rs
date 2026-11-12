@@ -7,13 +7,26 @@ use crate::theme::Theme;
 impl PortfolioHud {
     pub fn render_top_bar(&self, theme: &Theme) -> impl IntoElement {
         let (nw_formatted, xirr, status_badge) = if let Some(ref s) = self.snapshot {
+            let badge = if s.sync_info.has_stale_nav.unwrap_or(false) {
+                format!("NAV STALE ({})", s.sync_info.stale_nav_count.unwrap_or(1))
+            } else if let Some(ref hash) = s.sync_info.ledger_hash {
+                if hash.len() >= 8 {
+                    format!("SYNCED · {}", &hash[..8])
+                } else {
+                    "SYNCED".to_string()
+                }
+            } else {
+                "LIVE SYNCED".to_string()
+            };
             (
                 s.sync_info.formatted_current_value.clone(),
                 s.sync_info.xirr_percentage.clone(),
-                "FIREWALL PASS (6/6)",
+                badge,
             )
+        } else if self.is_loading {
+            ("₹ --,--,---".into(), "--%".into(), "CONNECTING...".into())
         } else {
-            ("₹ --,--,---".into(), "--%".into(), "DISCONNECTED")
+            ("₹ --,--,---".into(), "--%".into(), "DISCONNECTED".into())
         };
 
         div()
@@ -94,11 +107,21 @@ impl PortfolioHud {
     }
 
     pub fn render_equilibrium_view(&self, theme: &Theme) -> impl IntoElement {
-        let (any_breached, bucket_cards) = if let Some(ref snap) = self.snapshot {
+        let (banner_text, banner_border, banner_text_col, bucket_cards) = if let Some(ref snap) = self.snapshot {
             let total_nw = snap.holdings.iter().map(|h| h.current_value).sum::<f64>();
             let post_inflow_nw = (total_nw + self.pending_inflow_rupees).max(1.0);
 
-            // Compute underweight rupee deficits for Capped Water-Filling
+            let breached = snap.bucket_allocation.iter().any(|b| b.is_drifted);
+
+            // Extract simulated allocations from live RebalancePlanEngine if available
+            let sim_allocations: std::collections::HashMap<String, f64> = snap.rebalance_plan.as_ref()
+                .and_then(|p| p.buy_side.as_ref())
+                .map(|b| {
+                    b.buckets.iter().map(|bk| (bk.bucket.clone(), bk.amount_allocated.unwrap_or(0.0))).collect()
+                })
+                .unwrap_or_default();
+
+            // Compute fallback underweight rupee deficits if no simulation plan is active
             let deficits: Vec<f64> = snap.bucket_allocation.iter().map(|b| {
                 let target_val = (b.target_pct / 100.0) * post_inflow_nw;
                 let current_val = (b.current_pct / 100.0) * total_nw;
@@ -106,31 +129,49 @@ impl PortfolioHud {
             }).collect();
             let total_deficit = deficits.iter().sum::<f64>().max(1.0);
 
-            let breached = snap.bucket_allocation.iter().any(|b| b.is_drifted);
             let cards: Vec<_> = snap.bucket_allocation.iter().zip(deficits).map(|(b, deficit)| {
-                let sip_share = (deficit / total_deficit) * self.pending_inflow_rupees;
+                let allocated = if let Some(amt) = sim_allocations.get(&b.bucket) {
+                    *amt
+                } else {
+                    (deficit / total_deficit) * self.pending_inflow_rupees
+                };
                 (
                     b.bucket.clone(),
                     b.drift_pct,
                     b.is_drifted,
-                    format!("₹ {:.0}", sip_share),
+                    format!("₹ {:.0}", allocated),
                 )
             }).collect();
-            (breached, cards)
-        } else {
-            (false, vec![])
-        };
 
-        let banner_text = if any_breached {
-            "⚠ POLICY DRIFT DETECTED — REBALANCE ACTION RECOMMENDED IN K-MAP"
+            if breached {
+                (
+                    "⚠ POLICY DRIFT DETECTED — REBALANCE ACTION RECOMMENDED IN K-MAP",
+                    theme.accent_amber.opacity(0.4),
+                    theme.accent_amber,
+                    cards,
+                )
+            } else {
+                (
+                    "● ALL BUCKETS WITHIN 5/25 DRIFT BAND — ZERO REBALANCE FRICTION",
+                    theme.accent_emerald.opacity(0.3),
+                    theme.accent_emerald,
+                    cards,
+                )
+            }
+        } else if self.is_loading {
+            (
+                "◌ CONNECTING TO CORE NODE — POLLING SNAPSHOT...",
+                theme.border_subtle,
+                theme.text_secondary,
+                vec![],
+            )
         } else {
-            "● ALL BUCKETS WITHIN 5/25 DRIFT BAND — ZERO REBALANCE FRICTION"
-        };
-
-        let (banner_border, banner_text_col) = if any_breached {
-            (theme.accent_amber.opacity(0.4), theme.accent_amber)
-        } else {
-            (theme.accent_emerald.opacity(0.3), theme.accent_emerald)
+            (
+                "⚠ CORE NODE DISCONNECTED — VALUATION & REBALANCE STATUS UNKNOWN",
+                theme.accent_amber.opacity(0.4),
+                theme.accent_amber,
+                vec![],
+            )
         };
 
         div()

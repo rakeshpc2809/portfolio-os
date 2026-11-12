@@ -36,7 +36,7 @@ impl PortfolioHud {
                     .child(
                         div().flex().flex_row().gap_4().items_center().child(
                             div().text_xs().text_color(theme.accent_emerald).child(
-                                format!("Sec 112A Exemption Room: ₹ {:.0} / ₹ 1,25,000", kmap.total_harvest_room_remaining)
+                                format!("Statutory Room: ₹ {:.0} | Post-Harvest: ₹ {:.0}", kmap.statutory_exemption_room_before, kmap.projected_harvest_room_remaining)
                             )
                         ).child(
                             div().text_xs().text_color(theme.accent_amber).child(
@@ -152,7 +152,7 @@ impl PortfolioHud {
         let prime_lots = prime_cell.map(|c| c.lots.as_slice()).unwrap_or(&[]);
         let march_lots = march_cell.map(|c| c.lots.as_slice()).unwrap_or(&[]);
 
-        let total_harvest_val = kmap.prime_implicant_liquidable_value + kmap.march_harvest_liquidable_value;
+        let _total_harvest_val = kmap.prime_implicant_liquidable_value + kmap.march_harvest_liquidable_value;
         let total_harvest_gain: f64 = prime_lots.iter().chain(march_lots.iter()).map(|l| l.unrealized_gain).sum();
 
         div()
@@ -173,23 +173,33 @@ impl PortfolioHud {
                     )
                     .child(
                         div().flex().flex_row().gap_4().items_center().child(
-                            div().text_xs().text_color(theme.accent_emerald).child(
-                                format!("Headroom: ₹ {:.0}", kmap.total_harvest_room_remaining)
+                            div().text_xs().text_color(theme.text_secondary).child(
+                                format!("Statutory Room: ₹ {:.0}", kmap.statutory_exemption_room_before)
                             )
                         ).child(
-                            div().text_xs().text_color(theme.text_primary).child(
-                                format!("Harvestable: ₹ {:.0}", total_harvest_val)
+                            div().text_xs().text_color(theme.accent_emerald).child(
+                                format!("Post-Harvest Headroom: ₹ {:.0}", kmap.projected_harvest_room_remaining)
                             )
                         ).child(
                             div().text_xs().text_color(theme.accent_amber).child(
-                                format!("Tax-Free Gain: ₹ {:.0}", total_harvest_gain)
+                                format!("Harvestable Gain: ₹ {:.0}", total_harvest_gain)
                             )
                         )
                     )
             )
             .child(
+                div().text_xs().text_color(theme.text_secondary).child(
+                    format!("Total Qualifying Lots: {} (Prime Trims: {}, March Harvest: {}) — Scrollable list",
+                        prime_lots.len() + march_lots.len(),
+                        prime_lots.len(),
+                        march_lots.len()
+                    )
+                )
+            )
+            .child(
                 if prime_lots.is_empty() && march_lots.is_empty() {
                     div()
+                        .id("harvest-empty")
                         .p_6()
                         .rounded_md()
                         .bg(theme.bg_surface)
@@ -212,9 +222,13 @@ impl PortfolioHud {
                         )
                 } else {
                     div()
+                        .id("harvest-lots-scroll")
+                        .flex_1()
+                        .overflow_y_scroll()
                         .flex()
                         .flex_col()
                         .gap_3()
+                        .pr_2()
                         .children(
                             prime_lots.iter().map(|lot| {
                                 div()

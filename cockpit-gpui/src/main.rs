@@ -20,6 +20,7 @@ fn main() {
             KeyBinding::new("space h", IsolateHarvest, None),
             KeyBinding::new("space e", ExportItr2, None),
             KeyBinding::new("space c", ToggleCommandPalette, None),
+            KeyBinding::new("space p", ToggleCommandPalette, None),
             KeyBinding::new("r", RefreshSnapshot, None),
             KeyBinding::new("q", Quit, None),
             KeyBinding::new("escape", BackOrQuit, None),
