@@ -235,6 +235,11 @@ repomix:
     npx repomix
     npx repomix --style markdown -o repomix-minimal.md
 
+# Pack native GPUI Cockpit codebase for review (Markdown & XML)
+repomix-gpui:
+    npx -y repomix --config repomix.gpui.json
+    npx -y repomix --config repomix.gpui.json --style xml --output repomix-gpui.xml
+
 # Atomic local SQLite backup of primary tax ledger
 backup:
     @mkdir -p data/backups

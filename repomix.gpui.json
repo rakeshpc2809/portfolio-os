@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/yamadashy/repomix/main/repomix.config.schema.json",
+  "output": {
+    "filePath": "repomix-gpui.md",
+    "style": "markdown",
+    "parsableStyle": true,
+    "fileSummary": true,
+    "directoryStructure": true,
+    "removeComments": false,
+    "removeEmptyLines": true,
+    "topFilesLength": 10,
+    "showLineNumbers": false,
+    "headerText": "PORTFOLIO OS — GPUI K-MAP COCKPIT (Native Wayland HUD) REVIEW PACK\n\nArchitecture & Implementation:\n- Standalone native Rust HUD with GPUI 0.2.2 on Noctalia Shell v5 / Umbriel compositor.\n- 4-bit Gray-code K-Map state space reduction and Section 112A / 50AA tax lot classifier.\n- Zero-fabrication real-time telemetry from Core Node (:8080) with fail-closed statutory exemption status.\n- Background polling persistence for active lumpsum simulations with isolated error blast radius.\n- Architectural specification & Phase 5 decommissioning plan in DESIGN-GPUI-KMAP.md."
+  },
+  "include": [
+    "cockpit-gpui/Cargo.toml",
+    "cockpit-gpui/config.yaml",
+    "cockpit-gpui/src/**",
+    "DESIGN-GPUI-KMAP.md",
+    "justfile"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "cockpit-gpui/target/**",
+      "cockpit-gpui/patches/**",
+      "**/*.png",
+      "**/*.zip"
+    ]
+  }
+}
