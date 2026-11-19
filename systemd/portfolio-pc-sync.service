@@ -1,5 +1,5 @@
 [Unit]
-Description=Portfolio OS PC-to-Sheets Split-Clock Sync Service
+Description=Portfolio OS Sync and Ledger Backup Service
 After=network.target portfolio-os-core.service
 Wants=portfolio-os-core.service
 
@@ -9,7 +9,7 @@ WorkingDirectory=/home/rakeshpc/Projects/portfolio-os
 EnvironmentFile=-/home/rakeshpc/Projects/portfolio-os/.env
 Environment=PYTHONPATH=/home/rakeshpc/Projects/portfolio-os/quant-sidecar
 ExecStart=-/home/rakeshpc/Projects/portfolio-os/quant-sidecar/.venv/bin/python quant-sidecar/scripts/gmail_cas_poller.py
-ExecStart=/home/rakeshpc/Projects/portfolio-os/quant-sidecar/.venv/bin/python quant-sidecar/scripts/sheets_snapshot_publisher.py
+ExecStart=/home/rakeshpc/Projects/portfolio-os/scripts/backup_ledger.sh
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=portfolio-pc-sync
