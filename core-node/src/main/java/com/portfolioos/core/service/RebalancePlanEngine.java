@@ -345,6 +345,9 @@ public class RebalancePlanEngine {
         boolean isLumpsum = "MANUAL_LUMPSUM".equalsIgnoreCase(requestedTriggerType);
 
         RebalanceTriggerEvaluator evaluator = (triggerEvaluator != null) ? triggerEvaluator : getDefaultEvaluator();
+        if ((isLumpsum || !recordExecution) && evaluator.getRepository() != null && !evaluator.getRepository().isReadOnly()) {
+            evaluator = new RebalanceTriggerEvaluator(evaluator.getRepository().asReadOnly());
+        }
         RebalanceTriggerEvaluator.TriggerResolution resolution;
 
         if (isLumpsum || !recordExecution) {
@@ -803,7 +806,9 @@ public class RebalancePlanEngine {
         BigDecimal freshCash = isLumpsum ? (manualLumpsumAmount != null ? manualLumpsumAmount : BigDecimal.ZERO) : ((sellSide == null || sellSide.totalRequired() == null || sellSide.totalRequired().compareTo(BigDecimal.ZERO) == 0) ? totalPool : BigDecimal.ZERO);
         BigDecimal postCorpus = liveCorpus.add(freshCash);
 
-        TriggerHistoryRepository historyRepo = (recordExecution && triggerEvaluator != null) ? triggerEvaluator.getRepository() : null;
+        TriggerHistoryRepository historyRepo = (triggerEvaluator != null && triggerEvaluator.getRepository() != null)
+            ? (recordExecution ? triggerEvaluator.getRepository() : triggerEvaluator.getRepository().asReadOnly())
+            : null;
         BucketEngine.RebalanceEngineResult bucketResult = BucketEngine.evaluateRebalance(
             openLots, matchedLots, navMap, today, benchmarkCurrent, benchmarkRollingHigh, baseTargets, fiscalYear, historyRepo
         );
@@ -1414,9 +1419,21 @@ public class RebalancePlanEngine {
             if (goldBucket != null) {
                 double goldGapPct = Math.max(0.0, goldBucket.targetPct() - goldBucket.currentPct());
                 if (goldGapPct > 0.0) {
-                    BigDecimal baseCorpus = (buySide.totalToInvest() != null && buySide.totalToInvest().compareTo(BigDecimal.ZERO) > 0)
-                        ? buySide.totalToInvest()
-                        : availableCash;
+                    BigDecimal totalCorpus = BigDecimal.ZERO;
+                    for (RebalanceBucketAllocationDto b : buckets) {
+                        if (b.fundBreakdown() != null) {
+                            for (FundAllocationDto f : b.fundBreakdown()) {
+                                if (f.preValuation() != null) {
+                                    totalCorpus = totalCorpus.add(f.preValuation());
+                                }
+                            }
+                        }
+                    }
+                    BigDecimal baseCorpus = totalCorpus.compareTo(BigDecimal.ZERO) > 0
+                        ? totalCorpus
+                        : ((buySide.totalToInvest() != null && buySide.totalToInvest().compareTo(BigDecimal.ZERO) > 0)
+                            ? buySide.totalToInvest()
+                            : availableCash);
                     BigDecimal goldTargetAmount = baseCorpus.multiply(BigDecimal.valueOf(goldGapPct / 100.0));
                     BigDecimal halfGap = goldTargetAmount.multiply(BigDecimal.valueOf(0.50));
                     BigDecimal backstopFill = halfGap.compareTo(BigDecimal.ZERO) > 0

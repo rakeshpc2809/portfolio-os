@@ -406,6 +406,10 @@ public class SqliteEventStore implements EventStorePort {
     }
 
     private String computeHash(String prevHash, TaxEvent event) {
+        return computeHashV2(prevHash, event);
+    }
+
+    public String computeHashV2(String prevHash, TaxEvent event) {
         String isinStr = event.isin() != null ? event.isin() : "";
         String nameStr = event.assetName() != null ? event.assetName() : "";
         String folioStr = event.folioNo() != null ? event.folioNo() : "";
@@ -415,6 +419,21 @@ public class SqliteEventStore implements EventStorePort {
                      event.eventType().name() + "|" + event.eventDate().toString() + "|" +
                      toCanonicalString(event.units()) + "|" + toCanonicalString(price) + "|" +
                      toCanonicalString(event.grossAmount()) + "|" + event.sourceDocumentId();
+        return computeHmacSha256(raw);
+    }
+
+    public String computeHashV1(String prevHash, TaxEvent event) {
+        String isinStr = event.isin() != null ? event.isin() : "";
+        String nameStr = event.assetName() != null ? event.assetName() : "";
+        BigDecimal price = event.pricePerUnit() != null ? event.pricePerUnit() : BigDecimal.ZERO;
+        String raw = prevHash + "|" + event.id() + "|" + event.assetId() + "|" + isinStr + "|" + nameStr + "|" +
+                     event.eventType().name() + "|" + event.eventDate().toString() + "|" +
+                     toCanonicalString(event.units()) + "|" + toCanonicalString(price) + "|" +
+                     toCanonicalString(event.grossAmount()) + "|" + event.sourceDocumentId();
+        return computeHmacSha256(raw);
+    }
+
+    private String computeHmacSha256(String raw) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKey = new SecretKeySpec(hmacSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
@@ -568,6 +587,18 @@ public class SqliteEventStore implements EventStorePort {
 
     @Override
     public boolean verifyLedgerIntegrity() {
+        if (verifyChain(false)) {
+            return true;
+        }
+        if (verifyChain(true)) {
+            System.out.println("Notice: SQLite ledger HMAC chain matches legacy v1 format. Upgrading to v2 format with folio_no...");
+            rehashLedgerChain();
+            return verifyChain(false);
+        }
+        return false;
+    }
+
+    private boolean verifyChain(boolean useV1) {
         String sql = "SELECT previous_hash, event_hash, id, asset_id, asset_name, isin, folio_no, event_type, event_date, units, price_per_unit, gross_amount, source_document_id FROM tax_events ORDER BY rowid ASC";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
@@ -600,7 +631,7 @@ public class SqliteEventStore implements EventStorePort {
                     null
                 );
 
-                String recomputedHash = computeHash(expectedPrevHash, mockEvent);
+                String recomputedHash = useV1 ? computeHashV1(expectedPrevHash, mockEvent) : computeHashV2(expectedPrevHash, mockEvent);
                 if (!recomputedHash.equals(actualEventHash)) {
                     return false;
                 }

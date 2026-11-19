@@ -25,7 +25,7 @@ class ConfigControllerTest {
 
         assertNotNull(response);
         assertEquals(307, response.getStatusCode().value());
-        assertTrue(response.getHeaders().containsKey("Location"));
+        assertNotNull(response.getHeaders().getFirst("Location"));
         assertEquals("/api/v1/sync/rebalance/plan?trigger=INDUCED", response.getHeaders().getFirst("Location"));
     }
 }

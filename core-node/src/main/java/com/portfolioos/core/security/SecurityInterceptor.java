@@ -40,9 +40,6 @@ public class SecurityInterceptor implements HandlerInterceptor {
                 providedToken = authHeader.substring(7);
             }
         }
-        if (providedToken == null || providedToken.trim().isEmpty()) {
-            providedToken = request.getParameter("token");
-        }
         boolean isValid = false;
         if (providedToken != null && !providedToken.trim().isEmpty()) {
             isValid = MessageDigest.isEqual(
@@ -53,7 +50,7 @@ public class SecurityInterceptor implements HandlerInterceptor {
         if (!isValid) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
-            response.getWriter().write("{\"message\":\"Unauthorized: Missing or invalid X-Api-Auth-Token header or token parameter.\"}");
+            response.getWriter().write("{\"message\":\"Unauthorized: Missing or invalid X-Api-Auth-Token header.\"}");
             return false;
         }
         return true;

@@ -85,4 +85,40 @@ public class TriggerHistoryRepositoryTest {
         repo.clearActiveDrawdownArbitrageBaseline();
         org.junit.jupiter.api.Assertions.assertTrue(repo.getActiveDrawdownArbitrageBaseline().isEmpty(), "Cleared baseline must be empty");
     }
+
+    @Test
+    @DisplayName("ReadOnly View: Reads return real persisted values while writes are strictly NO-OPs")
+    void testReadOnlyView(@TempDir Path tempDir) {
+        File dbFile = tempDir.resolve("readonly_test.db").toFile();
+        TriggerHistoryRepository repo = new TriggerHistoryRepository(dbFile.getAbsolutePath());
+
+        // 1. Seed values in the primary repository
+        repo.setActiveDrawdownArbitrageBaseline(new java.math.BigDecimal("500000.00"));
+        repo.setNiftyTriWatermark(new java.math.BigDecimal("25000.00"));
+        repo.recordExecution("PLAN-REAL", "SCHEDULED", "ANNUAL", LocalDateTime.now(), false, false, "{}", 0);
+
+        assertEquals(1, repo.getRecordCount());
+        assertEquals(0, new java.math.BigDecimal("500000.00").compareTo(repo.getActiveDrawdownArbitrageBaseline().orElseThrow()));
+        assertEquals(0, new java.math.BigDecimal("25000.00").compareTo(repo.getNiftyTriWatermark().orElseThrow()));
+
+        // 2. Get read-only view
+        TriggerHistoryRepository readOnlyRepo = repo.asReadOnly();
+        org.junit.jupiter.api.Assertions.assertTrue(readOnlyRepo.isReadOnly());
+
+        // Reads must work identically
+        assertEquals(1, readOnlyRepo.getRecordCount());
+        assertEquals(0, new java.math.BigDecimal("500000.00").compareTo(readOnlyRepo.getActiveDrawdownArbitrageBaseline().orElseThrow()));
+        assertEquals(0, new java.math.BigDecimal("25000.00").compareTo(readOnlyRepo.getNiftyTriWatermark().orElseThrow()));
+
+        // Writes on read-only view must be NO-OPs
+        readOnlyRepo.setActiveDrawdownArbitrageBaseline(new java.math.BigDecimal("999999.00"));
+        readOnlyRepo.setNiftyTriWatermark(new java.math.BigDecimal("30000.00"));
+        readOnlyRepo.recordExecution("PLAN-PREVIEW", "DRAWDOWN", "TEST", LocalDateTime.now(), true, false, "{}", 10);
+        readOnlyRepo.clearActiveDrawdownArbitrageBaseline();
+
+        // State in DB remains completely unchanged!
+        assertEquals(1, repo.getRecordCount());
+        assertEquals(0, new java.math.BigDecimal("500000.00").compareTo(repo.getActiveDrawdownArbitrageBaseline().orElseThrow()));
+        assertEquals(0, new java.math.BigDecimal("25000.00").compareTo(repo.getNiftyTriWatermark().orElseThrow()));
+    }
 }

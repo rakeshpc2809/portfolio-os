@@ -17,6 +17,7 @@ import java.util.Optional;
 public class TriggerHistoryRepository {
 
     private final HikariDataSource dataSource;
+    private final boolean readOnly;
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     public TriggerHistoryRepository() {
@@ -24,6 +25,11 @@ public class TriggerHistoryRepository {
     }
 
     public TriggerHistoryRepository(String dbPath) {
+        this(dbPath, false);
+    }
+
+    public TriggerHistoryRepository(String dbPath, boolean readOnly) {
+        this.readOnly = readOnly;
         String resolvedPath = com.portfolioos.core.config.DbPathResolver.resolveDatabasePath(dbPath, "SQLITE_PATH");
         try {
             Class.forName("org.sqlite.JDBC");
@@ -53,12 +59,30 @@ public class TriggerHistoryRepository {
         config.setPoolName("TriggerHistoryPool");
 
         this.dataSource = new HikariDataSource(config);
-        initSchema();
+        if (!readOnly) {
+            initSchema();
+        }
     }
 
     public TriggerHistoryRepository(HikariDataSource dataSource) {
+        this(dataSource, false);
+    }
+
+    public TriggerHistoryRepository(HikariDataSource dataSource, boolean readOnly) {
         this.dataSource = dataSource;
-        initSchema();
+        this.readOnly = readOnly;
+        if (!readOnly) {
+            initSchema();
+        }
+    }
+
+    public TriggerHistoryRepository asReadOnly() {
+        if (this.readOnly) return this;
+        return new TriggerHistoryRepository(this.dataSource, true);
+    }
+
+    public boolean isReadOnly() {
+        return readOnly;
     }
 
     private Connection getConnection() throws SQLException {
@@ -131,6 +155,9 @@ public class TriggerHistoryRepository {
         String detailsJson,
         int drawdownTier
     ) {
+        if (readOnly) {
+            return;
+        }
         String sql = "INSERT OR REPLACE INTO rebalance_trigger_history " +
                      "(plan_id, trigger_type, reason_code, fired_at, has_sell_side, has_gold_buy, details_json, drawdown_tier) " +
                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
@@ -251,7 +278,7 @@ public class TriggerHistoryRepository {
     }
 
     public void setActiveDrawdownArbitrageBaseline(BigDecimal baseline) {
-        if (baseline == null) return;
+        if (readOnly || baseline == null) return;
         String sql = "INSERT OR REPLACE INTO active_drawdown_baseline (id, baseline_value, recorded_at) VALUES (1, ?, ?)";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -264,6 +291,7 @@ public class TriggerHistoryRepository {
     }
 
     public void clearActiveDrawdownArbitrageBaseline() {
+        if (readOnly) return;
         String sql = "DELETE FROM active_drawdown_baseline WHERE id = 1";
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
@@ -291,7 +319,7 @@ public class TriggerHistoryRepository {
     }
 
     public void setNiftyTriWatermark(BigDecimal watermark) {
-        if (watermark == null) return;
+        if (readOnly || watermark == null) return;
         String sql = "INSERT OR REPLACE INTO nifty_tri_watermark (id, watermark_value, recorded_at) VALUES (1, ?, ?)";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -321,6 +349,7 @@ public class TriggerHistoryRepository {
     }
 
     public void recordScheduledRunExecution(int year, int month, LocalDateTime executedAt) {
+        if (readOnly) return;
         String sql = "INSERT OR REPLACE INTO scheduled_rebalance_history (run_year, run_month, executed_at) VALUES (?, ?, ?)";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -351,6 +380,9 @@ public class TriggerHistoryRepository {
     }
 
     public void clearAll() {
+        if (readOnly) {
+            throw new UnsupportedOperationException("Cannot call clearAll() on read-only repository view");
+        }
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute("DELETE FROM rebalance_trigger_history");

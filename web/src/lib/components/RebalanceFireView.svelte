@@ -3,7 +3,6 @@
   import { fetchJson, fetchActionRecommendations, type RebalancePlanDto, type ActionRecommendationDto } from '../api';
   import { formatINR, formatPercent, formatCompactINR } from '../formatters';
   import { 
-    Flame, 
     Sliders, 
     ShieldCheck, 
     TrendingUp, 
@@ -15,14 +14,11 @@
     Sparkles, 
     Target,
     Activity,
-    Compass,
     Workflow,
     Layers,
     ArrowRight,
     Info,
-    ShieldAlert,
-    Clock,
-    Zap
+    Clock
   } from '@lucide/svelte';
 
   interface Props {
@@ -82,27 +78,10 @@
     }>;
   }
 
-  interface HrpAuditDto {
-    status: string;
-    trading_days?: number;
-    start_date?: string;
-    end_date?: string;
-    allocations?: Array<{
-      isin: string;
-      name: string;
-      bucket: string;
-      target_pct: number;
-      hrp_pct: number;
-      drift_pct: number;
-    }>;
-  }
-
   let fireData = $state<FireSummary | null>(null);
   let loadingFire = $state(false);
   let actionRecommendations = $state<ActionRecommendationDto[]>([]);
   let loadingRecommendations = $state(false);
-  let hrpData = $state<HrpAuditDto | null>(null);
-  let showHrpComparison = $state(false);
   let activeWaterfallStep = $state<number>(3); // Default to viewing final step
   let selectedScenario = $state<string>('Standard FIRE');
 
@@ -128,18 +107,9 @@
     }
   }
 
-  async function loadHrpAudit() {
-    try {
-      hrpData = await fetchJson<HrpAuditDto>('/analytics/hrp-audit');
-    } catch {
-      // fallback gracefully
-    }
-  }
-
   onMount(() => {
     loadFireSummary();
     loadActionRecommendations();
-    loadHrpAudit();
   });
 
   // Calculate live FIRE status, accumulation metrics and Guyton-Klinger thresholds
@@ -174,41 +144,9 @@
     return Number(fireData?.projected_corpus_at_target_age || 0);
   });
 
-  // Target retirement SWR planned for post-retirement (typically 3.00%)
-  const targetRetirementSwrPct = $derived(() => {
-    return Number(activeScenario()?.swr_pct || 3.0);
-  });
-
-  // SWR projected when reaching retirement target age
-  const projectedRetirementSwrPct = $derived(() => {
-    const proj = projectedCorpus();
-    return proj > 0 ? (annualExpense() / proj) * 100 : targetRetirementSwrPct();
-  });
-
-  // Hypothetical instant burn rate if earning ceased today
-  const hypotheticalInstantSwrPct = $derived(() => {
-    const nw = currentNetWorth();
-    return nw > 0 ? (annualExpense() / nw) * 100 : 3.0;
-  });
-
-  // SWR to evaluate on the Guyton-Klinger gauge:
-  // In accumulation phase, show projected retirement SWR against baseline
-  const activeGaugeSwrPct = $derived(() => {
-    return isAccumulationPhase ? projectedRetirementSwrPct() : hypotheticalInstantSwrPct();
-  });
-
-  const BASELINE_SWR = 3.0;
-  const PROSPERITY_BOUND = 2.4; // 20% below 3.0%
-  const PRESERVATION_BOUND = 3.6; // 20% above 3.0%
-
-  const isProsperity = $derived(activeGaugeSwrPct() < PROSPERITY_BOUND);
-  const isPreservation = $derived(activeGaugeSwrPct() > PRESERVATION_BOUND);
-
   const exemptLimit = 125000;
   const exemptGain = $derived(rebalancePlan?.summary?.ltcg_exempt_gain ?? 0);
   const exemptPct = $derived(Math.min(100, (exemptGain / exemptLimit) * 100));
-
-  const swrNeedlePct = $derived(Math.min(100, Math.max(0, (activeGaugeSwrPct() / 5.0) * 100)));
 
   // Formatting helpers
   function formatBucketTitle(b: string): string {
@@ -224,9 +162,9 @@
         <Sliders size={14} class="text-cyan" />
         <span>PLAN TRIGGER: {rebalancePlan?.trigger?.reason_label || 'DRIFT RESTORATION (POLICY v2.3)'}</span>
       </div>
-      <h2 class="hero-title">Deterministic Capital Rebalance & Wealth Decumulation Lab</h2>
+      <h2 class="hero-title">Deterministic Capital Rebalance Lab</h2>
       <p class="hero-desc">
-        Visual breakdown of automated portfolio rebalancing: Zero-loss legacy phase-outs, Section 112A ₹1.25L tax exemption shielding, and Guyton-Klinger dynamic retirement guardrails.
+        Visual breakdown of automated portfolio rebalancing: Zero-loss legacy phase-outs, and Section 112A ₹1.25L tax exemption shielding.
       </p>
     </div>
     <div class="banner-actions">
@@ -544,24 +482,12 @@
           <Layers size={16} class="text-cyan" />
           <h3 class="card-h">Target vs Actual vs Post-Rebalance</h3>
         </div>
-        <button 
-          type="button" 
-          class="hrp-pill-btn" 
-          class:active={showHrpComparison}
-          onclick={() => showHrpComparison = !showHrpComparison}
-        >
-          <Compass size={12} />
-          <span>{showHrpComparison ? 'Hide HRP (CVaR)' : 'Overlay HRP (95% CVaR)'}</span>
-        </button>
       </div>
 
       <div class="bars-container">
         {#if rebalancePlan?.buy_side?.buckets && rebalancePlan.buy_side.buckets.length > 0}
           {#each rebalancePlan.buy_side.buckets as b}
             {@const alloc = b.amount_allocated ?? 0}
-            {@const bNameUpper = b.bucket.toUpperCase().replace(/\s+/g, '_')}
-            {@const hrpAlloc = hrpData?.allocations?.filter(a => a.bucket.toUpperCase() === bNameUpper || bNameUpper.includes(a.bucket.toUpperCase()))}
-            {@const hrpPct = hrpAlloc && hrpAlloc.length > 0 ? hrpAlloc.reduce((acc, curr) => acc + curr.hrp_pct, 0) : null}
             {@const target = b.target_pct || 0}
             {@const current = b.current_pct || 0}
             {@const post = b.post_pct ?? target}
@@ -588,9 +514,6 @@
                 {#if alloc > 0}
                   <div class="bar-fill post-fill" style="width: {Math.min(100, post * 1.6)}%;"></div>
                 {/if}
-                {#if showHrpComparison && hrpPct !== null}
-                  <div class="hrp-marker" style="left: {Math.min(100, hrpPct * 1.6)}%;" title="HRP 95% CVaR: {hrpPct.toFixed(1)}%"></div>
-                {/if}
               </div>
 
               {#if alloc > 0 && b.fund_breakdown && b.fund_breakdown.length > 0}
@@ -613,9 +536,6 @@
         <span class="legend-item"><span class="box current"></span> Current Actual</span>
         <span class="legend-item"><span class="line target"></span> Policy Target</span>
         <span class="legend-item"><span class="box post"></span> Post-Rebalance Projected</span>
-        {#if showHrpComparison}
-          <span class="legend-item"><span class="line hrp"></span> HRP 95% CVaR Optimization</span>
-        {/if}
       </div>
     </div>
 
@@ -665,144 +585,13 @@
       <div class="tax-explanation-box">
         <Info size={14} class="text-cyan shrink-0" />
         <p class="tax-expl-text">
-          Our FIFO tax engine checks every lot against statutory acquisition dates. Units held &gt;365 days are harvested tax-free up to ₹1.25 Lakh. Rebalance proceeds are immediately recycled into underweight buckets without dividend tax drag.
+          Our FIFO tax engine checks every lot against statutory acquisition dates. Units held &gt;12 months are harvested tax-free up to ₹1.25 Lakh. Rebalance proceeds are immediately recycled into underweight buckets without dividend tax drag.
         </p>
       </div>
     </div>
   </div>
 
-  <!-- SECTION 3: GUYTON-KLINGER SWR CORRIDOR GAUGE -->
-  <div class="visual-panel obsidian-card">
-    <div class="panel-header">
-      <div class="header-left">
-        <div class="icon-bubble amber">
-          <Flame size={18} />
-        </div>
-        <div>
-          <h3 class="panel-title">Guyton-Klinger Dynamic Decumulation Guardrails</h3>
-          <span class="panel-sub">Safe Withdrawal Rate (SWR) corridor with automatic lifestyle step-ups and capital preservation rules</span>
-        </div>
-      </div>
-      <div class="swr-live-badge mono">
-        {#if isAccumulationPhase}
-          <div class="badge-accumulation-group">
-            <span class="phase-pill">Accumulation Phase</span>
-            <span class="years-pill">{yearsRemaining()} Yrs to FI (Age 45)</span>
-          </div>
-          <div class="swr-stat-group">
-            <span class="label text-muted">TARGET SWR:</span>
-            <strong class="text-cyan bold">{targetRetirementSwrPct().toFixed(2)}%</strong>
-          </div>
-          <div class="swr-stat-group">
-            <span class="label text-muted">PROJECTED SWR:</span>
-            <strong class="text-emerald bold">{projectedRetirementSwrPct().toFixed(2)}%</strong>
-          </div>
-          <span class="swr-status-indicator nominal">
-            Nominal Safe
-          </span>
-        {:else}
-          <span>LIVE SWR:</span>
-          <strong class="text-cyan bold">{hypotheticalInstantSwrPct().toFixed(2)}%</strong>
-          <span class="swr-status-indicator {isProsperity ? 'prosperity' : (isPreservation ? 'preservation' : 'nominal')}">
-            {isProsperity ? 'PROSPERITY BOOST' : (isPreservation ? 'PRESERVATION LOCK' : 'NOMINAL SAFE')}
-          </span>
-        {/if}
-      </div>
-    </div>
-
-    <!-- Visual SWR Corridor Gauge -->
-    <div class="swr-gauge-wrapper">
-      <div class="corridor-labels mono">
-        <span class="c-label text-emerald">Prosperity Zone (&lt;2.40%)</span>
-        <span class="c-label text-cyan">Baseline Target (3.00% SWR)</span>
-        <span class="c-label text-rose">Capital Preservation (&gt;3.60%)</span>
-      </div>
-
-      <div class="corridor-track">
-        <div class="c-zone prosperity-zone" style="left: 0%; width: 40%;"></div>
-        <div class="c-zone nominal-zone" style="left: 40%; width: 25%;"></div>
-        <div class="c-zone preservation-zone" style="left: 65%; width: 35%;"></div>
-
-        <!-- SWR Needle -->
-        <div class="swr-needle" style="left: {swrNeedlePct}%;">
-          <div class="swr-flag mono bold">
-            {activeGaugeSwrPct().toFixed(2)}% {isAccumulationPhase ? 'Projected SWR' : 'Live SWR'}
-          </div>
-          <div class="swr-pin"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Phase & Burn Rate Clarity Box -->
-    <div class="accumulation-clarity-panel">
-      <div class="clarity-left">
-        <Info size={16} class="text-cyan shrink-0" />
-        <div class="clarity-body">
-          <span class="clarity-title">Accumulation Phase: <strong>{fundedRatioPct().toFixed(1)}% Funded</strong> ({formatINR(currentNetWorth(), quietMode)} of {formatINR(targetCorpus(), quietMode)} Goal)</span>
-          <p class="clarity-desc">
-            Guyton-Klinger dynamic decumulation rules (Prosperity & Capital Preservation) govern your withdrawals <strong>after retirement</strong>.
-            If you ceased earning today and withdrew annual expenses ({formatINR(annualExpense(), quietMode)}/yr) directly from your current early-stage accumulation corpus, the mathematical burn rate would be <strong class="text-amber">{hypotheticalInstantSwrPct().toFixed(1)}%</strong> (depleting in ~3 years). 
-            Your planned retirement SWR at Age 45 is <strong class="text-emerald">{targetRetirementSwrPct().toFixed(2)}%</strong> (with projected corpus {formatINR(projectedCorpus(), quietMode)} yielding a comfortable <strong class="text-emerald">{projectedRetirementSwrPct().toFixed(2)}%</strong> SWR), firmly inside the safe corridor.
-          </p>
-        </div>
-      </div>
-      <div class="clarity-metrics mono">
-        <div class="c-metric">
-          <span class="c-lbl">Corpus Today</span>
-          <span class="c-val">{formatINR(currentNetWorth(), quietMode)}</span>
-        </div>
-        <div class="c-metric">
-          <span class="c-lbl">Target at Age 45</span>
-          <span class="c-val text-cyan">{formatINR(targetCorpus(), quietMode)}</span>
-        </div>
-        <div class="c-metric">
-          <span class="c-lbl">Projected at 45</span>
-          <span class="c-val text-emerald">{formatINR(projectedCorpus(), quietMode)}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Verbose Storytelling Items for Rules -->
-    <div class="rules-story-grid">
-      <div class="rule-story-item" class:active={isProsperity}>
-        <div class="rule-card-top">
-          <Zap size={16} class="text-emerald" />
-          <span class="rule-name bold">The Prosperity Rule</span>
-        </div>
-        <span class="rule-bound mono text-emerald">Trigger: SWR falls below 2.40%</span>
-        <p class="rule-desc">
-          When market outperformance causes your corpus to expand significantly faster than inflation, your withdrawal rate drops below 2.40%. 
-          <strong>Action Mandate:</strong> You are granted a <strong>+10% permanent raise</strong> in discretionary lifestyle spending without risking 40-year portfolio longevity.
-        </p>
-      </div>
-
-      <div class="rule-story-item" class:active={!isProsperity && !isPreservation}>
-        <div class="rule-card-top">
-          <ShieldCheck size={16} class="text-cyan" />
-          <span class="rule-name bold">The Golden Corridor</span>
-        </div>
-        <span class="rule-bound mono text-cyan">Corridor: 2.40% to 3.60% SWR</span>
-        <p class="rule-desc">
-          Withdrawal rate is perfectly in equilibrium. The portfolio easily absorbs ordinary market fluctuations and generates sufficient real return to counter Indian inflation (6.0% real target).
-          <strong>Action Mandate:</strong> Maintain normal planned withdrawals with standard annual inflation adjustments.
-        </p>
-      </div>
-
-      <div class="rule-story-item" class:active={isPreservation}>
-        <div class="rule-card-top">
-          <ShieldAlert size={16} class="text-rose" />
-          <span class="rule-name bold">Capital Preservation Rule</span>
-        </div>
-        <span class="rule-bound mono text-rose">Trigger: SWR exceeds 3.60%</span>
-        <p class="rule-desc">
-          If a severe multi-year equity bear market reduces your portfolio so your withdrawal rate breaches 3.60%, protective brakes engage automatically.
-          <strong>Action Mandate:</strong> Suspend annual inflation step-ups and apply a temporary <strong>-10% cut to discretionary spending</strong> until the golden corridor is restored.
-        </p>
-      </div>
-    </div>
-  </div>
-
-  <!-- SECTION 4: RETIREMENT WEALTH TRAJECTORY -->
+  <!-- SECTION 3: RETIREMENT WEALTH TRAJECTORY -->
   <div class="visual-panel obsidian-card">
     <div class="panel-header">
       <div class="header-left">
@@ -1020,11 +809,6 @@
     border: 1px solid var(--border-hairline);
     color: var(--accent-cyan);
   }
-  .icon-bubble.amber {
-    background: var(--accent-amber-bg);
-    border: 1px solid var(--border-hairline);
-    color: var(--accent-amber);
-  }
 
   .panel-title {
     font-size: 1rem;
@@ -1038,7 +822,7 @@
     color: var(--text-muted);
   }
 
-  .waterfall-total-badge, .swr-live-badge, .confidence-pill {
+  .waterfall-total-badge, .confidence-pill {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1207,25 +991,6 @@
     margin: 0;
   }
 
-  .hrp-pill-btn {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.7rem;
-    font-family: var(--font-mono);
-    padding: 2px 7px;
-    border-radius: var(--radius-xs);
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  }
-  .hrp-pill-btn.active {
-    background: var(--accent-cyan-bg);
-    color: var(--accent-cyan);
-    border-color: var(--border-subtle);
-  }
 
   .bars-container {
     display: flex;
@@ -1289,15 +1054,6 @@
     z-index: 2;
   }
 
-  .hrp-marker {
-    position: absolute;
-    top: -3px;
-    bottom: -3px;
-    width: 2px;
-    background: var(--accent-violet);
-    border-radius: 1px;
-    z-index: 3;
-  }
 
   .fund-routing-tags {
     display: flex;
@@ -1334,7 +1090,6 @@
   .box.post { border: 1px solid var(--color-ok); }
   .line { width: 12px; height: 2px; }
   .line.target { background: var(--text-main); }
-  .line.hrp { background: var(--accent-violet); }
 
   /* Tax Shield Card */
   .tax-act-pill {
@@ -1421,116 +1176,6 @@
     margin: 0;
   }
 
-  /* Guyton-Klinger Corridor */
-  .swr-status-indicator {
-    font-size: 0.68rem;
-    font-weight: 500;
-    padding: 1px 6px;
-    border-radius: var(--radius-xs);
-    border: 1px solid var(--border-hairline);
-  }
-  .swr-status-indicator.nominal { background: var(--accent-cyan-bg); color: var(--accent-cyan); }
-  .swr-status-indicator.prosperity { background: var(--color-ok-soft); color: var(--color-ok); }
-  .swr-status-indicator.preservation { background: var(--color-bad-soft); color: var(--color-bad); }
-
-  .swr-gauge-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 6px;
-  }
-  .corridor-labels {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.7rem;
-  }
-
-  .corridor-track {
-    position: relative;
-    height: 12px;
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    overflow: visible;
-  }
-
-  .c-zone {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-  }
-  .prosperity-zone {
-    background: var(--color-ok-soft);
-  }
-  .nominal-zone {
-    background: var(--accent-cyan-bg);
-  }
-  .preservation-zone {
-    background: var(--color-bad-soft);
-  }
-
-  .swr-needle {
-    position: absolute;
-    top: -24px;
-    transform: translateX(-50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    z-index: 5;
-  }
-  .swr-flag {
-    font-size: 0.65rem;
-    background: var(--accent-cyan);
-    color: var(--surface-void);
-    padding: 1px 6px;
-    border-radius: var(--radius-xs);
-    white-space: nowrap;
-  }
-  .swr-pin {
-    width: 2px;
-    height: 28px;
-    background: var(--accent-cyan);
-  }
-
-  .rules-story-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-  }
-
-  .rule-story-item {
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-sm);
-    padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
-  }
-  .rule-story-item.active {
-    border-color: var(--border-highlight);
-    background: var(--surface-card-hover);
-  }
-  .rule-card-top {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .rule-name {
-    font-size: 0.85rem;
-    color: var(--text-main);
-    font-weight: 500;
-  }
-  .rule-bound {
-    font-size: 0.68rem;
-  }
-  .rule-desc {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    line-height: 1.4;
-    margin: 0;
-  }
 
   .milestones-story-grid {
     display: grid;
@@ -1815,99 +1460,6 @@
     white-space: nowrap;
   }
 
-  /* Accumulation Clarity Panel */
-  .badge-accumulation-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .phase-pill {
-    background: var(--accent-cyan-bg);
-    color: var(--accent-cyan);
-    padding: 2px 7px;
-    border-radius: var(--radius-xs);
-    font-size: 0.72rem;
-    font-weight: 500;
-    border: 1px solid var(--border-hairline);
-  }
-  .years-pill {
-    background: var(--surface-void);
-    color: var(--text-secondary);
-    padding: 2px 7px;
-    border-radius: var(--radius-xs);
-    font-size: 0.72rem;
-  }
-  .swr-stat-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.78rem;
-  }
-
-  .accumulation-clarity-panel {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-sm);
-    padding: 14px 18px;
-    margin-top: 18px;
-    gap: 20px;
-  }
-
-  .clarity-left {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-  }
-
-  .clarity-body {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .clarity-title {
-    font-size: 0.88rem;
-    color: var(--text-main);
-  }
-
-  .clarity-desc {
-    font-size: 0.76rem;
-    line-height: 1.45;
-    color: var(--text-muted);
-    margin: 0;
-  }
-
-  .clarity-metrics {
-    display: flex;
-    gap: 16px;
-    flex-shrink: 0;
-  }
-
-  .c-metric {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    background: var(--surface-card);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    padding: 8px 12px;
-    min-width: 110px;
-  }
-
-  .c-lbl {
-    font-size: 0.68rem;
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .c-val {
-    font-size: 0.88rem;
-    font-weight: 600;
-  }
-
   @media (max-width: 900px) {
     .comparison-grid {
       grid-template-columns: 1fr;
@@ -1919,13 +1471,13 @@
     .pipeline-arrow {
       display: none;
     }
-    .narrative-bullet-grid, .rules-story-grid, .milestones-story-grid, .scenarios-flex-grid {
+    .narrative-bullet-grid, .milestones-story-grid, .scenarios-flex-grid {
       grid-template-columns: 1fr;
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .lumpsum-cta-btn, .step-node, .hrp-pill-btn, .rule-story-item, .scenario-visual-item {
+    .lumpsum-cta-btn, .step-node, .scenario-visual-item {
       transition: none !important;
     }
   }

@@ -158,6 +158,9 @@ public class StatementsController {
 
             pb.redirectErrorStream(false);
             Process process = pb.start();
+            try {
+                process.getOutputStream().close();
+            } catch (IOException ignored) {}
 
             String stdout;
             String stderr;

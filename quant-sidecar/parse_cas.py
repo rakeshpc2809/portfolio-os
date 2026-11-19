@@ -57,10 +57,9 @@ def main() -> None:
         sys.stderr.write(f"ERROR: Unsupported file format '{ext}'. Expected .pdf or .csv\n")
         sys.exit(1)
 
-    password = get_password()
-
     try:
         if ext == ".pdf":
+            password = get_password()
             cas_parser = CasPdfParser(str(file_path), password=password)
             raw_events = (
                 cas_parser.parse_events()

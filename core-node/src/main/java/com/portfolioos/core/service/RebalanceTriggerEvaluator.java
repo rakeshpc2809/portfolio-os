@@ -114,7 +114,7 @@ public class RebalanceTriggerEvaluator {
                 throw new IllegalStateException("CRITICAL BENCHMARK FAILURE: Missing or invalid live level for Nifty 500 TRI Benchmark");
             }
 
-            // E5: Persisted ATH Watermark integrity check & advancement
+            // E5: Persisted ATH Watermark integrity check & advancement (no-op on read-only repository view)
             if (repository != null) {
                 Optional<BigDecimal> storedWatermarkOpt = repository.getNiftyTriWatermark();
                 if (storedWatermarkOpt.isPresent()) {
@@ -411,6 +411,17 @@ public class RebalanceTriggerEvaluator {
         if (!"NONE".equals(resolution.triggerType())) {
             if (repository == null) {
                 throw new IllegalStateException("TriggerHistoryRepository cannot be null when recording trigger execution");
+            }
+            if (benchmarkCurrent != null && benchmarkCurrent.compareTo(BigDecimal.ZERO) > 0) {
+                Optional<BigDecimal> storedWatermarkOpt = repository.getNiftyTriWatermark();
+                if (storedWatermarkOpt.isPresent()) {
+                    if (benchmarkCurrent.compareTo(storedWatermarkOpt.get()) > 0) {
+                        repository.setNiftyTriWatermark(benchmarkCurrent);
+                    }
+                } else {
+                    BigDecimal initialWatermark = (benchmarkRollingHigh != null ? benchmarkRollingHigh : BigDecimal.ZERO).max(benchmarkCurrent);
+                    repository.setNiftyTriWatermark(initialWatermark);
+                }
             }
             LocalDate today = currentDate != null ? currentDate : LocalDate.now();
             int drawdownTier = 0;

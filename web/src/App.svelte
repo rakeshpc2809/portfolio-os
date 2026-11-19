@@ -111,10 +111,32 @@
     }
   }
 
-  function exportItr2Zip() {
-    const token = getAuthToken();
-    const url = `/api/v1/tax/export/itr2/zip?token=${encodeURIComponent(token)}`;
-    window.open(url, '_blank');
+  async function exportItr2Zip() {
+    try {
+      const token = getAuthToken();
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['X-Api-Auth-Token'] = token;
+      }
+      const response = await fetch('/api/v1/tax/export/itr2/zip', {
+        headers
+      });
+      if (!response.ok) {
+        throw new Error(`Export failed with HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ITR2_Schedule112A_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Failed to download ITR-2 zip:', err);
+      errorMessage = err?.message || 'Failed to download ITR-2 zip';
+    }
   }
 
   async function handleCasUpload() {

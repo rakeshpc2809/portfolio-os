@@ -23,7 +23,7 @@ public class SecurityGateIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(get("/api/v1/sync/snapshot")
                 .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isUnauthorized())
-            .andExpect(jsonPath("$.message").value("Unauthorized: Missing or invalid X-Api-Auth-Token header or token parameter."));
+            .andExpect(jsonPath("$.message").value("Unauthorized: Missing or invalid X-Api-Auth-Token header."));
     }
 
     @Test
@@ -33,7 +33,7 @@ public class SecurityGateIntegrationTest extends BaseIntegrationTest {
                 .header("X-Api-Auth-Token", "invalid_token_999")
                 .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isUnauthorized())
-            .andExpect(jsonPath("$.message").value("Unauthorized: Missing or invalid X-Api-Auth-Token header or token parameter."));
+            .andExpect(jsonPath("$.message").value("Unauthorized: Missing or invalid X-Api-Auth-Token header."));
     }
 
     @Test
