@@ -52,31 +52,51 @@ public class HarvestAdvisor {
         List<LotWithGain> ltcgLots = new ArrayList<>();
         BigDecimal totalUnrealizedLtcg = BigDecimal.ZERO;
 
+        // Group lots by (assetId, folioNo) to respect RTA FIFO redemption constraints
+        Map<String, List<Lot>> folioGroups = new java.util.LinkedHashMap<>();
         for (Lot lot : openLots) {
-            AssetCategory category = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
-            if (category != AssetCategory.EQUITY) continue;
+            String key = lot.assetId() + "::" + (lot.folioNo() != null ? lot.folioNo().trim() : "");
+            folioGroups.computeIfAbsent(key, k -> new ArrayList<>()).add(lot);
+        }
 
-            long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
-            int requiredExitLoadDays = ExitLoadCalculator.getRequiredExitLoadDays(lot.assetId(), lot.assetName());
-            if (holdingDays < requiredExitLoadDays) continue;
-            if (holdingDays >= rules.equityLtcgThresholdDays()) {
+        for (List<Lot> folioLots : folioGroups.values()) {
+            folioLots.sort((a, b) -> {
+                int cmp = a.acquisitionDate().compareTo(b.acquisitionDate());
+                if (cmp != 0) return cmp;
+                return a.lotId() != null && b.lotId() != null ? a.lotId().compareTo(b.lotId()) : 0;
+            });
+
+            for (Lot lot : folioLots) {
+                AssetCategory category = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
+                if (category != AssetCategory.EQUITY) break;
+
+                long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
+                int requiredExitLoadDays = ExitLoadCalculator.getRequiredExitLoadDays(lot.assetId(), lot.assetName());
+                if (holdingDays < requiredExitLoadDays) {
+                    // Cannot redeem without exit load; subsequent lots in this folio blocked by RTA FIFO
+                    break;
+                }
+
+                boolean isLtcg = today.isAfter(lot.acquisitionDate().plusMonths(12)) && holdingDays >= rules.equityLtcgThresholdDays();
+                if (!isLtcg) {
+                    // Head lot is STCG; redeeming would incur STCG, blocking LTCG harvest in this folio
+                    break;
+                }
+
                 BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "HarvestAdvisor");
                 BigDecimal currentVal = lot.remainingUnits().multiply(nav).setScale(2, RoundingMode.HALF_UP);
                 BigDecimal effectiveCostBasis = lot.effectiveTotalCostBasis(nav);
                 BigDecimal gain = currentVal.subtract(effectiveCostBasis);
 
-                if (gain.compareTo(BigDecimal.ZERO) > 0) {
-                    totalUnrealizedLtcg = totalUnrealizedLtcg.add(gain);
-                    ltcgLots.add(new LotWithGain(lot, nav, gain));
+                if (gain.compareTo(BigDecimal.ZERO) <= 0) {
+                    // Head lot is at a loss; cannot skip it to harvest newer gain lots in same folio under RTA FIFO
+                    break;
                 }
+
+                totalUnrealizedLtcg = totalUnrealizedLtcg.add(gain);
+                ltcgLots.add(new LotWithGain(lot, nav, gain));
             }
         }
-
-        // Loss harvesting gate: in standalone tax harvesting, shouldHarvestLossLot ensures
-        // loss harvesting is blocked when net taxable gains are within ₹1.25L exemption
-        BigDecimal netStcg = BigDecimal.ZERO;
-        BigDecimal netLtcg = totalUnrealizedLtcg;
-        boolean allowLossHarvest = RebalanceWaterfallEngine.shouldHarvestLossLot(false, false, netStcg, netLtcg, remainingExemption);
 
         // Enforce RTA chronological FIFO within each scheme; across different schemes, prioritize highest gain
         ltcgLots.sort((a, b) -> {

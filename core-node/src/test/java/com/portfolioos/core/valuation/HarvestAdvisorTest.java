@@ -118,4 +118,36 @@ public class HarvestAdvisorTest {
         assertTrue(result.recommendations().stream().anyMatch(r -> r.assetId().equals("INF174KA1TY2")));
         assertTrue(result.recommendations().stream().anyMatch(r -> r.assetId().equals("INF247L01916")));
     }
+
+    @Test
+    @DisplayName("Regression 3A: HarvestAdvisor is blocked when an older lot in the same folio/ISIN is at a loss")
+    void testHarvestAdvisorBlockedWhenOlderLotInSameFolioHasLoss() {
+        LocalDate olderDate = LocalDate.now().minusDays(500);
+        LocalDate newerDate = LocalDate.now().minusDays(400);
+
+        // Older lot: cost 120, NAV 100 -> loss of -2000
+        Lot olderLossLot = new Lot(
+            "L_OLD_LOSS", "INF174KA1TY2", "Kotak Nifty 100 Equal Weight Index Fund Direct Growth",
+            olderDate, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("120"),
+            new BigDecimal("12000"), false, null, "FOLIO-1"
+        );
+
+        // Newer lot: cost 50, NAV 100 -> gain of 5000
+        Lot newerGainLot = new Lot(
+            "L_NEW_GAIN", "INF174KA1TY2", "Kotak Nifty 100 Equal Weight Index Fund Direct Growth",
+            newerDate, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("50"),
+            new BigDecimal("5000"), false, null, "FOLIO-1"
+        );
+
+        Map<String, BigDecimal> navMap = Map.of("INF174KA1TY2", new BigDecimal("100"));
+
+        HarvestAdvisor.TaxHarvestResult result = HarvestAdvisor.generateHarvestPlan(
+            List.of(olderLossLot, newerGainLot), navMap, BigDecimal.ZERO, "2026-27"
+        );
+
+        assertNotNull(result);
+        assertTrue(result.recommendations().isEmpty(),
+            "HarvestAdvisor must NOT recommend harvesting newer gain lot when older lot in same folio is at a loss");
+        assertEquals(0, BigDecimal.ZERO.compareTo(result.harvestableLtcgGain()));
+    }
 }

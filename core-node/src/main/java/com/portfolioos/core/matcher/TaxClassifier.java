@@ -68,23 +68,18 @@ public class TaxClassifier {
         TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
         return switch (category) {
             case DEBT_SPECIFIED_50AA -> {
-                // Dual-Act Statutory Traceability (FY 2026-27):
-                // - Income-tax Act 1961: Sec 50AA (Specified Mutual Funds post-Apr-2023 deemed STCG),
-                //   Sec 70 / 112A (per Finance No. 2 Act 2024), and Sec 112 (12.5% unindexed LTCG >= 730d)
-                // - Income-tax Act 2025: Sec 108 (Intra-head capital loss set-off and 24-month unlisted threshold)
-                // Temporal Branching:
-                // Purchased Post April 1, 2023 -> Always Short-Term (Slab Rate) per ITA 1961 Sec 50AA
-                // Purchased Pre April 1, 2023 (Legacy Debt Fund):
-                // - Sold Post July 23, 2024: >= 24 months (730d) -> LTCG @ 12.5% (no indexation per ITA 1961 Sec 112 / ITA 2025); else STCG @ slab rate
-                // - Sold Pre July 23, 2024: >= 36 months (1095d) -> LTCG @ 20% (with indexation); else STCG
                 java.time.LocalDate apr2023Cutoff = java.time.LocalDate.of(2023, 4, 1);
                 java.time.LocalDate jul2024Cutoff = java.time.LocalDate.of(2024, 7, 23);
 
                 if (acquisitionDate != null && acquisitionDate.isBefore(apr2023Cutoff)) {
-                    if (disposalDate != null && !disposalDate.isBefore(jul2024Cutoff)) {
-                        yield holdingDays >= 730 ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                    if (disposalDate != null) {
+                        if (!disposalDate.isBefore(jul2024Cutoff)) {
+                            yield disposalDate.isAfter(acquisitionDate.plusMonths(24)) ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                        } else {
+                            yield disposalDate.isAfter(acquisitionDate.plusMonths(36)) ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                        }
                     } else {
-                        yield holdingDays >= 1095 ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                        yield holdingDays >= 730 ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
                     }
                 } else {
                     yield TaxTerm.SHORT_TERM;
@@ -92,7 +87,7 @@ public class TaxClassifier {
             }
             case EQUITY -> {
                 if (acquisitionDate != null && disposalDate != null) {
-                    yield !disposalDate.isBefore(acquisitionDate.plusMonths(12)) ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                    yield disposalDate.isAfter(acquisitionDate.plusMonths(12)) ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
                 }
                 if (holdingDays >= rules.equityLtcgThresholdDays()) {
                     yield TaxTerm.LONG_TERM;
@@ -101,10 +96,9 @@ public class TaxClassifier {
                 }
             }
             case GOLD_SILVER, INTERNATIONAL -> {
-                // Per Finance Act 2024: Listed ETFs get 12-month (365d) threshold; unlisted FoFs get 24-month (730d)
                 int months = isListed ? 12 : 24;
                 if (acquisitionDate != null && disposalDate != null) {
-                    yield !disposalDate.isBefore(acquisitionDate.plusMonths(months)) ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                    yield disposalDate.isAfter(acquisitionDate.plusMonths(months)) ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
                 }
                 long threshold = isListed ? rules.equityLtcgThresholdDays() : rules.goldInternationalThresholdDays();
                 if (holdingDays >= threshold) {
@@ -114,6 +108,9 @@ public class TaxClassifier {
                 }
             }
             case SGB -> {
+                if (acquisitionDate != null && disposalDate != null) {
+                    yield disposalDate.isAfter(acquisitionDate.plusMonths(24)) ? TaxTerm.LONG_TERM : TaxTerm.SHORT_TERM;
+                }
                 if (holdingDays >= rules.goldInternationalThresholdDays()) {
                     yield TaxTerm.LONG_TERM;
                 } else {

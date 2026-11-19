@@ -174,7 +174,7 @@ public class SyncController {
             AssetCategory category = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
             boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
             long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
-            com.portfolioos.core.model.TaxTerm taxTerm = TaxClassifier.classifyTaxTerm(category, holdingDays, resolvedFy, isListed);
+            com.portfolioos.core.model.TaxTerm taxTerm = TaxClassifier.classifyTaxTerm(category, holdingDays, resolvedFy, isListed, lot.acquisitionDate(), today);
             boolean isLongTerm = taxTerm == com.portfolioos.core.model.TaxTerm.LONG_TERM;
 
             com.portfolioos.core.rules.TaxRulesConfig taxRules = com.portfolioos.core.rules.TaxRulesLoader.loadRules(resolvedFy);

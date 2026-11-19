@@ -35,6 +35,23 @@ public record TaxEvent(
         this(id, assetId, assetName, isin, null, eventType, eventDate, units, pricePerUnit, grossAmount, sourceDocumentId, ingestedAt, null);
     }
 
+    public TaxEvent(
+        String id,
+        String assetId,
+        String assetName,
+        String isin,
+        String folioNo,
+        EventType eventType,
+        LocalDate eventDate,
+        BigDecimal units,
+        BigDecimal pricePerUnit,
+        BigDecimal grossAmount,
+        String sourceDocumentId,
+        Instant ingestedAt
+    ) {
+        this(id, assetId, assetName, isin, folioNo, eventType, eventDate, units, pricePerUnit, grossAmount, sourceDocumentId, ingestedAt, null);
+    }
+
     public BigDecimal unitDelta() {
         return switch (eventType) {
             case DISPOSAL, SGB_MATURITY -> units.negate();

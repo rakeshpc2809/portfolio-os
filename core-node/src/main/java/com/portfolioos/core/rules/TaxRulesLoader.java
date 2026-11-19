@@ -46,13 +46,7 @@ public class TaxRulesLoader {
         }
 
         if (ruleFile == null) {
-            System.err.println("Tax rules YAML missing for FY " + fiscalYear + ", using default Finance Act 2024 rules.");
-            TaxRulesConfig fallback = new TaxRulesConfig(
-                fiscalYear, 365L, new BigDecimal("0.125"), new BigDecimal("0.20"),
-                new BigDecimal("125000"), 730L, new BigDecimal("0.125"), true
-            );
-            CACHED_CONFIGS.put(fiscalYear, fallback);
-            return fallback;
+            throw new IllegalStateException("CRITICAL CONFIGURATION ERROR: Tax rules YAML file missing for FY " + fiscalYear + ". Expected FY" + fiscalYear + ".yaml in rules directory.");
         }
 
         try {

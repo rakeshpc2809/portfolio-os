@@ -21,6 +21,8 @@ import com.portfolioos.core.service.RebalancePlanEngine;
 
 public class RebalanceWaterfallEngine {
 
+    private static final BigDecimal CESS_MULTIPLIER = new BigDecimal("1.04");
+
     public record WaterfallStep(
         WaterfallTier tier,
         String lotId,
@@ -344,7 +346,7 @@ public class RebalanceWaterfallEngine {
         Map<WaterfallStep, WaterfallStep> replacedMap = new IdentityHashMap<>();
 
         // 1. STCG Slab
-        BigDecimal netTaxStcgSlab = nettingResult.netTaxableStcgSlab().multiply(rules.slabRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal netTaxStcgSlab = nettingResult.netTaxableStcgSlab().multiply(rules.slabRate().multiply(CESS_MULTIPLIER)).setScale(2, RoundingMode.HALF_UP);
         boolean slabLossOffset = sumStcgSlab.compareTo(BigDecimal.ZERO) > 0 && nettingResult.netTaxableStcgSlab().compareTo(sumStcgSlab) < 0;
         BigDecimal remTaxSlab = netTaxStcgSlab;
         BigDecimal remTaxableSlab = nettingResult.netTaxableStcgSlab();
@@ -368,7 +370,7 @@ public class RebalanceWaterfallEngine {
         }
 
         // 2. STCG Equity
-        BigDecimal netTaxStcgEq = nettingResult.netTaxableStcgEquity().multiply(rules.equityStcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal netTaxStcgEq = nettingResult.netTaxableStcgEquity().multiply(rules.equityStcgRate().multiply(CESS_MULTIPLIER)).setScale(2, RoundingMode.HALF_UP);
         boolean stcgEqLossOffset = sumStcgEq.compareTo(BigDecimal.ZERO) > 0 && nettingResult.netTaxableStcgEquity().compareTo(sumStcgEq) < 0;
         BigDecimal remTaxStcgEq = netTaxStcgEq;
         BigDecimal remTaxableStcgEq = nettingResult.netTaxableStcgEquity();
@@ -392,7 +394,7 @@ public class RebalanceWaterfallEngine {
         }
 
         // 3. LTCG Non-Equity
-        BigDecimal netTaxLtcgNonEq = nettingResult.netTaxableLtcgNonEquity().multiply(rules.goldInternationalLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal netTaxLtcgNonEq = nettingResult.netTaxableLtcgNonEquity().multiply(rules.goldInternationalLtcgRate().multiply(CESS_MULTIPLIER)).setScale(2, RoundingMode.HALF_UP);
         boolean ltcgNonEqLossOffset = sumLtcgNonEq.compareTo(BigDecimal.ZERO) > 0 && nettingResult.netTaxableLtcgNonEquity().compareTo(sumLtcgNonEq) < 0;
         BigDecimal remTaxLtcgNonEq = netTaxLtcgNonEq;
         BigDecimal remTaxableLtcgNonEq = nettingResult.netTaxableLtcgNonEquity();
@@ -416,7 +418,7 @@ public class RebalanceWaterfallEngine {
         }
 
         // 4. LTCG Equity
-        BigDecimal netTaxLtcgEq = nettingResult.netTaxableLtcgEquity().multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal netTaxLtcgEq = nettingResult.netTaxableLtcgEquity().multiply(rules.equityLtcgRate().multiply(CESS_MULTIPLIER)).setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalExemptionUsed = nettingResult.ltcgExemptionUsed();
         BigDecimal totalTaxableLtcgEq = nettingResult.netTaxableLtcgEquity();
         boolean ltcgEqLossOffset = sumLtcgEq.compareTo(totalExemptionUsed.add(totalTaxableLtcgEq)) > 0;
@@ -527,8 +529,8 @@ public class RebalanceWaterfallEngine {
         }
 
         AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
-        long threshold = getThresholdDays(cat, rules);
-        boolean isLtcg = threshold > 0 && holdingDays >= threshold;
+        boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
+        boolean isLtcg = isLtcg(cat, isListed, lot.acquisitionDate(), today);
         boolean isLossLot = nav.subtract(lot.effectiveCostPerUnit(nav)).compareTo(BigDecimal.ZERO) < 0;
 
         // F5: Short-term loss lots are always eligible in LOSS_HARVEST / LEGACY_FUND tiers even when !urgent
@@ -569,25 +571,25 @@ public class RebalanceWaterfallEngine {
                 if (cat == AssetCategory.EQUITY) {
                     if (tier == WaterfallTier.LTCG_BEYOND_EXEMPTION) {
                         taxable = gain;
-                        taxDrag = taxable.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+                        taxDrag = taxable.multiply(rules.equityLtcgRate().multiply(CESS_MULTIPLIER)).setScale(2, RoundingMode.HALF_UP);
                         regime = "SEC_112A_TAXABLE_12_5";
                     } else {
                         exempt = gain.min(newExemption);
                         taxable = gain.subtract(exempt);
                         newExemption = newExemption.subtract(exempt).max(BigDecimal.ZERO);
-                        taxDrag = taxable.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+                        taxDrag = taxable.multiply(rules.equityLtcgRate().multiply(CESS_MULTIPLIER)).setScale(2, RoundingMode.HALF_UP);
                         regime = taxable.compareTo(BigDecimal.ZERO) == 0 ? "SEC_112A_EXEMPT" : "SEC_112A_TAXABLE_12_5";
                     }
                 } else {
                     // Non-equity LTCG (Gold/Silver FoF >730d or Grandfathered Debt) taxed at 12.5% without Sec 112A exemption under Sec 112
                     taxable = gain;
-                    taxDrag = gain.multiply(rules.goldInternationalLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+                    taxDrag = gain.multiply(rules.goldInternationalLtcgRate().multiply(CESS_MULTIPLIER)).setScale(2, RoundingMode.HALF_UP);
                     regime = "SEC_112_TAXABLE_12_5";
                 }
             } else {
                 // Tier 5 (Equity STCG @ 20%) vs Tier 6 (Sec 50AA / Gold FoF STCG @ 30% Slab Rate)
                 taxable = gain;
-                BigDecimal stcgRate = (cat == AssetCategory.EQUITY) ? rules.equityStcgRate() : rules.slabRate();
+                BigDecimal stcgRate = (cat == AssetCategory.EQUITY) ? rules.equityStcgRate().multiply(CESS_MULTIPLIER) : rules.slabRate().multiply(CESS_MULTIPLIER);
                 taxDrag = gain.multiply(stcgRate).setScale(2, RoundingMode.HALF_UP);
                 regime = "SLAB_RATE_STCG";
             }
@@ -666,13 +668,26 @@ public class RebalanceWaterfallEngine {
         BigDecimal gain = nav.subtract(l.effectiveCostPerUnit(nav));
         if (gain.compareTo(BigDecimal.ZERO) < 0) return 0; // Loss harvest first
         AssetCategory cat = TaxClassifier.detectCategory(l.assetId(), l.assetName());
-        long thresh = getThresholdDays(cat, rules);
-        long days = ChronoUnit.DAYS.between(l.acquisitionDate(), today);
-        boolean isLtcg = thresh > 0 && days >= thresh;
+        boolean isListed = TaxClassifier.isListed(l.assetId(), l.assetName());
+        boolean isLtcg = isLtcg(cat, isListed, l.acquisitionDate(), today);
         if (isLtcg && cat == AssetCategory.EQUITY) return 1; // Sec 112A Equity LTCG
         if (isLtcg) return 2; // Gold/Debt 12.5% LTCG
         if (cat == AssetCategory.EQUITY) return 3; // Equity 20% STCG
         return 4; // Slab rate STCG
+    }
+
+    private static boolean isLtcg(AssetCategory cat, boolean isListed, LocalDate acquisitionDate, LocalDate today) {
+        if (acquisitionDate == null || today == null) return false;
+        if (cat == AssetCategory.DEBT_SPECIFIED_50AA) {
+            if (!acquisitionDate.isBefore(LocalDate.of(2023, 4, 1))) {
+                return false;
+            }
+            return today.isAfter(acquisitionDate.plusMonths(24));
+        }
+        if (cat == AssetCategory.EQUITY || isListed) {
+            return today.isAfter(acquisitionDate.plusMonths(12));
+        }
+        return today.isAfter(acquisitionDate.plusMonths(24));
     }
 
     private static long getThresholdDays(AssetCategory category, TaxRulesConfig rules) {

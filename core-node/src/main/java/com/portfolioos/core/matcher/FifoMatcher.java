@@ -53,7 +53,8 @@ public class FifoMatcher {
                         event.pricePerUnit(),
                         event.grossAmount(),
                         isGrandfathered,
-                        fmv
+                        fmv,
+                        event.folioNo()
                     ));
                 }
                 case BONUS -> {
@@ -72,7 +73,8 @@ public class FifoMatcher {
                         BigDecimal.ZERO,
                         BigDecimal.ZERO,
                         isGrandfathered,
-                        fmv
+                        fmv,
+                        event.folioNo()
                     ));
                 }
                 case SPLIT -> {
@@ -95,7 +97,8 @@ public class FifoMatcher {
                                     current.lotId(), current.assetId(), current.assetName(),
                                     current.acquisitionDate(), newOriginal, newRemaining,
                                     newCostPerUnit, current.totalCostBasis(),
-                                    current.isGrandfathered(), newFmv
+                                    current.isGrandfathered(), newFmv,
+                                    current.folioNo()
                                 ));
                             }
                         }
@@ -108,7 +111,8 @@ public class FifoMatcher {
 
                     while (i < openLotsQueue.size() && unitsToMatch.compareTo(BigDecimal.ZERO) > 0) {
                         Lot currentLot = openLotsQueue.get(i);
-                        if (!currentLot.assetId().equals(event.assetId()) || currentLot.remainingUnits().compareTo(BigDecimal.ZERO) <= 0) {
+                        boolean sameFolio = isSameFolio(currentLot.folioNo(), event.folioNo());
+                        if (!currentLot.assetId().equals(event.assetId()) || !sameFolio || currentLot.remainingUnits().compareTo(BigDecimal.ZERO) <= 0) {
                             i++;
                             continue;
                         }
@@ -159,6 +163,10 @@ public class FifoMatcher {
                             i++;
                         }
                     }
+
+                    if (unitsToMatch.compareTo(BigDecimal.ZERO) > 0) {
+                        throw new IllegalStateException("CRITICAL FIFO MATCHING ERROR: Unmatched disposal units remain (" + unitsToMatch + ") for asset " + event.assetId() + " (folio: " + event.folioNo() + ", eventId: " + event.id() + "). Open lots queue exhausted without satisfying disposal.");
+                    }
                 }
                 case MERGER -> {
                     // Corporate merger event
@@ -187,5 +195,15 @@ public class FifoMatcher {
         }
 
         return new FifoResult(openLotsQueue, matchedLots);
+    }
+
+    private static boolean isSameFolio(String lotFolio, String eventFolio) {
+        if (eventFolio == null || eventFolio.isBlank()) {
+            return true;
+        }
+        if (lotFolio == null || lotFolio.isBlank()) {
+            return false;
+        }
+        return eventFolio.trim().equalsIgnoreCase(lotFolio.trim());
     }
 }

@@ -408,8 +408,10 @@ public class SqliteEventStore implements EventStorePort {
     private String computeHash(String prevHash, TaxEvent event) {
         String isinStr = event.isin() != null ? event.isin() : "";
         String nameStr = event.assetName() != null ? event.assetName() : "";
+        String folioStr = event.folioNo() != null ? event.folioNo() : "";
         BigDecimal price = event.pricePerUnit() != null ? event.pricePerUnit() : BigDecimal.ZERO;
         String raw = prevHash + "|" + event.id() + "|" + event.assetId() + "|" + isinStr + "|" + nameStr + "|" +
+                     folioStr + "|" +
                      event.eventType().name() + "|" + event.eventDate().toString() + "|" +
                      toCanonicalString(event.units()) + "|" + toCanonicalString(price) + "|" +
                      toCanonicalString(event.grossAmount()) + "|" + event.sourceDocumentId();
@@ -566,7 +568,7 @@ public class SqliteEventStore implements EventStorePort {
 
     @Override
     public boolean verifyLedgerIntegrity() {
-        String sql = "SELECT previous_hash, event_hash, id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id FROM tax_events ORDER BY rowid ASC";
+        String sql = "SELECT previous_hash, event_hash, id, asset_id, asset_name, isin, folio_no, event_type, event_date, units, price_per_unit, gross_amount, source_document_id FROM tax_events ORDER BY rowid ASC";
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
@@ -588,6 +590,7 @@ public class SqliteEventStore implements EventStorePort {
                     rs.getString("asset_id"),
                     rs.getString("asset_name"),
                     rs.getString("isin"),
+                    rs.getString("folio_no"),
                     EventType.valueOf(rs.getString("event_type")),
                     LocalDate.parse(rs.getString("event_date")),
                     new BigDecimal(rs.getString("units")),
@@ -610,7 +613,7 @@ public class SqliteEventStore implements EventStorePort {
     }
 
     public void rehashLedgerChain() {
-        String selectSql = "SELECT id, asset_id, asset_name, isin, event_type, event_date, units, price_per_unit, gross_amount, source_document_id FROM tax_events ORDER BY rowid ASC";
+        String selectSql = "SELECT id, asset_id, asset_name, isin, folio_no, event_type, event_date, units, price_per_unit, gross_amount, source_document_id FROM tax_events ORDER BY rowid ASC";
         String updateSql = "UPDATE tax_events SET previous_hash = ?, event_hash = ? WHERE id = ?";
         try (Connection conn = getConnection()) {
             boolean wasAutoCommit = conn.getAutoCommit();
@@ -630,6 +633,7 @@ public class SqliteEventStore implements EventStorePort {
                         rs.getString("asset_id"),
                         rs.getString("asset_name"),
                         rs.getString("isin"),
+                        rs.getString("folio_no"),
                         EventType.valueOf(rs.getString("event_type")),
                         LocalDate.parse(rs.getString("event_date")),
                         new BigDecimal(rs.getString("units")),
@@ -668,24 +672,6 @@ public class SqliteEventStore implements EventStorePort {
             throw new RuntimeException("Failed to clear ledger", e);
         }
     }
-
-    @Override
-    public synchronized void deleteEvents(List<String> eventIds) {
-        if (eventIds == null || eventIds.isEmpty()) return;
-        String placeholders = String.join(",", Collections.nCopies(eventIds.size(), "?"));
-        String sql = "DELETE FROM tax_events WHERE id IN (" + placeholders + ")";
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            for (int i = 0; i < eventIds.size(); i++) {
-                stmt.setString(i + 1, eventIds.get(i));
-            }
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to rollback events from SQLite ledger", e);
-        }
-    }
-
-
 
     private TaxEvent mapResultSetToTaxEvent(ResultSet rs) throws SQLException {
         String folioNo = null;

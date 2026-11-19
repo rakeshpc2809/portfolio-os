@@ -44,6 +44,20 @@ public class TaxReportExporter {
         String formattedBalanceGain
     ) {}
 
+    public record ScheduleNonEquityLtcgEntryDto(
+        String isin,
+        String assetName,
+        BigDecimal units,
+        BigDecimal saleProceeds,
+        BigDecimal costBasis,
+        BigDecimal balanceGain,
+        boolean isEstimate,
+        String formattedUnits,
+        String formattedSaleProceeds,
+        String formattedCostBasis,
+        String formattedBalanceGain
+    ) {}
+
     public record Itr2DetailsDto(
         Itr2ScheduleCgReport summary,
         List<Schedule112aEntryDto> schedule112a,
@@ -90,6 +104,16 @@ public class TaxReportExporter {
 
         ExemptionTracker.ExemptionStatus exemptionStatus = ExemptionTracker.calculateExemptionStatus(fyLots, fiscalYear);
 
+        BigDecimal nonEquityTaxableLtcg = BigDecimal.ZERO;
+        for (MatchedLot lot : fyLots) {
+            if (lot.taxTerm() == TaxTerm.LONG_TERM && lot.assetCategory() != com.portfolioos.core.model.AssetCategory.EQUITY) {
+                if (lot.realizedGain().compareTo(BigDecimal.ZERO) > 0) {
+                    nonEquityTaxableLtcg = nonEquityTaxableLtcg.add(lot.realizedGain());
+                }
+            }
+        }
+        BigDecimal totalTaxableLtcg = new BigDecimal(exemptionStatus.taxableLtcg()).add(nonEquityTaxableLtcg);
+
         return new Itr2ScheduleCgReport(
             fiscalYear,
             fmt(totalSaleProceeds),
@@ -98,7 +122,7 @@ public class TaxReportExporter {
             fmt(totalLtcg),
             exemptionStatus.netStcg(),
             exemptionStatus.exemptionUsed(),
-            exemptionStatus.taxableLtcg(),
+            fmt(totalTaxableLtcg),
             fyLots.size()
         );
     }

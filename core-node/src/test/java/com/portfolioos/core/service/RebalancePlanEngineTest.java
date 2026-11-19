@@ -1223,8 +1223,8 @@ class RebalancePlanEngineTest {
         // STCL (15,000) completely wipes out Slab STCG (10,000), and remaining 5,000 offsets Equity STCG (20,000 -> 15,000)
         assertEquals(new BigDecimal("0.00"), res.netTaxableStcgSlab());
         assertEquals(new BigDecimal("15000.00"), res.netTaxableStcgEquity());
-        // Tax = 15,000 * 20% = 3,000
-        assertEquals(new BigDecimal("3000.00"), res.totalNetTaxEstimate());
+        // Tax = 15,000 * 20.8% (20% + 4% cess) = 3,120.00
+        assertEquals(new BigDecimal("3120.00"), res.totalNetTaxEstimate());
     }
 
     @Test
@@ -1249,8 +1249,41 @@ class RebalancePlanEngineTest {
         assertEquals(new BigDecimal("125000.00"), res.ltcgExemptionUsed());
         assertEquals(new BigDecimal("55000.00"), res.netTaxableLtcgEquity());
         assertEquals(new BigDecimal("0.00"), res.remainingHeadroomAfter());
-        // Tax = 55,000 * 12.5% = 6,875.00
-        assertEquals(new BigDecimal("6875.00"), res.totalNetTaxEstimate());
+        // Tax = 55,000 * 13.0% (12.5% + 4% cess) = 7,150.00
+        assertEquals(new BigDecimal("7150.00"), res.totalNetTaxEstimate());
+    }
+
+    @Test
+    @DisplayName("Regression 3A: 4% Health & Education Cess exact rupee verification on Section 70 netting")
+    void testSection70NettingMandatoryHealthAndEducationCessApplied() {
+        com.portfolioos.core.rules.TaxRulesConfig rules = com.portfolioos.core.rules.TaxRulesLoader.loadRules("2026-27");
+
+        RebalancePlanEngine.Section70NettingResult resLtcg = RebalancePlanEngine.applySection70Netting(
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            new BigDecimal("100000.00"), BigDecimal.ZERO, BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            rules
+        );
+        assertEquals(new BigDecimal("13000.00"), resLtcg.totalNetTaxEstimate(),
+            "₹1,00,000 taxable LTCG must yield ₹13,000.00 with mandatory 4% cess (13.0%)");
+
+        RebalancePlanEngine.Section70NettingResult resStcg = RebalancePlanEngine.applySection70Netting(
+            new BigDecimal("100000.00"), BigDecimal.ZERO, BigDecimal.ZERO,
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            rules
+        );
+        assertEquals(new BigDecimal("20800.00"), resStcg.totalNetTaxEstimate(),
+            "₹1,00,000 taxable STCG must yield ₹20,800.00 with mandatory 4% cess (20.8%)");
+
+        RebalancePlanEngine.Section70NettingResult resSlab = RebalancePlanEngine.applySection70Netting(
+            BigDecimal.ZERO, new BigDecimal("100000.00"), BigDecimal.ZERO,
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            rules
+        );
+        assertEquals(new BigDecimal("31200.00"), resSlab.totalNetTaxEstimate(),
+            "₹1,00,000 taxable slab STCG must yield ₹31,200.00 with mandatory 4% cess (31.2%)");
     }
 
     @Test

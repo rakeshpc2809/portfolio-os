@@ -129,15 +129,18 @@ public class TaxOptimizationService {
 
         for (Lot lot : openLots) {
             AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
-            boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
-            long reqDays = (cat == AssetCategory.EQUITY || isListed) 
-                ? rules.equityLtcgThresholdDays() 
-                : rules.goldInternationalThresholdDays();
-            long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
+            if (cat == AssetCategory.DEBT_SPECIFIED_50AA && !lot.acquisitionDate().isBefore(LocalDate.of(2023, 4, 1))) {
+                continue; // Post-April 1 2023 debt never matures to LTCG; always taxed at slab under Section 50AA
+            }
 
-            if (holdingDays < reqDays) {
-                long daysRemaining = reqDays - holdingDays;
-                LocalDate targetDate = today.plusDays(daysRemaining);
+            boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
+            LocalDate targetDate = (cat == AssetCategory.EQUITY || isListed) 
+                ? lot.acquisitionDate().plusMonths(12).plusDays(1) 
+                : lot.acquisitionDate().plusMonths(24).plusDays(1);
+
+            if (targetDate.isAfter(today)) {
+                long daysRemaining = ChronoUnit.DAYS.between(today, targetDate);
+                long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
                 BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "TaxOptimizationService.getMaturationLadder");
                 BigDecimal currentVal = lot.remainingUnits().multiply(nav);
                 BigDecimal gain = currentVal.subtract(lot.effectiveTotalCostBasis(nav));
@@ -356,20 +359,25 @@ public class TaxOptimizationService {
 
             AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
             boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
-            long thresholdDays = (cat == AssetCategory.EQUITY || isListed) ? 365L : 730L;
-            LocalDate equityLtcgDate = buyDate.plusDays(thresholdDays);
-            if (!equityLtcgDate.isBefore(today) && equityLtcgDate.isBefore(today.plusDays(90))) {
-                sb.append("BEGIN:VEVENT\r\n");
-                String uidId = lot.lotId() != null ? lot.lotId() : (lot.assetId() + "-" + eventCount);
-                sb.append("UID:ltcg-maturation-").append(uidId).append("@portfolioos.local\r\n");
-                sb.append("DTSTAMP:").append(nowUtc).append("\r\n");
-                sb.append("DTSTART;VALUE=DATE:").append(equityLtcgDate.format(icsDtf)).append("\r\n");
-                sb.append("DTEND;VALUE=DATE:").append(equityLtcgDate.plusDays(1).format(icsDtf)).append("\r\n");
-                sb.append("SUMMARY:LTCG Flip: ").append(lot.assetName() != null ? lot.assetName() : lot.assetId()).append(" (").append(lot.remainingUnits()).append(" units)\r\n");
-                sb.append("DESCRIPTION:Lot bought on ").append(buyDate).append(" at ₹").append(lot.costPerUnit()).append(" flips from 20% STCG to 12.5% LTCG.\r\n");
-                sb.append("BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:LTCG Maturity Alert\r\nTRIGGER:-P1D\r\nEND:VALARM\r\n");
-                sb.append("END:VEVENT\r\n");
-                eventCount++;
+
+            // Post-April 1 2023 debt never flips to LTCG under Section 50AA
+            if (cat != AssetCategory.DEBT_SPECIFIED_50AA || buyDate.isBefore(LocalDate.of(2023, 4, 1))) {
+                LocalDate equityLtcgDate = (cat == AssetCategory.EQUITY || isListed)
+                    ? buyDate.plusMonths(12).plusDays(1)
+                    : buyDate.plusMonths(24).plusDays(1);
+                if (!equityLtcgDate.isBefore(today) && equityLtcgDate.isBefore(today.plusDays(90))) {
+                    sb.append("BEGIN:VEVENT\r\n");
+                    String uidId = lot.lotId() != null ? lot.lotId() : (lot.assetId() + "-" + eventCount);
+                    sb.append("UID:ltcg-maturation-").append(uidId).append("@portfolioos.local\r\n");
+                    sb.append("DTSTAMP:").append(nowUtc).append("\r\n");
+                    sb.append("DTSTART;VALUE=DATE:").append(equityLtcgDate.format(icsDtf)).append("\r\n");
+                    sb.append("DTEND;VALUE=DATE:").append(equityLtcgDate.plusDays(1).format(icsDtf)).append("\r\n");
+                    sb.append("SUMMARY:LTCG Flip: ").append(lot.assetName() != null ? lot.assetName() : lot.assetId()).append(" (").append(lot.remainingUnits()).append(" units)\r\n");
+                    sb.append("DESCRIPTION:Lot bought on ").append(buyDate).append(" at ₹").append(lot.costPerUnit()).append(" flips from STCG to LTCG.\r\n");
+                    sb.append("BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:LTCG Maturity Alert\r\nTRIGGER:-P1D\r\nEND:VALARM\r\n");
+                    sb.append("END:VEVENT\r\n");
+                    eventCount++;
+                }
             }
 
             if ("INF205K01KR8".equals(lot.assetId())) {

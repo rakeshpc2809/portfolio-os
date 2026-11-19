@@ -26,14 +26,15 @@ class TaxClassifierTest {
         );
         assertEquals(TaxTerm.LONG_TERM, term730);
 
-        // Exactly 1095 days (Pre-July 23, 2024 disposal)
+        // Pre-July 23, 2024 disposal requiring > 36 calendar months
+        LocalDate pre2021Acq = LocalDate.of(2021, 1, 1);
         LocalDate june2024Disposal = LocalDate.of(2024, 6, 1);
         TaxTerm term1095 = TaxClassifier.classifyTaxTerm(
             AssetCategory.DEBT_SPECIFIED_50AA,
-            1095L,
+            1247L,
             "2026-27",
             false,
-            apr2022Acq,
+            pre2021Acq,
             june2024Disposal
         );
         assertEquals(TaxTerm.LONG_TERM, term1095);
@@ -43,7 +44,7 @@ class TaxClassifierTest {
     void testEquityHoldingPeriod360vs365Days() {
         LocalDate acq = LocalDate.of(2025, 1, 1);
         LocalDate disp362 = acq.plusDays(362);
-        LocalDate disp365 = acq.plusDays(365);
+        LocalDate dispLtcg = acq.plusMonths(12).plusDays(1); // Held > 12 calendar months
 
         // 362 days: under 360d bug this was LONG_TERM. Under statutory rule must be SHORT_TERM.
         TaxTerm term362 = TaxClassifier.classifyTaxTerm(
@@ -54,17 +55,35 @@ class TaxClassifierTest {
             acq,
             disp362
         );
-        assertEquals(TaxTerm.SHORT_TERM, term362, "362 days equity holding must be SHORT_TERM (< 365 days)");
+        assertEquals(TaxTerm.SHORT_TERM, term362, "362 days equity holding must be SHORT_TERM (< 12 months)");
 
-        // Exactly 365 days: LONG_TERM
-        TaxTerm term365 = TaxClassifier.classifyTaxTerm(
+        // Exceeds 12 calendar months: LONG_TERM
+        TaxTerm termLtcg = TaxClassifier.classifyTaxTerm(
             AssetCategory.EQUITY,
-            365L,
+            366L,
             "2026-27",
             true,
             acq,
-            disp365
+            dispLtcg
         );
-        assertEquals(TaxTerm.LONG_TERM, term365, "365 days equity holding must be LONG_TERM");
+        assertEquals(TaxTerm.LONG_TERM, termLtcg, "Holding period > 12 months must be LONG_TERM");
+    }
+
+    @Test
+    void testLeapYearBoundaryCalendarMonthThreshold() {
+        // Leap-year boundary: buy 2023-03-01, sell 2024-02-29 is 365 days, but NOT > 12 months under Sec 2(42A)
+        LocalDate acq = LocalDate.of(2023, 3, 1);
+        LocalDate sellFeb29 = LocalDate.of(2024, 2, 29); // 365 days
+        LocalDate sellMar02 = LocalDate.of(2024, 3, 2);  // 367 days (> 12 months)
+
+        TaxTerm termFeb29 = TaxClassifier.classifyTaxTerm(
+            AssetCategory.EQUITY, 365L, "2024-25", true, acq, sellFeb29
+        );
+        assertEquals(TaxTerm.SHORT_TERM, termFeb29, "Sell on 2024-02-29 (365 days in leap year) must be SHORT_TERM (< 12 full months)");
+
+        TaxTerm termMar02 = TaxClassifier.classifyTaxTerm(
+            AssetCategory.EQUITY, 367L, "2024-25", true, acq, sellMar02
+        );
+        assertEquals(TaxTerm.LONG_TERM, termMar02, "Sell on 2024-03-02 must be LONG_TERM (> 12 full months)");
     }
 }

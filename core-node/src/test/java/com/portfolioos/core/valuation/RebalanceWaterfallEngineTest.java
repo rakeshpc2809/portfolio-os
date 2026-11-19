@@ -121,7 +121,7 @@ class RebalanceWaterfallEngineTest {
         assertEquals(WaterfallTier.STCG_URGENT_ONLY, result.steps().get(0).tier());
         assertEquals("SHORT_TERM", result.steps().get(0).taxTerm());
         assertTrue(result.totalTaxDrag().compareTo(BigDecimal.ZERO) > 0, "STCG tax drag must be strictly greater than 0 under DRAWDOWN trigger");
-        assertEquals(new BigDecimal("333.33"), result.totalTaxDrag(), "STCG tax drag must equal 20% of realized gain (333.33)");
+        assertEquals(new BigDecimal("346.67"), result.totalTaxDrag(), "STCG tax drag must equal 20.8% of realized gain (346.67) with 4% cess");
     }
 
     @Test
@@ -512,8 +512,8 @@ class RebalanceWaterfallEngineTest {
         RebalanceWaterfallEngine.WaterfallStep alignedGain = aligned.get(0);
         RebalanceWaterfallEngine.WaterfallStep alignedLoss = aligned.get(1);
 
-        // Post-netting: lot-level tax drag is 1,000 (not 4,000) and lossOffsetApplied is true
-        assertEquals(0, new BigDecimal("1000.00").compareTo(alignedGain.taxDrag()));
+        // Post-netting: lot-level tax drag is 1,040 (with 4% cess, not 4,000) and lossOffsetApplied is true
+        assertEquals(0, new BigDecimal("1040.00").compareTo(alignedGain.taxDrag()));
         assertTrue(alignedGain.lossOffsetApplied(), "Loss offset must be flagged true on net-relieved gain lot");
         assertEquals(0, new BigDecimal("5000.00").compareTo(alignedGain.taxableAmount()));
 
@@ -564,11 +564,11 @@ class RebalanceWaterfallEngineTest {
 
         // Netting: ₹30,000 LTCG - ₹10,000 LTCL = ₹20,000 LTCG.
         // Then STCL of ₹5,000 sets off LTCG -> Net taxable LTCG = ₹15,000.
-        // Tax @ 12.5% on ₹15,000 = ₹1,875.00.
-        // Split 3 ways across ₹10k/₹10k/₹10k lots: ₹1,875 / 3 = ₹625.00 each exactly.
+        // Tax @ 13.0% (12.5% + 4% cess) on ₹15,000 = ₹1,950.00.
+        // Split 3 ways across ₹10k/₹10k/₹10k lots: ₹1,950 / 3 = ₹650.00 each exactly.
         RebalancePlanEngine.Section70NettingResult net = new RebalancePlanEngine.Section70NettingResult(
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("15000.00"),
-            BigDecimal.ZERO, new BigDecimal("1875.00"), BigDecimal.ZERO
+            BigDecimal.ZERO, new BigDecimal("1950.00"), BigDecimal.ZERO
         );
 
         List<RebalanceWaterfallEngine.WaterfallStep> aligned = RebalanceWaterfallEngine.prorateSection70Netting(
@@ -583,11 +583,11 @@ class RebalanceWaterfallEngineTest {
         // Mathematical sum-to-the-paisa guarantee: sum of lot tax drags MUST equal net tax estimate exactly
         assertEquals(0, net.totalNetTaxEstimate().compareTo(sumLotTax),
             "Sum of lot-level tax drags must equal totalNetTaxEstimate down to the paisa");
-        assertEquals(new BigDecimal("1875.00"), sumLotTax);
+        assertEquals(new BigDecimal("1950.00"), sumLotTax);
 
         // Also test indivisible remainder absorption: e.g. net tax ₹100.01 across 3 equal lots
         RebalancePlanEngine.Section70NettingResult oddNet = new RebalancePlanEngine.Section70NettingResult(
-            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("800.08"),
+            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("769.31"),
             BigDecimal.ZERO, new BigDecimal("100.01"), BigDecimal.ZERO
         );
         List<RebalanceWaterfallEngine.WaterfallStep> oddAligned = RebalanceWaterfallEngine.prorateSection70Netting(

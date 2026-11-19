@@ -14,19 +14,35 @@ public record Lot(
     BigDecimal costPerUnit,
     BigDecimal totalCostBasis,
     boolean isGrandfathered,
-    BigDecimal fmv20180131
+    BigDecimal fmv20180131,
+    String folioNo
 ) {
+    public Lot(
+        String lotId,
+        String assetId,
+        String assetName,
+        LocalDate acquisitionDate,
+        BigDecimal originalUnits,
+        BigDecimal remainingUnits,
+        BigDecimal costPerUnit,
+        BigDecimal totalCostBasis,
+        boolean isGrandfathered,
+        BigDecimal fmv20180131
+    ) {
+        this(lotId, assetId, assetName, acquisitionDate, originalUnits, remainingUnits, costPerUnit, totalCostBasis, isGrandfathered, fmv20180131, null);
+    }
+
     public Lot withRemainingUnitsAndCost(BigDecimal remaining, BigDecimal cost, BigDecimal costBasis) {
         return new Lot(
             lotId, assetId, assetName, acquisitionDate, originalUnits,
-            remaining, cost, costBasis, isGrandfathered, fmv20180131
+            remaining, cost, costBasis, isGrandfathered, fmv20180131, folioNo
         );
     }
     
     public Lot withAssetDetails(String newAssetId, String newAssetName, BigDecimal newOriginal, BigDecimal newRemaining, BigDecimal newCostPerUnit) {
         return new Lot(
             lotId, newAssetId, newAssetName, acquisitionDate, newOriginal,
-            newRemaining, newCostPerUnit, totalCostBasis, isGrandfathered, fmv20180131
+            newRemaining, newCostPerUnit, totalCostBasis, isGrandfathered, fmv20180131, folioNo
         );
     }
 

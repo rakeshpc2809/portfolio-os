@@ -51,7 +51,36 @@ class TaxReportAndItr2ExporterTest {
         assertNotNull(report);
         assertEquals("25000.00", report.totalRealizedLtcg(), "Total realized LTCG must include the 25,000 gold gain");
         assertEquals("0.00", report.ltcgExemptionUsed(), "Section 112A exemption must NOT be applied to non-equity LTCG");
-        assertEquals("0.00", report.netTaxableLtcg(), "Sec 112A taxable equity LTCG is 0.00 for non-equity asset");
+        assertEquals("25000.00", report.netTaxableLtcg(), "netTaxableLtcg includes non-equity taxable LTCG");
+    }
+
+    @Test
+    @DisplayName("Regression 3A: Non-equity LTCG is present in Schedule_CG_NonEquity_LTCG.csv and included in netTaxableLtcg")
+    void testNonEquityLtcgInScheduleCgAndNetTaxableLtcg() {
+        MatchedLot goldLot = new MatchedLot(
+            "MATCH_GOLD_1", "EV_DISP_GOLD_1", "LOT_GOLD_1",
+            "INF247L01BM8", // Motilal Gold & Silver
+            LocalDate.of(2023, 1, 10), LocalDate.of(2026, 6, 15),
+            new BigDecimal("50.000"),
+            new BigDecimal("50000.00"), // Cost basis
+            new BigDecimal("75000.00"), // Sale proceeds
+            new BigDecimal("25000.00"), // Realized gain
+            1250L, TaxTerm.LONG_TERM, AssetCategory.GOLD_SILVER
+        );
+
+        String fy = "2026-27";
+        Map<String, String> assetNames = Map.of("INF247L01BM8", "Motilal Oswal Gold and Silver Passive FoF");
+        Map<String, String> files = Itr2CsvExporter.exportItr2ScheduleCg(List.of(goldLot), fy, assetNames);
+
+        assertTrue(files.containsKey("Schedule_CG_NonEquity_LTCG.csv"),
+            "exportItr2ScheduleCg must produce Schedule_CG_NonEquity_LTCG.csv for non-equity LTCG");
+        String nonEqCsv = files.get("Schedule_CG_NonEquity_LTCG.csv");
+        assertTrue(nonEqCsv.contains("INF247L01BM8"));
+        assertTrue(nonEqCsv.contains("25000.00"));
+
+        TaxReportExporter.Itr2ScheduleCgReport report = TaxReportExporter.generateItr2Report(List.of(goldLot), fy);
+        assertEquals("25000.00", report.netTaxableLtcg(),
+            "netTaxableLtcg must include non-equity taxable LTCG");
     }
 
     @Test

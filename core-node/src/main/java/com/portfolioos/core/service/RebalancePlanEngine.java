@@ -77,10 +77,11 @@ public class RebalancePlanEngine {
         BigDecimal netTaxableLtcgEquity = netEquityLtcgBeforeExemption.subtract(exemptionUsed).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
         BigDecimal headroomAfter = headroom.subtract(exemptionUsed).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
 
-        BigDecimal stcgEqTax = netStcgEquity.multiply(rules.equityStcgRate()).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal stcgSlabTax = netStcgSlab.multiply(rules.slabRate()).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal ltcgEqTax = netTaxableLtcgEquity.multiply(rules.equityLtcgRate()).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal ltcgNonEqTax = netLtcgNonEquity.multiply(rules.goldInternationalLtcgRate()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal cessMultiplier = new BigDecimal("1.04");
+        BigDecimal stcgEqTax = netStcgEquity.multiply(rules.equityStcgRate().multiply(cessMultiplier)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal stcgSlabTax = netStcgSlab.multiply(rules.slabRate().multiply(cessMultiplier)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal ltcgEqTax = netTaxableLtcgEquity.multiply(rules.equityLtcgRate().multiply(cessMultiplier)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal ltcgNonEqTax = netLtcgNonEquity.multiply(rules.goldInternationalLtcgRate().multiply(cessMultiplier)).setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalNetTax = stcgEqTax.add(stcgSlabTax).add(ltcgEqTax).add(ltcgNonEqTax).setScale(2, RoundingMode.HALF_UP);
 
         return new Section70NettingResult(
@@ -1025,6 +1026,15 @@ public class RebalancePlanEngine {
         if (hasWaterfallBuckets && !isLumpsum && v24Config != null && sellSide != null && buySide != null && (!buyBuckets.isEmpty() || actualSoldAmount.compareTo(BigDecimal.ZERO) > 0)) {
             com.portfolioos.core.valuation.RebalanceInvariantVerifier verifier = new com.portfolioos.core.valuation.RebalanceInvariantVerifier();
 
+            Map<String, String> lotFolioMap = new HashMap<>();
+            if (openLots != null) {
+                for (Lot ol : openLots) {
+                    if (ol.lotId() != null) {
+                        lotFolioMap.put(ol.lotId(), ol.folioNo());
+                    }
+                }
+            }
+
             List<com.portfolioos.core.valuation.RebalanceInvariantVerifier.LotOrder> soldLotOrders = new ArrayList<>();
             if (sellSide.waterfall() != null) {
                 for (WaterfallTierDto t : sellSide.waterfall()) {
@@ -1035,9 +1045,10 @@ public class RebalancePlanEngine {
                             BigDecimal ltcgUsed = (l.taxImpact() != null && l.taxImpact().exemptionApplied() != null)
                                 ? l.taxImpact().exemptionApplied() : BigDecimal.ZERO;
                             boolean withinExitLoad = l.holdingDays() < com.portfolioos.core.valuation.ExitLoadCalculator.getRequiredExitLoadDays(l.fundId(), l.fundName());
+                            String folio = lotFolioMap.get(l.lotId());
                             soldLotOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.LotOrder(
                                 l.lotId(),
-                                null,
+                                folio,
                                 l.fundId(),
                                 l.acquisitionDate() != null ? LocalDate.parse(l.acquisitionDate()) : today,
                                 l.saleProceeds(),
@@ -1105,7 +1116,7 @@ public class RebalancePlanEngine {
             if (openLots != null) {
                 for (Lot ol : openLots) {
                     preTradeSnapshots.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.PreTradeLotSnapshot(
-                        ol.lotId(), null, ol.assetId(), ol.acquisitionDate()
+                        ol.lotId(), ol.folioNo(), ol.assetId(), ol.acquisitionDate()
                     ));
                 }
             }

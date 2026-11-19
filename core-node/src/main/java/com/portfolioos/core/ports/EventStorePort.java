@@ -22,7 +22,6 @@ public interface EventStorePort {
     boolean verifyLedgerIntegrity();
     void clearAllEvents();
     String getLatestEventHash();
-    default void deleteEvents(List<String> eventIds) {}
     default void recordReconciliationLog(List<ReconciliationRecord> records) {}
     default List<ReconciliationRecord> getReconciliationLogs() { return List.of(); }
     default java.util.Set<String> getExistingFingerprints(java.util.Set<String> fingerprints) { return java.util.Set.of(); }

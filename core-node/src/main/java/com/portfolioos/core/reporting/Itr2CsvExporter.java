@@ -25,6 +25,7 @@ public class Itr2CsvExporter {
     public static Map<String, String> exportItr2ScheduleCg(List<MatchedLot> matchedLots, String fiscalYear, Map<String, String> assetNameMap, Map<String, BigDecimal> fmv2018Map) {
         Map<String, String> map = new HashMap<>();
         map.put("Schedule_112A.csv", generateSchedule112aCsv(matchedLots, fiscalYear, assetNameMap, fmv2018Map));
+        map.put("Schedule_CG_NonEquity_LTCG.csv", generateScheduleNonEquityLtcgCsv(matchedLots, fiscalYear, assetNameMap));
         map.put("Schedule_STCG.csv", generateScheduleCgStcgCsv(matchedLots, fiscalYear, assetNameMap));
         return map;
     }
@@ -223,6 +224,86 @@ public class Itr2CsvExporter {
         sb.append("ISIN Code,Name of Share/Unit,No. of Shares/Units,Full Value of Consideration,Cost of Acquisition,Balance Capital Gain\n");
 
         for (TaxReportExporter.ScheduleStcgEntryDto e : entries) {
+            sb.append("\"").append(e.isin()).append("\",\"")
+              .append(e.assetName().replace("\"", "\"\"")).append("\",")
+              .append(e.formattedUnits()).append(",")
+              .append(e.formattedSaleProceeds()).append(",")
+              .append(e.formattedCostBasis()).append(",")
+              .append(e.formattedBalanceGain()).append("\n");
+        }
+
+        return sb.toString();
+    }
+
+    public static List<TaxReportExporter.ScheduleNonEquityLtcgEntryDto> generateScheduleNonEquityLtcgEntries(
+        List<MatchedLot> matchedLots,
+        String fiscalYear,
+        Map<String, String> assetNameMap
+    ) {
+        return generateScheduleNonEquityLtcgEntries(matchedLots, fiscalYear, assetNameMap, java.util.Collections.emptySet());
+    }
+
+    public static List<TaxReportExporter.ScheduleNonEquityLtcgEntryDto> generateScheduleNonEquityLtcgEntries(
+        List<MatchedLot> matchedLots,
+        String fiscalYear,
+        Map<String, String> assetNameMap,
+        java.util.Set<String> estimatedIsins
+    ) {
+        Pair<LocalDate, LocalDate> bounds = getFiscalYearBounds(fiscalYear);
+        LocalDate startDate = bounds.first();
+        LocalDate endDate = bounds.second();
+
+        List<MatchedLot> ltcgLots = matchedLots.stream().filter(lot ->
+            lot.taxTerm() == TaxTerm.LONG_TERM &&
+            lot.assetCategory() != AssetCategory.EQUITY &&
+            !lot.disposalDate().isBefore(startDate) &&
+            !lot.disposalDate().isAfter(endDate)
+        ).toList();
+
+        Map<String, List<MatchedLot>> grouped = ltcgLots.stream().collect(Collectors.groupingBy(MatchedLot::assetId));
+        List<TaxReportExporter.ScheduleNonEquityLtcgEntryDto> result = new ArrayList<>();
+
+        for (Map.Entry<String, List<MatchedLot>> entry : grouped.entrySet()) {
+            String isin = entry.getKey();
+            List<MatchedLot> lots = entry.getValue();
+
+            String name = assetNameMap.getOrDefault(isin, isin);
+            BigDecimal totalUnits = BigDecimal.ZERO;
+            BigDecimal proceeds = BigDecimal.ZERO;
+            BigDecimal actualCost = BigDecimal.ZERO;
+
+            for (MatchedLot lot : lots) {
+                totalUnits = totalUnits.add(lot.unitsMatched());
+                proceeds = proceeds.add(lot.saleProceeds());
+                actualCost = actualCost.add(lot.costBasis());
+            }
+
+            BigDecimal gain = proceeds.subtract(actualCost);
+            boolean isEst = estimatedIsins != null && estimatedIsins.contains(isin);
+
+            result.add(new TaxReportExporter.ScheduleNonEquityLtcgEntryDto(
+                isin,
+                name,
+                totalUnits,
+                proceeds,
+                actualCost,
+                gain,
+                isEst,
+                fmt(totalUnits),
+                fmt(proceeds),
+                fmt(actualCost),
+                fmt(gain)
+            ));
+        }
+        return result;
+    }
+
+    public static String generateScheduleNonEquityLtcgCsv(List<MatchedLot> matchedLots, String fiscalYear, Map<String, String> assetNameMap) {
+        List<TaxReportExporter.ScheduleNonEquityLtcgEntryDto> entries = generateScheduleNonEquityLtcgEntries(matchedLots, fiscalYear, assetNameMap);
+        StringBuilder sb = new StringBuilder();
+        sb.append("ISIN Code,Name of Share/Unit,No. of Shares/Units,Full Value of Consideration,Cost of Acquisition,Balance Capital Gain\n");
+
+        for (TaxReportExporter.ScheduleNonEquityLtcgEntryDto e : entries) {
             sb.append("\"").append(e.isin()).append("\",\"")
               .append(e.assetName().replace("\"", "\"\"")).append("\",")
               .append(e.formattedUnits()).append(",")

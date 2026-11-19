@@ -58,6 +58,10 @@ public abstract class BaseIntegrationTest {
         if (!dir.exists()) {
             dir.mkdirs();
         }
+        File testDb = new File(dir, "test_tax_ledger.db");
+        if (testDb.exists()) {
+            testDb.delete();
+        }
     }
 
     @DynamicPropertySource
