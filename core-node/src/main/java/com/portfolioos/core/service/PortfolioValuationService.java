@@ -646,14 +646,20 @@ public class PortfolioValuationService {
         if (benchmarkId == null || benchmarkId.isBlank()) return;
         String normalized = normalizeBenchmarkId(benchmarkId);
         if (!marketDataRepository.hasBenchmarkData(normalized)) {
-            Long schemeCode = BENCHMARK_SCHEME_CODES.get(normalized);
-            if (schemeCode != null) {
-                log.info("Benchmark {} not found in SQLite. Auto-fetching historical series from MFAPI (Scheme {})...", normalized, schemeCode);
-                try {
-                    new MfApiNavDownloader().downloadBenchmarkData(normalized, schemeCode, marketDataRepository);
-                } catch (Exception e) {
-                    log.error("Failed to auto-fetch benchmark {}: {}", normalized, e.getMessage());
-                }
+            refreshBenchmarkData(normalized);
+        }
+    }
+
+    public synchronized void refreshBenchmarkData(String benchmarkId) {
+        if (benchmarkId == null || benchmarkId.isBlank()) return;
+        String normalized = normalizeBenchmarkId(benchmarkId);
+        Long schemeCode = BENCHMARK_SCHEME_CODES.get(normalized);
+        if (schemeCode != null) {
+            log.info("Fetching benchmark series from MFAPI for {} (Scheme {})...", normalized, schemeCode);
+            try {
+                new MfApiNavDownloader().downloadBenchmarkData(normalized, schemeCode, marketDataRepository);
+            } catch (Exception e) {
+                log.error("Failed to fetch benchmark {}: {}", normalized, e.getMessage());
             }
         }
     }

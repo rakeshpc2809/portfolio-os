@@ -64,8 +64,8 @@ public class AppConfig {
     }
 
     @Bean
-    public MarketDataRepository marketDataRepository(HikariDataSource sqliteDataSource) {
-        return new MarketDataRepository(sqliteDataSource);
+    public MarketDataRepository marketDataRepository(HikariDataSource sqliteDataSource, TriggerHistoryRepository triggerHistoryRepository) {
+        return new MarketDataRepository(sqliteDataSource, triggerHistoryRepository);
     }
 
     @Bean

@@ -14,6 +14,7 @@ import java.util.*;
 public class MarketDataRepository {
 
     private final HikariDataSource dataSource;
+    private TriggerHistoryRepository triggerHistoryRepository;
     private final java.util.concurrent.atomic.AtomicReference<List<NetWorthPoint>> cachedDailyTrend = new java.util.concurrent.atomic.AtomicReference<>(null);
     private final java.util.concurrent.atomic.AtomicLong lastTrendTime = new java.util.concurrent.atomic.AtomicLong(0L);
 
@@ -36,8 +37,24 @@ public class MarketDataRepository {
     ) {}
 
     public MarketDataRepository(HikariDataSource dataSource) {
+        this(dataSource, null);
+    }
+
+    public MarketDataRepository(HikariDataSource dataSource, TriggerHistoryRepository triggerHistoryRepository) {
         this.dataSource = dataSource;
+        this.triggerHistoryRepository = triggerHistoryRepository;
         initSchema();
+    }
+
+    public void setTriggerHistoryRepository(TriggerHistoryRepository triggerHistoryRepository) {
+        this.triggerHistoryRepository = triggerHistoryRepository;
+    }
+
+    public TriggerHistoryRepository getTriggerHistoryRepository() {
+        if (this.triggerHistoryRepository == null && this.dataSource != null) {
+            this.triggerHistoryRepository = new TriggerHistoryRepository(this.dataSource);
+        }
+        return this.triggerHistoryRepository;
     }
 
     public void invalidateTrendCache() {
@@ -288,6 +305,55 @@ public class MarketDataRepository {
         } catch (SQLException e) {
             System.err.println("Failed to save benchmark levels: " + e.getMessage());
         }
+
+        // ATH Watermark advancement on benchmark ingestion
+        String normalized = (benchmarkId != null) ? benchmarkId.trim().toUpperCase().replace("-", "_").replace(" ", "_") : "";
+        if ("NIFTY_500_TRI".equals(normalized) || "NIFTY_500".equals(normalized)) {
+            double maxIngested = 0.0;
+            for (Double val : dateToLevel.values()) {
+                if (val != null && val > maxIngested) {
+                    maxIngested = val;
+                }
+            }
+            if (maxIngested > 0.0) {
+                updateNiftyTriWatermarkIfHigher(BigDecimal.valueOf(maxIngested));
+            }
+        }
+    }
+
+    public void updateNiftyTriWatermarkIfHigher(BigDecimal candidateLevel) {
+        if (candidateLevel == null || candidateLevel.compareTo(BigDecimal.ZERO) <= 0) return;
+        TriggerHistoryRepository repo = getTriggerHistoryRepository();
+        if (repo != null) {
+            Optional<BigDecimal> currentOpt = repo.getNiftyTriWatermark();
+            if (currentOpt.isEmpty()) {
+                double maxDb = getMaxBenchmarkLevel("NIFTY_500_TRI");
+                BigDecimal initial = candidateLevel;
+                if (maxDb > 0.0 && BigDecimal.valueOf(maxDb).compareTo(initial) > 0) {
+                    initial = BigDecimal.valueOf(maxDb);
+                }
+                repo.setNiftyTriWatermark(initial);
+            } else if (candidateLevel.compareTo(currentOpt.get()) > 0) {
+                repo.setNiftyTriWatermark(candidateLevel);
+            }
+        }
+    }
+
+    public double getMaxBenchmarkLevel(String benchmarkId) {
+        if (dataSource == null) return 0.0;
+        String sql = "SELECT MAX(level) FROM benchmark_history WHERE benchmark_id = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, benchmarkId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getDouble(1);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to query max benchmark level: " + e.getMessage());
+        }
+        return 0.0;
     }
 
     public boolean hasBenchmarkData(String benchmarkId) {

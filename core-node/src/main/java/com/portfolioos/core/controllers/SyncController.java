@@ -489,6 +489,11 @@ public class SyncController {
     @PostMapping("/refresh")
     public ResponseEntity<Map<String, Object>> refreshNavs() {
         cacheService.invalidateCache();
+        try {
+            valuationService.refreshBenchmarkData("NIFTY_500_TRI");
+        } catch (Exception e) {
+            log.warn("Benchmark data refresh warning: {}", e.getMessage());
+        }
         LedgerCacheService.CachedLedgerState refreshed = cacheService.getCachedState();
         return ResponseEntity.ok(Map.of(
             "status", "REFRESHED",

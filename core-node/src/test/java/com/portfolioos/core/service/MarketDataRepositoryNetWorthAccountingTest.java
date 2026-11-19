@@ -153,4 +153,47 @@ class MarketDataRepositoryNetWorthAccountingTest {
         assertEquals(24500.0, savedMetrics.currentLevel());
         assertEquals(24500.0, savedMetrics.rollingHigh());
     }
+
+    @Test
+    @DisplayName("Verify NIFTY_500_TRI benchmark ingestion advances nifty_tri_watermark in TriggerHistoryRepository")
+    void testBenchmarkIngestionAdvancesWatermark() {
+        com.portfolioos.core.persistence.TriggerHistoryRepository triggerRepo = marketDataRepository.getTriggerHistoryRepository();
+        assertNotNull(triggerRepo);
+
+        // 1. Initial state: no watermark in DB
+        assertTrue(triggerRepo.getNiftyTriWatermark().isEmpty());
+
+        // 2. Ingest first benchmark batch (peak 25,000)
+        marketDataRepository.saveBenchmarkLevels("NIFTY_500_TRI", Map.of(
+            "2026-10-01", 24000.0,
+            "2026-10-02", 25000.0,
+            "2026-10-03", 24500.0
+        ));
+
+        // Watermark must advance to 25,000
+        Optional<BigDecimal> wm1 = triggerRepo.getNiftyTriWatermark();
+        assertTrue(wm1.isPresent());
+        assertEquals(0, new BigDecimal("25000.0").compareTo(wm1.get()));
+
+        // 3. Ingest drawdown batch (peak 23,000 - lower than current watermark)
+        marketDataRepository.saveBenchmarkLevels("NIFTY_500_TRI", Map.of(
+            "2026-10-04", 23000.0,
+            "2026-10-05", 22500.0
+        ));
+
+        // Watermark must NOT decrease
+        Optional<BigDecimal> wm2 = triggerRepo.getNiftyTriWatermark();
+        assertTrue(wm2.isPresent());
+        assertEquals(0, new BigDecimal("25000.0").compareTo(wm2.get()));
+
+        // 4. Ingest new all-time high batch (peak 26,500)
+        marketDataRepository.saveBenchmarkLevels("NIFTY_500_TRI", Map.of(
+            "2026-10-06", 26500.0
+        ));
+
+        // Watermark must advance to 26,500
+        Optional<BigDecimal> wm3 = triggerRepo.getNiftyTriWatermark();
+        assertTrue(wm3.isPresent());
+        assertEquals(0, new BigDecimal("26500.0").compareTo(wm3.get()));
+    }
 }
