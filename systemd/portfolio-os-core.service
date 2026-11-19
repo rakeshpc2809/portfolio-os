@@ -1,6 +1,6 @@
 [Unit]
 Description=Portfolio OS Core Node (Java 27 / Spring Boot)
-After=network.target portfolio-os-quant.service
+After=network.target
 PartOf=portfolio-os.target
 
 [Service]
