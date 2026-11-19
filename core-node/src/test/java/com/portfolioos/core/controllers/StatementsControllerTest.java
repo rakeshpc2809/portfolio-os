@@ -27,11 +27,7 @@ class StatementsControllerTest {
     @Test
     void testUploadStatementEmptyFileReturnsJsonErrorEnvelope() {
         StatementIngestionUseCase ingestionUseCase = Mockito.mock(StatementIngestionUseCase.class);
-        StatementsController controller = new StatementsController(
-            ingestionUseCase,
-            "http://127.0.0.1:8000",
-            "test_token"
-        );
+        StatementsController controller = new StatementsController(ingestionUseCase);
 
         MockMultipartFile emptyFile = new MockMultipartFile("file", "test.pdf", "application/pdf", new byte[0]);
         ResponseEntity<?> response = controller.uploadStatement(emptyFile, "pass");
@@ -48,11 +44,11 @@ class StatementsControllerTest {
     @Test
     void testUploadStatementSidecarFailureReturnsJsonErrorEnvelope() {
         StatementIngestionUseCase ingestionUseCase = Mockito.mock(StatementIngestionUseCase.class);
-        // Point to an unreachable port to provoke sidecar failure
+        // Point to invalid python path to provoke CLI failure
         StatementsController controller = new StatementsController(
             ingestionUseCase,
-            "http://127.0.0.1:59999",
-            "test_token"
+            "/nonexistent/python",
+            "/nonexistent/script.py"
         );
 
         MockMultipartFile file = new MockMultipartFile("file", "statement.pdf", "application/pdf", "dummy-content".getBytes());
@@ -65,6 +61,37 @@ class StatementsControllerTest {
         Map<String, Object> body = (Map<String, Object>) response.getBody();
         assertEquals("UPLOAD_FAILED", body.get("error"));
         assertNotNull(body.get("message"));
+    }
+
+    @Test
+    void testUploadStatementUnsupportedFormatReturns422() {
+        StatementIngestionUseCase ingestionUseCase = Mockito.mock(StatementIngestionUseCase.class);
+        StatementsController controller = new StatementsController(ingestionUseCase);
+
+        MockMultipartFile file = new MockMultipartFile("file", "statement.docx", "application/octet-stream", "dummy".getBytes());
+        ResponseEntity<?> response = controller.uploadStatement(file, "pass");
+
+        assertNotNull(response);
+        assertEquals(422, response.getStatusCode().value());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        assertEquals("UNSUPPORTED_FORMAT", body.get("error"));
+    }
+
+    @Test
+    void testUploadStatementPayloadTooLargeReturns413() {
+        StatementIngestionUseCase ingestionUseCase = Mockito.mock(StatementIngestionUseCase.class);
+        StatementsController controller = new StatementsController(ingestionUseCase);
+
+        byte[] bigContent = new byte[26 * 1024 * 1024]; // 26 MB
+        MockMultipartFile file = new MockMultipartFile("file", "statement.pdf", "application/pdf", bigContent);
+        ResponseEntity<?> response = controller.uploadStatement(file, "pass");
+
+        assertNotNull(response);
+        assertEquals(413, response.getStatusCode().value());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        assertEquals("PAYLOAD_TOO_LARGE", body.get("error"));
     }
 
     @Test
@@ -120,11 +147,7 @@ class StatementsControllerTest {
         Mockito.when(failingUseCase.ingestParsedEvents(Mockito.any()))
             .thenThrow(new ReconciliationGateFailureException(failResult));
 
-        StatementsController controller = new StatementsController(
-            failingUseCase,
-            "http://127.0.0.1:8000",
-            "test_auth_token"
-        );
+        StatementsController controller = new StatementsController(failingUseCase);
 
         // Upload valid statement format through controller to verify 422 mapping
         // Note: We can test controller directly handling ReconciliationGateFailureException

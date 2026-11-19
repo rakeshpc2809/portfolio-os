@@ -7,7 +7,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p "${SYSTEMD_DIR}"
 
 echo "[*] Installing Portfolio OS systemd user units..."
-ln -sf "${REPO_DIR}/systemd/portfolio-os-quant.service" "${SYSTEMD_DIR}/portfolio-os-quant.service"
+rm -f "${SYSTEMD_DIR}/portfolio-os-quant.service"
 ln -sf "${REPO_DIR}/systemd/portfolio-os-core.service" "${SYSTEMD_DIR}/portfolio-os-core.service"
 ln -sf "${REPO_DIR}/systemd/portfolio-os.target" "${SYSTEMD_DIR}/portfolio-os.target"
 ln -sf "${REPO_DIR}/systemd/portfolio-pc-sync.service" "${SYSTEMD_DIR}/portfolio-pc-sync.service"

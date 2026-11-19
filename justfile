@@ -66,16 +66,12 @@ test-web: build-web
     node core-node/src/test/resources/static-test.mjs
 
 # -------------------------------------------------------------
-# Quant Sidecar (Python / FastAPI / Direct IPC)
+# Quant CAS Parser Tools (Python / On-demand CLI)
 # -------------------------------------------------------------
 
-# Set up isolated virtualenv and install dependencies at ultra-fast speeds using uv
+# Set up isolated virtualenv and install dependencies using uv
 setup-quant:
     cd quant-sidecar && uv venv && uv pip install -r requirements.txt
-
-# Run Quant Sidecar with uv in foreground
-run-quant:
-    cd quant-sidecar && API_AUTH_TOKEN="${API_AUTH_TOKEN}" uv run uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 
 # Run Quant sidecar unit tests
 test-quant:
@@ -117,14 +113,13 @@ up:
     systemctl --user start portfolio-os.target
     @just wait-ready
 
-# Run manual Gmail CAS email poller and Google Sheets publisher
+# Run manual Gmail CAS email poller
 sync:
     @./quant-sidecar/.venv/bin/python quant-sidecar/scripts/gmail_cas_poller.py
-    @./quant-sidecar/.venv/bin/python quant-sidecar/scripts/sheets_snapshot_publisher.py
 
 # Stop all backend services
 down:
-    systemctl --user stop portfolio-os.target portfolio-os-core.service portfolio-os-quant.service
+    systemctl --user stop portfolio-os.target portfolio-os-core.service
 
 # Restart all backend services
 restart:
@@ -133,11 +128,11 @@ restart:
 
 # Check service status and resource consumption
 status:
-    systemctl --user status portfolio-os-core.service portfolio-os-quant.service
+    systemctl --user status portfolio-os-core.service
 
-# Follow live logs from both services via journald
+# Follow live logs from core service via journald
 logs:
-    journalctl --user -u portfolio-os-core -u portfolio-os-quant -f
+    journalctl --user -u portfolio-os-core -f
 
 # Poll until both Core Node and Quant Sidecar endpoints are healthy
 wait-ready:

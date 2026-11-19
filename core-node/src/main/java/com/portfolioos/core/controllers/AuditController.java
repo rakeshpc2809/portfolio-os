@@ -1,7 +1,6 @@
 package com.portfolioos.core.controllers;
 
 import com.portfolioos.core.persistence.MarketDataRepository;
-import com.portfolioos.core.rpc.QuantSidecarClient;
 import com.portfolioos.core.service.LedgerCacheService;
 import com.portfolioos.core.valuation.ExitLoadCalculator;
 import com.portfolioos.core.model.Lot;
@@ -22,18 +21,15 @@ public class AuditController {
 
     private final LedgerCacheService cacheService;
     private final MarketDataRepository marketDataRepository;
-    private final QuantSidecarClient quantSidecarClient;
     private final com.portfolioos.core.service.PortfolioValuationService valuationService;
 
     public AuditController(
         LedgerCacheService cacheService,
         MarketDataRepository marketDataRepository,
-        QuantSidecarClient quantSidecarClient,
         @org.springframework.beans.factory.annotation.Autowired(required = false) com.portfolioos.core.service.PortfolioValuationService valuationService
     ) {
         this.cacheService = cacheService;
         this.marketDataRepository = marketDataRepository;
-        this.quantSidecarClient = quantSidecarClient;
         this.valuationService = valuationService;
     }
 
@@ -59,7 +55,7 @@ public class AuditController {
         Set<String> heldIsins = openLots.stream().map(Lot::assetId).collect(Collectors.toSet());
         Map<String, BigDecimal> peakNavMap = marketDataRepository.get52WeekPeakNavs(heldIsins);
         var seriesWithDates = marketDataRepository.getNavHistorySeriesWithDates(heldIsins);
-        Map<String, Map<String, Object>> quantMetricsMap = quantSidecarClient.computeQuantMetricsWithDates(seriesWithDates);
+        Map<String, Map<String, Object>> quantMetricsMap = Collections.emptyMap();
 
         Map<String, List<Lot>> grouped = openLots.stream().collect(Collectors.groupingBy(Lot::assetId));
         List<FundHealthItem> items = new ArrayList<>();

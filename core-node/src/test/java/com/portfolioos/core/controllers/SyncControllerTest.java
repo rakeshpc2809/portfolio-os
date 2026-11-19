@@ -33,7 +33,6 @@ class SyncControllerTest {
     private LedgerCacheService mockCacheService;
     private com.portfolioos.core.service.PortfolioValuationService valuationService;
     private MarketDataRepository mockMarketData;
-    private com.portfolioos.core.rpc.QuantSidecarClient mockQuantSidecar;
 
     @BeforeEach
     void setUp() {
@@ -84,11 +83,10 @@ class SyncControllerTest {
                 return new BenchmarkLevelMetrics(25000.0, 25000.0);
             }
         };
-        mockQuantSidecar = new com.portfolioos.core.rpc.QuantSidecarClient("localhost", 9999);
         valuationService = 
             new com.portfolioos.core.service.PortfolioValuationService(mockCacheService, mockMarketData);
 
-        syncController = new SyncController(mockCacheService, valuationService, mockMarketData, mockQuantSidecar);
+        syncController = new SyncController(mockCacheService, valuationService, mockMarketData);
     }
 
     @Test
@@ -100,7 +98,7 @@ class SyncControllerTest {
             }
         };
         PortfolioValuationService emptyValService = new PortfolioValuationService(mockCacheService, emptyMarketData);
-        SyncController controller = new SyncController(mockCacheService, emptyValService, emptyMarketData, mockQuantSidecar);
+        SyncController controller = new SyncController(mockCacheService, emptyValService, emptyMarketData);
 
         ResponseEntity<UnidirectionalSyncSnapshot> response = controller.getSnapshot("2026-27", null);
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -139,7 +137,7 @@ class SyncControllerTest {
             }
         };
         PortfolioValuationService emptyValService = new PortfolioValuationService(mockCacheService, emptyMarketData);
-        SyncController controller = new SyncController(mockCacheService, emptyValService, emptyMarketData, mockQuantSidecar);
+        SyncController controller = new SyncController(mockCacheService, emptyValService, emptyMarketData);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
             controller.getRebalancePlan("INDUCED")
@@ -223,7 +221,7 @@ class SyncControllerTest {
         memoryRepo.clearAll();
 
         SyncController controller = new SyncController(
-            mockCacheService, valuationService, mockMarketData, mockQuantSidecar, memoryRepo
+            mockCacheService, valuationService, mockMarketData, memoryRepo
         );
 
         ResponseEntity<RebalancePlanDto> preview = controller.getRebalancePlan("SCHEDULED");
@@ -256,7 +254,7 @@ class SyncControllerTest {
         memoryRepo.clearAll();
 
         SyncController controller = new SyncController(
-            mockCacheService, valuationService, mockMarketData, mockQuantSidecar, memoryRepo
+            mockCacheService, valuationService, mockMarketData, memoryRepo
         );
 
         // 1. First preview a plan to obtain its valid digest
@@ -302,7 +300,7 @@ class SyncControllerTest {
 
         // 5. If TriggerHistoryRepository is null, controller MUST return 500 Internal Server Error
         SyncController controllerWithoutRepo = new SyncController(
-            mockCacheService, valuationService, mockMarketData, mockQuantSidecar, null
+            mockCacheService, valuationService, mockMarketData, null
         );
         ResponseEntity<RebalancePlanDto> previewWithoutRepo = controllerWithoutRepo.getRebalancePlan("SCHEDULED");
         assertNotNull(previewWithoutRepo.getBody());

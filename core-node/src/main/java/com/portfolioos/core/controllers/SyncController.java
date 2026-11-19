@@ -14,7 +14,6 @@ import com.portfolioos.core.persistence.MarketDataRepository;
 import com.portfolioos.core.persistence.MarketDataRepository.NavHistorySeriesEntry;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.reporting.ExemptionTracker;
-import com.portfolioos.core.rpc.QuantSidecarClient;
 import com.portfolioos.core.service.LedgerCacheService;
 import com.portfolioos.core.valuation.BucketEngine;
 import com.portfolioos.core.valuation.HarvestAdvisor;
@@ -48,7 +47,6 @@ public class SyncController {
     private final LedgerCacheService cacheService;
     private final com.portfolioos.core.service.PortfolioValuationService valuationService;
     private final MarketDataRepository marketDataRepository;
-    private final QuantSidecarClient quantSidecarClient;
     private final com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository;
 
     @Autowired
@@ -56,23 +54,20 @@ public class SyncController {
         LedgerCacheService cacheService,
         com.portfolioos.core.service.PortfolioValuationService valuationService,
         MarketDataRepository marketDataRepository,
-        QuantSidecarClient quantSidecarClient,
         @Autowired(required = false) com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository
     ) {
         this.cacheService = cacheService;
         this.valuationService = valuationService;
         this.marketDataRepository = marketDataRepository;
-        this.quantSidecarClient = quantSidecarClient;
         this.triggerHistoryRepository = triggerHistoryRepository;
     }
 
     public SyncController(
         LedgerCacheService cacheService,
         com.portfolioos.core.service.PortfolioValuationService valuationService,
-        MarketDataRepository marketDataRepository,
-        QuantSidecarClient quantSidecarClient
+        MarketDataRepository marketDataRepository
     ) {
-        this(cacheService, valuationService, marketDataRepository, quantSidecarClient, null);
+        this(cacheService, valuationService, marketDataRepository, null);
     }
 
     private static String detectFineBucket(String assetName) {
@@ -245,55 +240,7 @@ public class SyncController {
         harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
         radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 
-        // 2. Quant Sidecar Intelligence (from real SQLite NAV time-series with dates)
-        try {
-            Map<String, NavHistorySeriesEntry> navHistorySeries = marketDataRepository.getNavHistorySeriesWithDates(heldIsins);
-            if (!navHistorySeries.isEmpty()) {
-                Map<String, Map<String, Object>> quantMetrics = quantSidecarClient.computeQuantMetricsWithDates(navHistorySeries);
-                Map<String, String> isinToNameMap = holdings.stream().collect(Collectors.toMap(FlatHoldingDto::isin, FlatHoldingDto::fundName, (a, b) -> a));
-
-                for (Map.Entry<String, Map<String, Object>> entry : quantMetrics.entrySet()) {
-                    String isin = entry.getKey();
-                    Map<String, Object> metrics = entry.getValue();
-                    if (metrics == null) continue;
-
-                    String status = String.valueOf(metrics.getOrDefault("status", "INSUFFICIENT_HISTORY"));
-                    if (!"OK".equalsIgnoreCase(status)) {
-                        continue;
-                    }
-
-                    String schemeName = isinToNameMap.getOrDefault(isin, isin);
-
-                    Object sharpeObj = metrics.get("sharpe");
-                    Object maxDdObj = metrics.get("max_drawdown");
-
-                    String bucket = detectFineBucket(schemeName);
-
-                    double ddThreshold = switch (bucket) {
-                        case "Debt & Liquid" -> PortfolioConstants.DRAWDOWN_TIER_1_PCT / 100.0;
-                        case "Core Equity", "Flexi Cap", "Large & Midcap", "Equal Weight Index", "Gold & Commodities" -> PortfolioConstants.DRAWDOWN_TIER_2_PCT / 100.0;
-                        default -> PortfolioConstants.DRAWDOWN_TIER_HIGH_VOLATILITY_PCT / 100.0; // Small Cap, Microcap, Sectoral, Midcap, Factor Value/Momentum
-                    };
-
-                    if (maxDdObj instanceof Number maxDd && Math.abs(maxDd.doubleValue()) >= ddThreshold) {
-                        double maxDdPct = Math.abs(maxDd.doubleValue()) * 100.0;
-                        double thresholdPct = ddThreshold * 100.0;
-                        radarSignals.add(new RadarSignalDto(
-                            "QUANT_ANALYTICS",
-                            schemeName,
-                            "QUANT STATS: DEEP DRAWDOWN (" + String.format("%.1f", maxDdPct) + "%)",
-                            "[" + bucket + "] " + schemeName + " max drawdown (" + String.format("%.1f", maxDdPct) + "%) exceeds " + String.format("%.0f", thresholdPct) + "% " + bucket + " category threshold.",
-                            "WARNING",
-                            "Max DD -" + String.format("%.1f", maxDdPct) + "%"
-                        ));
-                    }
-                }
-            }
-        } catch (Throwable ex) {
-            System.err.println("Non-critical Quant Flight RPC signal extraction warning: " + ex.getMessage());
-        }
-
-        // 3. LTCG Maturation Ladder Signal
+        // 2. LTCG Maturation Ladder Signal
         Lot maturingLot = null;
         long minDaysToLtcg = 9999L;
 

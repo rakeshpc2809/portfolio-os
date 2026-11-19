@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from datetime import date
+from pathlib import Path
 
 from parsers.broker_csv_parser import BrokerCsvParser
 
@@ -89,6 +90,7 @@ class TestCasPdfParser(unittest.TestCase):
 
     def test_cas_parser_fallback_numeric_extraction_right_to_left(self):
         from decimal import Decimal
+        from pathlib import Path
 
         from parsers.cas_parser import TOKEN_REGEX
 
@@ -141,38 +143,32 @@ class TestCasPdfParser(unittest.TestCase):
         )
 
 
-class TestParseEndpointSanitization(unittest.IsolatedAsyncioTestCase):
-    async def test_unsupported_format_does_not_leak_tmp_path(self):
-        import io
+class TestParseCliSanitization(unittest.TestCase):
+    def test_unsupported_format_does_not_leak_tmp_path(self):
+        import subprocess
+        import sys
+        with tempfile.NamedTemporaryFile(suffix=".xyz") as tf:
+            cli = Path(__file__).resolve().parent.parent / "parse_cas.py"
+            res = subprocess.run(
+                [sys.executable, str(cli), "--file", tf.name],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res.returncode, 1)
+            self.assertIn("Unsupported file format", res.stderr)
+            self.assertNotIn("/tmp/", res.stderr)
 
-        from fastapi import HTTPException, UploadFile
-
-        from app import parse_statement
-
-        f = UploadFile(filename="test_upload.xyz", file=io.BytesIO(b"content"))
-        with self.assertRaises(HTTPException) as ctx:
-            await parse_statement(file=f)
-        self.assertEqual(ctx.exception.status_code, 422)
-        self.assertNotIn("/tmp/", str(ctx.exception.detail))
-
-    async def test_internal_error_sanitizes_500_response(self):
-        import io
-        from unittest.mock import patch
-
-        from fastapi import HTTPException, UploadFile
-
-        from app import parse_statement
-
-        f = UploadFile(filename="statement.pdf", file=io.BytesIO(b"%PDF-1.4"))
-        with patch(
-            "parsers.cas_parser.CasPdfParser",
-            side_effect=Exception("Disk error on /tmp/cas_secret/xyz.pdf"),
-        ):
-            with self.assertRaises(HTTPException) as ctx:
-                await parse_statement(file=f)
-            self.assertEqual(ctx.exception.status_code, 500)
-            self.assertEqual(ctx.exception.detail, "Internal statement parser error.")
-            self.assertNotIn("/tmp/", str(ctx.exception.detail))
+    def test_nonexistent_file_returns_error(self):
+        import subprocess
+        import sys
+        cli = Path(__file__).resolve().parent.parent / "parse_cas.py"
+        res = subprocess.run(
+            [sys.executable, str(cli), "--file", "nonexistent.pdf"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(res.returncode, 1)
+        self.assertIn("does not exist", res.stderr)
 
 
 if __name__ == "__main__":

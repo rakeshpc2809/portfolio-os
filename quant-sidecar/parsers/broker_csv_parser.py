@@ -1,8 +1,7 @@
+import csv
 import uuid
 from datetime import datetime
 from decimal import Decimal
-
-import polars as pl
 
 from .models import EventType, TaxEventSchema
 
@@ -15,125 +14,125 @@ class BrokerCsvParser:
     def parse(self) -> list[TaxEventSchema]:
         events: list[TaxEventSchema] = []
         try:
-            df = pl.read_csv(self.csv_path, infer_schema_length=0)
-            if df.is_empty():
-                return events
+            with open(self.csv_path, mode="r", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                if not reader.fieldnames:
+                    return events
+                col_map = {str(c).strip().lower(): c for c in reader.fieldnames}
 
-            col_map = {str(c).strip().lower(): c for c in df.columns}
+                date_col = next(
+                    (
+                        col_map[k]
+                        for k in col_map
+                        if any(x in k for x in ["date", "txn_date", "trade_date"])
+                    ),
+                    None,
+                )
+                symbol_col = next(
+                    (
+                        col_map[k]
+                        for k in col_map
+                        if any(x in k for x in ["symbol", "scheme", "scrip", "asset", "description"])
+                    ),
+                    None,
+                )
+                type_col = next(
+                    (
+                        col_map[k]
+                        for k in col_map
+                        if any(x in k for x in ["type", "buy/sell", "transaction", "action"])
+                    ),
+                    None,
+                )
+                qty_col = next(
+                    (col_map[k] for k in col_map if any(x in k for x in ["qty", "quantity", "units"])),
+                    None,
+                )
+                price_col = next(
+                    (col_map[k] for k in col_map if any(x in k for x in ["price", "nav", "rate"])), None
+                )
+                amount_col = next(
+                    (col_map[k] for k in col_map if any(x in k for x in ["amount", "value", "total"])),
+                    None,
+                )
 
-            date_col = next(
-                (
-                    col_map[k]
-                    for k in col_map
-                    if any(x in k for x in ["date", "txn_date", "trade_date"])
-                ),
-                None,
-            )
-            symbol_col = next(
-                (
-                    col_map[k]
-                    for k in col_map
-                    if any(x in k for x in ["symbol", "scheme", "scrip", "asset", "description"])
-                ),
-                None,
-            )
-            type_col = next(
-                (
-                    col_map[k]
-                    for k in col_map
-                    if any(x in k for x in ["type", "buy/sell", "transaction", "action"])
-                ),
-                None,
-            )
-            qty_col = next(
-                (col_map[k] for k in col_map if any(x in k for x in ["qty", "quantity", "units"])),
-                None,
-            )
-            price_col = next(
-                (col_map[k] for k in col_map if any(x in k for x in ["price", "nav", "rate"])), None
-            )
-            amount_col = next(
-                (col_map[k] for k in col_map if any(x in k for x in ["amount", "value", "total"])),
-                None,
-            )
+                for row in reader:
+                    try:
+                        asset_name = (
+                            str(row[symbol_col])
+                            if symbol_col and row.get(symbol_col)
+                            else "Broker Asset"
+                        )
+                        date_str = str(row[date_col]) if date_col and row.get(date_col) else ""
 
-            for row in df.to_dicts():
-                try:
-                    asset_name = (
-                        str(row[symbol_col])
-                        if symbol_col and row.get(symbol_col)
-                        else "Broker Asset"
-                    )
-                    date_str = str(row[date_col]) if date_col and row.get(date_col) else ""
+                        event_date = None
+                        if date_str:
+                            for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d-%b-%Y"):
+                                try:
+                                    event_date = datetime.strptime(date_str.strip(), fmt).date()
+                                    break
+                                except ValueError:
+                                    pass
 
-                    event_date = None
-                    if date_str:
-                        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d-%b-%Y"):
-                            try:
-                                event_date = datetime.strptime(date_str.strip(), fmt).date()
-                                break
-                            except ValueError:
-                                pass
+                        if event_date is None:
+                            raise ValueError(
+                                f"CRITICAL: Missing or unparseable transaction date for asset {asset_name} in CSV row: {row}. Ingestion aborted."
+                            )
 
-                    if event_date is None:
-                        raise ValueError(
-                            f"CRITICAL: Missing or unparseable transaction date for asset {asset_name} in CSV row: {row}. Ingestion aborted."
+                        txn_type_str = (
+                            str(row[type_col]).upper() if type_col and row.get(type_col) else "BUY"
+                        )
+                        if any(
+                            x in txn_type_str for x in ["SELL", "REDEMPTION", "DISPOSAL", "SWITCH OUT"]
+                        ):
+                            event_type = EventType.DISPOSAL
+                        elif "BONUS" in txn_type_str:
+                            event_type = EventType.BONUS
+                        elif "SPLIT" in txn_type_str:
+                            event_type = EventType.SPLIT
+                        else:
+                            event_type = EventType.ACQUISITION
+
+                        units_val = row.get(qty_col)
+                        if units_val is None or str(units_val).strip() == "":
+                            raise ValueError(
+                                f"CRITICAL: Missing or unparseable unit quantity for asset {asset_name} on {event_date}. Ingestion aborted."
+                            )
+                        units = Decimal(str(abs(float(str(units_val).replace(",", "").strip()))))
+
+                        price_val = row.get(price_col)
+                        if price_val is None or str(price_val).strip() == "":
+                            raise ValueError(
+                                f"CRITICAL: Missing or unparseable price/NAV for asset {asset_name} on {event_date}. Ingestion aborted."
+                            )
+                        price = Decimal(str(abs(float(str(price_val).replace(",", "").strip()))))
+
+                        amt_val = row.get(amount_col)
+                        amount = (
+                            Decimal(str(abs(float(str(amt_val).replace(",", "").strip()))))
+                            if amt_val is not None and str(amt_val).strip() != ""
+                            else (units * price)
                         )
 
-                    txn_type_str = (
-                        str(row[type_col]).upper() if type_col and row.get(type_col) else "BUY"
-                    )
-                    if any(
-                        x in txn_type_str for x in ["SELL", "REDEMPTION", "DISPOSAL", "SWITCH OUT"]
-                    ):
-                        event_type = EventType.DISPOSAL
-                    elif "BONUS" in txn_type_str:
-                        event_type = EventType.BONUS
-                    elif "SPLIT" in txn_type_str:
-                        event_type = EventType.SPLIT
-                    else:
-                        event_type = EventType.ACQUISITION
-
-                    units_val = row.get(qty_col)
-                    if units_val is None or str(units_val).strip() == "":
-                        raise ValueError(
-                            f"CRITICAL: Missing or unparseable unit quantity for asset {asset_name} on {event_date}. Ingestion aborted."
+                        events.append(
+                            TaxEventSchema(
+                                id=str(uuid.uuid4()),
+                                assetId=asset_name.replace(" ", "_").upper()[:20],
+                                assetName=asset_name,
+                                isin=None,
+                                eventType=event_type,
+                                eventDate=event_date,
+                                units=units,
+                                pricePerUnit=price,
+                                grossAmount=amount,
+                                sourceDocumentId=self.csv_path,
+                                ingestedAt=datetime.now(),
+                            )
                         )
-                    units = Decimal(str(abs(float(str(units_val).replace(",", "").strip()))))
-
-                    price_val = row.get(price_col)
-                    if price_val is None or str(price_val).strip() == "":
-                        raise ValueError(
-                            f"CRITICAL: Missing or unparseable price/NAV for asset {asset_name} on {event_date}. Ingestion aborted."
-                        )
-                    price = Decimal(str(abs(float(str(price_val).replace(",", "").strip()))))
-
-                    amt_val = row.get(amount_col)
-                    amount = (
-                        Decimal(str(abs(float(str(amt_val).replace(",", "").strip()))))
-                        if amt_val is not None and str(amt_val).strip() != ""
-                        else (units * price)
-                    )
-
-                    events.append(
-                        TaxEventSchema(
-                            id=str(uuid.uuid4()),
-                            assetId=asset_name.replace(" ", "_").upper()[:20],
-                            assetName=asset_name,
-                            isin=None,
-                            eventType=event_type,
-                            eventDate=event_date,
-                            units=units,
-                            pricePerUnit=price,
-                            grossAmount=amount,
-                            sourceDocumentId=self.csv_path,
-                            ingestedAt=datetime.now(),
-                        )
-                    )
-                except ValueError:
-                    raise
-                except Exception:
-                    continue
+                    except ValueError:
+                        raise
+                    except Exception:
+                        continue
         except ValueError:
             raise
         except Exception:

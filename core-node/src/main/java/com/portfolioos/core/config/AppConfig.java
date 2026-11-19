@@ -4,7 +4,6 @@ import com.portfolioos.core.persistence.MarketDataRepository;
 import com.portfolioos.core.persistence.SqliteEventStore;
 import com.portfolioos.core.persistence.TriggerHistoryRepository;
 import com.portfolioos.core.ports.EventStorePort;
-import com.portfolioos.core.rpc.QuantSidecarClient;
 import com.portfolioos.core.service.RebalancePlanEngine;
 import com.portfolioos.core.service.RebalanceTriggerEvaluator;
 import com.zaxxer.hikari.HikariConfig;
@@ -74,13 +73,5 @@ public class AppConfig {
         RebalanceTriggerEvaluator evaluator = new RebalanceTriggerEvaluator(repository);
         RebalancePlanEngine.setTriggerEvaluator(evaluator);
         return evaluator;
-    }
-
-    @Bean
-    public QuantSidecarClient quantSidecarClient(
-        @Value("${quant-sidecar.host:${QUANT_SIDECAR_HOST:127.0.0.1}}") String host,
-        @Value("${quant-sidecar.port:8000}") int port
-    ) {
-        return new QuantSidecarClient(host, port);
     }
 }
