@@ -301,9 +301,13 @@ public class SyncController {
             ));
         }
 
-        long now = System.currentTimeMillis();
+        long lastSyncTimestamp = state.lastNavFreshnessTimestamp() > 0 ? state.lastNavFreshnessTimestamp() : System.currentTimeMillis();
+        boolean ledgerHmacVerified = state.ledgerHmacVerified();
+        double remainingHeadroom = Double.parseDouble(exStatus.exemptionRemaining());
+        double usedHeadroom = Double.parseDouble(exStatus.exemptionUsed());
+
         SyncInfoDto syncInfo = new SyncInfoDto(
-            now / 1000,
+            lastSyncTimestamp / 1000,
             ledgerHash,
             LocalDate.now().atStartOfDay().toString(),
             resolvedFy,
@@ -316,7 +320,12 @@ public class SyncController {
             currencyFormat.format(totalPortfolioInvested),
             (unrealizedGain.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + currencyFormat.format(unrealizedGain),
             staleNavCount,
-            hasStaleNav
+            hasStaleNav,
+            "AVAILABLE",
+            ledgerHmacVerified,
+            java.time.Instant.ofEpochMilli(lastSyncTimestamp).toString(),
+            remainingHeadroom,
+            usedHeadroom
         );
 
         List<NetWorthPointDto> netWorthHistory = marketDataRepository.getDailyNetWorthTrend().stream()
@@ -373,36 +382,6 @@ public class SyncController {
     }
 
     private DailyBriefDto loadDailyBriefCache(BigDecimal currentNetWorth) {
-        java.io.File[] candidates = new java.io.File[] {
-            new java.io.File("data/daily_brief_cache.json"),
-            new java.io.File("../data/daily_brief_cache.json"),
-            new java.io.File("../../data/daily_brief_cache.json"),
-            new java.io.File("/app/data/daily_brief_cache.json")
-        };
-        for (java.io.File f : candidates) {
-            if (f.exists() && f.isFile()) {
-                try {
-                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                    DailyBriefDto dto = mapper.readValue(f, DailyBriefDto.class);
-                    // Zero-Trust Validation: verify cached brief doesn't hallucinate or diverge from live net worth
-                    if (dto != null && dto.metrics() != null && dto.metrics().containsKey("net_worth")) {
-                        Object nwObj = dto.metrics().get("net_worth");
-                        if (nwObj instanceof Number nwNum && currentNetWorth != null && currentNetWorth.compareTo(BigDecimal.ZERO) > 0) {
-                            BigDecimal cachedNw = BigDecimal.valueOf(nwNum.doubleValue());
-                            BigDecimal diff = cachedNw.subtract(currentNetWorth).abs();
-                            BigDecimal tolerance = currentNetWorth.multiply(new BigDecimal("0.15"));
-                            if (diff.compareTo(tolerance) > 0) {
-                                // Stale mock or divergent brief detected — reject to prevent user-facing hallucination
-                                return null;
-                            }
-                        }
-                    }
-                    return dto;
-                } catch (Exception e) {
-                    // ignore
-                }
-            }
-        }
         return null;
     }
 

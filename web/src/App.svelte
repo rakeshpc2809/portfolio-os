@@ -66,7 +66,6 @@
   let casFile = $state<File | null>(null);
   let casUploading = $state(false);
   let casStatusMsg = $state<string | null>(null);
-  let briefDismissed = $state(false);
 
   const gainPct = $derived(snapshot?.portfolio_summary?.unrealized_gain_pct);
   const absGain = $derived(snapshot?.portfolio_summary?.unrealized_gain ?? 0);
@@ -319,35 +318,6 @@
 
   <!-- Main Content Layout -->
   <main class="main-body">
-    {#if snapshot?.daily_brief && !briefDismissed}
-      <aside class="brief-banner" role="region" aria-label="Morning Executive Brief">
-        <div class="brief-content">
-          <div class="brief-header">
-            <div class="brief-badge-row">
-              <span class="brief-tag"><Sparkles size={13} /> Executive Brief</span>
-              {#if snapshot.daily_brief.verified}
-                <span class="brief-verified-tag"><ShieldCheck size={12} /> Audit Verified</span>
-              {/if}
-              {#if snapshot.daily_brief.generated_at}
-                <span class="brief-timestamp">{snapshot.daily_brief.generated_at}</span>
-              {/if}
-            </div>
-            <button 
-              type="button" 
-              class="brief-dismiss" 
-              onclick={() => briefDismissed = true} 
-              aria-label="Dismiss brief"
-              title="Dismiss brief"
-            >
-              <X size={15} />
-            </button>
-          </div>
-          <h3 class="brief-headline">{snapshot.daily_brief.headline}</h3>
-          <p class="brief-narration">{snapshot.daily_brief.narration}</p>
-        </div>
-      </aside>
-    {/if}
-
     <!-- Executive HUD Cards Grid -->
     <section class="hud-grid" aria-label="Executive Portfolio Metrics">
       <!-- Card 1: Net Worth -->
@@ -815,97 +785,6 @@
     flex-direction: column;
     gap: 1.8rem;
     z-index: 1;
-  }
-
-  /* Morning Executive Brief Banner */
-  .brief-banner {
-    background: var(--surface-card);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-md);
-    padding: 1.1rem 1.4rem;
-  }
-
-  .brief-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .brief-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .brief-badge-row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-
-  .brief-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.72rem;
-    font-weight: 500;
-    color: var(--accent-emerald);
-    background: var(--accent-emerald-bg);
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-xs);
-    border: 1px solid var(--border-hairline);
-  }
-
-  .brief-verified-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.72rem;
-    font-weight: 500;
-    color: var(--accent-cyan);
-    background: var(--accent-cyan-bg);
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-xs);
-    border: 1px solid var(--border-hairline);
-  }
-
-  .brief-timestamp {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-  }
-
-  .brief-dismiss {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 0.3rem;
-    border-radius: var(--radius-xs);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.15s ease, background-color 0.15s ease;
-  }
-
-  .brief-dismiss:hover {
-    color: var(--text-main);
-    background: var(--surface-elevated);
-  }
-
-  .brief-headline {
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: var(--text-main);
-    margin: 0;
-    letter-spacing: -0.01em;
-  }
-
-  .brief-narration {
-    font-size: 0.88rem;
-    line-height: 1.5;
-    color: var(--text-secondary);
-    margin: 0;
   }
 
   /* HUD Grid */

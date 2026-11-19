@@ -36,14 +36,14 @@
   let { rebalancePlan, holdings = [], netWorth = 0, quietMode = false, onopenlumpsum }: Props = $props();
 
   function getFundHoldingMetrics(fundIdOrName: string, orderProceeds: number = 0) {
-    const nw = netWorth || currentNetWorth() || 2178955;
+    const nw = netWorth || currentNetWorth() || 0;
     const holding = holdings?.find((h: any) => 
       (h.asset_id && fundIdOrName.toLowerCase().includes(h.asset_id.toLowerCase())) ||
       (h.isin && fundIdOrName.toLowerCase().includes(h.isin.toLowerCase())) ||
       (h.asset_name && fundIdOrName.toLowerCase().includes(h.asset_name.toLowerCase())) ||
       (h.asset_name && h.asset_name.toLowerCase().includes(fundIdOrName.toLowerCase()))
     );
-    const curVal = Number(holding?.current_value ?? (orderProceeds > 0 ? orderProceeds * 1.5 : 0));
+    const curVal = Number(holding?.current_value ?? 0);
     const curPct = nw > 0 ? (curVal / nw) * 100 : 0;
     const postVal = Math.max(0, curVal - orderProceeds);
     const postPct = nw > 0 ? (postVal / nw) * 100 : 0;
@@ -144,7 +144,7 @@
 
   // Calculate live FIRE status, accumulation metrics and Guyton-Klinger thresholds
   const currentNetWorth = $derived(() => {
-    return Number(fireData?.fire_investable_net_worth || fireData?.total_net_worth || 2178955);
+    return Number(fireData?.fire_investable_net_worth || fireData?.total_net_worth || netWorth || 0);
   });
 
   const activeScenario = $derived(() => {
@@ -152,18 +152,18 @@
   });
 
   const annualExpense = $derived(() => {
-    return Number(activeScenario()?.annual_expense || fireData?.annual_expense || 720000);
+    return Number(activeScenario()?.annual_expense || fireData?.annual_expense || 0);
   });
 
   const targetCorpus = $derived(() => {
-    return Number(activeScenario()?.target_corpus || 24000000);
+    return Number(activeScenario()?.target_corpus || 0);
   });
 
   const yearsRemaining = $derived(() => {
-    return fireData?.years_remaining ?? 13;
+    return fireData?.years_remaining ?? 0;
   });
 
-  const isAccumulationPhase = $derived((yearsRemaining() ?? 13) > 0);
+  const isAccumulationPhase = $derived((yearsRemaining() ?? 0) > 0);
 
   const fundedRatioPct = $derived(() => {
     const target = targetCorpus();
@@ -171,7 +171,7 @@
   });
 
   const projectedCorpus = $derived(() => {
-    return Number(fireData?.projected_corpus_at_target_age || 21641478);
+    return Number(fireData?.projected_corpus_at_target_age || 0);
   });
 
   // Target retirement SWR planned for post-retirement (typically 3.00%)
@@ -281,7 +281,7 @@
                         Fund Impact: <strong class="text-rose">{metrics.curPct.toFixed(1)}% ➔ {metrics.postPct.toFixed(1)}%</strong>
                       </span>
                       <span class="prov-sub-tag text-muted">
-                        ({formatCompactINR(metrics.curVal)} ➔ {formatCompactINR(metrics.postVal)})
+                        ({formatCompactINR(metrics.curVal, quietMode)} ➔ {formatCompactINR(metrics.postVal, quietMode)})
                       </span>
                     </div>
                     <span class="prov-meta mono text-muted">
@@ -310,7 +310,7 @@
 
         <div class="provenance-divider">
           <div class="prov-arrow">➔</div>
-          <span class="prov-tax-pill mono">Tax drag: ₹0.00</span>
+          <span class="prov-tax-pill mono">Tax drag: {formatINR(rebalancePlan?.summary?.projected_tax ?? 0, quietMode)}</span>
         </div>
 
         <div class="provenance-col targets">
@@ -343,7 +343,7 @@
                           </span>
                           {#if fb.pre_valuation !== undefined && fb.post_valuation !== undefined}
                             <span class="prov-sub-tag mono text-muted">
-                              ({formatCompactINR(fb.pre_valuation)} ➔ {formatCompactINR(fb.post_valuation)})
+                              ({formatCompactINR(fb.pre_valuation, quietMode)} ➔ {formatCompactINR(fb.post_valuation, quietMode)})
                             </span>
                           {/if}
                         </div>
@@ -633,13 +633,13 @@
       <div class="exemption-gauge-box">
         <div class="gauge-head">
           <span class="g-label">Annual Tax-Free LTCG Allowance (₹1.25 Lakh Cap)</span>
-          <span class="g-val mono bold text-emerald">{formatINR(exemptGain, quietMode)} / ₹1.25L</span>
+          <span class="g-val mono bold text-emerald">{formatINR(exemptGain, quietMode)} / {quietMode ? '••••••' : '₹1.25L'}</span>
         </div>
         <div class="gauge-track">
           <div class="gauge-fill" style="width: {exemptPct}%;"></div>
         </div>
         <span class="gauge-sub text-muted">
-          {exemptLimit - exemptGain > 0 ? `₹${formatINR(exemptLimit - exemptGain, quietMode)} exemption headroom remaining this financial year` : '100% of tax-free harvest capacity utilized!'}
+          {exemptLimit - exemptGain > 0 ? `${formatINR(exemptLimit - exemptGain, quietMode)} exemption headroom remaining this financial year` : '100% of tax-free harvest capacity utilized!'}
         </span>
       </div>
 
@@ -802,7 +802,7 @@
     </div>
   </div>
 
-  <!-- SECTION 4: MONTE CARLO PROJECTION FAN & WEALTH TRAJECTORY -->
+  <!-- SECTION 4: RETIREMENT WEALTH TRAJECTORY -->
   <div class="visual-panel obsidian-card">
     <div class="panel-header">
       <div class="header-left">
@@ -810,83 +810,16 @@
           <Activity size={18} />
         </div>
         <div>
-          <h3 class="panel-title">Monte Carlo Wealth Projection Fan (2,000 Paths)</h3>
-          <span class="panel-sub">Stochastic inflation-adjusted simulation of retirement corpus longevity</span>
+          <h3 class="panel-title">Retirement Corpus Trajectory & Milestones</h3>
+          <span class="panel-sub">Inflation-adjusted projection of retirement corpus longevity</span>
         </div>
       </div>
-      {#if fireData?.monte_carlo_success_rate_pct}
+      {#if fireData?.status}
         <div class="confidence-pill mono">
-          <span>CONFIDENCE:</span>
-          <strong class="text-emerald">{fireData.monte_carlo_success_rate_pct.toFixed(1)}% SUCCESS</strong>
+          <span>STATUS:</span>
+          <strong class={fireData.status === 'ON_TRACK' || fireData.status === 'FIRE_READY' ? 'text-emerald' : 'text-amber'}>{fireData.status}</strong>
         </div>
       {/if}
-    </div>
-
-    <!-- Visual SVG Fan Chart -->
-    <div class="chart-wrapper">
-      <svg viewBox="0 0 700 240" class="fan-svg" aria-hidden="true">
-        <defs>
-          <linearGradient id="fanGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#06B6D4" stop-opacity="0.25" />
-            <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.02" />
-          </linearGradient>
-        </defs>
-
-        <!-- Grid Lines -->
-        <line x1="50" y1="30" x2="660" y2="30" stroke="rgba(255,255,255,0.04)" stroke-dasharray="4" />
-        <line x1="50" y1="90" x2="660" y2="90" stroke="rgba(255,255,255,0.04)" stroke-dasharray="4" />
-        <line x1="50" y1="150" x2="660" y2="150" stroke="rgba(255,255,255,0.04)" stroke-dasharray="4" />
-        <line x1="50" y1="210" x2="660" y2="210" stroke="rgba(255,255,255,0.08)" />
-
-        <!-- Shaded Monte Carlo 10th-90th Percentile Fan Area -->
-        <path
-          d="M 60 170 C 200 160, 400 90, 650 35 L 650 195 C 400 185, 200 175, 60 170 Z"
-          fill="url(#fanGrad)"
-        />
-
-        <!-- 90th percentile curve (Bull) -->
-        <path
-          d="M 60 170 C 200 160, 400 90, 650 35"
-          fill="none"
-          stroke="#06B6D4"
-          stroke-width="1.5"
-          stroke-dasharray="3"
-        />
-
-        <!-- 50th percentile Median curve -->
-        <path
-          d="M 60 170 C 200 165, 400 135, 650 110"
-          fill="none"
-          stroke="#10B981"
-          stroke-width="2.5"
-        />
-
-        <!-- 10th percentile curve (Stress Test) -->
-        <path
-          d="M 60 170 C 200 170, 400 170, 650 195"
-          fill="none"
-          stroke="#F43F5E"
-          stroke-width="1.5"
-          stroke-dasharray="3"
-        />
-
-        <!-- Target Corpus Benchmark Line -->
-        <line x1="60" y1="125" x2="650" y2="125" stroke="#F59E0B" stroke-width="2" stroke-dasharray="6" />
-
-        <!-- Current Age Pin -->
-        <circle cx="60" cy="170" r="5" fill="#06B6D4" stroke="#ffffff" stroke-width="2" />
-        <text x="60" y="195" class="chart-anno mono">Today</text>
-
-        <!-- Target FIRE Milestone Intersection -->
-        <circle cx="430" cy="125" r="6" fill="#F59E0B" stroke="#ffffff" stroke-width="2" />
-        <text x="430" y="112" class="chart-anno fire-anno mono" text-anchor="middle">FIRE Milestone (Age 45)</text>
-
-        <!-- Right End Labels -->
-        <text x="655" y="40" class="chart-anno text-cyan mono">90th %ile</text>
-        <text x="655" y="115" class="chart-anno text-emerald mono bold">Median (50th)</text>
-        <text x="655" y="130" class="chart-anno text-amber mono">Target Goal</text>
-        <text x="655" y="200" class="chart-anno text-rose mono">10th %ile</text>
-      </svg>
     </div>
 
     <!-- Retirement Milestones Story Summary -->
@@ -900,12 +833,16 @@
         <div class="milestone-box">
           <span class="m-title">Target Corpus Required</span>
           <span class="m-val mono bold text-amber">{formatCompactINR(Number(fireData.required_corpus) || 0, quietMode)}</span>
-          <span class="m-sub mono text-cyan">{fireData.years_remaining ?? '—'} Years Remaining to Age 45</span>
+          <span class="m-sub mono text-cyan">{fireData.years_remaining ?? '—'} Years Remaining to Target Age</span>
         </div>
         <div class="milestone-box highlight">
           <span class="m-title">Projected Corpus at Target</span>
           <span class="m-val mono bold text-emerald">{formatCompactINR(Number(fireData.projected_corpus_at_target_age) || 0, quietMode)}</span>
-          <span class="m-sub text-emerald">✓ On Track (Surplus +{formatCompactINR(Number(fireData.shortage_or_surplus_amount) || 0, quietMode)})</span>
+          {#if Number(fireData.shortage_or_surplus_amount) >= 0}
+            <span class="m-sub text-emerald">✓ On Track (Surplus +{formatCompactINR(Number(fireData.shortage_or_surplus_amount) || 0, quietMode)})</span>
+          {:else}
+            <span class="m-sub text-rose">⚠ Shortfall ({formatCompactINR(Number(fireData.shortage_or_surplus_amount) || 0, quietMode)})</span>
+          {/if}
         </div>
       </div>
     {/if}
@@ -1593,26 +1530,6 @@
     color: var(--text-muted);
     line-height: 1.4;
     margin: 0;
-  }
-
-  /* Monte Carlo Fan Chart */
-  .chart-wrapper {
-    width: 100%;
-    overflow-x: auto;
-  }
-  .fan-svg {
-    width: 100%;
-    height: auto;
-    max-height: 240px;
-  }
-  .chart-anno {
-    font-size: 9px;
-    fill: var(--text-muted);
-  }
-  .fire-anno {
-    font-size: 10px;
-    font-weight: 600;
-    fill: var(--accent-amber);
   }
 
   .milestones-story-grid {

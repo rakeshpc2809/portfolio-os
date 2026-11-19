@@ -22,7 +22,11 @@ public class SyncDtos {
         String formattedUnrealizedGain,
         int staleNavCount,
         boolean hasStaleNav,
-        String drawdownStatus
+        String drawdownStatus,
+        boolean ledgerHmacVerified,
+        String lastSyncTimestamp,
+        double ltcgExemptionRemaining,
+        double ltcgExemptionUsed
     ) {
         public SyncInfoDto(
             long timestamp,
@@ -42,14 +46,37 @@ public class SyncDtos {
         ) {
             this(timestamp, ledgerHash, generatedAt, fiscalYear, portfolioXirr, xirrPercentage,
                  totalInvested, currentValue, unrealizedGain, formattedCurrentValue, formattedTotalInvested,
-                 formattedUnrealizedGain, staleNavCount, hasStaleNav, "AVAILABLE");
+                 formattedUnrealizedGain, staleNavCount, hasStaleNav, "AVAILABLE", true, generatedAt, 125000.0, 0.0);
+        }
+
+        public SyncInfoDto(
+            long timestamp,
+            String ledgerHash,
+            String generatedAt,
+            String fiscalYear,
+            double portfolioXirr,
+            String xirrPercentage,
+            double totalInvested,
+            double currentValue,
+            double unrealizedGain,
+            String formattedCurrentValue,
+            String formattedTotalInvested,
+            String formattedUnrealizedGain,
+            int staleNavCount,
+            boolean hasStaleNav,
+            String drawdownStatus
+        ) {
+            this(timestamp, ledgerHash, generatedAt, fiscalYear, portfolioXirr, xirrPercentage,
+                 totalInvested, currentValue, unrealizedGain, formattedCurrentValue, formattedTotalInvested,
+                 formattedUnrealizedGain, staleNavCount, hasStaleNav, drawdownStatus, true, generatedAt, 125000.0, 0.0);
         }
 
         public SyncInfoDto withDrawdownStatus(String status) {
             return new SyncInfoDto(
                 timestamp, ledgerHash, generatedAt, fiscalYear, portfolioXirr, xirrPercentage,
                 totalInvested, currentValue, unrealizedGain, formattedCurrentValue, formattedTotalInvested,
-                formattedUnrealizedGain, staleNavCount, hasStaleNav, status
+                formattedUnrealizedGain, staleNavCount, hasStaleNav, status, ledgerHmacVerified, lastSyncTimestamp,
+                ltcgExemptionRemaining, ltcgExemptionUsed
             );
         }
     }

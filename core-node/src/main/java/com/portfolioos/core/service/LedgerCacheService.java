@@ -68,7 +68,8 @@ public class LedgerCacheService {
         String ledgerHash,
         long lastNavFreshnessTimestamp,
         String healthStatus, // HEALTHY, DEGRADED_AMFI_TIMEOUT
-        Map<String, java.time.LocalDate> navDateMap
+        Map<String, java.time.LocalDate> navDateMap,
+        boolean ledgerHmacVerified
     ) {
         public CachedLedgerState(
             List<TaxEvent> events,
@@ -78,7 +79,19 @@ public class LedgerCacheService {
             long lastNavFreshnessTimestamp,
             String healthStatus
         ) {
-            this(events, fifoResult, navMap, ledgerHash, lastNavFreshnessTimestamp, healthStatus, Collections.emptyMap());
+            this(events, fifoResult, navMap, ledgerHash, lastNavFreshnessTimestamp, healthStatus, Collections.emptyMap(), true);
+        }
+
+        public CachedLedgerState(
+            List<TaxEvent> events,
+            FifoMatcher.FifoResult fifoResult,
+            Map<String, BigDecimal> navMap,
+            String ledgerHash,
+            long lastNavFreshnessTimestamp,
+            String healthStatus,
+            Map<String, java.time.LocalDate> navDateMap
+        ) {
+            this(events, fifoResult, navMap, ledgerHash, lastNavFreshnessTimestamp, healthStatus, navDateMap, true);
         }
     }
 
@@ -114,7 +127,13 @@ public class LedgerCacheService {
                         navDateMap = current != null && current.navDateMap() != null ? current.navDateMap() : Collections.emptyMap();
                     }
                     
-                    stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash, now, health, navDateMap));
+                    boolean hmacVerified = false;
+                    try {
+                        hmacVerified = eventStore.verifyLedgerIntegrity();
+                    } catch (Exception hmacEx) {
+                        log.warn("HMAC verification check failed: {}", hmacEx.getMessage());
+                    }
+                    stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash, now, health, navDateMap, hmacVerified));
                     lastNavSyncTime = now;
                 }
             } catch (Exception e) {

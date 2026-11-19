@@ -297,7 +297,7 @@
                           Impact: <strong class="text-rose">{metrics.curPct.toFixed(1)}% ➔ {metrics.postPct.toFixed(1)}%</strong>
                         </span>
                         <span class="so-val-span text-muted">
-                          ({formatCompactINR(metrics.curVal)} ➔ {formatCompactINR(metrics.postVal)})
+                          ({formatCompactINR(metrics.curVal, quietMode)} ➔ {formatCompactINR(metrics.postVal, quietMode)})
                         </span>
                         <span class="so-label-span">{order.summary_label || 'Trim'}</span>
                       </div>
@@ -366,7 +366,7 @@
                               </span>
                               {#if fb.pre_valuation !== undefined && fb.post_valuation !== undefined}
                                 <span class="fs-val-note mono text-muted">
-                                  ({formatCompactINR(fb.pre_valuation)} ➔ {formatCompactINR(fb.post_valuation)})
+                                  ({formatCompactINR(fb.pre_valuation, quietMode)} ➔ {formatCompactINR(fb.post_valuation, quietMode)})
                                 </span>
                               {/if}
                             </div>

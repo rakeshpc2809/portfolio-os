@@ -233,34 +233,21 @@ export interface UpSetCombination {
 }
 
 export function getAuthToken(): string {
-  if (typeof window === 'undefined') return 'dev_secret_key_123';
-  let token = localStorage.getItem('API_AUTH_TOKEN');
-  if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
-    // Check if provided via query param ?token=...
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const qToken = urlParams.get('token');
-      if (qToken && qToken.trim()) {
-        token = qToken.trim();
-        localStorage.setItem('API_AUTH_TOKEN', token);
-        return token;
-      }
-    } catch {
-      // ignore
-    }
-
-    // Default to the standard configured secret key for local single-user daemon
-    token = 'dev_secret_key_123';
-    localStorage.setItem('API_AUTH_TOKEN', token);
+  if (typeof window === 'undefined') return '';
+  const token = sessionStorage.getItem('API_AUTH_TOKEN') || localStorage.getItem('API_AUTH_TOKEN');
+  if (token && token !== 'undefined' && token !== 'null' && token.trim() !== '') {
+    return token.trim();
   }
-  return token || 'dev_secret_key_123';
+  return '';
 }
 
 export function setAuthToken(token: string): void {
   if (typeof window !== 'undefined') {
     if (token && token.trim()) {
+      sessionStorage.setItem('API_AUTH_TOKEN', token.trim());
       localStorage.setItem('API_AUTH_TOKEN', token.trim());
     } else {
+      sessionStorage.removeItem('API_AUTH_TOKEN');
       localStorage.removeItem('API_AUTH_TOKEN');
     }
   }
@@ -496,7 +483,7 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
       xirr_percentage: syncInfo.xirr_percentage || '—',
       formatted_xirr: syncInfo.xirr_percentage || '—',
       unallocated_cash: Number(syncInfo.unallocated_cash || 0),
-      ltcg_exemption_remaining: Number(syncInfo.ltcg_exemption_remaining ?? 125000),
+      ltcg_exemption_remaining: Number(syncInfo.ltcg_exemption_remaining ?? 0),
       ltcg_exemption_used: Number(syncInfo.ltcg_exemption_used ?? 0),
       ltcg_exemption_limit: 125000
     },
