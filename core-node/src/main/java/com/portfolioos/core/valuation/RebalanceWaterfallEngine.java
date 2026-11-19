@@ -190,18 +190,16 @@ public class RebalanceWaterfallEngine {
                 }
                 if (grossStcg.compareTo(BigDecimal.ZERO) == 0 && grossLtcg.compareTo(BigDecimal.ZERO) == 0 && openLots != null) {
                     for (Lot l : openLots) {
-                        BigDecimal nav = navMap != null ? navMap.get(l.assetId()) : null;
-                        if (nav != null) {
-                            BigDecimal cur = l.remainingUnits().multiply(nav);
-                            BigDecimal cost = l.effectiveTotalCostBasis(nav);
-                            BigDecimal g = cur.subtract(cost);
-                            if (g.compareTo(BigDecimal.ZERO) > 0) {
-                                long holdingDays = java.time.temporal.ChronoUnit.DAYS.between(l.acquisitionDate(), today);
-                                if (holdingDays >= rules.equityLtcgThresholdDays()) {
-                                    grossLtcg = grossLtcg.add(g);
-                                } else {
-                                    grossStcg = grossStcg.add(g);
-                                }
+                        BigDecimal nav = NavResolver.requireValidNav(navMap, l, "RebalanceWaterfallEngine.buildTrimWaterfall");
+                        BigDecimal cur = l.remainingUnits().multiply(nav);
+                        BigDecimal cost = l.effectiveTotalCostBasis(nav);
+                        BigDecimal g = cur.subtract(cost);
+                        if (g.compareTo(BigDecimal.ZERO) > 0) {
+                            long holdingDays = java.time.temporal.ChronoUnit.DAYS.between(l.acquisitionDate(), today);
+                            if (holdingDays >= rules.equityLtcgThresholdDays()) {
+                                grossLtcg = grossLtcg.add(g);
+                            } else {
+                                grossStcg = grossStcg.add(g);
                             }
                         }
                     }

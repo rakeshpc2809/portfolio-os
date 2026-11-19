@@ -449,8 +449,8 @@ public class BucketConfigLoader {
 
     public static List<BucketEngine.BucketTarget> getActiveBucketTargets(LocalDate date) {
         BucketRulesConfig config = loadConfig();
-        if (config == null || config.versions().isEmpty()) {
-            return BucketEngine.DEFAULT_TARGETS;
+        if (config == null || config.versions() == null || config.versions().isEmpty()) {
+            throw new IllegalStateException("CRITICAL CONFIG ERROR: No bucket target versions configured in rules/bucket_targets.yaml");
         }
 
         String targetDateStr = (date != null ? date : LocalDate.now()).toString();
@@ -505,7 +505,10 @@ public class BucketConfigLoader {
                 bandMap.getOrDefault(entry.getKey(), new BigDecimal("5.00"))
             ));
         }
-        return result.isEmpty() ? BucketEngine.DEFAULT_TARGETS : result;
+        if (result.isEmpty()) {
+            throw new IllegalStateException("CRITICAL CONFIG ERROR: No valid bucket targets parsed from active version in rules/bucket_targets.yaml");
+        }
+        return result;
     }
 
     public static Map<String, Map<String, Double>> getSipAllocations() {
@@ -564,62 +567,6 @@ public class BucketConfigLoader {
             .filter(v -> v.effectiveFrom().compareTo(targetDateStr) <= 0)
             .max(Comparator.comparing(BucketTargetVersion::effectiveFrom))
             .orElse(config.versions().get(0));
-    }
-
-    public static synchronized void updateBucketTargets(List<BucketTargetConfig> newTargets, String effectiveFrom) {
-        validateNewTargets(newTargets);
-
-        String effDate = (effectiveFrom != null && !effectiveFrom.isBlank()) ? effectiveFrom : LocalDate.now().toString();
-        BucketRulesConfig currentConfig = loadConfig();
-        List<BucketTargetVersion> versions = new ArrayList<>(currentConfig.versions());
-
-        String newVersionId = "v" + (versions.size() + 1) + ".0";
-        versions.add(new BucketTargetVersion(newVersionId, effDate, newTargets));
-
-        BucketRulesConfig updatedConfig = new BucketRulesConfig(
-            currentConfig.configSource(),
-            currentConfig.configFilePath(),
-            versions,
-            currentConfig.legacyCandidates() != null ? currentConfig.legacyCandidates() : List.of()
-        );
-        cachedRules = updatedConfig;
-        saveConfigToDisk(updatedConfig);
-    }
-
-    public static void validateNewTargets(List<BucketTargetConfig> newTargets) {
-        if (newTargets == null || newTargets.isEmpty()) {
-            throw new IllegalArgumentException("Bucket targets list cannot be empty");
-        }
-
-        Set<String> requiredBuckets = Set.of("EQUITY_CORE", "EQUITY_SATELLITE", "GOLD_SILVER", "LIQUID_BUFFER");
-        Set<String> providedBuckets = new HashSet<>();
-
-        double sumPct = 0.0;
-        for (BucketTargetConfig tc : newTargets) {
-            if (tc.bucket() == null || !requiredBuckets.contains(tc.bucket())) {
-                throw new IllegalArgumentException("Invalid bucket name: " + tc.bucket() + ". Allowed: " + requiredBuckets);
-            }
-            providedBuckets.add(tc.bucket());
-
-            if (tc.targetPct() < 0.0 || tc.targetPct() > 100.0) {
-                throw new IllegalArgumentException("Target percentage for " + tc.bucket() + " must be between 0.0% and 100.0%");
-            }
-            if (tc.bandPct() < 1.0 || tc.bandPct() > 20.0) {
-                throw new IllegalArgumentException("Band tolerance for " + tc.bucket() + " must be between 1.0% and 20.0%");
-            }
-            if (tc.triggerDriftPct() < 0.0 || tc.triggerDriftPct() > 100.0) {
-                throw new IllegalArgumentException("Trigger drift percentage for " + tc.bucket() + " must be between 0.0% and 100.0%");
-            }
-            sumPct += tc.targetPct();
-        }
-
-        if (!providedBuckets.containsAll(requiredBuckets)) {
-            throw new IllegalArgumentException("All 4 buckets must be defined: " + requiredBuckets);
-        }
-
-        if (Math.abs(sumPct - 100.0) > 0.05) {
-            throw new IllegalArgumentException(String.format("Bucket target percentages must sum to 100.0%% (provided sum: %.2f%%)", sumPct));
-        }
     }
 
     private static String getFundNameByIsin(String isin) {
@@ -701,71 +648,5 @@ public class BucketConfigLoader {
             }
         }
         return locations.get(0);
-    }
-
-
-    private static void saveConfigToDisk(BucketRulesConfig config) {
-        try {
-            File targetFile = findConfigFile();
-            File parentDir = targetFile.getParentFile();
-            if (parentDir != null && !parentDir.exists()) {
-                parentDir.mkdirs();
-            }
-
-            ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-            Map<String, Object> root = new LinkedHashMap<>();
-            List<Map<String, Object>> verList = new ArrayList<>();
-
-            for (BucketTargetVersion v : config.versions()) {
-                Map<String, Object> vMap = new LinkedHashMap<>();
-                vMap.put("version_id", v.versionId());
-                vMap.put("effective_from", v.effectiveFrom());
-
-                List<Map<String, Object>> tList = new ArrayList<>();
-                for (BucketTargetConfig tc : v.targets()) {
-                    Map<String, Object> tMap = new LinkedHashMap<>();
-                    tMap.put("bucket", tc.bucket());
-                    tMap.put("target_pct", tc.targetPct());
-                    tMap.put("band_pct", tc.bandPct());
-                    tMap.put("drift_trigger_pct", tc.triggerDriftPct());
-                    tMap.put("trigger_drift_pct", tc.triggerDriftPct());
-                    tMap.put("strategy", tc.strategy());
-
-                    if (tc.preferredFunds() != null && !tc.preferredFunds().isEmpty()) {
-                        List<Map<String, Object>> pfList = new ArrayList<>();
-                        for (PreferredFundConfig pf : tc.preferredFunds()) {
-                            Map<String, Object> pfMap = new LinkedHashMap<>();
-                            pfMap.put("fund_id", pf.fundId());
-                            pfMap.put("fund_name", pf.fundName());
-                            pfMap.put("allocation_weight", pf.allocationWeight());
-                            pfList.add(pfMap);
-                        }
-                        tMap.put("preferred_funds", pfList);
-                    }
-
-                    tList.add(tMap);
-                }
-                vMap.put("targets", tList);
-                verList.add(vMap);
-            }
-
-            root.put("versions", verList);
-
-            if (config.legacyCandidates() != null && !config.legacyCandidates().isEmpty()) {
-                List<Map<String, Object>> legList = new ArrayList<>();
-                for (LegacyLiquidationCandidate c : config.legacyCandidates()) {
-                    Map<String, Object> cMap = new LinkedHashMap<>();
-                    cMap.put("isin", c.isin());
-                    cMap.put("fund_name", c.fundName());
-                    cMap.put("reason", c.reason());
-                    legList.add(cMap);
-                }
-                root.put("legacy_liquidation_candidates", legList);
-            }
-
-            mapper.writeValue(targetFile, root);
-        } catch (Exception e) {
-            System.err.println("Failed to write bucket_targets.yaml: " + e.getMessage());
-        }
     }
 }

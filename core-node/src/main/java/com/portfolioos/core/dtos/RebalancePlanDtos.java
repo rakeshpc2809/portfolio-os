@@ -260,7 +260,8 @@ public class RebalancePlanDtos {
         String reasonCode,
         String reasonLabel,
         String scheduledWindowLabel,
-        DrawdownContextDto drawdownContext
+        DrawdownContextDto drawdownContext,
+        List<String> driftedBuckets
     ) {
         public RebalanceTriggerDto(
             String type,
@@ -275,16 +276,36 @@ public class RebalancePlanDtos {
                 reasonCode,
                 reasonLabel,
                 scheduledWindowLabel,
-                drawdownContext
+                drawdownContext,
+                List.of()
+            );
+        }
+
+        public RebalanceTriggerDto(
+            String type,
+            String reasonCode,
+            String reasonLabel,
+            String scheduledWindowLabel,
+            DrawdownContextDto drawdownContext,
+            List<String> driftedBuckets
+        ) {
+            this(
+                type,
+                ("DRAWDOWN".equals(type) || "DRIFT".equals(type)) ? "INDUCED" : type,
+                reasonCode,
+                reasonLabel,
+                scheduledWindowLabel,
+                drawdownContext,
+                driftedBuckets != null ? driftedBuckets : List.of()
             );
         }
 
         public RebalanceTriggerDto(String type) {
-            this(type, "", "", "", null);
+            this(type, "", "", "", null, List.of());
         }
 
         public RebalanceTriggerDto(DrawdownContextDto drawdownContext) {
-            this("DRAWDOWN", "", "", "", drawdownContext);
+            this("DRAWDOWN", "", "", "", drawdownContext, List.of());
         }
 
         public boolean isInduced() {

@@ -368,7 +368,8 @@ public class RebalancePlanEngine {
             reasonCode,
             reasonLabel,
             "March/September Reconstitution Window",
-            resolution.drawdownContext()
+            resolution.drawdownContext(),
+            resolution != null ? resolution.driftedBuckets() : List.of()
         );
 
         // Derive Dynamic Regime-Shifted Targets
@@ -447,7 +448,7 @@ public class RebalancePlanEngine {
                         }
                     }
                 }
-                BigDecimal corpusBasis = sellSideActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? sellSideActiveCorpus : liveCorpus;
+                BigDecimal corpusBasis = liveCorpus;
                 if (corpusBasis.compareTo(BigDecimal.ZERO) > 0) {
                     goldCurrentPct = (goldVal.doubleValue() / corpusBasis.doubleValue()) * 100.0;
                 }
@@ -802,7 +803,7 @@ public class RebalancePlanEngine {
         BigDecimal freshCash = isLumpsum ? (manualLumpsumAmount != null ? manualLumpsumAmount : BigDecimal.ZERO) : ((sellSide == null || sellSide.totalRequired() == null || sellSide.totalRequired().compareTo(BigDecimal.ZERO) == 0) ? totalPool : BigDecimal.ZERO);
         BigDecimal postCorpus = liveCorpus.add(freshCash);
 
-        TriggerHistoryRepository historyRepo = triggerEvaluator != null ? triggerEvaluator.getRepository() : null;
+        TriggerHistoryRepository historyRepo = (recordExecution && triggerEvaluator != null) ? triggerEvaluator.getRepository() : null;
         BucketEngine.RebalanceEngineResult bucketResult = BucketEngine.evaluateRebalance(
             openLots, matchedLots, navMap, today, benchmarkCurrent, benchmarkRollingHigh, baseTargets, fiscalYear, historyRepo
         );

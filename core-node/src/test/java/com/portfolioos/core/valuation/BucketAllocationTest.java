@@ -12,6 +12,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BucketAllocationTest {
 
+    private static final List<BucketEngine.BucketTarget> TEST_TARGETS = List.of(
+        new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("50.0"), new BigDecimal("5.0")),
+        new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_SATELLITE, new BigDecimal("30.0"), new BigDecimal("5.0")),
+        new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("10.0"), new BigDecimal("5.0")),
+        new BucketEngine.BucketTarget(BucketEngine.Bucket.LIQUID_BUFFER, new BigDecimal("10.0"), new BigDecimal("5.0"))
+    );
+
     @Test
     @DisplayName("Classification order test: Gold/Silver and Liquid Buffer match category FIRST and bypass LEGACY_HOLDINGS")
     void testBucketClassificationOrderAndLegacyExclusion() {
@@ -158,7 +165,7 @@ class BucketAllocationTest {
         Map<String, BigDecimal> emptyNavMap = Map.of();
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
             BucketEngine.evaluateRebalance(
-                List.of(coreLot), List.of(), emptyNavMap, date, BigDecimal.ZERO, BigDecimal.ZERO, BucketEngine.DEFAULT_TARGETS, "2026-27"
+                List.of(coreLot), List.of(), emptyNavMap, date, BigDecimal.ZERO, BigDecimal.ZERO, TEST_TARGETS, "2026-27"
             )
         );
         assertTrue(ex.getMessage().contains("CRITICAL VALUATION ERROR"));

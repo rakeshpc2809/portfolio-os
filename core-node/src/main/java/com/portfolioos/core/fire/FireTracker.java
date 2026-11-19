@@ -50,6 +50,7 @@ public class FireTracker {
                 fileLocations.add(new java.io.File(rulesDirEnv, "fire_profile.yaml"));
             }
             fileLocations.add(new java.io.File("rules/fire_profile.yaml"));
+            fileLocations.add(new java.io.File("core-node/rules/fire_profile.yaml"));
             fileLocations.add(new java.io.File("../rules/fire_profile.yaml"));
             fileLocations.add(new java.io.File("../../rules/fire_profile.yaml"));
             fileLocations.add(new java.io.File("/app/rules/fire_profile.yaml"));
@@ -61,36 +62,40 @@ public class FireTracker {
                 }
             }
 
-            if (profileFile != null) {
-                try {
-                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper(new com.fasterxml.jackson.dataformat.yaml.YAMLFactory());
-                    Map<?, ?> data = mapper.readValue(profileFile, Map.class);
-                    if (data != null) {
-                        if (data.get("birth_date") != null) defBirth = LocalDate.parse(data.get("birth_date").toString());
-                        if (data.get("target_retirement_age") != null) defAge = Integer.parseInt(data.get("target_retirement_age").toString());
-                        if (data.get("swr_percent") != null) defSwr = new BigDecimal(data.get("swr_percent").toString());
-                        if (data.get("real_return_rate_pct") != null) defReturn = new BigDecimal(data.get("real_return_rate_pct").toString());
-                        if (data.get("monthly_contribution") != null) defContrib = new BigDecimal(data.get("monthly_contribution").toString());
-                        if (data.get("next_review_date") != null) defReview = LocalDate.parse(data.get("next_review_date").toString());
-                        if (data.get("scenarios") instanceof List<?> list && !list.isEmpty()) {
-                            List<FireScenario> loadedScenarios = new ArrayList<>();
-                            for (Object item : list) {
-                                if (item instanceof Map<?, ?> m) {
-                                    String id = String.valueOf(m.get("id"));
-                                    String label = String.valueOf(m.get("label"));
-                                    BigDecimal exp = new BigDecimal(String.valueOf(m.get("monthly_expense_today")));
-                                    boolean active = Boolean.parseBoolean(String.valueOf(m.get("active")));
-                                    loadedScenarios.add(new FireScenario(id, label, exp, active));
-                                }
-                            }
-                            if (!loadedScenarios.isEmpty()) {
-                                defScenarios = loadedScenarios;
-                            }
+            if (profileFile == null) {
+                throw new IllegalStateException("CRITICAL CONFIG ERROR: File rules/fire_profile.yaml not found at any search location!");
+            }
+
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper(new com.fasterxml.jackson.dataformat.yaml.YAMLFactory());
+                Map<?, ?> data = mapper.readValue(profileFile, Map.class);
+                if (data == null) {
+                    throw new IllegalStateException("CRITICAL CONFIG ERROR: Empty fire_profile.yaml at " + profileFile.getAbsolutePath());
+                }
+                if (data.get("birth_date") != null) defBirth = LocalDate.parse(data.get("birth_date").toString());
+                if (data.get("target_retirement_age") != null) defAge = Integer.parseInt(data.get("target_retirement_age").toString());
+                if (data.get("swr_percent") != null) defSwr = new BigDecimal(data.get("swr_percent").toString());
+                if (data.get("real_return_rate_pct") != null) defReturn = new BigDecimal(data.get("real_return_rate_pct").toString());
+                if (data.get("monthly_contribution") != null) defContrib = new BigDecimal(data.get("monthly_contribution").toString());
+                if (data.get("next_review_date") != null) defReview = LocalDate.parse(data.get("next_review_date").toString());
+                if (data.get("scenarios") instanceof List<?> list && !list.isEmpty()) {
+                    List<FireScenario> loadedScenarios = new ArrayList<>();
+                    for (Object item : list) {
+                        if (item instanceof Map<?, ?> m) {
+                            String id = String.valueOf(m.get("id"));
+                            String label = String.valueOf(m.get("label"));
+                            BigDecimal exp = new BigDecimal(String.valueOf(m.get("monthly_expense_today")));
+                            boolean active = Boolean.parseBoolean(String.valueOf(m.get("active")));
+                            loadedScenarios.add(new FireScenario(id, label, exp, active));
                         }
                     }
-                } catch (Exception e) {
-                    System.err.println("Warning: failed to load rules/fire_profile.yaml: " + e.getMessage() + ", using defaults.");
+                    if (!loadedScenarios.isEmpty()) {
+                        defScenarios = loadedScenarios;
+                    }
                 }
+            } catch (Exception e) {
+                if (e instanceof IllegalStateException ise) throw ise;
+                throw new IllegalStateException("CRITICAL CONFIG ERROR: Failed to parse rules/fire_profile.yaml: " + e.getMessage(), e);
             }
 
             this.birthDate = defBirth;

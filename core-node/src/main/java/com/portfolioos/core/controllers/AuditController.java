@@ -65,7 +65,7 @@ public class AuditController {
             List<Lot> lots = entry.getValue();
             String name = lots.get(0).assetName();
 
-            BigDecimal currentNav = navMap.getOrDefault(isin, BigDecimal.ZERO);
+            BigDecimal currentNav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, isin, name, "AuditController.getFundHealth");
             BigDecimal peakNav = peakNavMap.getOrDefault(isin, currentNav).max(currentNav);
             double ddPct = peakNav.compareTo(BigDecimal.ZERO) > 0
                 ? currentNav.subtract(peakNav).divide(peakNav, 4, RoundingMode.HALF_UP).doubleValue() * 100.0

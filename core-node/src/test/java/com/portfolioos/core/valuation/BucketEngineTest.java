@@ -13,6 +13,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class BucketEngineTest {
 
+    private static final List<BucketEngine.BucketTarget> TEST_TARGETS = List.of(
+        new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("50.0"), new BigDecimal("5.0")),
+        new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_SATELLITE, new BigDecimal("30.0"), new BigDecimal("5.0")),
+        new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("10.0"), new BigDecimal("5.0")),
+        new BucketEngine.BucketTarget(BucketEngine.Bucket.LIQUID_BUFFER, new BigDecimal("10.0"), new BigDecimal("5.0"))
+    );
+
     @Test
     @DisplayName("BucketEngine calculates bucket allocation with valid live NAV")
     void testEvaluateRebalanceSuccess() {
@@ -22,7 +29,7 @@ public class BucketEngineTest {
 
         Map<String, BigDecimal> navMap = Map.of("INF109KC12U0", new BigDecimal("150"));
         BucketEngine.RebalanceEngineResult result = BucketEngine.evaluateRebalance(
-            List.of(coreLot), List.of(), navMap, date, BigDecimal.ZERO, BigDecimal.ZERO, BucketEngine.DEFAULT_TARGETS, "2026-27"
+            List.of(coreLot), List.of(), navMap, date, BigDecimal.ZERO, BigDecimal.ZERO, TEST_TARGETS, "2026-27"
         );
 
         assertNotNull(result);
@@ -43,7 +50,7 @@ public class BucketEngineTest {
         Map<String, BigDecimal> emptyNavMap = Map.of();
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
             BucketEngine.evaluateRebalance(
-                List.of(coreLot), List.of(), emptyNavMap, date, BigDecimal.ZERO, BigDecimal.ZERO, BucketEngine.DEFAULT_TARGETS, "2026-27"
+                List.of(coreLot), List.of(), emptyNavMap, date, BigDecimal.ZERO, BigDecimal.ZERO, TEST_TARGETS, "2026-27"
             )
         );
         assertTrue(ex.getMessage().contains("CRITICAL VALUATION ERROR"));
@@ -53,7 +60,7 @@ public class BucketEngineTest {
     @Test
     @DisplayName("Regime-Conditional Target Shifting across all 5 drawdown regimes")
     void testCalculateRegimeShiftedTargetsAllRegimes() {
-        List<BucketEngine.BucketTarget> baseTargets = BucketEngine.DEFAULT_TARGETS; // 50% Core, 30% Sat, 10% Gold, 10% Liquid
+        List<BucketEngine.BucketTarget> baseTargets = TEST_TARGETS; // 50% Core, 30% Sat, 10% Gold, 10% Liquid
 
         // Regime 1: Normal / Recovery (DD < 5%) -> Standard targets
         List<BucketEngine.BucketTarget> normalTargets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, 3.2, new BigDecimal("10.0"));
@@ -116,7 +123,7 @@ public class BucketEngineTest {
         BigDecimal benchmarkCurrent = new BigDecimal("8000.00");
 
         BucketEngine.RebalanceEngineResult result = BucketEngine.evaluateRebalance(
-            List.of(coreLot, arbLot), List.of(), navMap, date, benchmarkCurrent, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27"
+            List.of(coreLot, arbLot), List.of(), navMap, date, benchmarkCurrent, benchmarkHigh, TEST_TARGETS, "2026-27"
         );
 
         assertNotNull(result);
@@ -176,7 +183,7 @@ public class BucketEngineTest {
         // 1. Tier 1 (-10%): current = 9000
         BigDecimal benchmarkT1 = new BigDecimal("9000.00");
         BucketEngine.RebalanceEngineResult r1 = BucketEngine.evaluateRebalance(
-            List.of(coreLot, arbLot), List.of(), navMap, date, benchmarkT1, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+            List.of(coreLot, arbLot), List.of(), navMap, date, benchmarkT1, benchmarkHigh, TEST_TARGETS, "2026-27", repo
         );
 
         // Repo must have captured baseline of ₹300,000
@@ -193,7 +200,7 @@ public class BucketEngineTest {
         Lot arbLotT1Refire = new Lot("lot-arb-t1-refire", "INF205K01QU7", "Invesco India Arbitrage Fund", date.minusDays(100),
             new BigDecimal("2250"), new BigDecimal("2250"), new BigDecimal("100"), new BigDecimal("225000"), false, null);
         BucketEngine.RebalanceEngineResult r1Refire = BucketEngine.evaluateRebalance(
-            List.of(coreLot, arbLotT1Refire), List.of(), navMap, date.plusDays(35), benchmarkT1, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+            List.of(coreLot, arbLotT1Refire), List.of(), navMap, date.plusDays(35), benchmarkT1, benchmarkHigh, TEST_TARGETS, "2026-27", repo
         );
         // Idempotence: Tier 1 already deployed 25% (target remaining = ₹225,000); zero additional liquidation recommended!
         boolean hasArbSellRefireT1 = r1Refire.recommendations().stream()
@@ -205,7 +212,7 @@ public class BucketEngineTest {
         // Current balance is ₹225,000 -> incremental tranche deploy = ₹225,000 - ₹150,000 = ₹75,000!
         BigDecimal benchmarkT2 = new BigDecimal("8500.00");
         BucketEngine.RebalanceEngineResult r2 = BucketEngine.evaluateRebalance(
-            List.of(coreLot, arbLotT1Refire), List.of(), navMap, date.plusDays(40), benchmarkT2, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+            List.of(coreLot, arbLotT1Refire), List.of(), navMap, date.plusDays(40), benchmarkT2, benchmarkHigh, TEST_TARGETS, "2026-27", repo
         );
 
         BucketEngine.RebalanceRecommendation sellArb2 = r2.recommendations().stream()
@@ -218,7 +225,7 @@ public class BucketEngineTest {
         Lot arbLotT2Refire = new Lot("lot-arb-t2-refire", "INF205K01QU7", "Invesco India Arbitrage Fund", date.minusDays(100),
             new BigDecimal("1500"), new BigDecimal("1500"), new BigDecimal("100"), new BigDecimal("150000"), false, null);
         BucketEngine.RebalanceEngineResult r2Refire = BucketEngine.evaluateRebalance(
-            List.of(coreLot, arbLotT2Refire), List.of(), navMap, date.plusDays(75), benchmarkT2, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+            List.of(coreLot, arbLotT2Refire), List.of(), navMap, date.plusDays(75), benchmarkT2, benchmarkHigh, TEST_TARGETS, "2026-27", repo
         );
         boolean hasArbSellRefireT2 = r2Refire.recommendations().stream()
             .anyMatch(r -> r.bucket() == BucketEngine.Bucket.LIQUID_BUFFER && "SELL".equals(r.action()));
@@ -229,7 +236,7 @@ public class BucketEngineTest {
         // Current balance is ₹150,000 -> deploys remaining ₹150,000!
         BigDecimal benchmarkT3 = new BigDecimal("8000.00");
         BucketEngine.RebalanceEngineResult r3 = BucketEngine.evaluateRebalance(
-            List.of(coreLot, arbLotT2Refire), List.of(), navMap, date.plusDays(80), benchmarkT3, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+            List.of(coreLot, arbLotT2Refire), List.of(), navMap, date.plusDays(80), benchmarkT3, benchmarkHigh, TEST_TARGETS, "2026-27", repo
         );
         BucketEngine.RebalanceRecommendation sellArb3 = r3.recommendations().stream()
             .filter(r -> r.bucket() == BucketEngine.Bucket.LIQUID_BUFFER && "SELL".equals(r.action()))
@@ -240,7 +247,7 @@ public class BucketEngineTest {
         // 6. Recovery: benchmark recovers to 9600 (-4.0% drawdown, < 5.0%)
         BigDecimal benchmarkRecovered = new BigDecimal("9600.00");
         BucketEngine.RebalanceEngineResult rRecover = BucketEngine.evaluateRebalance(
-            List.of(coreLot, arbLotT2Refire), List.of(), navMap, date.plusDays(100), benchmarkRecovered, benchmarkHigh, BucketEngine.DEFAULT_TARGETS, "2026-27", repo
+            List.of(coreLot, arbLotT2Refire), List.of(), navMap, date.plusDays(100), benchmarkRecovered, benchmarkHigh, TEST_TARGETS, "2026-27", repo
         );
 
         // Baseline must be reset/cleared once recovered above -5%

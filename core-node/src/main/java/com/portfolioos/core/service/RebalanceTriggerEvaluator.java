@@ -420,6 +420,13 @@ public class RebalanceTriggerEvaluator {
                 else if ("TIER_15".equals(armed)) drawdownTier = 15;
                 else if ("TIER_10".equals(armed)) drawdownTier = 10;
             }
+            String metadataJson = "{}";
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                metadataJson = mapper.writeValueAsString(Map.of("driftedBuckets", resolution.driftedBuckets() != null ? resolution.driftedBuckets() : List.of()));
+            } catch (Exception e) {
+                log.warn("Failed to serialize rebalance metadata json: {}", e.getMessage());
+            }
             repository.recordExecution(
                 planId,
                 resolution.triggerType(),
@@ -427,7 +434,7 @@ public class RebalanceTriggerEvaluator {
                 today.atStartOfDay(),
                 resolution.hasSellSide(),
                 resolution.hasGoldBuy(),
-                "{\"driftedBuckets\":" + resolution.driftedBuckets() + "}",
+                metadataJson,
                 drawdownTier
             );
             if ("SCHEDULED".equalsIgnoreCase(resolution.triggerType()) || "SCHEDULED_MAINTENANCE".equalsIgnoreCase(resolution.triggerType())) {

@@ -29,6 +29,13 @@ public class AmfiNavSync {
     private static List<NavEntry> cachedNavs = null;
     private static long lastFetchTimeMs = 0L;
 
+    public static void clearCache() {
+        synchronized (lock) {
+            cachedNavs = null;
+            lastFetchTimeMs = 0L;
+        }
+    }
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.portfolioos.core.persistence.MarketDataRepository marketDataRepository;
 

@@ -150,6 +150,7 @@ public class LedgerCacheService {
     }
 
     public void invalidateCache() {
+        AmfiNavSync.clearCache();
         stateHolder.set(null);
         refreshCacheInBackground();
     }

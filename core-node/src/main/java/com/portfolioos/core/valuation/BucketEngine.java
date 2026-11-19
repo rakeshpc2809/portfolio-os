@@ -112,13 +112,6 @@ public class BucketEngine {
         boolean drawdownTriggerFired
     ) {}
 
-    public static final List<BucketTarget> DEFAULT_TARGETS = List.of(
-        new BucketTarget(Bucket.EQUITY_CORE, new BigDecimal("50.0"), new BigDecimal("5.0")),
-        new BucketTarget(Bucket.EQUITY_SATELLITE, new BigDecimal("30.0"), new BigDecimal("5.0")),
-        new BucketTarget(Bucket.GOLD_SILVER, new BigDecimal("10.0"), new BigDecimal("5.0")),
-        new BucketTarget(Bucket.LIQUID_BUFFER, new BigDecimal("10.0"), new BigDecimal("5.0"))
-    );
-
     public static Bucket classifyAssetToBucket(String assetId, String assetName) {
         return classifyAssetToBucket(assetId, assetName, java.util.Collections.emptySet());
     }
@@ -343,8 +336,11 @@ public class BucketEngine {
             }
         }
 
+        if (targets == null || targets.isEmpty()) {
+            throw new IllegalStateException("CRITICAL CONFIGURATION ERROR: targets list cannot be null or empty. Ensure bucket_targets.yaml is configured.");
+        }
         List<Bucket> bucketsToEvaluate = new ArrayList<>();
-        List<BucketTarget> targetList = (targets != null && !targets.isEmpty()) ? targets : DEFAULT_TARGETS;
+        List<BucketTarget> targetList = targets;
         for (BucketTarget t : targetList) {
             if (!bucketsToEvaluate.contains(t.bucket())) {
                 bucketsToEvaluate.add(t.bucket());
