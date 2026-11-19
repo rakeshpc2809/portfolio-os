@@ -1,6 +1,5 @@
 package com.portfolioos.core;
 
-import com.portfolioos.core.persistence.DuckDbProjector;
 import com.portfolioos.core.ports.EventStorePort;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
@@ -24,7 +23,6 @@ public class CoreApplication {
     @Bean
     public CommandLineRunner startupRunner(
         EventStorePort eventStore,
-        DuckDbProjector duckDbProjector,
         com.portfolioos.core.service.PortfolioValuationService valuationService
     ) {
         return args -> {
@@ -32,13 +30,7 @@ public class CoreApplication {
             if (!eventStore.verifyLedgerIntegrity()) {
                 throw new IllegalStateException("CRITICAL: SQLite HMAC ledger chain integrity check failed! Potential tampering or corruption.");
             }
-            System.out.println("Ledger integrity verified successfully. Initializing DuckDB Projection...");
-            try {
-                duckDbProjector.projectEvents(eventStore.getAllEvents());
-                System.out.println("DuckDB projection loaded successfully.");
-            } catch (Exception e) {
-                System.err.println("Failed to build startup projection: " + e.getMessage());
-            }
+            System.out.println("Ledger integrity verified successfully.");
 
             // Pre-seed benchmark indices asynchronously so UI startup is instant
             java.util.concurrent.CompletableFuture.runAsync(() -> {

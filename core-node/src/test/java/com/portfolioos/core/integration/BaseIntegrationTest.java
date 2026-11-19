@@ -3,7 +3,7 @@ package com.portfolioos.core.integration;
 import com.portfolioos.core.matcher.FifoMatcher;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.model.TaxEvent;
-import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.MarketDataRepository;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.service.LedgerCacheService;
 import org.junit.jupiter.api.BeforeAll;
@@ -34,7 +34,7 @@ public abstract class BaseIntegrationTest {
     protected EventStorePort eventStore;
 
     @Autowired
-    protected DuckDbProjector duckDbProjector;
+    protected MarketDataRepository marketDataRepository;
 
     @Autowired
     protected LedgerCacheService ledgerCacheService;
@@ -51,7 +51,6 @@ public abstract class BaseIntegrationTest {
     public static final String ISIN_LEGACY_HEALTHCARE = "INF769K01EZ5"; // Legacy holding for Step 0 waterfall test
 
     private static final String TEST_SQLITE_PATH = "target/test-db/test_tax_ledger.db";
-    private static final String TEST_DUCKDB_PATH = "target/test-db/test_tax_ledger.duckdb";
 
     @BeforeAll
     static void initTestDir() {
@@ -65,7 +64,6 @@ public abstract class BaseIntegrationTest {
     static void configureDynamicProperties(DynamicPropertyRegistry registry) {
         initTestDir();
         registry.add("sqlite.path", () -> TEST_SQLITE_PATH);
-        registry.add("duckdb.path", () -> TEST_DUCKDB_PATH);
         registry.add("api.auth.token", () -> AUTH_TOKEN);
     }
 
@@ -156,14 +154,8 @@ public abstract class BaseIntegrationTest {
         navMap.put(ISIN_LEGACY_HEALTHCARE, new BigDecimal("30.0"));
 
         eventStore.appendEvents(events);
-        duckDbProjector.projectEvents(events);
-
-        try (java.sql.Connection conn = duckDbProjector.getConnection();
-             java.sql.Statement stmt = conn.createStatement()) {
-            stmt.execute("CREATE TABLE IF NOT EXISTS benchmark_history (benchmark_id VARCHAR, nav_date DATE, level DOUBLE);");
-            stmt.execute("DELETE FROM benchmark_history WHERE benchmark_id = 'NIFTY_500_TRI';");
-            stmt.execute("INSERT INTO benchmark_history VALUES ('NIFTY_500_TRI', '2026-10-15', 25000.0);");
-        } catch (Exception ignored) {}
+        marketDataRepository.saveBenchmarkLevels("NIFTY_500_TRI", Map.of("2026-10-15", 25000.0));
+        marketDataRepository.invalidateTrendCache();
 
         FifoMatcher matcher = new FifoMatcher();
         FifoMatcher.FifoResult fifoResult = matcher.processEvents(events);

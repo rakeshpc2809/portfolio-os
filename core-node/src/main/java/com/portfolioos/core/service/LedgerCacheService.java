@@ -23,7 +23,7 @@ public class LedgerCacheService {
     private final EventStorePort eventStore;
     private final AmfiNavSync amfiSync;
     private final FifoMatcher fifoMatcher;
-    private final com.portfolioos.core.persistence.DuckDbProjector duckDbProjector;
+    private final com.portfolioos.core.persistence.MarketDataRepository marketDataRepository;
 
     private final AtomicReference<CachedLedgerState> stateHolder = new AtomicReference<>(null);
     private volatile long lastNavSyncTime = 0L;
@@ -32,9 +32,9 @@ public class LedgerCacheService {
     @org.springframework.beans.factory.annotation.Autowired
     public LedgerCacheService(
         EventStorePort eventStore,
-        @org.springframework.beans.factory.annotation.Autowired(required = false) com.portfolioos.core.persistence.DuckDbProjector duckDbProjector
+        @org.springframework.beans.factory.annotation.Autowired(required = false) com.portfolioos.core.persistence.MarketDataRepository marketDataRepository
     ) {
-        this(eventStore, new AmfiNavSync(duckDbProjector), new FifoMatcher(), duckDbProjector);
+        this(eventStore, new AmfiNavSync(marketDataRepository), new FifoMatcher(), marketDataRepository);
     }
 
     public LedgerCacheService(EventStorePort eventStore) {
@@ -53,12 +53,12 @@ public class LedgerCacheService {
         EventStorePort eventStore,
         AmfiNavSync amfiSync,
         FifoMatcher fifoMatcher,
-        com.portfolioos.core.persistence.DuckDbProjector duckDbProjector
+        com.portfolioos.core.persistence.MarketDataRepository marketDataRepository
     ) {
         this.eventStore = eventStore;
         this.amfiSync = amfiSync;
         this.fifoMatcher = fifoMatcher;
-        this.duckDbProjector = duckDbProjector;
+        this.marketDataRepository = marketDataRepository;
     }
 
     public static record CachedLedgerState(
@@ -94,8 +94,8 @@ public class LedgerCacheService {
                 CachedLedgerState current = stateHolder.get();
                 if (current == null || current.ledgerHash() == null || !currentHash.equals(current.ledgerHash()) || (now - lastNavSyncTime) >= 30_000) {
                     List<TaxEvent> events = eventStore.getAllEvents();
-                    Map<String, BigDecimal> fmv2018Map = duckDbProjector != null
-                        ? duckDbProjector.getJan2018FmvMap()
+                    Map<String, BigDecimal> fmv2018Map = marketDataRepository != null
+                        ? marketDataRepository.getJan2018FmvMap()
                         : Collections.emptyMap();
                     FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(events, fmv2018Map);
                     Map<String, BigDecimal> navMap = null;
@@ -155,6 +155,6 @@ public class LedgerCacheService {
     }
 
     public Map<String, BigDecimal> getJan2018FmvMap() {
-        return duckDbProjector != null ? duckDbProjector.getJan2018FmvMap() : Collections.emptyMap();
+        return marketDataRepository != null ? marketDataRepository.getJan2018FmvMap() : Collections.emptyMap();
     }
 }

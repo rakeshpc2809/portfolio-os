@@ -3,7 +3,7 @@ package com.portfolioos.core.config;
 import java.io.File;
 
 /**
- * Resolves SQLite and DuckDB database paths canonically across runtime environments.
+ * Resolves SQLite database paths canonically across runtime environments.
  * Prevents creation of or binding to stale shadow databases in subproject working directories
  * (e.g., when launched from core-node/ via Maven or Just).
  *

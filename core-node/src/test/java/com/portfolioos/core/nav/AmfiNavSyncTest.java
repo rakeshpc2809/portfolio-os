@@ -95,22 +95,22 @@ class AmfiNavSyncTest {
     }
 
     @Test
-    void testOfflineFallbackToDuckDb() {
-        com.portfolioos.core.persistence.DuckDbProjector projector = org.mockito.Mockito.mock(com.portfolioos.core.persistence.DuckDbProjector.class);
+    void testOfflineFallbackToMarketData() {
+        com.portfolioos.core.persistence.MarketDataRepository repository = org.mockito.Mockito.mock(com.portfolioos.core.persistence.MarketDataRepository.class);
         AmfiNavSync.NavEntry mockEntry = new AmfiNavSync.NavEntry(
             "122639", "INF879O01027", "Parag Parikh Flexi Cap Fund",
             new BigDecimal("95.50"), java.time.LocalDate.of(2026, 8, 15)
         );
-        org.mockito.Mockito.when(projector.getLatestNavEntries()).thenReturn(List.of(mockEntry));
+        org.mockito.Mockito.when(repository.getLatestNavEntries()).thenReturn(List.of(mockEntry));
 
         // Create AmfiNavSync with invalid URI URL host or subclass to simulate network failure
-        AmfiNavSync offlineSync = new AmfiNavSync(projector);
-        // On offline / connection failure, getNavMap uses the duckdb fallback
+        AmfiNavSync offlineSync = new AmfiNavSync(repository);
+        // On offline / connection failure, getNavMap uses the repository fallback
         Map<String, BigDecimal> navMap = offlineSync.getNavMap();
         assertNotNull(navMap);
-        // Note: fetchLatestNavsFromAmfi attempts connection to AMFI. If offline, it falls back to DuckDB.
-        // Even if the live machine has internet, verify projector returns fallback entries when invoked:
-        List<AmfiNavSync.NavEntry> fallback = projector.getLatestNavEntries();
+        // Note: fetchLatestNavsFromAmfi attempts connection to AMFI. If offline, it falls back to MarketDataRepository.
+        // Even if the live machine has internet, verify repository returns fallback entries when invoked:
+        List<AmfiNavSync.NavEntry> fallback = repository.getLatestNavEntries();
         assertEquals(1, fallback.size());
         assertEquals("INF879O01027", fallback.get(0).isin());
         assertEquals(new BigDecimal("95.50"), fallback.get(0).nav());

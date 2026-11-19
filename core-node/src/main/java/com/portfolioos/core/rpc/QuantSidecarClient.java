@@ -1,7 +1,7 @@
 package com.portfolioos.core.rpc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.portfolioos.core.persistence.DuckDbProjector.NavHistorySeriesEntry;
+import com.portfolioos.core.persistence.MarketDataRepository.NavHistorySeriesEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

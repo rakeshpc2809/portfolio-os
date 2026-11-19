@@ -1,6 +1,6 @@
 package com.portfolioos.core.controllers;
 
-import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.MarketDataRepository;
 import com.portfolioos.core.rpc.QuantSidecarClient;
 import com.portfolioos.core.service.LedgerCacheService;
 import com.portfolioos.core.valuation.ExitLoadCalculator;
@@ -21,18 +21,18 @@ import java.util.stream.Collectors;
 public class AuditController {
 
     private final LedgerCacheService cacheService;
-    private final DuckDbProjector duckDbProjector;
+    private final MarketDataRepository marketDataRepository;
     private final QuantSidecarClient quantSidecarClient;
     private final com.portfolioos.core.service.PortfolioValuationService valuationService;
 
     public AuditController(
         LedgerCacheService cacheService,
-        DuckDbProjector duckDbProjector,
+        MarketDataRepository marketDataRepository,
         QuantSidecarClient quantSidecarClient,
         @org.springframework.beans.factory.annotation.Autowired(required = false) com.portfolioos.core.service.PortfolioValuationService valuationService
     ) {
         this.cacheService = cacheService;
-        this.duckDbProjector = duckDbProjector;
+        this.marketDataRepository = marketDataRepository;
         this.quantSidecarClient = quantSidecarClient;
         this.valuationService = valuationService;
     }
@@ -57,8 +57,8 @@ public class AuditController {
         LocalDate today = LocalDate.now();
 
         Set<String> heldIsins = openLots.stream().map(Lot::assetId).collect(Collectors.toSet());
-        Map<String, BigDecimal> peakNavMap = duckDbProjector.get52WeekPeakNavs(heldIsins);
-        var seriesWithDates = duckDbProjector.getNavHistorySeriesWithDates(heldIsins);
+        Map<String, BigDecimal> peakNavMap = marketDataRepository.get52WeekPeakNavs(heldIsins);
+        var seriesWithDates = marketDataRepository.getNavHistorySeriesWithDates(heldIsins);
         Map<String, Map<String, Object>> quantMetricsMap = quantSidecarClient.computeQuantMetricsWithDates(seriesWithDates);
 
         Map<String, List<Lot>> grouped = openLots.stream().collect(Collectors.groupingBy(Lot::assetId));

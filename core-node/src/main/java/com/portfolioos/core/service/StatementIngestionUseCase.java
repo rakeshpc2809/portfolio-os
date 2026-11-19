@@ -3,7 +3,7 @@ package com.portfolioos.core.service;
 import com.portfolioos.core.dtos.ParsedEventDto;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.model.TaxEvent;
-import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.MarketDataRepository;
 import com.portfolioos.core.persistence.SqliteEventStore;
 import org.springframework.stereotype.Service;
 
@@ -19,16 +19,16 @@ import java.util.UUID;
 public class StatementIngestionUseCase {
 
     private final com.portfolioos.core.ports.EventStorePort eventStore;
-    private final DuckDbProjector duckDbProjector;
+    private final MarketDataRepository marketDataRepository;
     private final LedgerCacheService cacheService;
 
     public StatementIngestionUseCase(
         com.portfolioos.core.ports.EventStorePort eventStore,
-        DuckDbProjector duckDbProjector,
+        MarketDataRepository marketDataRepository,
         LedgerCacheService cacheService
     ) {
         this.eventStore = eventStore;
-        this.duckDbProjector = duckDbProjector;
+        this.marketDataRepository = marketDataRepository;
         this.cacheService = cacheService;
     }
 
@@ -134,7 +134,7 @@ public class StatementIngestionUseCase {
                 com.portfolioos.core.matcher.FifoMatcher fifoMatcher = new com.portfolioos.core.matcher.FifoMatcher();
                 com.portfolioos.core.matcher.FifoMatcher.FifoResult fifoResult = fifoMatcher.processEvents(
                     combined,
-                    duckDbProjector != null ? duckDbProjector.getJan2018FmvMap() : Map.of()
+                    marketDataRepository != null ? marketDataRepository.getJan2018FmvMap() : Map.of()
                 );
                 com.portfolioos.core.reconciliation.ReconciliationGate.MultiAssetReconciliationResult recon =
                     com.portfolioos.core.reconciliation.ReconciliationGate.validateStatementPerAsset(fifoResult, declaredBalances);
@@ -160,19 +160,13 @@ public class StatementIngestionUseCase {
             }
 
             if (!newTaxEvents.isEmpty()) {
-                // Dual-write step 1: Write to primary SQLite Ledger (Fix #1: sequential hash chain for new events)
+                // Write to primary SQLite Ledger (Fix #1: sequential hash chain for new events)
                 eventStore.appendEvents(newTaxEvents);
 
-                try {
-                    // Dual-write step 2: Re-project events in DuckDB analytical database
-                    List<TaxEvent> allEvents = eventStore.getAllEvents();
-                    duckDbProjector.projectEvents(allEvents);
-                } catch (Exception e) {
-                    System.err.println("ALERT: Analytical DuckDB projection failed post-ledger commit. Ledger remains intact: " + e.getMessage());
-                    throw new RuntimeException("Dual-write failure: Analytical DuckDB projection failed (ledger committed intact): " + e.getMessage(), e);
+                // Invalidate market data trend cache and central ledger cache
+                if (marketDataRepository != null) {
+                    marketDataRepository.invalidateTrendCache();
                 }
-
-                // Evict/Invalidate central ledger cache
                 cacheService.invalidateCache();
             }
 

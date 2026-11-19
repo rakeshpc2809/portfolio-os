@@ -2,7 +2,7 @@ package com.portfolioos.core.nav;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.MarketDataRepository;
 
 import java.math.BigDecimal;
 import java.net.URI;
@@ -83,7 +83,7 @@ public class MfApiNavDownloader {
         }
     }
 
-    public void downloadHistoricalNavsForIsin(String isin, DuckDbProjector projector) {
+    public void downloadHistoricalNavsForIsin(String isin, MarketDataRepository repository) {
         if (isin == null || isin.isBlank()) return;
         loadMasterListIfNecessary();
 
@@ -118,14 +118,16 @@ public class MfApiNavDownloader {
                     series.put(date, navVal);
                 } catch (Exception ignored) {}
             }
-            projector.saveNavHistoryFullSeries(isin, series);
+            if (repository != null) {
+                repository.saveNavHistoryFullSeries(isin, series);
+            }
             System.out.println("Successfully backfilled " + series.size() + " MFAPI historical NAV records for ISIN " + isin + " (Scheme " + schemeCode + ")");
         } catch (Exception e) {
             System.err.println("MFAPI historical NAV backfill error for ISIN " + isin + ": " + e.getMessage());
         }
     }
 
-    public void downloadBenchmarkData(String benchmarkId, long schemeCode, DuckDbProjector projector) {
+    public void downloadBenchmarkData(String benchmarkId, long schemeCode, MarketDataRepository repository) {
         try {
             String navUrl = "https://api.mfapi.in/mf/" + schemeCode;
             HttpRequest navReq = HttpRequest.newBuilder()
@@ -150,7 +152,9 @@ public class MfApiNavDownloader {
                     levels.put(date.toString(), navVal);
                 } catch (Exception ignored) {}
             }
-            projector.saveBenchmarkLevels(benchmarkId, levels);
+            if (repository != null) {
+                repository.saveBenchmarkLevels(benchmarkId, levels);
+            }
             System.out.println("Successfully ingested " + levels.size() + " benchmark level records for " + benchmarkId + " (Scheme " + schemeCode + ")");
         } catch (Exception e) {
             System.err.println("MFAPI benchmark download error for " + benchmarkId + ": " + e.getMessage());
@@ -158,21 +162,6 @@ public class MfApiNavDownloader {
     }
 
     public static void main(String[] args) {
-        DuckDbProjector projector = new DuckDbProjector();
-        MfApiNavDownloader downloader = new MfApiNavDownloader();
-        List<String> isins = List.of(
-            "INF754K01TN5", "INF109K018C5", "INF109K016B1", "INF109KC12U0", "INF109KC13X2",
-            "INF109K018M4", "INF205K01KR8", "INF174KA1TY2", "INF769K01ED6", "INF247L01916",
-            "INF247L01BQ9", "INF247L01BM8", "INF204K01H36", "INF204K01K15", "INF204K01G52",
-            "INF879O01027", "INF200K01UJ5", "INF200K01RA0", "INF277K011O1"
-        );
-        System.out.println("Starting MfApiNavDownloader verification across 19 holdings ISINs...");
-        for (String isin : isins) {
-            downloader.downloadHistoricalNavsForIsin(isin, projector);
-        }
-        downloader.downloadBenchmarkData("NIFTY_50_TRI", 120716, projector);
-        downloader.downloadBenchmarkData("NIFTY_500_TRI", 147648, projector);
-        projector.checkpoint();
-        System.out.println("MfApiNavDownloader verification complete.");
+        System.out.println("MfApiNavDownloader verification utility.");
     }
 }

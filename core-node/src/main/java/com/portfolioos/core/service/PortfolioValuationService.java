@@ -27,8 +27,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import com.portfolioos.core.nav.MfApiNavDownloader;
-import com.portfolioos.core.persistence.DuckDbProjector;
-import com.portfolioos.core.rpc.QuantSidecarClient;
+import com.portfolioos.core.persistence.MarketDataRepository;
 
 @Service
 public class PortfolioValuationService {
@@ -37,21 +36,16 @@ public class PortfolioValuationService {
 
     private final LedgerCacheService cacheService;
     private final XirrEngine xirrEngine = new XirrEngine();
-    private final QuantSidecarClient quantSidecarClient;
-    private final DuckDbProjector duckDbProjector;
+    private final MarketDataRepository marketDataRepository;
+
     @Autowired
     public PortfolioValuationService(
         LedgerCacheService cacheService,
-        DuckDbProjector duckDbProjector,
-        QuantSidecarClient quantSidecarClient
+        MarketDataRepository marketDataRepository
     ) {
         this.cacheService = cacheService;
-        this.duckDbProjector = duckDbProjector;
-        this.quantSidecarClient = quantSidecarClient;
+        this.marketDataRepository = marketDataRepository;
     }
-
-    private volatile String cachedOverlapKey = null;
-    private volatile Map<String, Object> cachedOverlapResult = null;
 
     private String fmt(BigDecimal val) {
         if (val == null) {
@@ -85,8 +79,8 @@ public class PortfolioValuationService {
         return businessDays > 3 || calendarDays > 7;
     }
 
-    public DuckDbProjector.BenchmarkLevelMetrics getLatestBenchmarkMetrics(String benchmarkSymbol) {
-        return duckDbProjector.getBenchmarkLevelMetrics(benchmarkSymbol);
+    public MarketDataRepository.BenchmarkLevelMetrics getLatestBenchmarkMetrics(String benchmarkSymbol) {
+        return marketDataRepository.getBenchmarkLevelMetrics(benchmarkSymbol);
     }
 
     public record PortfolioValuationMetrics(
@@ -236,7 +230,7 @@ public class PortfolioValuationService {
     }
 
     public NetWorthTrendResponse getNetWorthTrend() {
-        List<DuckDbProjector.NetWorthPoint> rawTrend = duckDbProjector.getDailyNetWorthTrend();
+        List<MarketDataRepository.NetWorthPoint> rawTrend = marketDataRepository.getDailyNetWorthTrend();
         if (rawTrend.isEmpty()) {
             java.util.concurrent.CompletableFuture.runAsync(() -> {
                 try {
@@ -244,9 +238,9 @@ public class PortfolioValuationService {
                     Set<String> isins = state.events().stream().map(TaxEvent::assetId).collect(Collectors.toSet());
                     MfApiNavDownloader downloader = new MfApiNavDownloader();
                     for (String isin : isins) {
-                        downloader.downloadHistoricalNavsForIsin(isin, duckDbProjector);
+                        downloader.downloadHistoricalNavsForIsin(isin, marketDataRepository);
                     }
-                    duckDbProjector.invalidateTrendCache();
+                    marketDataRepository.invalidateTrendCache();
                 } catch (Exception e) {
                     log.warn("Background historical NAV backfill error: {}", e.getMessage());
                 }
@@ -259,7 +253,7 @@ public class PortfolioValuationService {
         double totalSumValuation = 0.0;
         double totalSumRealNavValuation = 0.0;
 
-        for (DuckDbProjector.NetWorthPoint p : rawTrend) {
+        for (MarketDataRepository.NetWorthPoint p : rawTrend) {
             dates.add(p.date());
             values.add(p.valuation());
             investedValues.add(p.invested());
@@ -493,57 +487,12 @@ public class PortfolioValuationService {
 
         FireTracker.FireSummary fire = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now());
 
-        Map<String, Object> mcResult = Collections.emptyMap();
-        try {
-            double invNetWorth = fire.fireInvestableNetWorth().doubleValue();
-            double annExp = fire.annualExpense().doubleValue();
-            double monthlyContrib = fire.monthlyContribution().doubleValue();
-            int yrs = fire.yearsRemaining();
-            List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
-            if (dailyReturns.size() < 10 && !openLots.isEmpty()) {
-                Set<String> isins = openLots.stream().map(Lot::assetId).collect(Collectors.toSet());
-                CompletableFuture.runAsync(() -> {
-                    MfApiNavDownloader downloader = new MfApiNavDownloader();
-                    for (String isin : isins) {
-                        downloader.downloadHistoricalNavsForIsin(isin, duckDbProjector);
-                    }
-                });
-            }
-            mcResult = quantSidecarClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 2000);
-        } catch (Exception e) {
-            System.err.println("Failed to fetch Monte Carlo FIRE simulation via Quant Sidecar: " + e.getMessage());
-        }
-
-        double successRate = mcResult.containsKey("success_rate_pct") ? ((Number) mcResult.get("success_rate_pct")).doubleValue() : 0.0;
-        
-        // HORIZON ALIGNMENT RATIONALE:
-        // mcMedian represents the median simulated corpus at Year 13 (Target Retirement Age 45).
-        // It is checked against deterministicFv (which is also calculated at Target Retirement Age 45).
-        // We prefer 'median_retirement_start_corpus' explicitly, falling back to 'median_ending_corpus' for backward compatibility.
-        String mcKey = mcResult.containsKey("median_retirement_start_corpus") ? "median_retirement_start_corpus" : "median_ending_corpus";
-        BigDecimal mcMedian = mcResult.containsKey(mcKey) ? new BigDecimal(mcResult.get(mcKey).toString()) : BigDecimal.ZERO;
-        BigDecimal mcP10 = mcResult.containsKey("tenth_percentile_corpus") ? new BigDecimal(mcResult.get("tenth_percentile_corpus").toString()) : BigDecimal.ZERO;
-        String ds = mcResult.containsKey("data_source") ? mcResult.get("data_source").toString() : "SYNTHETIC_MARKET_BENCHMARK";
-        String dsLabel = mcResult.containsKey("data_source_label") ? mcResult.get("data_source_label").toString() : "Nifty 50 Historical Return Model (Cold Start)";
-
         BigDecimal deterministicFv = fire.projectedCorpusAtTargetAge();
-        BigDecimal maxSanityBound = deterministicFv.multiply(new BigDecimal("1.5"));
-        BigDecimal minSanityBound = deterministicFv.multiply(new BigDecimal("0.4"));
-
-        if (mcMedian.compareTo(maxSanityBound) > 0 || (mcMedian.compareTo(BigDecimal.ZERO) > 0 && mcMedian.compareTo(minSanityBound) < 0)) {
-            System.err.println(String.format("CRITICAL MONTE CARLO SANITY BOUND ERROR: Simulation median (%s) violated sanity bounds relative to deterministic FV (%s). Rejecting result.",
-                mcMedian.toPlainString(), deterministicFv.toPlainString()));
-            successRate = 0.0;
-            mcMedian = deterministicFv;
-            mcP10 = deterministicFv.multiply(new BigDecimal("0.75"));
-            ds = "ERROR_SANITY_BOUND_REJECTED";
-            dsLabel = "Invalid Simulation Bounds (Rejected)";
-        } else if (mcMedian.compareTo(BigDecimal.ZERO) > 0 && mcMedian.compareTo(deterministicFv) == 0) {
-            System.err.println("WARNING: Monte Carlo median ending corpus unexpectedly equal to deterministic FV baseline: " + mcMedian);
-        } else {
-            System.out.println(String.format("Monte Carlo Flight RPC Executed: success_rate=%.2f%%, mc_median=%s, deterministic_fv=%s, data_source=%s",
-                successRate, mcMedian.toPlainString(), deterministicFv.toPlainString(), ds));
-        }
+        double successRate = deterministicFv.compareTo(fire.requiredCorpus()) >= 0 ? 100.0 : 0.0;
+        BigDecimal mcMedian = deterministicFv;
+        BigDecimal mcP10 = deterministicFv.multiply(new BigDecimal("0.75"));
+        String ds = "DETERMINISTIC_PROJECTION";
+        String dsLabel = "Deterministic Compound Growth Model";
 
         List<FireScenarioDto> scenarioDtos = fire.scenarios().stream().map(s -> {
             BigDecimal monthly = s.monthlyExpenseToday();
@@ -561,7 +510,7 @@ public class PortfolioValuationService {
             );
         }).toList();
 
-        List<Object> trajectories = mcResult.containsKey("fan_chart_trajectories") ? (List<Object>) mcResult.get("fan_chart_trajectories") : Collections.emptyList();
+        List<Object> trajectories = Collections.emptyList();
 
         return new FireSummaryResponse(
             fire.activeScenarioLabel(),
@@ -696,199 +645,17 @@ public class PortfolioValuationService {
     public synchronized void ensureBenchmarkData(String benchmarkId) {
         if (benchmarkId == null || benchmarkId.isBlank()) return;
         String normalized = normalizeBenchmarkId(benchmarkId);
-        if (!duckDbProjector.hasBenchmarkData(normalized)) {
+        if (!marketDataRepository.hasBenchmarkData(normalized)) {
             Long schemeCode = BENCHMARK_SCHEME_CODES.get(normalized);
             if (schemeCode != null) {
-                log.info("Benchmark {} not found in DuckDB. Auto-fetching historical series from MFAPI (Scheme {})...", normalized, schemeCode);
+                log.info("Benchmark {} not found in SQLite. Auto-fetching historical series from MFAPI (Scheme {})...", normalized, schemeCode);
                 try {
-                    new MfApiNavDownloader().downloadBenchmarkData(normalized, schemeCode, duckDbProjector);
-                    duckDbProjector.checkpoint();
+                    new MfApiNavDownloader().downloadBenchmarkData(normalized, schemeCode, marketDataRepository);
                 } catch (Exception e) {
                     log.error("Failed to auto-fetch benchmark {}: {}", normalized, e.getMessage());
                 }
             }
         }
-    }
-
-    public Map<String, Object> getBenchmarkAnalytics(String benchmarkId) {
-        String targetBenchmark = normalizeBenchmarkId(benchmarkId);
-        ensureBenchmarkData(targetBenchmark);
-        Map<String, Object> aligned = duckDbProjector.getAlignedPortfolioAndBenchmarkReturns(targetBenchmark);
-        @SuppressWarnings("unchecked")
-        List<Double> pReturns = (List<Double>) aligned.getOrDefault("portfolio_returns", java.util.Collections.emptyList());
-        @SuppressWarnings("unchecked")
-        List<Double> bReturns = (List<Double>) aligned.getOrDefault("benchmark_returns", java.util.Collections.emptyList());
-        Map<String, Object> sidecarRes = new HashMap<>(quantSidecarClient.computeBenchmarkAnalytics(pReturns, bReturns, targetBenchmark));
-        sidecarRes.put("dates", aligned.get("dates"));
-        sidecarRes.put("portfolio_cumulative", aligned.get("portfolio_cumulative"));
-        sidecarRes.put("benchmark_cumulative", aligned.get("benchmark_cumulative"));
-        return sidecarRes;
-    }
-
-    public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB) {
-        return getPortfolioOverlapAnalytics(fundA, fundB, false);
-    }
-
-    public static final String CONSTITUENT_SOURCE = "STATIC_DISCLOSURE_SEED";
-    public static final String DISCLOSURE_DATE = "2026-03-31";
-    public static final boolean IS_LIVE_DOWNLOAD = false;
-
-    public Map<String, Object> getPortfolioOverlapAnalytics(String fundA, String fundB, boolean includeUnverified) {
-        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
-        String ledgerHash = (state != null && state.ledgerHash() != null) ? state.ledgerHash() : "";
-        String cacheKey = ledgerHash + "|" + (fundA != null ? fundA : "") + "|" + (fundB != null ? fundB : "") + "|" + includeUnverified;
-        if (cacheKey.equals(cachedOverlapKey) && cachedOverlapResult != null) {
-            return cachedOverlapResult;
-        }
-
-        String idA = (fundA != null && !fundA.isBlank()) ? fundA : "INF109KC13X2";
-        String idB = (fundB != null && !fundB.isBlank()) ? fundB : "INF109KC12U0";
-
-        Map<String, Object> pairwise = duckDbProjector.getPairwiseFundOverlap(idA, idB);
-
-        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
-        Map<String, Double> fundValuations = new HashMap<>();
-
-        if (state != null && state.fifoResult() != null && state.fifoResult().openLots() != null) {
-            for (Lot lot : state.fifoResult().openLots()) {
-                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "PortfolioValuationService.getPortfolioOverlapAnalytics");
-                double currentVal = lot.remainingUnits().multiply(nav).doubleValue();
-                fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), 0.0) + currentVal);
-            }
-        }
-
-        Map<String, Object> concResult = duckDbProjector.getPortfolioStockConcentrations(fundValuations, includeUnverified);
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> regFunds = (List<Map<String, Object>>) getFundRegistry().getOrDefault("funds", Collections.emptyList());
-        List<String> evalFundIds = regFunds.stream().map(f -> (String) f.get("isin")).filter(Objects::nonNull).collect(Collectors.toList());
-        Map<String, String> nameMap = regFunds.stream()
-            .filter(f -> f.get("isin") != null && f.get("name") != null)
-            .collect(Collectors.toMap(f -> (String) f.get("isin"), f -> (String) f.get("name"), (a, b) -> a));
-
-        if (pairwise != null) {
-            pairwise.put("fund_a_name", nameMap.getOrDefault(idA, idA));
-            pairwise.put("fund_b_name", nameMap.getOrDefault(idB, idB));
-        }
-
-        List<Map<String, Object>> matrix = new ArrayList<>();
-        for (int i = 0; i < evalFundIds.size(); i++) {
-            for (int j = i + 1; j < evalFundIds.size(); j++) {
-                String fa = evalFundIds.get(i);
-                String fb = evalFundIds.get(j);
-                Map<String, Object> pMap = new HashMap<>(duckDbProjector.getPairwiseFundOverlap(fa, fb));
-                pMap.put("fund_a_name", nameMap.getOrDefault(fa, fa));
-                pMap.put("fund_b_name", nameMap.getOrDefault(fb, fb));
-                matrix.add(pMap);
-            }
-        }
-
-        String coverageType = "FULL_PORTFOLIO";
-
-        // Pre-compute overlap_summary so clients don't need to iterate matrix and threshold locally.
-        final double OVERLAP_WARNING_THRESHOLD = 30.0;
-        Map<String, Object> overlapSummary = new HashMap<>();
-        double maxOverlapPct = 0.0;
-        String maxFundAName = "";
-        String maxFundBName = "";
-        for (Map<String, Object> pair : matrix) {
-            Object pctRaw = pair.get("overlap_percentage");
-            if (pctRaw instanceof Number num) {
-                double pct = num.doubleValue();
-                if (pct > maxOverlapPct) {
-                    maxOverlapPct = pct;
-                    maxFundAName = pair.getOrDefault("fund_a_name", "").toString();
-                    maxFundBName = pair.getOrDefault("fund_b_name", "").toString();
-                }
-            }
-        }
-        overlapSummary.put("max_overlap_percentage", maxOverlapPct);
-        overlapSummary.put("fund_a_name", maxFundAName);
-        overlapSummary.put("fund_b_name", maxFundBName);
-        overlapSummary.put("threshold_breached", maxOverlapPct >= OVERLAP_WARNING_THRESHOLD);
-
-        Map<String, Object> response = new HashMap<>();
-        String[] meta = getEffectiveDisclosureMetadata();
-        response.put("status", "OK");
-        response.put("holding_coverage_type", coverageType);
-        response.put("constituent_source", meta[1]);
-        response.put("disclosure_date", meta[0]);
-        response.put("is_live_download", IS_LIVE_DOWNLOAD);
-        response.put("pairwise_overlap", pairwise);
-        response.put("pairwise_matrix", matrix);
-        response.put("overlap_summary", overlapSummary);
-        response.put("portfolio_top_stock_concentrations", concResult.get("concentrations"));
-        response.put("coverage_telemetry", concResult.get("coverage_telemetry"));
-        this.cachedOverlapResult = response;
-        this.cachedOverlapKey = cacheKey;
-        return response;
-    }
-
-    private String[] getEffectiveDisclosureMetadata() {
-        String effDate = DISCLOSURE_DATE;
-        String effSource = CONSTITUENT_SOURCE;
-        if (duckDbProjector != null) {
-            try (java.sql.Connection conn = duckDbProjector.getConnection();
-                 java.sql.Statement stmt = conn.createStatement();
-                 java.sql.ResultSet rs = stmt.executeQuery("SELECT MAX(disclosure_date) AS max_d, MAX(source_type) AS max_src FROM fund_holdings")) {
-                if (rs.next()) {
-                    String d = rs.getString("max_d");
-                    String s = rs.getString("max_src");
-                    if (d != null && !d.isBlank()) effDate = d;
-                    if (s != null && !s.isBlank()) effSource = s;
-                }
-            } catch (Exception ignored) {}
-        }
-        return new String[]{effDate, effSource};
-    }
-
-    public Map<String, Object> getMultiFundUpSetAnalytics() {
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> regFunds = (List<Map<String, Object>>) getFundRegistry().getOrDefault("funds", Collections.emptyList());
-        List<String> evalFundIds = regFunds.stream().map(f -> (String) f.get("isin")).filter(Objects::nonNull).collect(Collectors.toList());
-        List<Map<String, Object>> upset = duckDbProjector.getMultiFundIntersectionAnalytics(evalFundIds);
-
-        Map<String, Object> response = new HashMap<>();
-        String[] meta = getEffectiveDisclosureMetadata();
-        response.put("status", "OK");
-        response.put("holding_coverage_type", "FULL_PORTFOLIO");
-        response.put("constituent_source", meta[1]);
-        response.put("disclosure_date", meta[0]);
-        response.put("is_live_download", IS_LIVE_DOWNLOAD);
-        response.put("upset_combinations", upset);
-        response.put("evaluated_funds", evalFundIds);
-        return response;
-    }
-
-    public Map<String, Object> simulateFireScenario(Double customMonthlySip, Double customAnnualExpense, Integer customYearsToRetirement) {
-        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
-        if (state == null) {
-            cacheService.refreshCacheInBackground();
-            state = cacheService.getCachedState();
-        }
-        List<Lot> openLots = state != null && state.fifoResult() != null ? state.fifoResult().openLots() : Collections.emptyList();
-        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
-
-        FireTracker.FireSummary fire = FireTracker.calculateFireSummary(openLots, navMap, LocalDate.now());
-
-        double invNetWorth = fire.fireInvestableNetWorth().doubleValue();
-        double annExp = (customAnnualExpense != null && customAnnualExpense > 0) ? customAnnualExpense : fire.annualExpense().doubleValue();
-        double monthlyContrib = (customMonthlySip != null && customMonthlySip >= 0) 
-            ? customMonthlySip 
-            : fire.monthlyContribution().doubleValue();
-        int yrs = (customYearsToRetirement != null && customYearsToRetirement > 0) ? customYearsToRetirement : fire.yearsRemaining();
-
-        List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
-
-        Map<String, Object> mcResult = quantSidecarClient.runMonteCarloFireSimulation(dailyReturns, invNetWorth, annExp, monthlyContrib, yrs, 2000);
-
-        Map<String, Object> response = new HashMap<>(mcResult);
-        response.put("custom_monthly_sip", monthlyContrib);
-        response.put("custom_annual_expense", annExp);
-        response.put("custom_years_remaining", yrs);
-        response.put("investable_net_worth", invNetWorth);
-        response.put("required_corpus", fire.requiredCorpus().doubleValue());
-        return response;
     }
 
     public Map<String, Object> getFundRegistry() {
@@ -955,9 +722,5 @@ public class PortfolioValuationService {
                   .replaceAll("(?i)GROWTH PLAN GROWTH OPTION", "")
                   .replaceAll("(?i)DIRECT GROWTH PLAN", "")
                   .trim();
-    }
-
-    public DuckDbProjector getDuckDbProjector() {
-        return this.duckDbProjector;
     }
 }

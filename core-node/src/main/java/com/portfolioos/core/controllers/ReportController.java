@@ -175,70 +175,8 @@ public class ReportController {
             .body(ics);
     }
 
-
-    @GetMapping("/analytics/benchmark")
-    public ResponseEntity<Map<String, Object>> getBenchmarkAnalytics(
-        @RequestParam(value = "benchmark", defaultValue = "NIFTY_50_TRI") String benchmark
-    ) {
-        return ResponseEntity.ok(valuationService.getBenchmarkAnalytics(benchmark));
-    }
-
-    @GetMapping("/analytics/overlap")
-    public ResponseEntity<Map<String, Object>> getPortfolioOverlapAnalytics(
-        @RequestParam(value = "fundA", defaultValue = "INF109KC13X2") String fundA,
-        @RequestParam(value = "fundB", defaultValue = "INF109KC12U0") String fundB,
-        @RequestParam(value = "includeUnverified", defaultValue = "false") boolean includeUnverified
-    ) {
-        return ResponseEntity.ok(valuationService.getPortfolioOverlapAnalytics(fundA, fundB, includeUnverified));
-    }
-
-    @GetMapping("/analytics/overlap/upset")
-    public ResponseEntity<Map<String, Object>> getMultiFundUpSetAnalytics() {
-        return ResponseEntity.ok(valuationService.getMultiFundUpSetAnalytics());
-    }
-
-    @GetMapping("/analytics/overlap/holdings-debug")
-    public ResponseEntity<Map<String, Object>> getAllFundHoldingsDebug() {
-        return ResponseEntity.ok(valuationService.getDuckDbProjector().getAllFundHoldingsDebug());
-    }
-
-    @PostMapping("/analytics/holdings/ingest")
-    @SuppressWarnings("unchecked")
-    public ResponseEntity<Map<String, Object>> ingestFundHoldings(@RequestBody Map<String, Object> payload) {
-        if (payload == null) {
-            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "Missing payload"));
-        }
-        String fundId = (String) payload.get("fund_id");
-        String disclosureDate = (String) payload.getOrDefault("disclosure_date", LocalDate.now().toString());
-        String sourceType = (String) payload.getOrDefault("source_type", "FACTSHEET_POI_PARSED");
-        List<Map<String, Object>> holdings = (List<Map<String, Object>>) payload.get("holdings");
-
-        if (fundId == null || fundId.isBlank() || holdings == null) {
-            return ResponseEntity.badRequest().body(Map.of("status", "ERROR", "message", "fund_id and holdings are required"));
-        }
-
-        valuationService.getDuckDbProjector().saveFundHoldings(fundId, disclosureDate, sourceType, holdings);
-        return ResponseEntity.ok(Map.of(
-            "status", "SUCCESS",
-            "fund_id", fundId,
-            "disclosure_date", disclosureDate,
-            "source_type", sourceType,
-            "rows_ingested", holdings.size()
-        ));
-    }
-
-
     @GetMapping("/funds/registry")
     public ResponseEntity<Map<String, Object>> getFundRegistry() {
         return ResponseEntity.ok(valuationService.getFundRegistry());
-    }
-
-    @PostMapping("/analytics/fire/simulate")
-    public ResponseEntity<Map<String, Object>> simulateFireScenario(@RequestBody Map<String, Object> body) {
-        Double monthlySip = body != null && body.get("monthly_sip") != null ? ((Number) body.get("monthly_sip")).doubleValue() : null;
-        Double annualExpense = body != null && body.get("annual_expense") != null ? ((Number) body.get("annual_expense")).doubleValue() : null;
-        Integer yearsRemaining = body != null && body.get("years_remaining") != null ? ((Number) body.get("years_remaining")).intValue() : null;
-
-        return ResponseEntity.ok(valuationService.simulateFireScenario(monthlySip, annualExpense, yearsRemaining));
     }
 }

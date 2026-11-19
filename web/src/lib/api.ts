@@ -232,20 +232,6 @@ export interface UpSetCombination {
   stocks: UpSetStockItem[];
 }
 
-export interface MultiFundUpSetResponse {
-  status: string;
-  holding_coverage_type: string;
-  constituent_source: string;
-  disclosure_date: string;
-  is_live_download: boolean;
-  upset_combinations: UpSetCombination[];
-  evaluated_funds: string[];
-}
-
-export async function fetchMultiFundUpSetAnalytics(): Promise<MultiFundUpSetResponse> {
-  return fetchJson<MultiFundUpSetResponse>('/analytics/overlap/upset');
-}
-
 export function getAuthToken(): string {
   if (typeof window === 'undefined') return 'dev_secret_key_123';
   let token = localStorage.getItem('API_AUTH_TOKEN');
@@ -532,17 +518,6 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
   };
 }
 
-export async function fetchParquetTable(table: string = 'fund_holdings'): Promise<ArrayBuffer> {
-  const token = getAuthToken();
-  const headers = new Headers();
-  if (token) headers.set('X-Api-Auth-Token', token);
-  const resp = await fetch(`/api/v1/sync/parquet?table=${encodeURIComponent(table)}`, { headers });
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch parquet table ${table}: ${resp.statusText}`);
-  }
-  return resp.arrayBuffer();
-}
-
 export interface FactorBenchmarkMetric {
   isin: string;
   fundName: string;
@@ -616,10 +591,6 @@ export interface CombinedBenchmarkAnalyticsDto {
   dates?: string[];
   portfolio_cumulative?: number[];
   benchmark_cumulative?: number[];
-}
-
-export async function fetchCombinedBenchmarkAnalytics(benchmark: string = 'NIFTY_500_TRI'): Promise<CombinedBenchmarkAnalyticsDto> {
-  return fetchJson<CombinedBenchmarkAnalyticsDto>(`/analytics/benchmark?benchmark=${encodeURIComponent(benchmark)}`);
 }
 
 

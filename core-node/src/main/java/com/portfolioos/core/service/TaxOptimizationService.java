@@ -32,29 +32,29 @@ import java.util.stream.Collectors;
 public class TaxOptimizationService {
 
     private final EventStorePort eventStore;
-    private final com.portfolioos.core.persistence.DuckDbProjector duckDbProjector;
+    private final com.portfolioos.core.persistence.MarketDataRepository marketDataRepository;
     private final LedgerCacheService cacheService;
     private final AmfiNavSync amfiSync;
     private final FifoMatcher fifoMatcher = new FifoMatcher();
 
     public TaxOptimizationService(EventStorePort eventStore) {
-        this(eventStore, null, null);
+        this(eventStore, (com.portfolioos.core.persistence.MarketDataRepository) null, null);
     }
 
-    public TaxOptimizationService(EventStorePort eventStore, com.portfolioos.core.persistence.DuckDbProjector duckDbProjector) {
-        this(eventStore, duckDbProjector, null);
+    public TaxOptimizationService(EventStorePort eventStore, com.portfolioos.core.persistence.MarketDataRepository marketDataRepository) {
+        this(eventStore, marketDataRepository, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public TaxOptimizationService(
         EventStorePort eventStore,
-        @org.springframework.beans.factory.annotation.Autowired(required = false) com.portfolioos.core.persistence.DuckDbProjector duckDbProjector,
+        @org.springframework.beans.factory.annotation.Autowired(required = false) com.portfolioos.core.persistence.MarketDataRepository marketDataRepository,
         @org.springframework.beans.factory.annotation.Autowired(required = false) LedgerCacheService cacheService
     ) {
         this.eventStore = eventStore;
-        this.duckDbProjector = duckDbProjector;
+        this.marketDataRepository = marketDataRepository;
         this.cacheService = cacheService;
-        this.amfiSync = new AmfiNavSync(duckDbProjector);
+        this.amfiSync = new AmfiNavSync(marketDataRepository);
     }
 
     private LedgerCacheService.CachedLedgerState resolveState() {
@@ -71,8 +71,8 @@ public class TaxOptimizationService {
     }
 
     public Map<String, BigDecimal> getJan2018FmvMap() {
-        if (duckDbProjector != null) {
-            return duckDbProjector.getJan2018FmvMap();
+        if (marketDataRepository != null) {
+            return marketDataRepository.getJan2018FmvMap();
         }
         return Map.of();
     }

@@ -74,6 +74,29 @@ public class SqliteEventStore implements EventStorePort {
         initSchema();
     }
 
+    public SqliteEventStore(HikariDataSource dataSource) {
+        String envSecret = System.getenv("LEDGER_HMAC_SECRET");
+        if (envSecret == null || envSecret.isBlank()) {
+            throw new IllegalStateException("SECURITY CRITICAL: LEDGER_HMAC_SECRET environment variable is required and cannot be empty.");
+        }
+        this.hmacSecret = envSecret;
+        this.dataSource = dataSource;
+        this.dbPath = null;
+        this.jdbcUrl = null;
+        initSchema();
+    }
+
+    public SqliteEventStore(HikariDataSource dataSource, String hmacSecret) {
+        if (hmacSecret == null || hmacSecret.isBlank()) {
+            throw new IllegalStateException("SECURITY CRITICAL: LEDGER_HMAC_SECRET environment variable is required and cannot be empty.");
+        }
+        this.hmacSecret = hmacSecret;
+        this.dataSource = dataSource;
+        this.dbPath = null;
+        this.jdbcUrl = null;
+        initSchema();
+    }
+
     public Connection getConnection() throws SQLException {
         return dataSource.getConnection();
     }

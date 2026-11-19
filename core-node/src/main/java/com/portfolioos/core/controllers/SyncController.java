@@ -10,8 +10,8 @@ import com.portfolioos.core.model.Lot;
 import com.portfolioos.core.model.MatchedLot;
 import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.model.EventType;
-import com.portfolioos.core.persistence.DuckDbProjector;
-import com.portfolioos.core.persistence.DuckDbProjector.NavHistorySeriesEntry;
+import com.portfolioos.core.persistence.MarketDataRepository;
+import com.portfolioos.core.persistence.MarketDataRepository.NavHistorySeriesEntry;
 import com.portfolioos.core.ports.EventStorePort;
 import com.portfolioos.core.reporting.ExemptionTracker;
 import com.portfolioos.core.rpc.QuantSidecarClient;
@@ -44,13 +44,10 @@ public class SyncController {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SyncController.class);
     private static final java.time.format.DateTimeFormatter ISO_FORMATTER = java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME;
-    private static final Set<String> ALLOWED_PARQUET_TABLES = Set.of(
-        "fund_holdings", "open_lots", "benchmark_history", "nav_history"
-    );
 
     private final LedgerCacheService cacheService;
     private final com.portfolioos.core.service.PortfolioValuationService valuationService;
-    private final DuckDbProjector duckDbProjector;
+    private final MarketDataRepository marketDataRepository;
     private final QuantSidecarClient quantSidecarClient;
     private final com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository;
 
@@ -58,13 +55,13 @@ public class SyncController {
     public SyncController(
         LedgerCacheService cacheService,
         com.portfolioos.core.service.PortfolioValuationService valuationService,
-        DuckDbProjector duckDbProjector,
+        MarketDataRepository marketDataRepository,
         QuantSidecarClient quantSidecarClient,
         @Autowired(required = false) com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository
     ) {
         this.cacheService = cacheService;
         this.valuationService = valuationService;
-        this.duckDbProjector = duckDbProjector;
+        this.marketDataRepository = marketDataRepository;
         this.quantSidecarClient = quantSidecarClient;
         this.triggerHistoryRepository = triggerHistoryRepository;
     }
@@ -72,10 +69,10 @@ public class SyncController {
     public SyncController(
         LedgerCacheService cacheService,
         com.portfolioos.core.service.PortfolioValuationService valuationService,
-        DuckDbProjector duckDbProjector,
+        MarketDataRepository marketDataRepository,
         QuantSidecarClient quantSidecarClient
     ) {
-        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, null);
+        this(cacheService, valuationService, marketDataRepository, quantSidecarClient, null);
     }
 
     private static String detectFineBucket(String assetName) {
@@ -113,7 +110,7 @@ public class SyncController {
 
         // Collect held ISINs
         Set<String> heldIsins = openLots.stream().map(Lot::assetId).collect(Collectors.toSet());
-        Map<String, BigDecimal> peakNavMap = duckDbProjector.get52WeekPeakNavs(heldIsins);
+        Map<String, BigDecimal> peakNavMap = marketDataRepository.get52WeekPeakNavs(heldIsins);
 
         // Calculate overall XIRR & Totals via canonical PortfolioValuationService
         com.portfolioos.core.service.PortfolioValuationService.PortfolioValuationMetrics valMetrics = valuationService.computeValuationMetrics(resolvedFy);
@@ -248,9 +245,9 @@ public class SyncController {
         harvestSignals.sort((a, b) -> b.description().compareTo(a.description()));
         radarSignals.addAll(harvestSignals.stream().limit(3).toList());
 
-        // 2. Quant Sidecar Intelligence (from real DuckDB NAV time-series with dates)
+        // 2. Quant Sidecar Intelligence (from real SQLite NAV time-series with dates)
         try {
-            Map<String, NavHistorySeriesEntry> navHistorySeries = duckDbProjector.getNavHistorySeriesWithDates(heldIsins);
+            Map<String, NavHistorySeriesEntry> navHistorySeries = marketDataRepository.getNavHistorySeriesWithDates(heldIsins);
             if (!navHistorySeries.isEmpty()) {
                 Map<String, Map<String, Object>> quantMetrics = quantSidecarClient.computeQuantMetricsWithDates(navHistorySeries);
                 Map<String, String> isinToNameMap = holdings.stream().collect(Collectors.toMap(FlatHoldingDto::isin, FlatHoldingDto::fundName, (a, b) -> a));
@@ -375,7 +372,7 @@ public class SyncController {
             hasStaleNav
         );
 
-        List<NetWorthPointDto> netWorthHistory = duckDbProjector.getDailyNetWorthTrend().stream()
+        List<NetWorthPointDto> netWorthHistory = marketDataRepository.getDailyNetWorthTrend().stream()
             .map(p -> new NetWorthPointDto(p.date(), p.valuation(), p.invested()))
             .toList();
 
@@ -386,7 +383,7 @@ public class SyncController {
             derivedTriggerType = null;
         }
 
-        DuckDbProjector.BenchmarkLevelMetrics benchMetrics = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
+        MarketDataRepository.BenchmarkLevelMetrics benchMetrics = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
         BigDecimal benchCurrent = benchMetrics != null && benchMetrics.currentLevel() != null ? BigDecimal.valueOf(benchMetrics.currentLevel()) : null;
         BigDecimal benchHigh = benchMetrics != null && benchMetrics.rollingHigh() != null ? BigDecimal.valueOf(benchMetrics.rollingHigh()) : null;
 
@@ -473,7 +470,7 @@ public class SyncController {
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
-        DuckDbProjector.BenchmarkLevelMetrics bench = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
+        MarketDataRepository.BenchmarkLevelMetrics bench = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
         BigDecimal benchCurrent = bench != null && bench.currentLevel() != null ? BigDecimal.valueOf(bench.currentLevel()) : null;
         BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
 
@@ -504,7 +501,7 @@ public class SyncController {
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
-        DuckDbProjector.BenchmarkLevelMetrics bench = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
+        MarketDataRepository.BenchmarkLevelMetrics bench = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
         BigDecimal benchCurrent = bench != null && bench.currentLevel() != null ? BigDecimal.valueOf(bench.currentLevel()) : null;
         BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
 
@@ -552,7 +549,7 @@ public class SyncController {
         Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
 
         String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
-        DuckDbProjector.BenchmarkLevelMetrics bench = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
+        MarketDataRepository.BenchmarkLevelMetrics bench = valuationService.getLatestBenchmarkMetrics("NIFTY_500_TRI");
         BigDecimal benchCurrent = bench != null && bench.currentLevel() != null ? BigDecimal.valueOf(bench.currentLevel()) : null;
         BigDecimal benchHigh = bench != null && bench.rollingHigh() != null ? BigDecimal.valueOf(bench.rollingHigh()) : null;
 
@@ -572,92 +569,6 @@ public class SyncController {
             "nav_count", refreshed.navMap() != null ? refreshed.navMap().size() : 0,
             "refreshed_at", java.time.LocalDateTime.now().format(ISO_FORMATTER)
         ));
-    }
-
-    @GetMapping("/parquet")
-    public ResponseEntity<byte[]> getParquetTable(@RequestParam(defaultValue = "fund_holdings") String table) {
-        if (duckDbProjector == null) {
-            return ResponseEntity.status(503).build();
-        }
-        String cleanTable = table.replaceAll("[^a-zA-Z0-9_]", "").toLowerCase(Locale.ROOT);
-        if (cleanTable.isBlank()) {
-            cleanTable = "fund_holdings";
-        }
-        if (!ALLOWED_PARQUET_TABLES.contains(cleanTable)) {
-            return ResponseEntity.badRequest().build();
-        }
-        File tempFile = null;
-        try {
-            tempFile = File.createTempFile("parquet_" + cleanTable + "_", ".parquet");
-            if ("open_lots".equalsIgnoreCase(cleanTable)) {
-                duckDbProjector.syncOpenLots(cacheService.getCachedState().fifoResult().openLots());
-            }
-            duckDbProjector.exportTableToParquet(cleanTable, tempFile);
-            byte[] bytes = Files.readAllBytes(tempFile.toPath());
-            return ResponseEntity.ok()
-                .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/vnd.apache.parquet")
-                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + cleanTable + ".parquet\"")
-                .body(bytes);
-        } catch (Exception e) {
-            log.error("Failed to export table {} to parquet: {}", cleanTable, e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        } finally {
-            if (tempFile != null && tempFile.exists()) {
-                tempFile.delete();
-            }
-        }
-    }
-
-    @GetMapping("/parquet-bundle")
-    public ResponseEntity<byte[]> getParquetBundle() {
-        if (duckDbProjector == null) {
-            return ResponseEntity.status(503).build();
-        }
-        List<File> tempFiles = new ArrayList<>();
-        try {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            try (ZipOutputStream zos = new ZipOutputStream(baos)) {
-                // 1. open_lots.parquet (PII stripped - no folio_no)
-                File openLotsFile = File.createTempFile("open_lots_", ".parquet");
-                tempFiles.add(openLotsFile);
-                duckDbProjector.syncOpenLots(cacheService.getCachedState().fifoResult().openLots());
-                duckDbProjector.exportTableToParquet("open_lots", openLotsFile);
-                zos.putNextEntry(new ZipEntry("open_lots.parquet"));
-                zos.write(Files.readAllBytes(openLotsFile.toPath()));
-                zos.closeEntry();
-
-                // 2. fund_holdings.parquet
-                File fundHoldingsFile = File.createTempFile("fund_holdings_", ".parquet");
-                tempFiles.add(fundHoldingsFile);
-                duckDbProjector.exportTableToParquet("fund_holdings", fundHoldingsFile);
-                zos.putNextEntry(new ZipEntry("fund_holdings.parquet"));
-                zos.write(Files.readAllBytes(fundHoldingsFile.toPath()));
-                zos.closeEntry();
-
-                // 3. benchmark_history.parquet
-                File benchmarkFile = File.createTempFile("benchmark_history_", ".parquet");
-                tempFiles.add(benchmarkFile);
-                duckDbProjector.exportTableToParquet("benchmark_history", benchmarkFile);
-                zos.putNextEntry(new ZipEntry("benchmark_history.parquet"));
-                zos.write(Files.readAllBytes(benchmarkFile.toPath()));
-                zos.closeEntry();
-            }
-
-            byte[] zipBytes = baos.toByteArray();
-            return ResponseEntity.ok()
-                .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/zip")
-                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"parquet_bundle.zip\"")
-                .body(zipBytes);
-        } catch (Exception e) {
-            log.error("Failed to export parquet bundle: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        } finally {
-            for (File f : tempFiles) {
-                if (f != null && f.exists()) {
-                    f.delete();
-                }
-            }
-        }
     }
 }
 

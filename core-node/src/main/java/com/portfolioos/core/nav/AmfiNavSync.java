@@ -30,14 +30,14 @@ public class AmfiNavSync {
     private static long lastFetchTimeMs = 0L;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private com.portfolioos.core.persistence.DuckDbProjector duckDbProjector;
+    private com.portfolioos.core.persistence.MarketDataRepository marketDataRepository;
 
     public AmfiNavSync() {
         this(null);
     }
 
-    public AmfiNavSync(com.portfolioos.core.persistence.DuckDbProjector duckDbProjector) {
-        this.duckDbProjector = duckDbProjector;
+    public AmfiNavSync(com.portfolioos.core.persistence.MarketDataRepository marketDataRepository) {
+        this.marketDataRepository = marketDataRepository;
     }
 
     private static final java.time.format.DateTimeFormatter AMFI_DATE_FMT =
@@ -116,8 +116,8 @@ public class AmfiNavSync {
                 if (!parsed.isEmpty()) {
                     cachedNavs = parsed;
                     lastFetchTimeMs = System.currentTimeMillis();
-                    if (duckDbProjector != null) {
-                        duckDbProjector.saveLatestNavEntries(parsed);
+                    if (marketDataRepository != null) {
+                        marketDataRepository.saveLatestNavEntries(parsed);
                     }
                 }
                 return parsed;
@@ -126,8 +126,8 @@ public class AmfiNavSync {
                 if (cachedNavs != null && !cachedNavs.isEmpty()) {
                     return cachedNavs;
                 }
-                if (duckDbProjector != null) {
-                    List<NavEntry> fallbackNavs = duckDbProjector.getLatestNavEntries();
+                if (marketDataRepository != null) {
+                    List<NavEntry> fallbackNavs = marketDataRepository.getLatestNavEntries();
                     if (fallbackNavs != null && !fallbackNavs.isEmpty()) {
                         cachedNavs = fallbackNavs;
                         return cachedNavs;

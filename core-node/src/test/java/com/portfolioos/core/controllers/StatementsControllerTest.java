@@ -3,7 +3,7 @@ package com.portfolioos.core.controllers;
 import com.portfolioos.core.dtos.ParsedEventDto;
 import com.portfolioos.core.matcher.FifoMatcher;
 import com.portfolioos.core.model.Lot;
-import com.portfolioos.core.persistence.DuckDbProjector;
+import com.portfolioos.core.persistence.MarketDataRepository;
 import com.portfolioos.core.persistence.SqliteEventStore;
 import com.portfolioos.core.reconciliation.ReconciliationGate;
 import com.portfolioos.core.reconciliation.ReconciliationGateFailureException;
@@ -95,11 +95,11 @@ class StatementsControllerTest {
         assertTrue(passResult.allMatched(), "Units within 0.001 must succeed reconciliation gate");
         assertTrue(passResult.assetResults().get(0).isMatched());
 
-        // 3. Instantiate in-memory eventStore, projector, cacheService, and ingestionUseCase
+        // 3. Instantiate in-memory eventStore, marketDataRepository, cacheService, and ingestionUseCase
         SqliteEventStore eventStore = new SqliteEventStore(":memory:");
-        DuckDbProjector duckDbProjector = new DuckDbProjector("jdbc:duckdb:");
-        LedgerCacheService cacheService = new LedgerCacheService(eventStore, duckDbProjector);
-        StatementIngestionUseCase ingestionUseCase = new StatementIngestionUseCase(eventStore, duckDbProjector, cacheService);
+        MarketDataRepository marketDataRepository = new MarketDataRepository(null);
+        LedgerCacheService cacheService = new LedgerCacheService(eventStore, marketDataRepository);
+        StatementIngestionUseCase ingestionUseCase = new StatementIngestionUseCase(eventStore, marketDataRepository, cacheService);
 
         ParsedEventDto perturbedDto = new ParsedEventDto(
             "EV_PERTURBED", isin, "Parag Parikh Flexi Cap Fund", isin,

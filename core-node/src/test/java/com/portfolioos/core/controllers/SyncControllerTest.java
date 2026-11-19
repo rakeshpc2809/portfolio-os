@@ -23,12 +23,16 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.portfolioos.core.persistence.MarketDataRepository;
+import com.portfolioos.core.persistence.MarketDataRepository.BenchmarkLevelMetrics;
+import com.portfolioos.core.persistence.MarketDataRepository.NavHistorySeriesEntry;
+
 class SyncControllerTest {
 
     private SyncController syncController;
     private LedgerCacheService mockCacheService;
     private com.portfolioos.core.service.PortfolioValuationService valuationService;
-    private com.portfolioos.core.persistence.DuckDbProjector mockDuckDb;
+    private MarketDataRepository mockMarketData;
     private com.portfolioos.core.rpc.QuantSidecarClient mockQuantSidecar;
 
     @BeforeEach
@@ -70,7 +74,7 @@ class SyncControllerTest {
             }
         };
 
-        mockDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
+        mockMarketData = new MarketDataRepository(null) {
             @Override
             public Map<String, NavHistorySeriesEntry> getNavHistorySeriesWithDates(java.util.Set<String> heldIsins) {
                 return java.util.Collections.emptyMap();
@@ -82,21 +86,21 @@ class SyncControllerTest {
         };
         mockQuantSidecar = new com.portfolioos.core.rpc.QuantSidecarClient("localhost", 9999);
         valuationService = 
-            new com.portfolioos.core.service.PortfolioValuationService(mockCacheService, mockDuckDb, mockQuantSidecar);
+            new com.portfolioos.core.service.PortfolioValuationService(mockCacheService, mockMarketData);
 
-        syncController = new SyncController(mockCacheService, valuationService, mockDuckDb, mockQuantSidecar);
+        syncController = new SyncController(mockCacheService, valuationService, mockMarketData, mockQuantSidecar);
     }
 
     @Test
     void testSite1SnapshotGracefullyDegradesDrawdownStatusWhenBenchmarkNull() {
-        com.portfolioos.core.persistence.DuckDbProjector emptyDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
+        MarketDataRepository emptyMarketData = new MarketDataRepository(null) {
             @Override
             public BenchmarkLevelMetrics getBenchmarkLevelMetrics(String benchmarkId) {
                 return null;
             }
         };
-        PortfolioValuationService emptyValService = new PortfolioValuationService(mockCacheService, emptyDuckDb, mockQuantSidecar);
-        SyncController controller = new SyncController(mockCacheService, emptyValService, emptyDuckDb, mockQuantSidecar);
+        PortfolioValuationService emptyValService = new PortfolioValuationService(mockCacheService, emptyMarketData);
+        SyncController controller = new SyncController(mockCacheService, emptyValService, emptyMarketData, mockQuantSidecar);
 
         ResponseEntity<UnidirectionalSyncSnapshot> response = controller.getSnapshot("2026-27", null);
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -128,14 +132,14 @@ class SyncControllerTest {
 
     @Test
     void testSite2RebalancePlanFailsLoudlyWhenBenchmarkNull() {
-        com.portfolioos.core.persistence.DuckDbProjector emptyDuckDb = new com.portfolioos.core.persistence.DuckDbProjector(true) {
+        MarketDataRepository emptyMarketData = new MarketDataRepository(null) {
             @Override
             public BenchmarkLevelMetrics getBenchmarkLevelMetrics(String benchmarkId) {
                 return null;
             }
         };
-        PortfolioValuationService emptyValService = new PortfolioValuationService(mockCacheService, emptyDuckDb, mockQuantSidecar);
-        SyncController controller = new SyncController(mockCacheService, emptyValService, emptyDuckDb, mockQuantSidecar);
+        PortfolioValuationService emptyValService = new PortfolioValuationService(mockCacheService, emptyMarketData);
+        SyncController controller = new SyncController(mockCacheService, emptyValService, emptyMarketData, mockQuantSidecar);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
             controller.getRebalancePlan("INDUCED")
@@ -168,12 +172,6 @@ class SyncControllerTest {
             "Site 1 must not pass rollingHigh into benchmark parameter slot");
         assertFalse(content.contains("buildPreviewPlan(\n            openLots, matchedLots, navMap, LocalDate.now(), totalCurrentVal, rollingHigh,"),
             "Site 2 must not pass rollingHigh into benchmark parameter slot");
-    }
-
-    @Test
-    void testDisallowedParquetTableReturns400BadRequest() {
-        ResponseEntity<byte[]> response = syncController.getParquetTable("sqlite_master");
-        assertEquals(400, response.getStatusCode().value(), "Arbitrary table queries like sqlite_master must return HTTP 400 Bad Request");
     }
 
     @Test
@@ -225,7 +223,7 @@ class SyncControllerTest {
         memoryRepo.clearAll();
 
         SyncController controller = new SyncController(
-            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, memoryRepo
+            mockCacheService, valuationService, mockMarketData, mockQuantSidecar, memoryRepo
         );
 
         ResponseEntity<RebalancePlanDto> preview = controller.getRebalancePlan("SCHEDULED");
@@ -258,7 +256,7 @@ class SyncControllerTest {
         memoryRepo.clearAll();
 
         SyncController controller = new SyncController(
-            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, memoryRepo
+            mockCacheService, valuationService, mockMarketData, mockQuantSidecar, memoryRepo
         );
 
         // 1. First preview a plan to obtain its valid digest
@@ -304,7 +302,7 @@ class SyncControllerTest {
 
         // 5. If TriggerHistoryRepository is null, controller MUST return 500 Internal Server Error
         SyncController controllerWithoutRepo = new SyncController(
-            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null
+            mockCacheService, valuationService, mockMarketData, mockQuantSidecar, null
         );
         ResponseEntity<RebalancePlanDto> previewWithoutRepo = controllerWithoutRepo.getRebalancePlan("SCHEDULED");
         assertNotNull(previewWithoutRepo.getBody());
