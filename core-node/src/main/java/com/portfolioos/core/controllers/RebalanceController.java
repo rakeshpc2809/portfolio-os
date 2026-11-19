@@ -57,13 +57,6 @@ public class RebalanceController {
         return ResponseEntity.ok(valuationService.getRebalancePreview(amount, resolveFy(fy)));
     }
 
-    @GetMapping({"/rebalance/consolidation", "/portfolio/consolidation-preview"})
-    public ResponseEntity<ConsolidationPreviewResponse> getConsolidationPreview(
-        @RequestParam(value = "fy", required = false) String fy
-    ) {
-        return ResponseEntity.ok(valuationService.getConsolidationPreview(resolveFy(fy)));
-    }
-
     @GetMapping({"/goals/summary", "/portfolio/goals"})
     public ResponseEntity<GoalSummaryResponse> getGoalSummary() {
         return ResponseEntity.ok(valuationService.getGoalSummary());

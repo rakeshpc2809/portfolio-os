@@ -225,7 +225,7 @@ class SyncControllerTest {
         memoryRepo.clearAll();
 
         SyncController controller = new SyncController(
-            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null, memoryRepo
+            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, memoryRepo
         );
 
         ResponseEntity<RebalancePlanDto> preview = controller.getRebalancePlan("SCHEDULED");
@@ -258,7 +258,7 @@ class SyncControllerTest {
         memoryRepo.clearAll();
 
         SyncController controller = new SyncController(
-            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null, memoryRepo
+            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, memoryRepo
         );
 
         // 1. First preview a plan to obtain its valid digest
@@ -304,7 +304,7 @@ class SyncControllerTest {
 
         // 5. If TriggerHistoryRepository is null, controller MUST return 500 Internal Server Error
         SyncController controllerWithoutRepo = new SyncController(
-            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null, null
+            mockCacheService, valuationService, mockDuckDb, mockQuantSidecar, null
         );
         ResponseEntity<RebalancePlanDto> previewWithoutRepo = controllerWithoutRepo.getRebalancePlan("SCHEDULED");
         assertNotNull(previewWithoutRepo.getBody());

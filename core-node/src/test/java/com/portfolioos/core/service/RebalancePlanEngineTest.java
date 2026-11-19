@@ -12,7 +12,6 @@ import com.portfolioos.core.rules.BucketConfigLoader.BucketTargetConfig;
 import com.portfolioos.core.rules.BucketConfigLoader.BucketTargetVersion;
 import com.portfolioos.core.rules.BucketConfigLoader.PreferredFundConfig;
 import com.portfolioos.core.valuation.BucketEngine;
-import com.portfolioos.core.valuation.FundTrendDampenerCalculator;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,9 +87,9 @@ class RebalancePlanEngineTest {
         assertTrue(plan.trigger().isInduced());
         assertEquals("DRIFT_THRESHOLD_EXCEEDED", plan.trigger().reasonCode());
 
-        // Verify buy side sizing: Excess Core with per-fund Trend Dampener (0.7393x of ₹400,000.00 = ₹295,720.00)
+        // Verify buy side sizing: Excess Core without dampener (100% of ₹400,000.00 = ₹400,000.00)
         assertNotNull(plan.buySide());
-        assertEquals(new BigDecimal("295720.00"), plan.buySide().totalToInvest(), "Excess drift pool on 2M corpus with per-fund trend dampener must yield exactly ₹450,000.00 total to invest");
+        assertEquals(new BigDecimal("400000.00"), plan.buySide().totalToInvest(), "Excess drift pool on 2M corpus must yield exactly ₹400,000.00 total to invest");
         assertFalse(plan.buySide().buckets().isEmpty());
     }
 
@@ -166,9 +165,9 @@ class RebalancePlanEngineTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(
             plan.sellSide().waterfall().stream().filter(t -> "LEGACY_FUND".equals(t.tier())).findFirst().orElseThrow().sold()),
             "Legacy sales proceeds must be strictly 0.00 in pure internal drift");
-        assertEquals(0, new BigDecimal("295720.00").compareTo(
+        assertEquals(0, new BigDecimal("400000.00").compareTo(
             plan.sellSide().waterfall().stream().filter(t -> "CORE_FUND".equals(t.tier())).findFirst().orElseThrow().sold()),
-            "Core fund trim proceeds must be exactly 295,720.00");
+            "Core fund trim proceeds must be exactly 400,000.00");
 
         RebalanceBucketAllocationDto coreBucket = plan.buySide().buckets().stream()
             .filter(b -> BucketEngine.Bucket.EQUITY_CORE.name().equals(b.bucket()))
@@ -180,13 +179,13 @@ class RebalancePlanEngineTest {
         // Concrete absolute rupee allocations
         assertEquals(0, BigDecimal.ZERO.compareTo(coreBucket.amountAllocated()),
             "Core is overweight; allocated buy-side amount must be exactly ₹0.00");
-        assertEquals(0, new BigDecimal("295720.00").compareTo(satBucket.amountAllocated()),
-            "Satellite is underweight; allocated buy-side amount must be exactly ₹295,720.00");
+        assertEquals(0, new BigDecimal("400000.00").compareTo(satBucket.amountAllocated()),
+            "Satellite is underweight; allocated buy-side amount must be exactly ₹400,000.00");
 
         // Concrete absolute post-rebalance rupee values:
-        // Core post-rebalance value = 1,800,000.00 - 295,720.00 = 1,504,280.00
-        // Satellite post-rebalance value = 200,000.00 + 295,720.00 = 495,720.00
-        BigDecimal corePostRupees = new BigDecimal("1800000.00").subtract(new BigDecimal("295720.00"));
+        // Core post-rebalance value = 1,800,000.00 - 400,000.00 = 1,400,000.00
+        // Satellite post-rebalance value = 200,000.00 + 400,000.00 = 600,000.00
+        BigDecimal corePostRupees = new BigDecimal("1800000.00").subtract(new BigDecimal("400000.00"));
         BigDecimal satPostRupees = new BigDecimal("200000.00").add(satBucket.amountAllocated());
         BigDecimal totalPostCorpusRupees = corePostRupees.add(satPostRupees);
 
@@ -194,12 +193,12 @@ class RebalancePlanEngineTest {
             "Total post-rebalance active portfolio across all buckets must strictly equal activeCorpus (2,000,000.00)");
 
         // Under uninflated denominator (2,000,000.00):
-        // Core post % = 1,504,280 / 2,000,000 = 75.2% (under buggy denominator 2,295,720, it was 78.4%)
-        // Satellite post % = 495,720 / 2,000,000 = 24.8% (under buggy denominator 2,295,720, it was 21.6%)
-        assertEquals(75.2, coreBucket.postRebalancePct(), 0.1,
-            "CORE postRebalancePct must be 75.2% (1,504,280 / 2,000,000), not 78.4% from inflated denominator");
-        assertEquals(24.8, satBucket.postRebalancePct(), 0.1,
-            "SATELLITE postRebalancePct must be 24.8% (495,720 / 2,000,000), not 21.6% from inflated denominator");
+        // Core post % = 1,400,000 / 2,000,000 = 70.0%
+        // Satellite post % = 600,000 / 2,000,000 = 30.0%
+        assertEquals(70.0, coreBucket.postRebalancePct(), 0.1,
+            "CORE postRebalancePct must be 70.0% (1,400,000 / 2,000,000)");
+        assertEquals(30.0, satBucket.postRebalancePct(), 0.1,
+            "SATELLITE postRebalancePct must be 30.0% (600,000 / 2,000,000)");
     }
 
     @Test
@@ -394,10 +393,10 @@ class RebalancePlanEngineTest {
                 plan.sellSide().waterfall().stream().filter(t -> "LEGACY_FUND".equals(t.tier())).findFirst().orElseThrow().sold()),
                 "Legacy fund sales must be 0.00 for active satellite holding");
 
-            BigDecimal expectedTrim = new BigDecimal("295720.00");
+            BigDecimal expectedTrim = new BigDecimal("400000.00");
             assertEquals(0, expectedTrim.compareTo(
                 plan.sellSide().waterfall().stream().filter(t -> "CORE_FUND".equals(t.tier())).findFirst().orElseThrow().sold()),
-                "Sell side must execute trim of 295,720.00 on active overweight satellite bucket");
+                "Sell side must execute trim of 400,000.00 on active overweight satellite bucket");
 
             // 2. Verify buy-side bucket allocations and post-rebalance values
             RebalanceBucketAllocationDto coreBucket = plan.buySide().buckets().stream()
@@ -407,7 +406,7 @@ class RebalancePlanEngineTest {
                 .filter(b -> BucketEngine.Bucket.EQUITY_SATELLITE.name().equals(b.bucket()))
                 .findFirst().orElseThrow();
 
-            // Core receives entire 295,720.00 buy allocation
+            // Core receives entire 400,000.00 buy allocation
             assertEquals(0, expectedTrim.compareTo(coreBucket.amountAllocated()),
                 "Underweight Core bucket must receive full 295,720.00 allocation");
             assertEquals(0, BigDecimal.ZERO.compareTo(satBucket.amountAllocated()),
@@ -420,11 +419,11 @@ class RebalancePlanEngineTest {
             BigDecimal expectedCorePostVal = new BigDecimal("200000.00").add(expectedTrim);
 
             // If resolveTargetBucket had failed to roll up, soldFromBucket would be 0, leaving postVal at 1,800,000.00
-            // and postRebalancePct at 90.0% instead of 75.2%!
-            assertEquals(75.2, satBucket.postRebalancePct(), 0.1,
-                "EQUITY_SATELLITE postRebalancePct must be 75.2% (1,504,280 / 2,000,000), proving soldFromBucket was rolled up and subtracted");
-            assertEquals(24.8, coreBucket.postRebalancePct(), 0.1,
-                "EQUITY_CORE postRebalancePct must be 24.8% (495,720 / 2,000,000)");
+            // and postRebalancePct at 90.0% instead of 70.0%!
+            assertEquals(70.0, satBucket.postRebalancePct(), 0.1,
+                "EQUITY_SATELLITE postRebalancePct must be 70.0% (1,400,000 / 2,000,000), proving soldFromBucket was rolled up and subtracted");
+            assertEquals(30.0, coreBucket.postRebalancePct(), 0.1,
+                "EQUITY_CORE postRebalancePct must be 30.0% (600,000 / 2,000,000)");
 
             // Total post-rebalance corpus remains invariant at 2,000,000.00
             assertEquals(0, corpus.compareTo(expectedSatPostVal.add(expectedCorePostVal)),
@@ -560,16 +559,15 @@ class RebalancePlanEngineTest {
         assertNotNull(plan.sellSide());
         assertNotNull(plan.buySide());
 
-        // Expected dampened trim per overweight bucket:
-        // excess = 200,000 on 800,000 target -> 25% drift.
-        // sell multiplier for 25% drift = 0.60 + (15/20) * 0.15 = 0.7125.
-        // dampenedTrim = 200,000 * 0.7125 = 142,500.00 each.
-        // Total pool = 142,500 + 142,500 = 285,000.00.
-        BigDecimal expectedTrimPerBucket = new BigDecimal("142500.00");
-        BigDecimal expectedTotalPool = new BigDecimal("285000.00");
+        // Expected linear trim per overweight bucket:
+        // excess = 200,000 on 800,000 target.
+        // linear trim = 200,000.00 each.
+        // Total pool = 200,000 + 200,000 = 400,000.00.
+        BigDecimal expectedTrimPerBucket = new BigDecimal("200000.00");
+        BigDecimal expectedTotalPool = new BigDecimal("400000.00");
 
         assertEquals(0, expectedTotalPool.compareTo(plan.buySide().totalToInvest()),
-            "Total pool must equal sum of both dampened trims (142,500 + 142,500 = 285,000.00)");
+            "Total pool must equal sum of both trims (200,000 + 200,000 = 400,000.00)");
 
         // 1. Verify Sell-Side: BOTH buckets were trimmed, not just a single bucket!
         List<RebalancePlanDtos.RebalanceLotImpactDto> soldLots = plan.sellSide().waterfall().stream()
@@ -590,11 +588,11 @@ class RebalancePlanEngineTest {
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         assertEquals(0, expectedTrimPerBucket.compareTo(actualCoreSold),
-            "Core bucket must be trimmed for exactly its dampened trim of 142,500.00");
+            "Core bucket must be trimmed for exactly its excess of 200,000.00");
         assertEquals(0, expectedTrimPerBucket.compareTo(actualSatSold),
-            "Satellite bucket must be trimmed for exactly its dampened trim of 142,500.00");
+            "Satellite bucket must be trimmed for exactly its excess of 200,000.00");
 
-        // 2. Verify Buy-Side: Gold receives the full 285,000.00 allocation
+        // 2. Verify Buy-Side: Gold receives the full 400,000.00 allocation
         RebalanceBucketAllocationDto goldBucket = plan.buySide().buckets().stream()
             .filter(b -> BucketEngine.Bucket.GOLD_SILVER.name().equals(b.bucket()))
             .findFirst().orElseThrow();
@@ -606,51 +604,27 @@ class RebalancePlanEngineTest {
             .findFirst().orElseThrow();
 
         assertEquals(0, expectedTotalPool.compareTo(goldBucket.amountAllocated()),
-            "Deficit Gold bucket must receive entire 285,000.00 rebalance pool");
+            "Deficit Gold bucket must receive entire 400,000.00 rebalance pool");
         assertEquals(0, BigDecimal.ZERO.compareTo(coreBucket.amountAllocated()));
         assertEquals(0, BigDecimal.ZERO.compareTo(satBucket.amountAllocated()));
 
         // 3. Verify Post-Rebalance Percentages:
-        // Core postVal: 1,000,000 - 142,500 = 857,500 (42.9%)
-        // Sat postVal: 1,000,000 - 142,500 = 857,500 (42.9%)
-        // Gold postVal: 0 + 285,000 = 285,000 (14.2% or 14.3%)
-        assertEquals(42.9, coreBucket.postRebalancePct(), 0.1,
-            "Core postRebalancePct must be 42.9% reflecting 142,500 trim");
-        assertEquals(42.9, satBucket.postRebalancePct(), 0.1,
-            "Satellite postRebalancePct must be 42.9% reflecting 142,500 trim");
-        assertEquals(14.3, goldBucket.postRebalancePct(), 0.1,
-            "Gold postRebalancePct must be 14.3% reflecting 285,000 buy allocation");
+        // Core postVal: 1,000,000 - 200,000 = 800,000 (40.0%)
+        // Sat postVal: 1,000,000 - 200,000 = 800,000 (40.0%)
+        // Gold postVal: 0 + 400,000 = 400,000 (20.0%)
+        assertEquals(40.0, coreBucket.postRebalancePct(), 0.1,
+            "Core postRebalancePct must be 40.0% reflecting 200,000 trim");
+        assertEquals(40.0, satBucket.postRebalancePct(), 0.1,
+            "Satellite postRebalancePct must be 40.0% reflecting 200,000 trim");
+        assertEquals(20.0, goldBucket.postRebalancePct(), 0.1,
+            "Gold postRebalancePct must be 20.0% reflecting 400,000 buy allocation");
     }
 
     @Test
-    @DisplayName("Gold Drift Threshold & Dampened Trim Sizing: 12% trigger threshold vs 5% core, dampened trim sizing")
+    @DisplayName("Gold Drift Threshold: 12% trigger threshold vs 5% core")
     void testGoldWiderDriftThresholdSensitivityAndTrimSizing() {
         // -----------------------------------------------------------------------------------------
-        // Component 1: FundTrendDampenerCalculator direct dampener curve verification
-        // -----------------------------------------------------------------------------------------
-        // At 13.5% drift (in the 10-30% range):
-        // sellMultiplier = 0.60 + ((13.5 - 10.0) / 20.0) * (0.75 - 0.60)
-        //                = 0.60 + (3.5 / 20.0) * 0.15 = 0.60 + 0.175 * 0.15 = 0.60 + 0.02625 = 0.62625
-        // Rounded to 4 decimal places = 0.6263
-        FundTrendDampenerCalculator.DampenerMultipliers mults = FundTrendDampenerCalculator.calculateFundMultipliers(13.5);
-        assertEquals(0.6263, mults.sellMultiplier(), 0.0001,
-            "13.5% drift must produce exactly 0.6263 sell multiplier via 0.60 + (3.5/20.0)*0.15 dampener formula");
-        assertEquals(0.0, mults.buyMultiplier(),
-            "Positive drift must have 0.0 buy multiplier");
-
-        LocalDate today = LocalDate.of(2026, 8, 28);
-
-        // Excess of 13,500 on 100,000 target (13.5% drift) yields dampened trim of 8,455.05 under v2.3 rules
-        BigDecimal dampenedTrim135 = FundTrendDampenerCalculator.calculateDampenedTrim(new BigDecimal("13500.00"), 100000.0, today);
-        assertEquals(new BigDecimal("8455.05"), dampenedTrim135,
-            "Dampened trim for 13,500.00 excess on 100k target must be 8,455.05 (0.6263x), not linear 13,500.00");
-        // Under v2.4 dampener tier (<=15.0% has 0.40x multiplier)
-        BigDecimal v24DampenedTrim = FundTrendDampenerCalculator.calculateDampenedTrim(new BigDecimal("13500.00"), 100000.0);
-        assertEquals(new BigDecimal("5400.00"), v24DampenedTrim,
-            "V2.4 dampened trim for 13.5% relative excess must apply 0.40x tier yielding 5,400.00");
-
-        // -----------------------------------------------------------------------------------------
-        // Component 2: RebalanceTriggerEvaluator sensitivity to Gold 12% threshold vs 5% Core/Satellite
+        // RebalanceTriggerEvaluator sensitivity to Gold 12% threshold vs 5% Core/Satellite
         // -----------------------------------------------------------------------------------------
         // Active rules version v2.3 effective from 2026-08-26:
         // Core: 50.0% target, 5.0% trigger drift (aggregate 35%-65%, ratio 45%-75%)
@@ -658,6 +632,7 @@ class RebalancePlanEngineTest {
         // Liquid: 10.0% target, 5.0% trigger drift ([5%, 15%])
         // Gold: 10.0% target, 12.0% trigger drift (triggers only if drift >= 12.0%, i.e. >= 22.0% or <= -2.0%)
         // We test on 2026-08-28 (v2.3 active, outside March/September scheduled reconstitution window)
+        LocalDate today = LocalDate.of(2026, 8, 28);
         LocalDate acqDate = LocalDate.of(2024, 1, 1);
         LocalDate sipDate = LocalDate.of(2026, 7, 15);
         BigDecimal nav = new BigDecimal("100.00");
@@ -753,11 +728,10 @@ class RebalancePlanEngineTest {
         assertNotNull(plan.sellSide());
         assertNotNull(plan.buySide());
 
-        BigDecimal expectedDampenedTrim = new BigDecimal("101250.00");
         BigDecimal unDampenedLinearExcess = new BigDecimal("135000.00");
 
-        assertEquals(0, expectedDampenedTrim.compareTo(plan.buySide().totalToInvest()),
-            "Total buy-side invest pool must equal dampened trim (101,250.00), NOT un-dampened excess (135,000.00)");
+        assertEquals(0, unDampenedLinearExcess.compareTo(plan.buySide().totalToInvest()),
+            "Total buy-side invest pool must equal linear excess (135,000.00)");
 
         // Verify sell waterfall sold specifically from Gold bucket
         List<RebalanceLotImpactDto> soldLots = plan.sellSide().waterfall().stream()
@@ -770,19 +744,17 @@ class RebalancePlanEngineTest {
         BigDecimal totalGoldSold = soldLots.stream()
             .map(RebalanceLotImpactDto::saleProceeds)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
-        assertEquals(0, expectedDampenedTrim.compareTo(totalGoldSold),
-            "Gold sale proceeds must match exactly 101,250.00");
-        assertNotEquals(0, unDampenedLinearExcess.compareTo(totalGoldSold),
-            "Gold sale proceeds must NOT equal un-dampened linear excess");
+        assertEquals(0, unDampenedLinearExcess.compareTo(totalGoldSold),
+            "Gold sale proceeds must match exactly 135,000.00");
 
         // Verify post-rebalance percentage of Gold:
-        // postVal = 235,000 - 101,250 + 0 = 133,750.00
-        // postRebalancePct = (133,750 / 1,000,000) * 100 = 13.38% (13.4%)
+        // postVal = 235,000 - 135,000 = 100,000.00
+        // postRebalancePct = (100,000 / 1,000,000) * 100 = 10.0%
         RebalanceBucketAllocationDto goldAllocation = plan.buySide().buckets().stream()
             .filter(b -> BucketEngine.Bucket.GOLD_SILVER.name().equals(b.bucket()))
             .findFirst().orElseThrow();
-        assertEquals(13.4, goldAllocation.postRebalancePct(), 0.1,
-            "Gold postRebalancePct must be ~13.4% reflecting 235k - 101.25k trim");
+        assertEquals(10.0, goldAllocation.postRebalancePct(), 0.1,
+            "Gold postRebalancePct must be 10.0% reflecting 235k - 135k trim");
     }
 
     @Test
@@ -971,8 +943,8 @@ class RebalancePlanEngineTest {
             today.minusDays(800), new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("20.00"), new BigDecimal("20000.00"), false, null);
 
         List<BucketEngine.BucketTarget> targets = List.of(
-            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("50.00"), new BigDecimal("5.00")),
-            new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("50.00"), new BigDecimal("5.00"))
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("62.50"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("37.50"), new BigDecimal("5.00"))
         );
 
         Map<String, BigDecimal> navMap = Map.of("INF109KC12U0", nav);

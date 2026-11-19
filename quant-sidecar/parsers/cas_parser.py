@@ -35,6 +35,29 @@ class CasPdfParser:
             import casparser
 
             data = casparser.read_cas_pdf(self.pdf_path, self.password or "")
+            # Pre-aggregate statement-wide closing units per ISIN across all folios
+            statement_closing_units: dict[str, Decimal] = {}
+            for folio in data.folios:
+                for scheme in folio.schemes:
+                    k = scheme.isin or scheme.scheme.replace(" ", "_").upper()[:20]
+                    c = None
+                    if hasattr(scheme, "close") and scheme.close is not None:
+                        try:
+                            c = Decimal(str(scheme.close))
+                        except Exception:
+                            c = None
+                    elif (
+                        hasattr(scheme, "valuation")
+                        and hasattr(scheme.valuation, "units")
+                        and scheme.valuation.units is not None
+                    ):
+                        try:
+                            c = Decimal(str(scheme.valuation.units))
+                        except Exception:
+                            c = None
+                    if c is not None:
+                        statement_closing_units[k] = statement_closing_units.get(k, Decimal("0")) + c
+
             for folio in data.folios:
                 folio_no = (
                     str(folio.folio).strip() if (hasattr(folio, "folio") and folio.folio) else None
@@ -43,21 +66,7 @@ class CasPdfParser:
                     isin = scheme.isin
                     scheme_name = scheme.scheme
                     asset_id = isin or scheme_name.replace(" ", "_").upper()[:20]
-                    closing_units = None
-                    if hasattr(scheme, "close") and scheme.close is not None:
-                        try:
-                            closing_units = Decimal(str(scheme.close))
-                        except Exception:
-                            closing_units = None
-                    elif (
-                        hasattr(scheme, "valuation")
-                        and hasattr(scheme.valuation, "units")
-                        and scheme.valuation.units is not None
-                    ):
-                        try:
-                            closing_units = Decimal(str(scheme.valuation.units))
-                        except Exception:
-                            closing_units = None
+                    closing_units = statement_closing_units.get(asset_id)
 
                     for txn in scheme.transactions:
                         txn_type_str = str(txn.type).upper()

@@ -93,21 +93,29 @@ class TaxOptimizationServiceTest {
 
     @Test
     void testGetTaxOptimalLiquidationPlan() {
+        LocalDate today = LocalDate.now();
+        TaxEvent acqRecent = new TaxEvent(
+            "EV_ACQ_RECENT", "INF109KC13X2", "ICICI Nifty200", "INF109KC13X2",
+            EventType.ACQUISITION, today.minusDays(10),
+            new BigDecimal("1.0"), new BigDecimal("100.0"), new BigDecimal("100.0"),
+            "CAS_IMPORT", Instant.now()
+        );
+
         TaxEvent acqLoss = new TaxEvent(
             "EV_ACQ_LOSS", "INF109KC13X2", "ICICI Nifty200", "INF109KC13X2",
-            EventType.ACQUISITION, LocalDate.of(2024, 1, 1),
+            EventType.ACQUISITION, today.minusDays(450),
             new BigDecimal("100.0"), new BigDecimal("100.0"), new BigDecimal("10000.0"),
             "CAS_IMPORT", Instant.now()
         );
 
         TaxEvent acqGain = new TaxEvent(
             "EV_ACQ_GAIN", "INF109KC13X2", "ICICI Nifty200", "INF109KC13X2",
-            EventType.ACQUISITION, LocalDate.of(2024, 1, 1),
+            EventType.ACQUISITION, today.minusDays(400),
             new BigDecimal("1000.0"), new BigDecimal("5.0"), new BigDecimal("5000.0"),
             "CAS_IMPORT", Instant.now()
         );
 
-        EventStorePort mockEventStore = createMockEventStore(List.of(acqLoss, acqGain));
+        EventStorePort mockEventStore = createMockEventStore(List.of(acqRecent, acqLoss, acqGain));
         TaxOptimizationService service = new TaxOptimizationService(mockEventStore);
 
         RebalancePreviewDto plan = service.getTaxOptimalLiquidationPlan(new BigDecimal("50000.00"), "2026-27");

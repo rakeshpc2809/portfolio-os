@@ -14,8 +14,6 @@ import com.portfolioos.core.rules.BucketConfigLoader;
 import com.portfolioos.core.rules.TaxRulesConfig;
 import com.portfolioos.core.rules.TaxRulesLoader;
 import com.portfolioos.core.valuation.BucketEngine;
-import com.portfolioos.core.valuation.FundTrendDampenerCalculator;
-import com.portfolioos.core.valuation.GoldDampenerCalculator;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -151,16 +149,6 @@ public class RebalancePlanEngine {
         if (evaluator != null) {
             defaultEvaluator = evaluator;
         }
-    }
-
-    public static com.portfolioos.core.valuation.ConsolidationRebalanceEngine.ConsolidationPreviewResult calculateConsolidation(
-        List<Lot> openLots,
-        Map<String, BigDecimal> navMap,
-        LocalDate asOfDate,
-        BigDecimal remainingExemption,
-        String fiscalYear
-    ) {
-        return com.portfolioos.core.valuation.ConsolidationRebalanceEngine.calculateConsolidation(openLots, navMap, asOfDate, remainingExemption, fiscalYear);
     }
 
     public static RebalancePlanDto buildPlan(
@@ -462,9 +450,12 @@ public class RebalancePlanEngine {
                 if (corpusBasis.compareTo(BigDecimal.ZERO) > 0) {
                     goldCurrentPct = (goldVal.doubleValue() / corpusBasis.doubleValue()) * 100.0;
                 }
-                totalPool = GoldDampenerCalculator.calculateSizedAllocation(
-                    goldTargetPct, goldCurrentPct, 1.0, 1.0, corpusBasis, true
-                );
+                double gapWeightPct = goldTargetPct - goldCurrentPct;
+                if (gapWeightPct > 0) {
+                    totalPool = corpusBasis.multiply(BigDecimal.valueOf((gapWeightPct / 2.0) / 100.0)).setScale(2, RoundingMode.HALF_UP);
+                } else {
+                    totalPool = BigDecimal.ZERO;
+                }
             } else {
                 totalPool = BigDecimal.ZERO;
             }
@@ -514,16 +505,7 @@ public class RebalancePlanEngine {
                         continue;
                     }
 
-                    BigDecimal dampenedTrim;
-                    if (isDrawdownLiquidDeploy) {
-                        // BYPASS FundTrendDampenerCalculator for LIQUID_BUFFER during DRAWDOWN triggers:
-                        // Deploy the exact rule-based excess (25%, 50%, or 100% of buffer) with zero volatility dampening!
-                        dampenedTrim = excessVal;
-                    } else if (targetVal.compareTo(BigDecimal.ZERO) <= 0) {
-                        dampenedTrim = excessVal;
-                    } else {
-                        dampenedTrim = FundTrendDampenerCalculator.calculateDampenedTrim(excessVal, targetVal.doubleValue(), today);
-                    }
+                    BigDecimal dampenedTrim = excessVal;
                     if (dampenedTrim.compareTo(BigDecimal.ZERO) > 0) {
                         bucketTrims.put(target.bucket(), dampenedTrim);
                         poolNeeded = poolNeeded.add(dampenedTrim);
@@ -1033,8 +1015,8 @@ public class RebalancePlanEngine {
             String.format("Portfolio currently %.1f%% below rolling high", ddPct)
         ) : null;
 
-        var goldSilverCtx = com.portfolioos.core.valuation.GoldSilverRatioCalculator.calculateRatio(navMap);
-        var reconCtx = com.portfolioos.core.valuation.ReconstitutionCalendar.calculateReconstitutionStatus(today);
+        GoldSilverContextDto goldSilverCtx = null;
+        ReconstitutionContextDto reconCtx = null;
         BeerSpreadContextDto beerSpreadCtx = loadMarketIndicators();
 
         // 6-Invariant Runtime Firewall: Verify invariants before computing digest and releasing plan

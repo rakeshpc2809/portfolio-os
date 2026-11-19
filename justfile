@@ -10,12 +10,10 @@ MVN := if `which mvn 2>/dev/null || true` != "" { "mvn" } else { env_var("HOME")
 default:
     @just --list
 
-# Comprehensive multi-platform test suite (Core Node, Quant Sidecar, TUI, Mobile, Web)
+# Comprehensive test suite (Core Node, Quant Sidecar, Web)
 check:
     just test-core
     just test-quant
-    just test-tui
-    just test-mobile
     just test-web
 
 # Pre-release smoke test and validation gate for v4.1+
@@ -25,26 +23,6 @@ release-v4-1:
 # Chaos & Disaster Recovery Drill (Litestream WAL + Google Sheets Zero-Knowledge restoration)
 drill-recovery:
     ./scripts/chaos_recovery_drill.py
-
-# -------------------------------------------------------------
-# Mobile App (Android / Kotlin)
-# -------------------------------------------------------------
-
-# Run Android unit test suite
-test-mobile:
-    cd mobile-app && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" ./gradlew testDebugUnitTest --rerun-tasks
-
-# Build debug APK with parallel execution and build caching
-build-mobile:
-    cd mobile-app && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" ./gradlew assembleDebug --build-cache --parallel
-
-# Build and install debug APK onto connected device / emulator
-install-mobile:
-    cd mobile-app && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" ./gradlew installDebug --build-cache --parallel
-
-# Clean Gradle build cache and build directory
-clean-mobile:
-    cd mobile-app && env -u _JAVA_OPTIONS JAVA_HOME="${JAVA_HOME:-/home/rakeshpc/.jdks/jdk-21}" ./gradlew clean
 
 # -------------------------------------------------------------
 # Backend Core Node (Spring Boot / Java 26)
@@ -106,59 +84,6 @@ test-quant:
 # Refresh historical NAV export (Parquet) for HRP allocator
 refresh-nav-export:
     cd quant-sidecar && uv run python scripts/backfill_nav_history.py
-
-# Run Portfolio OS Model Context Protocol (MCP) Server (stdio)
-run-mcp:
-    cd quant-sidecar && uv run python mcp_server.py
-
-
-# -------------------------------------------------------------
-# Portfolio OS Native GPUI Cockpit (144Hz Vulkan / Wayland HUD)
-# -------------------------------------------------------------
-
-# Fast type-check GPUI Cockpit
-check-cockpit:
-    cargo check --manifest-path cockpit-gpui/Cargo.toml
-
-# Run GPUI Cockpit unit test suite
-test-cockpit:
-    cargo test --manifest-path cockpit-gpui/Cargo.toml
-
-# Build GPUI Cockpit release binary (stripped)
-build-cockpit:
-    cargo build --release --manifest-path cockpit-gpui/Cargo.toml
-
-# Install Cockpit binary to ~/.cargo/bin (for Umbriel Mod+P scratchpad)
-install-cockpit:
-    cargo install --path cockpit-gpui
-
-# Launch GPUI Cockpit directly
-cockpit-gpui:
-    cargo run --release --manifest-path cockpit-gpui/Cargo.toml
-
-# -------------------------------------------------------------
-# Portfolio OS TUI Terminal Cockpit (Textual)
-# -------------------------------------------------------------
-
-# Build Rust TUI release binary (stripped, ~2.9 MB)
-build-tui:
-    cargo build --release --manifest-path tui/Cargo.toml
-
-# Launch Portfolio OS Terminal HUD (Rust/Ratatui)
-tui: build-tui
-    ./tui/target/release/portfolio-os-tui
-
-# Run Rust TUI unit tests
-test-tui:
-    cargo test --manifest-path tui/Cargo.toml
-
-# Launch full Zellij Cockpit (Backend + Quant + TUI HUD in split panes)
-cockpit:
-    zellij --layout tui/portfolio_os.kdl
-
-# Launch Zellij TUI Dev Studio (Textual console + hot reload TUI)
-cockpit-dev:
-    zellij --layout tui/portfolio_os_dev.kdl
 
 # -------------------------------------------------------------
 # Code Quality: Lint & Format (Biome + Ruff)
@@ -222,8 +147,8 @@ wait-ready:
 # Global Cleanup
 # -------------------------------------------------------------
 
-# Clean all build outputs (Maven, Gradle, Temp files)
-clean: clean-mobile clean-core
+# Clean all build outputs (Maven, Temp files)
+clean: clean-core
     @echo "Cleaned all build directories."
 
 # -------------------------------------------------------------
@@ -239,6 +164,21 @@ repomix:
 repomix-gpui:
     npx -y repomix --config repomix.gpui.json
     npx -y repomix --config repomix.gpui.json --style xml --output repomix-gpui.xml
+
+# Pack targeted core money-path and business logic (avoids context truncation)
+repomix-audit-core:
+    npx -y repomix --config repomix.audit-core.json --no-git-sort-by-changes
+    npx -y repomix --config repomix.audit-core.json --no-git-sort-by-changes --style xml --output repomix-audit-core.xml
+
+# Pack ultra-compact money path bundle (~66k tokens, zero risk of context cutoff)
+repomix-money-path:
+    npx -y repomix --config repomix.money-path.json --no-git-sort-by-changes
+    npx -y repomix --config repomix.money-path.json --no-git-sort-by-changes --style xml --output repomix-money-path.xml
+
+# Pack remaining tail bundle (~61k tokens, covers scripts, MCP, App.svelte, api.ts)
+repomix-unverified-tail:
+    npx -y repomix --config repomix.unverified-tail.json --no-git-sort-by-changes
+    npx -y repomix --config repomix.unverified-tail.json --no-git-sort-by-changes --style xml --output repomix-unverified-tail.xml
 
 # Atomic local SQLite backup of primary tax ledger
 backup:

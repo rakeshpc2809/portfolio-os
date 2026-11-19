@@ -15,7 +15,7 @@ import com.portfolioos.core.reporting.TaxReportExporter;
 import com.portfolioos.core.rules.TaxRulesConfig;
 import com.portfolioos.core.rules.TaxRulesLoader;
 import com.portfolioos.core.valuation.HarvestAdvisor;
-import com.portfolioos.core.valuation.RebalanceEngine;
+import com.portfolioos.core.valuation.RebalanceWaterfallEngine;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -254,29 +254,35 @@ public class TaxOptimizationService {
         ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, currentFy);
         BigDecimal remExemption = new BigDecimal(status.exemptionRemaining());
 
-        RebalanceEngine.RebalancePreviewResult result = RebalanceEngine.calculateRebalancePreview(
-            openLots, navMap, targetAmount, remExemption, reservedExemption, currentFy, true
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            null, targetAmount, openLots, navMap, remExemption, true, LocalDate.now(), currentFy
         );
 
-        List<RebalanceLotDto> selectedDtos = result.selectedLots().stream().map(s -> new RebalanceLotDto(
+        List<RebalanceLotDto> selectedDtos = result.steps().stream().map(s -> new RebalanceLotDto(
             s.assetName(),
-            fmt(s.unitsToSell()),
-            fmt(s.redemptionProceeds()),
-            fmt(s.estimatedGain()),
+            fmt(s.unitsSold()),
+            fmt(s.proceeds()),
+            fmt(s.realizedGain()),
             s.taxTerm(),
-            fmt(s.estimatedTaxDrag()),
+            fmt(s.taxDrag()),
             s.tier() != null ? s.tier().displayName() : "Section 112A LTCG (Taxable)"
         )).toList();
 
+        BigDecimal actualAmount = result.satisfiedAmount();
+        BigDecimal totalGain = result.steps().stream().map(RebalanceWaterfallEngine.WaterfallStep::realizedGain).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal effectiveRate = (totalGain.compareTo(BigDecimal.ZERO) > 0)
+            ? result.totalTaxDrag().divide(totalGain, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"))
+            : BigDecimal.ZERO;
+
         return new RebalancePreviewDto(
-            fmt(result.targetRedemptionAmount()),
-            fmt(result.actualRedemptionAmount()),
-            fmt(result.totalEstimatedGain()),
+            fmt(result.targetAmount()),
+            fmt(actualAmount),
+            fmt(totalGain),
             fmt(result.totalTaxDrag()),
-            String.format("%.2f%%", result.effectiveTaxRatePct()),
-            fmt(result.ltcgExemptionHarvested()),
+            String.format("%.2f%%", effectiveRate.doubleValue()),
+            fmt(result.ltcgExemptionConsumed()),
             selectedDtos,
-            result.exemptionHeadroomCaveat()
+            "RTA Chronological FIFO compliant liquidation waterfall"
         );
     }
 

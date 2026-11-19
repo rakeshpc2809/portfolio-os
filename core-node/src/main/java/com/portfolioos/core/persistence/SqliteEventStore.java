@@ -177,11 +177,11 @@ public class SqliteEventStore implements EventStorePort {
         }
     }
 
-    public static String computeTxFingerprint(
+    public static String computeRawTxFingerprint(
         String folioNo,
         String isin,
         LocalDate txDate,
-        EventType eventType,
+        String typeStr,
         BigDecimal grossAmount,
         BigDecimal units,
         int occurrenceIdxOnDay
@@ -189,12 +189,12 @@ public class SqliteEventStore implements EventStorePort {
         String folioStr = (folioNo != null && !folioNo.isBlank()) ? folioNo.trim() : "";
         String isinStr = (isin != null && !isin.isBlank()) ? isin.trim() : "";
         String dateStr = txDate != null ? txDate.toString() : "";
-        String typeStr = eventType != null ? eventType.name().toUpperCase() : "";
+        String tStr = typeStr != null ? typeStr.toUpperCase() : "";
         BigDecimal amt = grossAmount != null ? grossAmount : BigDecimal.ZERO;
         String amountPaise = amt.multiply(new BigDecimal("100")).setScale(0, RoundingMode.HALF_UP).toPlainString();
         BigDecimal u = units != null ? units : BigDecimal.ZERO;
         String unitsScaled = u.multiply(new BigDecimal("1000")).setScale(0, RoundingMode.HALF_UP).toPlainString();
-        String raw = folioStr + "|" + isinStr + "|" + dateStr + "|" + typeStr + "|" + amountPaise + "|" + unitsScaled + "|" + occurrenceIdxOnDay;
+        String raw = folioStr + "|" + isinStr + "|" + dateStr + "|" + tStr + "|" + amountPaise + "|" + unitsScaled + "|" + occurrenceIdxOnDay;
         try {
             java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
             byte[] b = md.digest(raw.getBytes(StandardCharsets.UTF_8));
@@ -206,6 +206,66 @@ public class SqliteEventStore implements EventStorePort {
         } catch (Exception e) {
             throw new RuntimeException("Failed to compute SHA-256 fingerprint", e);
         }
+    }
+
+    public static java.util.Set<String> candidateFingerprints(
+        String folioNo,
+        String isin,
+        LocalDate txDate,
+        EventType eventType,
+        BigDecimal grossAmount,
+        BigDecimal units,
+        int occurrenceIdxOnDay
+    ) {
+        java.util.Set<String> candidates = new java.util.HashSet<>();
+        List<String> folios = new ArrayList<>();
+        if (folioNo != null && !folioNo.isBlank()) {
+            folios.add(folioNo.trim());
+        }
+        folios.add("");
+
+        List<String> types = new ArrayList<>();
+        if (eventType != null) {
+            types.add(eventType.name().toUpperCase());
+            if (eventType == EventType.SIP_INSTALMENT) {
+                types.add("ACQUISITION");
+            } else if (eventType == EventType.ACQUISITION) {
+                types.add("SIP_INSTALMENT");
+            }
+        } else {
+            types.add("ACQUISITION");
+        }
+
+        List<Integer> occurrences = new ArrayList<>();
+        occurrences.add(occurrenceIdxOnDay);
+        if (occurrenceIdxOnDay != 0) {
+            occurrences.add(0);
+        }
+
+        for (String f : folios) {
+            for (String t : types) {
+                for (int occ : occurrences) {
+                    candidates.add(computeRawTxFingerprint(f, isin, txDate, t, grossAmount, units, occ));
+                }
+            }
+        }
+        return candidates;
+    }
+
+    public static String computeTxFingerprint(
+        String folioNo,
+        String isin,
+        LocalDate txDate,
+        EventType eventType,
+        BigDecimal grossAmount,
+        BigDecimal units,
+        int occurrenceIdxOnDay
+    ) {
+        String typeStr = eventType != null ? eventType.name().toUpperCase() : "";
+        if ("SIP_INSTALMENT".equals(typeStr)) {
+            typeStr = "ACQUISITION";
+        }
+        return computeRawTxFingerprint(folioNo, isin, txDate, typeStr, grossAmount, units, occurrenceIdxOnDay);
     }
 
     @Override

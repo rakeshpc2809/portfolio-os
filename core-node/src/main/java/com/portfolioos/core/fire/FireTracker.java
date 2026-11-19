@@ -1,7 +1,6 @@
 package com.portfolioos.core.fire;
 
 import com.portfolioos.core.model.Lot;
-import com.portfolioos.core.goals.GoalTracker;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -157,14 +156,8 @@ public class FireTracker {
 
         // Strict Mutual Fund Boundary (Invariant 1): Total and investable net worth reflect tracked MF units only
         BigDecimal totalNetWorth = totalMFValue;
-
-        GoalTracker.GoalSummary goalSummary = GoalTracker.calculateGoalSummary(
-            openLots, navMap, GoalTracker.DEFAULT_ALLOCATIONS, BigDecimal.ZERO
-        );
-        BigDecimal nonRetirementGoals = goalSummary.allocatedGoalsAmount();
-
-        BigDecimal fireInvestableNetWorth = totalNetWorth.subtract(nonRetirementGoals)
-                                                     .max(BigDecimal.ZERO);
+        BigDecimal nonRetirementGoals = BigDecimal.ZERO;
+        BigDecimal fireInvestableNetWorth = totalNetWorth;
 
         FireScenario activeScenario = profile.scenarios().stream()
             .filter(FireScenario::active)

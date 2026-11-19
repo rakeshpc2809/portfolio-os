@@ -87,8 +87,7 @@ assert.ok(
 );
 assert.ok(allWebSources.includes('id="lumpsumModal"'), "lumpsumModal ID must exist");
 assert.ok(allWebSources.includes('id="casPasswordModal"'), "casPasswordModal ID must exist");
-assert.ok(allWebSources.includes('OverlapModal') || allWebSources.includes('PORTFOLIO OVERLAP'), "Overlap matrix modal must exist");
-console.log("  ✓ Modal contracts (Tax Lot Inspector, Lumpsum Deployer, CAS Upload, Overlap Matrix) present");
+console.log("  ✓ Modal contracts (Tax Lot Inspector, Lumpsum Deployer, CAS Upload) present");
 
 console.log("\n=== 3. VERIFYING FINANCIAL HELPERS & FORMATTING ===");
 

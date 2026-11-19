@@ -2,19 +2,15 @@
   import { onMount } from 'svelte';
   import { fetchJson, getAuthToken, setAuthToken, loadDashboardData, type SnapshotDto, type RebalancePlanDto } from './lib/api';
   import { formatINR, formatPercent, formatCompactINR } from './lib/formatters';
-  import { fireConfetti } from './lib/confetti';
   import HudMetricCard from './lib/components/HudMetricCard.svelte';
   import TimelineChart from './lib/components/TimelineChart.svelte';
   import BucketTable from './lib/components/BucketTable.svelte';
   import TaxLotsTable from './lib/components/TaxLotsTable.svelte';
   import RebalanceFireView from './lib/components/RebalanceFireView.svelte';
-  import OverlapModal from './lib/components/OverlapModal.svelte';
   import LumpsumModal from './lib/components/LumpsumModal.svelte';
   import CommandPalette from './lib/components/CommandPalette.svelte';
-  import AdHocSqlModal from './lib/components/AdHocSqlModal.svelte';
   import AllocationDonutChart from './lib/components/AllocationDonutChart.svelte';
   import DrawdownRungsChart from './lib/components/DrawdownRungsChart.svelte';
-  import FundBenchmarkChart from './lib/components/FundBenchmarkChart.svelte';
 
   import { 
     LayoutDashboard, 
@@ -64,9 +60,7 @@
 
   // Modal Dialog States
   let showCommandPalette = $state(false);
-  let showOverlapModal = $state(false);
   let showLumpsumModal = $state(false);
-  let showSqlModal = $state(false);
   let showCasModal = $state(false);
   let casPassword = $state('');
   let casFile = $state<File | null>(null);
@@ -104,7 +98,6 @@
     try {
       await fetchJson('/sync/refresh', { method: 'POST' });
       await loadSnapshot();
-      fireConfetti();
     } catch (e: any) {
       alert('AMFI NAV Sync Failed: ' + e.message);
     } finally {
@@ -116,9 +109,6 @@
     quietMode = !quietMode;
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('QUIET_MODE', quietMode ? 'true' : 'false');
-    }
-    if (!quietMode) {
-      fireConfetti(window.innerWidth * 0.85, 45);
     }
   }
 
@@ -186,9 +176,6 @@
     } else if (modifier && e.key === '3') {
       e.preventDefault();
       activeTab = 'rebalance';
-    } else if (modifier && e.key.toLowerCase() === 'o') {
-      e.preventDefault();
-      showOverlapModal = true;
     } else if (modifier && e.key.toLowerCase() === 'l') {
       e.preventDefault();
       showLumpsumModal = true;
@@ -214,10 +201,6 @@
       (window as any).closeItrOverlay = () => {};
       (window as any).openLumpsumModal = () => { showLumpsumModal = true; };
       (window as any).closeLumpsumModal = () => { showLumpsumModal = false; };
-      (window as any).openOverlapModal = () => { showOverlapModal = true; };
-      (window as any).closeOverlapModal = () => { showOverlapModal = false; };
-      (window as any).openSqlModal = () => { showSqlModal = true; };
-      (window as any).closeSqlModal = () => { showSqlModal = false; };
       (window as any).closeCasPasswordModal = () => { showCasModal = false; };
       (window as any).toggleBucketRow = () => {};
       (window as any).toggleAllBuckets = () => {};
@@ -268,28 +251,6 @@
         <Search size={15} />
         <span class="btn-text">Commands</span>
         <kbd class="mono">⌘K</kbd>
-      </button>
-
-      <!-- Overlap Modal Trigger -->
-      <button 
-        type="button" 
-        class="action-btn" 
-        onclick={() => showOverlapModal = true}
-        title="Portfolio Overlap & Lookthrough"
-      >
-        <PieChart size={15} />
-        <span class="btn-text">Overlap</span>
-      </button>
-
-      <!-- DuckDB-Wasm SQL Cockpit Trigger -->
-      <button 
-        type="button" 
-        class="action-btn" 
-        onclick={() => showSqlModal = true}
-        title="Interactive DuckDB-Wasm SQL Cockpit"
-      >
-        <Database size={15} />
-        <span class="btn-text">DuckDB SQL</span>
       </button>
 
       <!-- Lumpsum Simulator Trigger -->
@@ -556,11 +517,6 @@
               activeTab = 'taxlots';
             }}
           />
-
-          <!-- Combined Benchmark vs. Portfolio & Scheme Factor Performance Chart -->
-          <FundBenchmarkChart
-            quietMode={quietMode}
-          />
         </div>
       {:else if activeTab === 'taxlots'}
         <div id="panel-taxlots" role="tabpanel" aria-labelledby="tab-taxlots" class="tab-panel">
@@ -595,22 +551,9 @@
       else if (tab === 'rebalance') activeTab = 'rebalance';
     }}
     ontogglequiet={toggleQuietMode}
-    onopenoverlap={() => showOverlapModal = true}
     onopenlumpsum={() => showLumpsumModal = true}
-    onopensql={() => showSqlModal = true}
     onsync={triggerSync}
     onexportitr={exportItr2Zip}
-  />
-
-  <OverlapModal
-    open={showOverlapModal}
-    quietMode={quietMode}
-    onclose={() => showOverlapModal = false}
-  />
-
-  <AdHocSqlModal
-    open={showSqlModal}
-    onclose={() => showSqlModal = false}
   />
 
   <LumpsumModal

@@ -47,16 +47,7 @@ class RebalanceControllerTest {
         assertEquals(200, prevResp.getStatusCode().value());
         assertSame(mockPreview, prevResp.getBody());
 
-        // 3. /api/v1/rebalance/consolidation
-        ConsolidationPreviewResponse mockConsolidation = Mockito.mock(ConsolidationPreviewResponse.class);
-        Mockito.when(valuationService.getConsolidationPreview(Mockito.anyString()))
-            .thenReturn(mockConsolidation);
-        ResponseEntity<ConsolidationPreviewResponse> consResp = controller.getConsolidationPreview("2026-27");
-        assertNotNull(consResp);
-        assertEquals(200, consResp.getStatusCode().value());
-        assertSame(mockConsolidation, consResp.getBody());
-
-        // 4. /api/v1/rebalance/waterfall
+        // 3. /api/v1/rebalance/waterfall
         WaterfallResponse mockWaterfall = Mockito.mock(WaterfallResponse.class);
         Mockito.when(valuationService.getRebalanceWaterfall(Mockito.any(), Mockito.any(), Mockito.anyString()))
             .thenReturn(mockWaterfall);

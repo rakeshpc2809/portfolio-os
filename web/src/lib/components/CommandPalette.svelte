@@ -23,9 +23,7 @@
     onclose?: () => void;
     onselecttab?: (tab: 'overview' | 'tax-lots' | 'rebalance') => void;
     ontogglequiet?: () => void;
-    onopenoverlap?: () => void;
     onopenlumpsum?: () => void;
-    onopensql?: () => void;
     onsync?: () => void;
     onexportitr?: () => void;
   }
@@ -36,9 +34,7 @@
     onclose, 
     onselecttab, 
     ontogglequiet, 
-    onopenoverlap, 
     onopenlumpsum, 
-    onopensql,
     onsync, 
     onexportitr 
   }: Props = $props();
@@ -89,14 +85,6 @@
       action: () => { onselecttab?.('rebalance'); onclose?.(); }
     },
     {
-      id: 'action-overlap',
-      title: 'Inspect Portfolio Overlap & Lookthrough',
-      subtitle: 'DuckDB pairwise scheme overlap matrix and top stock concentration',
-      icon: PieChart,
-      shortcut: '⌘O',
-      action: () => { onopenoverlap?.(); onclose?.(); }
-    },
-    {
       id: 'action-lumpsum',
       title: 'Deploy Lump-Sum Inflow',
       subtitle: 'Simulate fresh capital allocation to restore target allocation tax-free',
@@ -125,14 +113,6 @@
       subtitle: 'Generate compliant capital gains report with FMV 2018 grandfathering',
       icon: FileSpreadsheet,
       action: () => { onexportitr?.(); onclose?.(); }
-    },
-    {
-      id: 'action-sql',
-      title: 'Open DuckDB-Wasm SQL Cockpit',
-      subtitle: 'Run zero-copy, in-browser SQL queries over portfolio holdings and tax lots',
-      icon: Database,
-      shortcut: '⌘S',
-      action: () => { onopensql?.(); onclose?.(); }
     }
   ]);
 

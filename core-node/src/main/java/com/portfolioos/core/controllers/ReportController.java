@@ -241,10 +241,4 @@ public class ReportController {
 
         return ResponseEntity.ok(valuationService.simulateFireScenario(monthlySip, annualExpense, yearsRemaining));
     }
-
-    @GetMapping({"/rules/action-recommendations", "/analytics/rules/actions"})
-    public ResponseEntity<List<com.portfolioos.core.rules.FireActionRuleEngine.ActionRecommendationCard>> getActionRecommendations() {
-        return ResponseEntity.ok(valuationService.getActionRecommendations());
-    }
-
 }

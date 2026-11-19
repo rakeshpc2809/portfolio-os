@@ -64,7 +64,8 @@ public class StatementIngestionUseCase {
             EventType eventType = EventType.valueOf(dto.eventType());
             String folio = dto.folioNo();
             String isin = dto.isin();
-            String occKey = (folio != null ? folio : "") + "|" + (isin != null ? isin : "") + "|" + eventDate + "|" + eventType.name() + "|" + dto.grossAmount().toPlainString() + "|" + dto.units().toPlainString();
+            String typeName = (eventType == EventType.SIP_INSTALMENT) ? EventType.ACQUISITION.name() : eventType.name();
+            String occKey = (folio != null ? folio : "") + "|" + (isin != null ? isin : "") + "|" + eventDate + "|" + typeName + "|" + dto.grossAmount().toPlainString() + "|" + dto.units().toPlainString();
             int occurrenceIdx = dayOccurrences.getOrDefault(occKey, 0);
             dayOccurrences.put(occKey, occurrenceIdx + 1);
 
@@ -73,6 +74,9 @@ public class StatementIngestionUseCase {
                 fingerprint = SqliteEventStore.computeTxFingerprint(folio, isin, eventDate, eventType, dto.grossAmount(), dto.units(), occurrenceIdx);
             }
             incomingFingerprints.add(fingerprint);
+
+            java.util.Set<String> candidates = SqliteEventStore.candidateFingerprints(folio, isin, eventDate, eventType, dto.grossAmount(), dto.units(), occurrenceIdx);
+            incomingFingerprints.addAll(candidates);
 
             TaxEvent te = new TaxEvent(
                 dto.id() != null ? dto.id() : UUID.randomUUID().toString(),
@@ -105,8 +109,22 @@ public class StatementIngestionUseCase {
 
         synchronized (ingestionLock) {
             java.util.Set<String> existingFps = eventStore.getExistingFingerprints(incomingFingerprints);
+            Map<String, Integer> dayOccurrencesFilter = new java.util.HashMap<>();
             List<TaxEvent> newTaxEvents = incomingEvents.stream()
-                .filter(e -> !existingFps.contains(e.txFingerprint()))
+                .filter(e -> {
+                    String typeName = (e.eventType() == EventType.SIP_INSTALMENT) ? EventType.ACQUISITION.name() : e.eventType().name();
+                    String occKey = (e.folioNo() != null ? e.folioNo() : "") + "|" + (e.isin() != null ? e.isin() : "") + "|" + e.eventDate() + "|" + typeName + "|" + e.grossAmount().toPlainString() + "|" + e.units().toPlainString();
+                    int occ = dayOccurrencesFilter.getOrDefault(occKey, 0);
+                    dayOccurrencesFilter.put(occKey, occ + 1);
+
+                    java.util.Set<String> candidates = SqliteEventStore.candidateFingerprints(e.folioNo(), e.isin(), e.eventDate(), e.eventType(), e.grossAmount(), e.units(), occ);
+                    for (String cand : candidates) {
+                        if (existingFps.contains(cand)) {
+                            return false;
+                        }
+                    }
+                    return !existingFps.contains(e.txFingerprint());
+                })
                 .toList();
 
             if (!declaredBalances.isEmpty()) {

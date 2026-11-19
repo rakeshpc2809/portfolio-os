@@ -2,7 +2,6 @@ package com.portfolioos.core.service;
 
 import com.portfolioos.core.dtos.ReportDtos.*;
 import com.portfolioos.core.fire.FireTracker;
-import com.portfolioos.core.goals.GoalTracker;
 import com.portfolioos.core.model.AssetCategory;
 import com.portfolioos.core.matcher.FifoMatcher;
 import com.portfolioos.core.matcher.FundTierClassifier;
@@ -13,8 +12,7 @@ import com.portfolioos.core.model.TaxEvent;
 import com.portfolioos.core.model.EventType;
 import com.portfolioos.core.reporting.ExemptionTracker;
 import com.portfolioos.core.valuation.BucketEngine;
-import com.portfolioos.core.valuation.ConsolidationRebalanceEngine;
-import com.portfolioos.core.valuation.RebalanceEngine;
+import com.portfolioos.core.valuation.RebalanceWaterfallEngine;
 import com.portfolioos.core.xirr.CashFlow;
 import com.portfolioos.core.xirr.XirrEngine;
 import org.springframework.stereotype.Service;
@@ -448,58 +446,40 @@ public class PortfolioValuationService {
         ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
         BigDecimal remExemption = new BigDecimal(status.exemptionRemaining());
 
-        RebalanceEngine.RebalancePreviewResult result = RebalanceEngine.calculateRebalancePreview(
-            openLots, navMap, targetAmount, remExemption, reservedExemption, fy, true
+        RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
+            null, targetAmount, openLots, navMap, remExemption, true, LocalDate.now(), fy
         );
 
-        List<RebalanceLotDto> selectedDtos = result.selectedLots().stream().map(s -> new RebalanceLotDto(
+        List<RebalanceLotDto> selectedDtos = result.steps().stream().map(s -> new RebalanceLotDto(
             s.assetName(),
-            fmt(s.unitsToSell()),
-            fmt(s.redemptionProceeds()),
-            fmt(s.estimatedGain()),
+            fmt(s.unitsSold()),
+            fmt(s.proceeds()),
+            fmt(s.realizedGain()),
             s.taxTerm(),
-            fmt(s.estimatedTaxDrag()),
+            fmt(s.taxDrag()),
             s.tier() != null ? s.tier().displayName() : "Section 112A LTCG (Taxable)"
         )).toList();
 
+        BigDecimal actualAmount = result.satisfiedAmount();
+        BigDecimal totalGain = result.steps().stream().map(RebalanceWaterfallEngine.WaterfallStep::realizedGain).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal effectiveRate = (totalGain.compareTo(BigDecimal.ZERO) > 0)
+            ? result.totalTaxDrag().divide(totalGain, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"))
+            : BigDecimal.ZERO;
+
         return new RebalancePreviewDto(
-            fmt(result.targetRedemptionAmount()),
-            fmt(result.actualRedemptionAmount()),
-            fmt(result.totalEstimatedGain()),
+            fmt(result.targetAmount()),
+            fmt(actualAmount),
+            fmt(totalGain),
             fmt(result.totalTaxDrag()),
-            String.format("%.2f%%", result.effectiveTaxRatePct()),
-            fmt(result.ltcgExemptionHarvested()),
+            String.format("%.2f%%", effectiveRate.doubleValue()),
+            fmt(result.ltcgExemptionConsumed()),
             selectedDtos,
-            result.exemptionHeadroomCaveat()
+            "RTA Chronological FIFO compliant liquidation waterfall"
         );
     }
 
     public GoalSummaryResponse getGoalSummary() {
-        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
-        List<Lot> openLots = state.fifoResult().openLots();
-        Map<String, BigDecimal> navMap = state.navMap();
-
-        GoalTracker.GoalSummary summary = GoalTracker.calculateGoalSummary(openLots, navMap);
-
-        Map<String, String> allocationsByGoalStr = new HashMap<>();
-        for (Map.Entry<GoalTracker.GoalTag, BigDecimal> entry : summary.allocationsByGoal().entrySet()) {
-            allocationsByGoalStr.put(entry.getKey().name(), fmt(entry.getValue()));
-        }
-
-        List<GoalAllocationDto> allocDtos = summary.goalAllocations().stream().map(a -> new GoalAllocationDto(
-            a.holdingId(),
-            a.holdingName(),
-            a.goalTag().name(),
-            fmt(a.allocatedAmount())
-        )).toList();
-
-        return new GoalSummaryResponse(
-            fmt(summary.totalLiquidHoldings()),
-            fmt(summary.allocatedGoalsAmount()),
-            fmt(summary.unallocatedCash()),
-            allocationsByGoalStr,
-            allocDtos
-        );
+        return new GoalSummaryResponse("0.00", "0.00", "0.00", Map.of(), List.of());
     }
 
     public FireSummaryResponse getFireSummary() {
@@ -647,48 +627,6 @@ public class PortfolioValuationService {
 
         return new BucketRebalanceResponse(
             statuses, recommendations, dsDto, result.calendarTriggerFired(), result.drawdownTriggerFired()
-        );
-    }
-
-    public ConsolidationPreviewResponse getConsolidationPreview(String fy) {
-        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
-        List<Lot> openLots = state.fifoResult().openLots();
-        List<MatchedLot> matchedLots = state.fifoResult().matchedLots();
-        Map<String, BigDecimal> navMap = state.navMap();
-
-        ExemptionTracker.ExemptionStatus status = ExemptionTracker.calculateExemptionStatus(matchedLots, fy);
-        BigDecimal remExemption = new BigDecimal(status.exemptionRemaining());
-
-        com.portfolioos.core.valuation.ConsolidationRebalanceEngine.ConsolidationPreviewResult result = 
-            RebalancePlanEngine.calculateConsolidation(openLots, navMap, LocalDate.now(), remExemption, fy);
-
-        List<PhasedOutAssetSummaryDto> phaseOutDtos = result.phasedOutAssets().stream().map(p -> new PhasedOutAssetSummaryDto(
-            p.assetId(),
-            p.assetName(),
-            p.currentUnits().setScale(3, RoundingMode.HALF_UP).toPlainString(),
-            fmt(p.currentValue()),
-            fmt(p.totalCostBasis()),
-            fmt(p.unrealizedGain()),
-            p.isLtcg(),
-            fmt(p.estimatedTaxDrag())
-        )).toList();
-
-        List<ExistingSipAllocationDto> allocations = result.proRataAllocations().stream().map(a -> new ExistingSipAllocationDto(
-            a.assetId(),
-            a.assetName(),
-            fmt(a.sipWeightPct()),
-            fmt(a.deploymentAmount())
-        )).toList();
-
-        return new ConsolidationPreviewResponse(
-            phaseOutDtos,
-            fmt(result.totalProceeds()),
-            fmt(result.totalEstimatedGain()),
-            fmt(result.totalTaxDrag()),
-            fmt(result.ltcgExemptionHarvested()),
-            allocations,
-            result.isRebalanceWindowOpen(),
-            result.nextScheduledWindow()
         );
     }
 
@@ -951,69 +889,6 @@ public class PortfolioValuationService {
         response.put("investable_net_worth", invNetWorth);
         response.put("required_corpus", fire.requiredCorpus().doubleValue());
         return response;
-    }
-
-    public List<com.portfolioos.core.rules.FireActionRuleEngine.ActionRecommendationCard> getActionRecommendations() {
-        com.portfolioos.core.rules.FireActionRuleEngine engine = new com.portfolioos.core.rules.FireActionRuleEngine();
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> regFunds = (List<Map<String, Object>>) getFundRegistry().getOrDefault("funds", Collections.emptyList());
-        List<String> evalFundIds = regFunds.stream().map(f -> (String) f.get("isin")).filter(Objects::nonNull).collect(Collectors.toList());
-        List<Map<String, Object>> pairwise = new ArrayList<>();
-        for (int i = 0; i < evalFundIds.size(); i++) {
-            for (int j = i + 1; j < evalFundIds.size(); j++) {
-                pairwise.add(duckDbProjector.getPairwiseFundOverlap(evalFundIds.get(i), evalFundIds.get(j)));
-            }
-        }
-
-        LedgerCacheService.CachedLedgerState state = cacheService.getCachedState();
-        Map<String, BigDecimal> navMap = state != null && state.navMap() != null ? state.navMap() : Collections.emptyMap();
-        Map<String, Double> fundValuations = new HashMap<>();
-        List<Lot> openLots = Collections.emptyList();
-        List<MatchedLot> matchedLots = Collections.emptyList();
-        if (state != null && state.fifoResult() != null) {
-            openLots = state.fifoResult().openLots();
-            matchedLots = state.fifoResult().matchedLots();
-            for (Lot lot : openLots) {
-                BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "PortfolioValuationService.getActionRecommendations");
-                double currentVal = lot.remainingUnits().multiply(nav).doubleValue();
-                fundValuations.put(lot.assetId(), fundValuations.getOrDefault(lot.assetId(), 0.0) + currentVal);
-            }
-        }
-        List<Map<String, Object>> concentrations = duckDbProjector.getPortfolioStockConcentrations(fundValuations);
-
-        String currentFy = com.portfolioos.core.rules.TaxRulesLoader.detectFiscalYear(LocalDate.now());
-        ExemptionTracker.ExemptionStatus exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, currentFy);
-
-        // Check empirical sufficiency and fetch live Monte Carlo ruin rate & rel std dev
-        List<Double> dailyReturns = duckDbProjector.getHistoricalDailyReturns();
-        boolean isProvisional = dailyReturns == null || dailyReturns.size() < 750;
-        FireSummaryResponse liveFireResp = getFireSummary();
-        FireTracker.FireSummary fire = FireTracker.calculateFireSummary(
-            openLots,
-            navMap,
-            LocalDate.now(),
-            new FireTracker.FireProfile(),
-            BigDecimal.ZERO,
-            liveFireResp.monteCarloSuccessRatePct(),
-            new BigDecimal(liveFireResp.monteCarloMedianCorpus()),
-            new BigDecimal(liveFireResp.monteCarloTenthPercentileCorpus())
-        );
-        double avgFailRate = Math.max(0.0, 100.0 - liveFireResp.monteCarloSuccessRatePct());
-        double relStdDev = 0.25;
-        BigDecimal currentSip = fire != null ? fire.monthlyContribution() : null;
-
-        BigDecimal totalMFValue = BigDecimal.ZERO;
-        for (Lot lot : openLots) {
-            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "PortfolioValuationService.getActionRecommendations.totalMFValue");
-            if (lot.remainingUnits() != null) {
-                totalMFValue = totalMFValue.add(lot.remainingUnits().multiply(nav));
-            }
-        }
-
-        return engine.evaluateRules(
-            this, isProvisional, avgFailRate, relStdDev, currentSip,
-            pairwise, concentrations, openLots, exStatus, fire, totalMFValue
-        );
     }
 
     public Map<String, Object> getFundRegistry() {

@@ -3,7 +3,6 @@ package com.portfolioos.core.controllers;
 import com.portfolioos.core.common.PortfolioConstants;
 import com.portfolioos.core.dtos.SyncDtos.*;
 import com.portfolioos.core.fire.FireTracker;
-import com.portfolioos.core.goals.GoalTracker;
 import com.portfolioos.core.model.AssetCategory;
 import com.portfolioos.core.matcher.FifoMatcher;
 import com.portfolioos.core.matcher.TaxClassifier;
@@ -53,7 +52,6 @@ public class SyncController {
     private final com.portfolioos.core.service.PortfolioValuationService valuationService;
     private final DuckDbProjector duckDbProjector;
     private final QuantSidecarClient quantSidecarClient;
-    private final com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter;
     private final com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository;
 
     @Autowired
@@ -62,25 +60,13 @@ public class SyncController {
         com.portfolioos.core.service.PortfolioValuationService valuationService,
         DuckDbProjector duckDbProjector,
         QuantSidecarClient quantSidecarClient,
-        com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter,
         @Autowired(required = false) com.portfolioos.core.persistence.TriggerHistoryRepository triggerHistoryRepository
     ) {
         this.cacheService = cacheService;
         this.valuationService = valuationService;
         this.duckDbProjector = duckDbProjector;
         this.quantSidecarClient = quantSidecarClient;
-        this.cloudBundleExporter = cloudBundleExporter;
         this.triggerHistoryRepository = triggerHistoryRepository;
-    }
-
-    public SyncController(
-        LedgerCacheService cacheService,
-        com.portfolioos.core.service.PortfolioValuationService valuationService,
-        DuckDbProjector duckDbProjector,
-        QuantSidecarClient quantSidecarClient,
-        com.portfolioos.core.service.CloudBundleExporter cloudBundleExporter
-    ) {
-        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, cloudBundleExporter, null);
     }
 
     public SyncController(
@@ -89,7 +75,7 @@ public class SyncController {
         DuckDbProjector duckDbProjector,
         QuantSidecarClient quantSidecarClient
     ) {
-        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, null, null);
+        this(cacheService, valuationService, duckDbProjector, quantSidecarClient, null);
     }
 
     private static String detectFineBucket(String assetName) {
@@ -575,52 +561,6 @@ public class SyncController {
             com.portfolioos.core.rules.BucketConfigLoader.getActiveBucketTargets(LocalDate.now()), currentFy, "MANUAL_LUMPSUM", amount, includeRebalance
         );
         return ResponseEntity.ok(plan);
-    }
-
-    @GetMapping(value = "/bundle/encrypted", produces = org.springframework.http.MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    public ResponseEntity<byte[]> getEncryptedBundle() {
-        if (cloudBundleExporter == null) {
-            return ResponseEntity.status(503).build();
-        }
-        byte[] existing = cloudBundleExporter.getExistingEncryptedBundle();
-        if (existing == null) {
-            try {
-                UnidirectionalSyncSnapshot snapshot = getSnapshot(null, null).getBody();
-                if (snapshot != null) {
-                    existing = cloudBundleExporter.exportAndEncryptBundle(snapshot);
-                }
-            } catch (Exception e) {
-                log.error("Failed on-demand bundle export: {}", e.getMessage(), e);
-            }
-        }
-        if (existing == null) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok()
-            .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"portfolio_state.enc\"")
-            .body(existing);
-    }
-
-    @PostMapping("/bundle/export")
-    public ResponseEntity<Map<String, Object>> triggerBundleExport() {
-        if (cloudBundleExporter == null) {
-            return ResponseEntity.status(503).body(Map.of("status", "ERROR", "message", "Cloud bundle exporter not initialized"));
-        }
-        try {
-            UnidirectionalSyncSnapshot snapshot = getSnapshot(null, null).getBody();
-            if (snapshot == null) {
-                return ResponseEntity.internalServerError().body(Map.of("status", "ERROR", "message", "Unable to build snapshot"));
-            }
-            byte[] encrypted = cloudBundleExporter.exportAndEncryptBundle(snapshot);
-            return ResponseEntity.ok(Map.of(
-                "status", "SUCCESS",
-                "bytes", encrypted.length,
-                "file", "data/portfolio_state.enc"
-            ));
-        } catch (Exception e) {
-            log.error("Bundle export failed: {}", e.getMessage(), e);
-            return ResponseEntity.internalServerError().body(Map.of("status", "ERROR", "message", e.getMessage()));
-        }
     }
 
     @PostMapping("/refresh")
