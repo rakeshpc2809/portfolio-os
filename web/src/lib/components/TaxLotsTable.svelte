@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { HoldingDto, LotDto } from '../api';
+  import { getAuthToken, type HoldingDto, type LotDto } from '../api';
   import { formatINR, formatPercent } from '../formatters';
   import { 
     Filter, 
@@ -28,6 +28,69 @@
   let searchQuery = $state('');
   let expandedSchemes = $state<Record<string, boolean>>({});
   let selectedLot = $state<{ holding: HoldingDto; lot: LotDto } | null>(null);
+
+  async function downloadHarvestCalendar() {
+    try {
+      const token = getAuthToken();
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['X-Api-Auth-Token'] = token;
+      }
+      const response = await fetch('/api/v1/tax/harvest-calendar.ics', { headers });
+      if (!response.ok) {
+        throw new Error(`Failed to download calendar: HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'portfolio_harvest_calendar.ics';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Failed to download calendar .ics:', err);
+      alert(err?.message || 'Failed to download calendar');
+    }
+  }
+
+  function getTaxBadge(holding?: HoldingDto, lot?: LotDto): { label: string; isLtcg: boolean } {
+    if (!lot) return { label: '—', isLtcg: false };
+    const isLtcg = lot.tax_term === 'LONG_TERM';
+    const bucket = (holding?.bucket || '').toUpperCase();
+    const isDebt = bucket.includes('DEBT') || bucket.includes('LIQUID');
+    const isGoldOrIntl = bucket.includes('GOLD') || bucket.includes('SILVER') || bucket.includes('COMMODITY') || bucket.includes('INTL') || bucket.includes('INTERNATIONAL');
+
+    if (isDebt) {
+      return { label: 'STCG (Slab / 50AA)', isLtcg: false };
+    }
+    if (isGoldOrIntl) {
+      return { label: isLtcg ? 'LTCG (13.0%)' : 'STCG (Slab Rate)', isLtcg };
+    }
+    // Equity default (12.5% * 1.04 = 13.0%, 20% * 1.04 = 20.8%)
+    return { label: isLtcg ? 'LTCG (13.0%)' : 'STCG (20.8%)', isLtcg };
+  }
+
+  function getTaxRegimeDescription(holding?: HoldingDto, lot?: LotDto): string {
+    if (!lot) return '—';
+    const isLtcg = lot.tax_term === 'LONG_TERM';
+    const bucket = (holding?.bucket || '').toUpperCase();
+    const isDebt = bucket.includes('DEBT') || bucket.includes('LIQUID');
+    const isGoldOrIntl = bucket.includes('GOLD') || bucket.includes('SILVER') || bucket.includes('COMMODITY') || bucket.includes('INTL') || bucket.includes('INTERNATIONAL');
+
+    if (isDebt) {
+      return 'Sec 50AA Specified Debt (Always Slab Rate)';
+    }
+    if (isGoldOrIntl) {
+      return isLtcg 
+        ? 'LTCG (>24m, 12.5% + 4% Cess = 13.0%, No Exemption)' 
+        : 'STCG (≤24m, Slab Rate)';
+    }
+    return isLtcg 
+      ? 'Sec 112A LTCG (>12m, 12.5% + 4% Cess over ₹1.25L)' 
+      : 'Sec 111A STCG (≤12m, 20% + 4% Cess Flat = 20.8%)';
+  }
 
   // Flattened lots with parent holding reference
   interface EnrichedLot extends LotDto {
@@ -223,15 +286,15 @@
         <span class="strong">Sec 112A Tax-Harvest Opportunity:</span>
         <span>You have <strong>{formatINR(ltcgRemaining, quietMode)}</strong> of tax-free LTCG headroom remaining this financial year (exempt up to ₹1.25 Lakh).</span>
       </div>
-      <a 
-        href="/api/v1/tax/harvest-calendar.ics" 
-        download="portfolio_harvest_calendar.ics"
+      <button 
+        type="button"
+        onclick={downloadHarvestCalendar}
         class="calendar-feed-btn"
         title="Download iCalendar file with lot maturation alarms"
       >
         <Calendar size={13} />
         <span>Add Maturation Reminders (.ics)</span>
-      </a>
+      </button>
     </div>
   {/if}
 
@@ -329,6 +392,7 @@
                     {@const isLtcg = lot.tax_term === 'LONG_TERM'}
                     {@const gain = lot.realized_or_unrealized_gain || 0}
                     {@const gainPct = (lot.cost_basis && lot.cost_basis > 0) ? (gain / lot.cost_basis) * 100 : 0}
+                    {@const taxInfo = getTaxBadge(group.holding, lot)}
                     <tr>
                       <td class="mono lot-id">{lot.lot_id.slice(-8)}</td>
                       <td>
@@ -348,8 +412,8 @@
                         <span class="holding-days mono">{lot.holding_period_days ?? '—'} days</span>
                       </td>
                       <td>
-                        <span class="tax-badge" class:ltcg={isLtcg} class:stcg={!isLtcg}>
-                          {isLtcg ? 'LTCG (12.5%)' : 'STCG (20%)'}
+                        <span class="tax-badge" class:ltcg={taxInfo.isLtcg} class:stcg={!taxInfo.isLtcg}>
+                          {taxInfo.label}
                         </span>
                         {#if lot.is_grandfathered}
                           <span class="grandfather-badge" title="FMV 2018 grandfathered rule applied">FMV '18</span>
@@ -413,7 +477,7 @@
             <div class="ins-cell">
               <span class="ins-label">Tax Regime</span>
               <span class="ins-val status">
-                {selectedLot.lot.tax_term === 'LONG_TERM' ? 'LTCG (>365d, 12.5% over ₹1.25L)' : 'STCG (≤365d, 20% Flat)'}
+                {getTaxRegimeDescription(selectedLot.holding, selectedLot.lot)}
               </span>
             </div>
             <div class="ins-cell">

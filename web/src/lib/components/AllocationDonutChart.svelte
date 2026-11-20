@@ -45,6 +45,7 @@
     targetPct: number;
     currentValue: number;
     driftPct: number;
+    isDrifted: boolean;
     startAngle: number;
     endAngle: number;
     path: string;
@@ -105,6 +106,7 @@
         targetPct: b.target_pct || 0,
         currentValue: Number(b.current_value) || 0,
         driftPct: (b.current_pct || 0) - (b.target_pct || 0),
+        isDrifted: Boolean(b.is_drifted),
         startAngle: start,
         endAngle: end,
         path: describeArc(cx, cy, radiusOuter, radiusInner, start, end),
@@ -177,7 +179,7 @@
             <text x={cx} y={cy + 8} class="center-main-text" fill={hs.color}>
               {hs.currentPct.toFixed(1)}%
             </text>
-            <text x={cx} y={cy + 24} class="center-drift-text" fill={Math.abs(hs.driftPct) > 5 ? '#F43F5E' : '#10B981'}>
+            <text x={cx} y={cy + 24} class="center-drift-text" fill={hs.isDrifted ? '#F43F5E' : '#10B981'}>
               Target: {hs.targetPct.toFixed(1)}% ({hs.driftPct > 0 ? '+' : ''}{hs.driftPct.toFixed(1)}%)
             </text>
           {:else}
@@ -197,7 +199,7 @@
     <div class="donut-legend">
       {#each slices as s}
         {@const isHovered = hoveredBucket === s.bucket}
-        {@const isDrift = Math.abs(s.driftPct) > 5.0 && s.bucket !== 'LEGACY_HOLDINGS'}
+        {@const isDrift = s.isDrifted}
         <div 
           class="legend-row"
           class:active={isHovered}

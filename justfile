@@ -20,9 +20,9 @@ check:
 release-v4-1:
     ./scripts/pre_release_smoke_test.py
 
-# Chaos & Disaster Recovery Drill (Litestream WAL + Google Sheets Zero-Knowledge restoration)
+# Atomic SQLite ledger online backup & verification drill
 drill-recovery:
-    ./scripts/chaos_recovery_drill.py
+    ./scripts/backup_ledger.sh
 
 # -------------------------------------------------------------
 # Backend Core Node (Spring Boot / Java 26)
@@ -76,10 +76,6 @@ setup-quant:
 # Run Quant sidecar unit tests
 test-quant:
     cd quant-sidecar && uv run python -m unittest discover -v -s tests
-
-# Refresh historical NAV export (Parquet) for HRP allocator
-refresh-nav-export:
-    cd quant-sidecar && uv run python scripts/backfill_nav_history.py
 
 # -------------------------------------------------------------
 # Code Quality: Lint & Format (Biome + Ruff)

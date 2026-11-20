@@ -131,12 +131,12 @@ class BrokerCsvParser:
                         )
                     except ValueError:
                         raise
-                    except Exception:
-                        continue
+                    except Exception as e:
+                        raise ValueError(f"Failed to parse CSV row: {row}") from e
         except ValueError:
             raise
-        except Exception:
-            pass
+        except Exception as e:
+            raise ValueError(f"Failed to parse broker CSV file {self.csv_path}: {e}") from e
 
         from .sip_detector import detect_and_tag_sips
 

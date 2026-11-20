@@ -33,14 +33,14 @@
   const PRESET_AMOUNTS = [25000, 50000, 100000, 250000, 500000];
 
   function getFundHoldingMetrics(fundIdOrName: string, orderProceeds: number = 0) {
-    const nw = netWorth || Number(simulatedPlan?.summary?.net_worth ?? 2178955);
+    const nw = netWorth || Number(simulatedPlan?.summary?.net_worth ?? 0);
     const holding = holdings?.find((h: any) => 
       (h.asset_id && fundIdOrName.toLowerCase().includes(h.asset_id.toLowerCase())) ||
       (h.isin && fundIdOrName.toLowerCase().includes(h.isin.toLowerCase())) ||
       (h.asset_name && fundIdOrName.toLowerCase().includes(h.asset_name.toLowerCase())) ||
       (h.asset_name && h.asset_name.toLowerCase().includes(fundIdOrName.toLowerCase()))
     );
-    const curVal = Number(holding?.current_value ?? (orderProceeds > 0 ? orderProceeds * 1.5 : 0));
+    const curVal = Number(holding?.current_value ?? 0);
     const curPct = nw > 0 ? (curVal / nw) * 100 : 0;
     const postVal = Math.max(0, curVal - orderProceeds);
     const postPct = nw > 0 ? (postVal / nw) * 100 : 0;
@@ -262,7 +262,7 @@
             <div class="sum-card">
               <span class="sum-label">Estimated Post Net Worth</span>
               <span class="sum-val mono bold">
-                {formatINR((simulatedPlan.summary?.net_worth ?? 0) + (includeRebalance ? 0 : amount), quietMode)}
+                {formatINR((simulatedPlan.summary?.net_worth ?? netWorth) + amount, quietMode)}
               </span>
             </div>
             <div class="sum-card">
