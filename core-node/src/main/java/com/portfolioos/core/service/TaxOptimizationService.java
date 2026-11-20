@@ -237,9 +237,12 @@ public class TaxOptimizationService {
         List<TaxReportExporter.ScheduleStcgEntryDto> stcg = Itr2CsvExporter.generateScheduleStcgEntries(
             matchedLots, fy, assetNameMap
         );
+        List<TaxReportExporter.ScheduleNonEquityLtcgEntryDto> nonEquityLtcg = Itr2CsvExporter.generateScheduleNonEquityLtcgEntries(
+            matchedLots, fy, assetNameMap
+        );
         List<RealizedLogDto> realizedLog = getRealizedLog(fy);
 
-        return new TaxReportExporter.Itr2DetailsDto(summary, s112a, stcg, realizedLog);
+        return new TaxReportExporter.Itr2DetailsDto(summary, s112a, stcg, nonEquityLtcg, realizedLog);
     }
 
     public RebalancePreviewDto getTaxOptimalLiquidationPlan(BigDecimal targetAmount, String fy) {

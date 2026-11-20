@@ -80,4 +80,30 @@ public class FifoMatcherFolioAndFailLoudTest {
         );
         assertTrue(ex.getMessage().contains("Unmatched disposal units remain") || ex.getMessage().contains("INF879O01027"));
     }
+
+    @Test
+    @DisplayName("Regression: Legacy untagged folio lots (null/blank) match incoming disposals with folio without failing loud")
+    void testLegacyUntaggedFolioMatching() {
+        FifoMatcher matcher = new FifoMatcher();
+
+        TaxEvent legacyAcq = new TaxEvent(
+            "EV_LEGACY", "INF879O01027", "PPFAS Flexi Cap", "INF879O01027", null,
+            EventType.ACQUISITION, LocalDate.of(2023, 1, 1),
+            new BigDecimal("100.000"), new BigDecimal("50.00"), new BigDecimal("5000.00"),
+            "DOC_LEGACY", Instant.now()
+        );
+
+        TaxEvent newDispWithFolio = new TaxEvent(
+            "EV_NEW_DISP", "INF879O01027", "PPFAS Flexi Cap", "INF879O01027", "12345/67",
+            EventType.DISPOSAL, LocalDate.of(2025, 2, 1),
+            new BigDecimal("50.000"), new BigDecimal("100.00"), new BigDecimal("5000.00"),
+            "DOC_NEW", Instant.now()
+        );
+
+        FifoMatcher.FifoResult result = matcher.processEvents(List.of(legacyAcq, newDispWithFolio));
+        assertEquals(1, result.matchedLots().size(), "Legacy untagged lot must successfully match incoming disposal with folio");
+        assertEquals(new BigDecimal("50.000"), result.matchedLots().get(0).unitsMatched());
+        assertEquals(1, result.openLots().size());
+        assertEquals(new BigDecimal("50.000"), result.openLots().get(0).remainingUnits());
+    }
 }

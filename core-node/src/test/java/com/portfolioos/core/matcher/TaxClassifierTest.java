@@ -86,4 +86,22 @@ class TaxClassifierTest {
         );
         assertEquals(TaxTerm.LONG_TERM, termMar02, "Sell on 2024-03-02 must be LONG_TERM (> 12 full months)");
     }
+
+    @Test
+    void testComputeEstimatedTaxDragIncludesFourPercentCess() {
+        com.portfolioos.core.rules.TaxRulesConfig rules = com.portfolioos.core.rules.TaxRulesLoader.loadRules("2026-27");
+        java.math.BigDecimal gain = new java.math.BigDecimal("10000.00");
+
+        // Equity LTCG: 12.5% * 1.04 = 13.00% -> 1300.00
+        java.math.BigDecimal equityLtcgDrag = TaxClassifier.computeEstimatedTaxDrag(AssetCategory.EQUITY, TaxTerm.LONG_TERM, gain, rules);
+        assertEquals(new java.math.BigDecimal("1300.00"), equityLtcgDrag);
+
+        // Equity STCG: 20% * 1.04 = 20.80% -> 2080.00
+        java.math.BigDecimal equityStcgDrag = TaxClassifier.computeEstimatedTaxDrag(AssetCategory.EQUITY, TaxTerm.SHORT_TERM, gain, rules);
+        assertEquals(new java.math.BigDecimal("2080.00"), equityStcgDrag);
+
+        // SGB LTCG: secondary sale is 12.5% * 1.04 = 13.00% -> 1300.00
+        java.math.BigDecimal sgbLtcgDrag = TaxClassifier.computeEstimatedTaxDrag(AssetCategory.SGB, TaxTerm.LONG_TERM, gain, rules);
+        assertEquals(new java.math.BigDecimal("1300.00"), sgbLtcgDrag);
+    }
 }

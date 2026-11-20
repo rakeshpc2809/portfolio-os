@@ -126,8 +126,7 @@ public class TaxClassifier {
         return switch (category) {
             case EQUITY -> isLtcg ? rules.equityLtcgRate() : rules.equityStcgRate();
             case DEBT_SPECIFIED_50AA -> isLtcg ? rules.debtLegacyLtcgRate() : rules.slabRate();
-            case GOLD_SILVER, INTERNATIONAL -> isLtcg ? rules.goldInternationalLtcgRate() : rules.slabRate();
-            case SGB -> isLtcg ? java.math.BigDecimal.ZERO : rules.slabRate();
+            case GOLD_SILVER, INTERNATIONAL, SGB -> isLtcg ? rules.goldInternationalLtcgRate() : rules.slabRate();
         };
     }
 
@@ -135,8 +134,9 @@ public class TaxClassifier {
         if (unrealizedGain == null || unrealizedGain.compareTo(java.math.BigDecimal.ZERO) <= 0) {
             return java.math.BigDecimal.ZERO;
         }
-        java.math.BigDecimal rate = resolveTaxRate(category, taxTerm, rules);
-        return unrealizedGain.multiply(rate).setScale(2, java.math.RoundingMode.HALF_UP);
+        java.math.BigDecimal baseRate = resolveTaxRate(category, taxTerm, rules);
+        java.math.BigDecimal effectiveRate = baseRate.multiply(new java.math.BigDecimal("1.04"));
+        return unrealizedGain.multiply(effectiveRate).setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     public static String detectTaxClassification(AssetCategory category) {

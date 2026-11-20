@@ -198,11 +198,8 @@ public class FifoMatcher {
     }
 
     private static boolean isSameFolio(String lotFolio, String eventFolio) {
-        if (eventFolio == null || eventFolio.isBlank()) {
+        if (eventFolio == null || eventFolio.isBlank() || lotFolio == null || lotFolio.isBlank()) {
             return true;
-        }
-        if (lotFolio == null || lotFolio.isBlank()) {
-            return false;
         }
         return eventFolio.trim().equalsIgnoreCase(lotFolio.trim());
     }

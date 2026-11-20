@@ -158,4 +158,30 @@ class StatementsControllerTest {
         ));
         assertEquals(422, resp422.getStatusCode().value());
     }
+
+    @Test
+    @DisplayName("Statement parser CLI failure with exitCode 2 or password error returns HTTP 422 INVALID_PASSWORD")
+    void testStatementParserPasswordFailureReturns422() throws Exception {
+        StatementIngestionUseCase ingestionUseCase = Mockito.mock(StatementIngestionUseCase.class);
+        java.io.File testScript = java.io.File.createTempFile("test_pwd_fail", ".sh");
+        testScript.setExecutable(true);
+        java.nio.file.Files.writeString(testScript.toPath(), "#!/bin/sh\necho 'ERROR: Failed to parse statement: INCORRECT_OR_MISSING_PASSWORD: CAS PDF is password protected.' >&2\nexit 2\n");
+        testScript.deleteOnExit();
+
+        StatementsController controller = new StatementsController(
+            ingestionUseCase,
+            "/bin/sh",
+            testScript.getAbsolutePath()
+        );
+
+        MockMultipartFile file = new MockMultipartFile("file", "statement.pdf", "application/pdf", "dummy-pdf-content".getBytes());
+        ResponseEntity<?> response = controller.uploadStatement(file, "wrong-password");
+
+        assertNotNull(response);
+        assertEquals(422, response.getStatusCode().value());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        assertEquals("INVALID_PASSWORD", body.get("error"));
+        assertEquals("Failed to decrypt PDF statement. Please verify the password.", body.get("message"));
+    }
 }

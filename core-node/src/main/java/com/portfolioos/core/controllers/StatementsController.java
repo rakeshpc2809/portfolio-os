@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,6 +23,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @RestController
@@ -162,27 +164,57 @@ public class StatementsController {
                 process.getOutputStream().close();
             } catch (IOException ignored) {}
 
-            String stdout;
-            String stderr;
-            try (var stdoutIs = process.getInputStream();
-                 var stderrIs = process.getErrorStream()) {
-                stdout = new String(stdoutIs.readAllBytes(), StandardCharsets.UTF_8);
-                stderr = new String(stderrIs.readAllBytes(), StandardCharsets.UTF_8);
-            }
+            CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(() -> {
+                try (var is = process.getInputStream()) {
+                    return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    return "";
+                }
+            });
+
+            CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(() -> {
+                try (var is = process.getErrorStream()) {
+                    return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    return "";
+                }
+            });
 
             boolean finished = process.waitFor(60, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 log.error("Statement parser timed out after 60 seconds.");
-                return ResponseEntity.internalServerError().body(Map.of(
+                return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
                     "error", "UPLOAD_FAILED",
                     "message", "Statement ingestion timed out."
                 ));
             }
 
+            String stdout;
+            String stderr;
+            try {
+                stdout = stdoutFuture.get(5, TimeUnit.SECONDS);
+                stderr = stderrFuture.get(5, TimeUnit.SECONDS);
+            } catch (Exception ex) {
+                log.warn("Failed to drain process stdout/stderr cleanly: {}", ex.getMessage());
+                stdout = "";
+                stderr = ex.getMessage();
+            }
+
             int exitCode = process.exitValue();
             if (exitCode != 0) {
                 log.error("Statement parser CLI failed (exit {}): {}", exitCode, stderr);
+                boolean isPasswordError = stderr != null && (
+                    stderr.toLowerCase().contains("password") ||
+                    stderr.toLowerCase().contains("decrypt") ||
+                    stderr.toLowerCase().contains("encrypted")
+                );
+                if (isPasswordError) {
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                        "error", "INVALID_PASSWORD",
+                        "message", "Failed to decrypt PDF statement. Please verify the password."
+                    ));
+                }
                 return ResponseEntity.internalServerError().body(Map.of(
                     "error", "UPLOAD_FAILED",
                     "message", "Statement ingestion failed due to an internal processing error."

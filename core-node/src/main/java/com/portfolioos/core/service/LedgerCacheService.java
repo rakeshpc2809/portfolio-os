@@ -105,7 +105,9 @@ public class LedgerCacheService {
                 long now = System.currentTimeMillis();
 
                 CachedLedgerState current = stateHolder.get();
-                if (current == null || current.ledgerHash() == null || !currentHash.equals(current.ledgerHash()) || (now - lastNavSyncTime) >= 30_000) {
+                boolean hashChanged = current == null || current.ledgerHash() == null || !currentHash.equals(current.ledgerHash());
+                boolean amfiTtlExpired = (now - lastNavSyncTime) >= (6 * 3600_000L);
+                if (hashChanged || amfiTtlExpired) {
                     List<TaxEvent> events = eventStore.getAllEvents();
                     Map<String, BigDecimal> fmv2018Map = marketDataRepository != null
                         ? marketDataRepository.getJan2018FmvMap()
@@ -127,11 +129,14 @@ public class LedgerCacheService {
                         navDateMap = current != null && current.navDateMap() != null ? current.navDateMap() : Collections.emptyMap();
                     }
                     
-                    boolean hmacVerified = false;
-                    try {
-                        hmacVerified = eventStore.verifyLedgerIntegrity();
-                    } catch (Exception hmacEx) {
-                        log.warn("HMAC verification check failed: {}", hmacEx.getMessage());
+                    boolean hmacVerified = (current != null) ? current.ledgerHmacVerified() : false;
+                    if (hashChanged) {
+                        try {
+                            hmacVerified = eventStore.verifyLedgerIntegrity();
+                        } catch (Exception hmacEx) {
+                            log.warn("HMAC verification check failed: {}", hmacEx.getMessage());
+                            hmacVerified = false;
+                        }
                     }
                     stateHolder.set(new CachedLedgerState(events, fifoResult, navMap, currentHash, now, health, navDateMap, hmacVerified));
                     lastNavSyncTime = now;

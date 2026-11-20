@@ -179,7 +179,12 @@ public class SyncController {
 
             com.portfolioos.core.rules.TaxRulesConfig taxRules = com.portfolioos.core.rules.TaxRulesLoader.loadRules(resolvedFy);
             long thresholdDays = category == AssetCategory.EQUITY ? taxRules.equityLtcgThresholdDays() : (isListed ? taxRules.equityLtcgThresholdDays() : taxRules.goldInternationalThresholdDays());
-            long daysToLtcg = isLongTerm ? 0L : Math.max(0L, thresholdDays - holdingDays);
+            long daysToLtcg;
+            if (isLongTerm || (category == AssetCategory.DEBT_SPECIFIED_50AA && !lot.acquisitionDate().isBefore(LocalDate.of(2023, 4, 1)))) {
+                daysToLtcg = 0L;
+            } else {
+                daysToLtcg = Math.max(0L, thresholdDays - holdingDays);
+            }
 
             BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot.assetId(), lot.assetName(), "SyncController.getSnapshot (lot " + lot.lotId() + ")");
             BigDecimal lotCurrentVal = lot.remainingUnits().multiply(nav);
@@ -245,8 +250,11 @@ public class SyncController {
         long minDaysToLtcg = 9999L;
 
         for (Lot lot : openLots) {
-            long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
             AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
+            if (cat == AssetCategory.DEBT_SPECIFIED_50AA && !lot.acquisitionDate().isBefore(LocalDate.of(2023, 4, 1))) {
+                continue; // Post-April 1 2023 debt never matures to LTCG under Sec 50AA
+            }
+            long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
             boolean isListed = TaxClassifier.isListed(lot.assetId(), lot.assetName());
             long thresholdDays = (cat == AssetCategory.EQUITY || isListed) ? 365L : 730L;
             long daysToLtcg = Math.max(0L, thresholdDays - holdingDays);
@@ -329,7 +337,7 @@ public class SyncController {
         );
 
         List<NetWorthPointDto> netWorthHistory = marketDataRepository.getDailyNetWorthTrend().stream()
-            .map(p -> new NetWorthPointDto(p.date(), p.valuation(), p.invested()))
+            .map(p -> new NetWorthPointDto(p.date(), p.valuation(), p.invested(), p.isEstimated()))
             .toList();
 
         String derivedTriggerType;
@@ -462,7 +470,7 @@ public class SyncController {
         return ResponseEntity.ok(plan);
     }
 
-    @PostMapping("/rebalance/simulate-lumpsum")
+    @PostMapping({"/rebalance/simulate-lumpsum", "/sync/rebalance/simulate-lumpsum", "/portfolio/simulate-lumpsum"})
     public ResponseEntity<com.portfolioos.core.dtos.RebalancePlanDtos.RebalancePlanDto> simulateLumpsum(
         @RequestBody Map<String, Object> req
     ) {
@@ -500,6 +508,11 @@ public class SyncController {
             "nav_count", refreshed.navMap() != null ? refreshed.navMap().size() : 0,
             "refreshed_at", java.time.LocalDateTime.now().format(ISO_FORMATTER)
         ));
+    }
+
+    @GetMapping({"/config/bucket-targets", "/sync/config/bucket-targets"})
+    public ResponseEntity<com.portfolioos.core.rules.BucketConfigLoader.BucketRulesConfig> getBucketTargets() {
+        return ResponseEntity.ok(com.portfolioos.core.rules.BucketConfigLoader.loadConfig());
     }
 }
 

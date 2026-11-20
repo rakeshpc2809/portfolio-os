@@ -217,7 +217,7 @@ public class FireTracker {
             profile.scenarios(),
             monteCarloSuccessRatePct,
             monteCarloMedianCorpus != null ? monteCarloMedianCorpus : projectedCorpus,
-            monteCarloTenthPercentileCorpus != null ? monteCarloTenthPercentileCorpus : projectedCorpus.multiply(new BigDecimal("0.75"))
+            monteCarloTenthPercentileCorpus != null ? monteCarloTenthPercentileCorpus : projectedCorpus
         );
     }
 
@@ -226,6 +226,6 @@ public class FireTracker {
         Map<String, BigDecimal> navMap,
         LocalDate currentDate
     ) {
-        return calculateFireSummary(openLots, navMap, currentDate, new FireProfile(), BigDecimal.ZERO, 95.0, null, null);
+        return calculateFireSummary(openLots, navMap, currentDate, new FireProfile(), BigDecimal.ZERO, 0.0, null, null);
     }
 }

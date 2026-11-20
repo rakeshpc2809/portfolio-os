@@ -118,4 +118,37 @@ class TaxReportAndItr2ExporterTest {
         assertTrue(schedule112aCsv.contains("7000.00"), "Schedule 112A CSV must contain balanceGain = 7000.00");
         assertTrue(schedule112aCsv.contains("\"VALIDATED_SECTION_55_2_AC\""), "Status remark must show VALIDATED_SECTION_55_2_AC");
     }
+
+    @Test
+    @DisplayName("Section 70 Netting: Non-equity LTCL is netted against equity LTCG before Section 112A threshold")
+    void testSection70NonEquityLtclNetting() {
+        String fy = "2026-27";
+        // 1. Equity lot with 50,000 gain
+        MatchedLot equityLot = new MatchedLot(
+            "MATCH_EQ_1", "EV_DISP_EQ_1", "LOT_EQ_1",
+            "INF109KC12U0",
+            LocalDate.of(2024, 1, 1), LocalDate.of(2026, 6, 1),
+            new BigDecimal("100.000"),
+            new BigDecimal("100000.00"), new BigDecimal("150000.00"), new BigDecimal("50000.00"),
+            880L, TaxTerm.LONG_TERM, AssetCategory.EQUITY
+        );
+
+        // 2. Non-equity lot (Gold) with 20,000 LOSS
+        MatchedLot goldLossLot = new MatchedLot(
+            "MATCH_GOLD_LOSS", "EV_DISP_GOLD_2", "LOT_GOLD_2",
+            "INF247L01BM8",
+            LocalDate.of(2024, 1, 1), LocalDate.of(2026, 6, 1),
+            new BigDecimal("50.000"),
+            new BigDecimal("50000.00"), new BigDecimal("30000.00"), new BigDecimal("-20000.00"),
+            880L, TaxTerm.LONG_TERM, AssetCategory.GOLD_SILVER
+        );
+
+        TaxReportExporter.Itr2ScheduleCgReport report = TaxReportExporter.generateItr2Report(List.of(equityLot, goldLossLot), fy);
+        assertNotNull(report);
+        // Total LTCG is 50,000 - 20,000 = 30,000
+        assertEquals("30000.00", report.totalRealizedLtcg());
+        // Net taxable LTCG after 1.25L exemption: 30,000 is fully exempt
+        assertEquals("30000.00", report.ltcgExemptionUsed());
+        assertEquals("0.00", report.netTaxableLtcg());
+    }
 }

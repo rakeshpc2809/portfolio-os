@@ -490,7 +490,7 @@ public class PortfolioValuationService {
         BigDecimal deterministicFv = fire.projectedCorpusAtTargetAge();
         double successRate = deterministicFv.compareTo(fire.requiredCorpus()) >= 0 ? 100.0 : 0.0;
         BigDecimal mcMedian = deterministicFv;
-        BigDecimal mcP10 = deterministicFv.multiply(new BigDecimal("0.75"));
+        BigDecimal mcP10 = deterministicFv;
         String ds = "DETERMINISTIC_PROJECTION";
         String dsLabel = "Deterministic Compound Growth Model";
 

@@ -62,6 +62,7 @@ public class TaxReportExporter {
         Itr2ScheduleCgReport summary,
         List<Schedule112aEntryDto> schedule112a,
         List<ScheduleStcgEntryDto> scheduleStcg,
+        List<ScheduleNonEquityLtcgEntryDto> scheduleNonEquityLtcg,
         List<com.portfolioos.core.dtos.ReportDtos.RealizedLogDto> matchedLots
     ) {}
 
@@ -102,17 +103,46 @@ public class TaxReportExporter {
             }
         }
 
-        ExemptionTracker.ExemptionStatus exemptionStatus = ExemptionTracker.calculateExemptionStatus(fyLots, fiscalYear);
+        BigDecimal grossStcgEquity = BigDecimal.ZERO;
+        BigDecimal grossStcgSlab = BigDecimal.ZERO;
+        BigDecimal grossStcl = BigDecimal.ZERO;
+        BigDecimal grossLtcgEquity = BigDecimal.ZERO;
+        BigDecimal grossLtcgNonEquity = BigDecimal.ZERO;
+        BigDecimal grossLtcl = BigDecimal.ZERO;
 
-        BigDecimal nonEquityTaxableLtcg = BigDecimal.ZERO;
         for (MatchedLot lot : fyLots) {
-            if (lot.taxTerm() == TaxTerm.LONG_TERM && lot.assetCategory() != com.portfolioos.core.model.AssetCategory.EQUITY) {
-                if (lot.realizedGain().compareTo(BigDecimal.ZERO) > 0) {
-                    nonEquityTaxableLtcg = nonEquityTaxableLtcg.add(lot.realizedGain());
+            BigDecimal gain = lot.realizedGain();
+            if (lot.taxTerm() == TaxTerm.SHORT_TERM) {
+                if (gain.compareTo(BigDecimal.ZERO) < 0) {
+                    grossStcl = grossStcl.add(gain.abs());
+                } else {
+                    if (lot.assetCategory() == com.portfolioos.core.model.AssetCategory.EQUITY) {
+                        grossStcgEquity = grossStcgEquity.add(gain);
+                    } else {
+                        grossStcgSlab = grossStcgSlab.add(gain);
+                    }
+                }
+            } else if (lot.taxTerm() == TaxTerm.LONG_TERM) {
+                if (gain.compareTo(BigDecimal.ZERO) < 0) {
+                    grossLtcl = grossLtcl.add(gain.abs());
+                } else {
+                    if (lot.assetCategory() == com.portfolioos.core.model.AssetCategory.EQUITY) {
+                        grossLtcgEquity = grossLtcgEquity.add(gain);
+                    } else {
+                        grossLtcgNonEquity = grossLtcgNonEquity.add(gain);
+                    }
                 }
             }
         }
-        BigDecimal totalTaxableLtcg = new BigDecimal(exemptionStatus.taxableLtcg()).add(nonEquityTaxableLtcg);
+
+        com.portfolioos.core.rules.TaxRulesConfig rules = com.portfolioos.core.rules.TaxRulesLoader.loadRules(fiscalYear);
+        com.portfolioos.core.service.RebalancePlanEngine.Section70NettingResult net = com.portfolioos.core.service.RebalancePlanEngine.applySection70Netting(
+            grossStcgEquity, grossStcgSlab, grossStcl, grossLtcgEquity, grossLtcgNonEquity, grossLtcl,
+            rules.equityExemptionLimit(), rules
+        );
+
+        BigDecimal totalTaxableLtcg = net.netTaxableLtcgEquity().add(net.netTaxableLtcgNonEquity());
+        BigDecimal netTaxableStcg = net.netTaxableStcgEquity().add(net.netTaxableStcgSlab());
 
         return new Itr2ScheduleCgReport(
             fiscalYear,
@@ -120,8 +150,8 @@ public class TaxReportExporter {
             fmt(totalCostBasis),
             fmt(totalStcg),
             fmt(totalLtcg),
-            exemptionStatus.netStcg(),
-            exemptionStatus.exemptionUsed(),
+            fmt(netTaxableStcg),
+            fmt(net.ltcgExemptionUsed()),
             fmt(totalTaxableLtcg),
             fyLots.size()
         );

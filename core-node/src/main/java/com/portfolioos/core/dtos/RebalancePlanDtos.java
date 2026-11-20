@@ -416,7 +416,7 @@ public class RebalancePlanDtos {
                 String summaryLabel;
                 if (totalExemption.compareTo(BigDecimal.ZERO) > 0) {
                     classification = "SEC_112A_EXEMPT";
-                    BigDecimal taxSaved = totalExemption.multiply(new BigDecimal("0.125")).setScale(0, RoundingMode.HALF_UP);
+                    BigDecimal taxSaved = totalExemption.multiply(new BigDecimal("0.130")).setScale(0, RoundingMode.HALF_UP);
                     summaryLabel = count + (count == 1 ? " Lot" : " Lots") + " · LTCG Exempt (Saved ₹ " + String.format("%,d", taxSaved.longValue()) + " Tax)";
                 } else if (allExempt) {
                     classification = "SEC_112A_EXEMPT";

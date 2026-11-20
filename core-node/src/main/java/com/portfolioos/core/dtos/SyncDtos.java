@@ -200,8 +200,13 @@ public class SyncDtos {
     public record NetWorthPointDto(
         String date,
         double valuation,
-        double invested
-    ) {}
+        double invested,
+        boolean isEstimated
+    ) {
+        public NetWorthPointDto(String date, double valuation, double invested) {
+            this(date, valuation, invested, false);
+        }
+    }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record DailyBriefDto(
