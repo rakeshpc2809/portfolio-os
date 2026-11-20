@@ -1,6 +1,6 @@
 # Portfolio OS Configuration
-# Format: Hybrid multi-version and v2.4 structured specification
-version: "2.4.0"
+# Format: Hybrid multi-version and v3.0 structured specification
+version: "3.0.0"
 
 global_invariants:
   rebalance_cooldown_days: 30
@@ -9,9 +9,9 @@ global_invariants:
   drawdown_anchor_mode: "ATH_WATERMARK"  # Replaces 252d rolling high; peak holds until broken
   drawdown_hold_zone_min_pct: 5.00       # Hysteresis freeze floor
   drawdown_hold_zone_max_pct: 10.00      # Hysteresis freeze ceiling
-  urgent_drawdown_threshold_pct: 15.00   # Unlocks STCG & exit-load lots when drawdown >= 15%
-  scheduled_months: [3, 9]               # March & September (Step 0 + Tax Harvest ONLY if inside bands)
-  nse_reconstitution_blackout_hours: 48  # Pause within 48h of Mar 31 / Sep 30
+  urgent_drawdown_threshold_pct: 30.00   # Only Rung 3 (-30%) overrides 15d Arbitrage exit load
+  scheduled_months: [3]                  # March annual tax-harvest + legacy exit only
+  taxable_trim_fraction: 0.50            # 100% trim while ₹0 tax; 50% of remaining excess once taxable
 
 tax_parameters:
   ltcg_exemption_limit_inr: 125000.00    # Section 112A annual exemption
@@ -27,25 +27,16 @@ drawdown_rungs:
     liquid_target_pct: 7.50
     core_target_pct: 52.50
     liquid_deploy_fraction: 0.25
-  - tier: "TIER_15"
-    drawdown_pct: 15.00
+  - tier: "TIER_20"
+    drawdown_pct: 20.00
     liquid_target_pct: 5.00
     core_target_pct: 55.00
     liquid_deploy_fraction: 0.50
-  - tier: "TIER_20"
-    drawdown_pct: 20.00
+  - tier: "TIER_30"
+    drawdown_pct: 30.00
     liquid_target_pct: 0.00
     core_target_pct: 60.00
     liquid_deploy_fraction: 1.00
-
-dampener_tiers:
-  # Proportional control: relative excess over target -> trim multiplier
-  - max_relative_excess_pct: 15.0
-    multiplier: 0.40
-  - max_relative_excess_pct: 25.0
-    multiplier: 0.66
-  - max_relative_excess_pct: 999.0
-    multiplier: 0.75
 
 buckets:
   EQUITY_CORE:
@@ -101,23 +92,10 @@ buckets:
         ltcg_holding_days: 365
         settlement_days: 1
 
-  # Architectural Policy Decision (v2.4):
-  # 1. Accumulator Drift Asymmetry: Gold FoF target is 10.0%. Upper trigger drift is set to 12.0%
-  #    (selling trims activate only if gold breaches 10% + 12% = 22.0% of portfolio).
-  #    Precious metals display high cyclical non-structural price noise; widening the upper
-  #    trim boundary prevents premature realization of taxable capital gains on normal gold rallies.
-  # 2. Backstop Mechanics & Underweight Note: Gold Floor Backstop activates ONLY when BOTH
-  #    (a) >= 6 months have elapsed since any gold buy, AND (b) gold sits >= 2.0% points
-  #    under target (<= 8.0%). Note that gold can sit underweight indefinitely if small, periodic
-  #    gold buys continually reset the 6-month idle timer.
   GOLD_SILVER:
     target_pct: 10.00
-    band_lower_pct: 2.00                 # Handled via Gold Floor Backstop (-2.0% gap)
-    band_upper_pct: 12.00                # Accumulator ceiling: only trims if > 22.0%
-    backstop:
-      min_idle_months: 6
-      min_underweight_gap_pct: 2.00
-      gap_close_fraction: 0.50           # Flat 50% gap close (200-DMA multiplier stripped)
+    band_lower_pct: 2.50                 # 7.5% -> CASH_INFLOW_NEEDED (never forces equity sell)
+    band_upper_pct: 5.00                 # 15.0% -> harvests gold rallies into underweight buckets
     schemes:
       - isin: "INF247L01BM8"
         name: "Motilal Oswal Gold and Silver Passive FoF Direct Growth"
@@ -129,8 +107,8 @@ buckets:
 
   LIQUID_BUFFER:
     target_pct: 10.00
-    band_lower_pct: 2.50                 # 5/25 Rule: fires < 7.5%
-    band_upper_pct: 2.50                 # 5/25 Rule: fires > 12.5% (normal regime)
+    band_lower_pct: 2.50                 # 7.5%
+    band_upper_pct: 2.50                 # 12.5%
     schemes:
       - isin: "INF205K01KR8"
         name: "Invesco India Arbitrage Direct Growth"
@@ -342,6 +320,54 @@ versions:
     target_pct: 10.0
     band_pct: 5.0
     trigger_drift_pct: 12.0              # Trim trigger requires >= 22.0% (target 10% + 12% drift)
+    strategy: "ACCUMULATOR"
+    preferred_funds:
+    - fund_id: "INF247L01BM8"
+      fund_name: "Motilal Oswal Gold and Silver Passive Fund of Funds"
+      allocation_weight: 1.0
+  - bucket: "LIQUID_BUFFER"
+    target_pct: 10.0
+    band_pct: 2.5
+    trigger_drift_pct: 2.5
+    strategy: "ARBITRAGE"
+    preferred_funds:
+    - fund_id: "INF205K01KR8"
+      fund_name: "Invesco India Arbitrage Fund"
+      allocation_weight: 1.0
+- version_id: "v3.0"
+  effective_from: "2026-11-20"
+  targets:
+  - bucket: "EQUITY_CORE"
+    target_pct: 50.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "CORE"
+    preferred_funds:
+    - fund_id: "INF109KC12U0"
+      fund_name: "ICICI Prudential Nifty LargeMidcap 250 Index Fund"
+      allocation_weight: 0.60
+    - fund_id: "INF879O01027"
+      fund_name: "Parag Parikh Flexi Cap Fund"
+      allocation_weight: 0.40
+  - bucket: "EQUITY_SATELLITE"
+    target_pct: 30.0
+    band_pct: 5.0
+    trigger_drift_pct: 5.0
+    strategy: "SATELLITE"
+    preferred_funds:
+    - fund_id: "INF109KC13X2"
+      fund_name: "ICICI Prudential Nifty200 Value 30 Index Fund"
+      allocation_weight: 0.3333
+    - fund_id: "INF754K01TN5"
+      fund_name: "Edelweiss Nifty500 Multicap Momentum Quality 50 Index Fund"
+      allocation_weight: 0.3333
+    - fund_id: "INF204K01K15"
+      fund_name: "Nippon India Small Cap Fund"
+      allocation_weight: 0.3334
+  - bucket: "GOLD_SILVER"
+    target_pct: 10.0
+    band_pct: 2.5
+    trigger_drift_pct: 5.0
     strategy: "ACCUMULATOR"
     preferred_funds:
     - fund_id: "INF247L01BM8"

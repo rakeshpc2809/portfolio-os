@@ -110,7 +110,8 @@ public class RebalancePlanEngine {
             int drawdownTier = 0;
             if ("DRAWDOWN".equalsIgnoreCase(triggerType) && plan.trigger() != null && plan.trigger().drawdownContext() != null) {
                 String armed = plan.trigger().drawdownContext().armedTier();
-                if ("TIER_20".equals(armed)) drawdownTier = 20;
+                if ("TIER_30".equals(armed)) drawdownTier = 30;
+                else if ("TIER_20".equals(armed)) drawdownTier = 20;
                 else if ("TIER_15".equals(armed)) drawdownTier = 15;
                 else if ("TIER_10".equals(armed)) drawdownTier = 10;
             }
@@ -131,6 +132,18 @@ public class RebalancePlanEngine {
                 detailsJson,
                 drawdownTier
             );
+            if (drawdownTier > 0) {
+                BigDecimal liquidCurVal = BigDecimal.ZERO;
+                if (plan.sellSide() != null && plan.sellSide().waterfall() != null) {
+                    for (WaterfallTierDto t : plan.sellSide().waterfall()) {
+                        if ("ARBITRAGE_BUFFER".equals(t.tier()) && t.available() != null) {
+                            liquidCurVal = t.available();
+                            break;
+                        }
+                    }
+                }
+                repository.recordDrawdownCycleExecution(liquidCurVal, drawdownTier);
+            }
             if ("SCHEDULED".equalsIgnoreCase(triggerType) || "SCHEDULED_MAINTENANCE".equalsIgnoreCase(triggerType)) {
                 repository.recordScheduledRunExecution(LocalDateTime.now().getYear(), LocalDateTime.now().getMonthValue(), LocalDateTime.now());
             }
@@ -421,8 +434,8 @@ public class RebalancePlanEngine {
             }
         }
 
-        boolean hasSellSide = !"GOLD_FLOOR_BACKSTOP".equalsIgnoreCase(resolvedType) && (resolution.hasSellSide() ||
-            (requestedTriggerType != null && ("DRIFT".equalsIgnoreCase(requestedTriggerType) || "SCHEDULED".equalsIgnoreCase(requestedTriggerType) || "DRAWDOWN".equalsIgnoreCase(requestedTriggerType))));
+        boolean hasSellSide = resolution.hasSellSide() ||
+            (requestedTriggerType != null && ("DRIFT".equalsIgnoreCase(requestedTriggerType) || "SCHEDULED".equalsIgnoreCase(requestedTriggerType) || "DRAWDOWN".equalsIgnoreCase(requestedTriggerType)));
 
         if (isLumpsum && !includeRebalance) {
             totalPool = manualLumpsumAmount;
@@ -436,34 +449,7 @@ public class RebalancePlanEngine {
                 new TaxSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, headroomBefore, headroomBefore)
             );
         } else if (!isLumpsum && !hasSellSide) {
-            if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
-                // Gold Floor Backstop top-up sizing (buy-only)
-                double goldTargetPct = (v24Config != null && v24Config.buckets() != null && v24Config.buckets().containsKey(com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER))
-                    ? v24Config.buckets().get(com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER).targetPct().doubleValue()
-                    : 10.0;
-                double goldCurrentPct = 0.0;
-                BigDecimal goldVal = BigDecimal.ZERO;
-                if (openLots != null) {
-                    for (Lot lot : openLots) {
-                        if ("GOLD_SILVER".equals(BucketConfigLoader.mapAssetToBucket(lot.assetId(), lot.assetName()))) {
-                            BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalancePlanEngine.goldVal");
-                            goldVal = goldVal.add(lot.remainingUnits().multiply(nav));
-                        }
-                    }
-                }
-                BigDecimal corpusBasis = liveCorpus;
-                if (corpusBasis.compareTo(BigDecimal.ZERO) > 0) {
-                    goldCurrentPct = (goldVal.doubleValue() / corpusBasis.doubleValue()) * 100.0;
-                }
-                double gapWeightPct = goldTargetPct - goldCurrentPct;
-                if (gapWeightPct > 0) {
-                    totalPool = corpusBasis.multiply(BigDecimal.valueOf((gapWeightPct / 2.0) / 100.0)).setScale(2, RoundingMode.HALF_UP);
-                } else {
-                    totalPool = BigDecimal.ZERO;
-                }
-            } else {
-                totalPool = BigDecimal.ZERO;
-            }
+            totalPool = BigDecimal.ZERO;
             sellSide = new SellSidePlanDto(
                 BigDecimal.ZERO,
                 List.of(
@@ -510,10 +496,9 @@ public class RebalancePlanEngine {
                         continue;
                     }
 
-                    BigDecimal dampenedTrim = excessVal;
-                    if (dampenedTrim.compareTo(BigDecimal.ZERO) > 0) {
-                        bucketTrims.put(target.bucket(), dampenedTrim);
-                        poolNeeded = poolNeeded.add(dampenedTrim);
+                    if (excessVal.compareTo(BigDecimal.ZERO) > 0) {
+                        bucketTrims.put(target.bucket(), excessVal);
+                        poolNeeded = poolNeeded.add(excessVal);
                     }
                 } else if (curVal.compareTo(targetVal) < 0) {
                     BigDecimal curWeightPct = sellSideActiveCorpus.compareTo(BigDecimal.ZERO) > 0
@@ -580,37 +565,69 @@ public class RebalancePlanEngine {
             BucketEngine.Bucket b = entry.getKey();
             BigDecimal neededForBucket = entry.getValue();
 
-            com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallResult waterfallResult =
-                com.portfolioos.core.valuation.RebalanceWaterfallEngine.buildTrimWaterfall(
-                    b,
-                    neededForBucket,
-                    workingLots,
-                    navMap != null ? navMap : Map.of(),
-                    currentHeadroom,
-                    isUrgent,
-                    today,
-                    fiscalYear
-                );
+            boolean isLiquid = (b == BucketEngine.Bucket.LIQUID_BUFFER || b == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
+            boolean isDrawdownLiquidDeploy = isLiquid && ("DRAWDOWN".equalsIgnoreCase(resolvedType) || ddPct >= 10.0);
+            boolean isStep0Legacy = (b == BucketEngine.Bucket.LEGACY_HOLDINGS);
 
-            if (waterfallResult.steps() != null) {
-                allSteps.addAll(waterfallResult.steps());
-                currentHeadroom = currentHeadroom.subtract(waterfallResult.ltcgExemptionConsumed()).max(BigDecimal.ZERO);
-                totalTaxEstimate = totalTaxEstimate.add(waterfallResult.totalTaxDrag());
+            if (isStep0Legacy) {
+                com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallResult res =
+                    com.portfolioos.core.valuation.RebalanceWaterfallEngine.buildTrimWaterfall(
+                        b, neededForBucket, workingLots, navMap != null ? navMap : Map.of(),
+                        currentHeadroom, isUrgent, today, fiscalYear, false, true, false
+                    );
+                if (res.steps() != null) {
+                    allSteps.addAll(res.steps());
+                    currentHeadroom = currentHeadroom.subtract(res.ltcgExemptionConsumed()).max(BigDecimal.ZERO);
+                    totalTaxEstimate = totalTaxEstimate.add(res.totalTaxDrag());
+                    updateWorkingLots(workingLots, res.steps());
+                }
+            } else if (isDrawdownLiquidDeploy) {
+                // Deploy exact rung excess (100% of the rung delta, no dampening)
+                com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallResult res =
+                    com.portfolioos.core.valuation.RebalanceWaterfallEngine.buildTrimWaterfall(
+                        b, neededForBucket, workingLots, navMap != null ? navMap : Map.of(),
+                        currentHeadroom, isUrgent, today, fiscalYear, false, true, true
+                    );
+                if (res.steps() != null) {
+                    allSteps.addAll(res.steps());
+                    currentHeadroom = currentHeadroom.subtract(res.ltcgExemptionConsumed()).max(BigDecimal.ZERO);
+                    totalTaxEstimate = totalTaxEstimate.add(res.totalTaxDrag());
+                    updateWorkingLots(workingLots, res.steps());
+                }
+            } else {
+                // 2-Case Tax-Aware Trim Sizing for overweight buckets during DRIFT / SCHEDULED_MAINTENANCE:
+                // Step A: allowTaxable = false up to excessVal (neededForBucket)
+                com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallResult stepA =
+                    com.portfolioos.core.valuation.RebalanceWaterfallEngine.buildTrimWaterfall(
+                        b, neededForBucket, workingLots, navMap != null ? navMap : Map.of(),
+                        currentHeadroom, isUrgent, today, fiscalYear, false, false, false
+                    );
+                if (stepA.steps() != null) {
+                    allSteps.addAll(stepA.steps());
+                    currentHeadroom = currentHeadroom.subtract(stepA.ltcgExemptionConsumed()).max(BigDecimal.ZERO);
+                    totalTaxEstimate = totalTaxEstimate.add(stepA.totalTaxDrag());
+                    updateWorkingLots(workingLots, stepA.steps());
+                }
 
-                for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep s : waterfallResult.steps()) {
-                    for (int i = 0; i < workingLots.size(); i++) {
-                        Lot l = workingLots.get(i);
-                        if (l.lotId().equals(s.lotId())) {
-                            BigDecimal newUnits = l.remainingUnits().subtract(s.unitsSold());
-                            if (newUnits.compareTo(BigDecimal.ZERO) <= 0) {
-                                workingLots.remove(i);
-                            } else {
-                                workingLots.set(i, l.withRemainingUnitsAndCost(
-                                    newUnits, l.costPerUnit(),
-                                    l.costPerUnit().multiply(newUnits).setScale(2, RoundingMode.HALF_UP)
-                                ));
-                            }
-                            break;
+                // Step B: If remaining excess > minTradeAmountInr, trim taxable fraction (50%)
+                BigDecimal remExcess = neededForBucket.subtract(stepA.satisfiedAmount()).max(BigDecimal.ZERO);
+                BigDecimal minOrder = v24Config.globalInvariants().minTradeAmountInr();
+                BigDecimal taxableTrimFraction = v24Config.globalInvariants().taxableTrimFraction() != null
+                    ? v24Config.globalInvariants().taxableTrimFraction() : new BigDecimal("0.50");
+
+                if (remExcess.compareTo(minOrder) > 0) {
+                    BigDecimal taxableTrimTarget = remExcess.multiply(taxableTrimFraction).setScale(2, RoundingMode.HALF_UP);
+                    if (taxableTrimTarget.compareTo(minOrder) >= 0) {
+                        com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallResult stepB =
+                            com.portfolioos.core.valuation.RebalanceWaterfallEngine.buildTrimWaterfall(
+                                b, taxableTrimTarget, workingLots, navMap != null ? navMap : Map.of(),
+                                currentHeadroom, isUrgent, today, fiscalYear, false, true, false
+                            );
+                        if (stepB.steps() != null) {
+                            allSteps.addAll(stepB.steps());
+                            currentHeadroom = currentHeadroom.subtract(stepB.ltcgExemptionConsumed()).max(BigDecimal.ZERO);
+                            totalTaxEstimate = totalTaxEstimate.add(stepB.totalTaxDrag());
+                            updateWorkingLots(workingLots, stepB.steps());
                         }
                     }
                 }
@@ -742,7 +759,7 @@ public class RebalancePlanEngine {
                     soldArbitrageLots.add(lotImpact);
                     soldArbitrageAmount = soldArbitrageAmount.add(step.proceeds());
                     bucketSoldAmounts.put(lotBucket, bucketSoldAmounts.getOrDefault(lotBucket, BigDecimal.ZERO).add(step.proceeds()));
-                } else if (step.tier() == com.portfolioos.core.valuation.WaterfallTier.LEGACY_FUND) {
+                } else if (rawBucket == BucketEngine.Bucket.LEGACY_HOLDINGS || step.tier() == com.portfolioos.core.valuation.WaterfallTier.LEGACY_FUND) {
                     soldLegacyLots.add(lotImpact);
                     soldLegacyAmount = soldLegacyAmount.add(step.proceeds());
                 } else {
@@ -837,11 +854,17 @@ public class RebalancePlanEngine {
             BigDecimal targetVal = postActiveCorpus.multiply(target.targetPct()).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
             BigDecimal shortfall = targetVal.subtract(curVal).max(BigDecimal.ZERO);
+            if (isLumpsum && ddPct >= 10.0) {
+                if (target.bucket() == BucketEngine.Bucket.LIQUID_BUFFER || target.bucket() == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE
+                    || target.bucket() == BucketEngine.Bucket.GOLD_SILVER || target.bucket() == BucketEngine.Bucket.HEDGE_COMMODITY) {
+                    shortfall = BigDecimal.ZERO;
+                }
+            }
             bucketShortfalls.put(target.bucket(), shortfall);
             totalShortfall = totalShortfall.add(shortfall);
         }
 
-        // Determine TriggerType for v2.4 water-filling routing
+        // Determine TriggerType for v3.0 routing
         com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType tType;
         if ("SCHEDULED".equalsIgnoreCase(resolvedType) || "SCHEDULED_MAINTENANCE".equalsIgnoreCase(resolvedType)) {
             tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.SCHEDULED_MAINTENANCE;
@@ -849,8 +872,8 @@ public class RebalancePlanEngine {
             tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.DRAWDOWN;
         } else if ("DRIFT".equalsIgnoreCase(resolvedType)) {
             tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.DRIFT;
-        } else if ("GOLD_FLOOR_BACKSTOP".equalsIgnoreCase(resolvedType)) {
-            tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.GOLD_FLOOR_BACKSTOP;
+        } else if ("CASH_INFLOW_NEEDED".equalsIgnoreCase(resolvedType)) {
+            tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.CASH_INFLOW_NEEDED;
         } else {
             tType = com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.NONE;
         }
@@ -907,10 +930,8 @@ public class RebalancePlanEngine {
             if (routingResult != null) {
                 com.portfolioos.core.config.BucketTargetsConfig.BucketType bType = mapToV24BucketType(target.bucket());
                 amountAllocated = routingResult.bucketBuysInr().getOrDefault(bType, BigDecimal.ZERO);
-            } else if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
-                if (target.bucket() == BucketEngine.Bucket.GOLD_SILVER) {
-                    amountAllocated = totalPool;
-                }
+            } else if ("CASH_INFLOW_NEEDED".equals(resolvedType)) {
+                amountAllocated = BigDecimal.ZERO;
             } else if (totalShortfall.compareTo(BigDecimal.ZERO) > 0 && shortfall.compareTo(BigDecimal.ZERO) > 0) {
                 amountAllocated = totalPool.multiply(shortfall).divide(totalShortfall, 2, RoundingMode.HALF_UP).min(shortfall);
             }
@@ -965,10 +986,21 @@ public class RebalancePlanEngine {
             paragraphs.add(String.format("Current portfolio drawdown is %.1f%% below rolling high of ₹%,d.", ddPct, high.longValue()));
             paragraphs.add(String.format("Target allocations reference Config Version %s (effective from %s).", activeVersion.versionId(), activeVersion.effectiveFrom()));
         } else if (!resolution.hasSellSide()) {
-            if ("GOLD_FLOOR_BACKSTOP".equals(resolvedType)) {
-                headline = String.format("Gold Floor Backstop Triggered — Buy-Side Allocation of ₹%,d", totalPool.longValue());
-                paragraphs.add("Gold/Silver bucket has been idle from buy allocations for 6+ months and is underweight target allocation.");
-                paragraphs.add(String.format("Allocating ₹%,d top-up to close 50%% of remaining gap (exempt from sell cooldown).", totalPool.longValue()));
+            if ("CASH_INFLOW_NEEDED".equals(resolvedType)) {
+                headline = "Cash Inflow Needed — Underweight Buckets Detected (0 Sells)";
+                paragraphs.add("Underweight bucket(s) detected: " + resolution.reasonLabel());
+                paragraphs.add("No assets sold (0 sells). Route fresh bank cash / SIP surplus to close deficits without selling equity or incurring tax drag.");
+                if (bucketShortfalls != null && !bucketShortfalls.isEmpty()) {
+                    List<String> defNotes = new ArrayList<>();
+                    for (Map.Entry<BucketEngine.Bucket, BigDecimal> entry : bucketShortfalls.entrySet()) {
+                        if (entry.getValue().compareTo(BigDecimal.ZERO) > 0) {
+                            defNotes.add(String.format("%s: ₹%,d", entry.getKey().name(), entry.getValue().longValue()));
+                        }
+                    }
+                    if (!defNotes.isEmpty()) {
+                        paragraphs.add("Exact bucket deficit(s) to fund via bank cash: " + String.join(", ", defNotes));
+                    }
+                }
             } else {
                 headline = String.format("No Rebalance Required — %s", resolution.reasonLabel());
                 paragraphs.add(String.format("Current portfolio status: %s.", resolution.reasonLabel()));
@@ -1052,6 +1084,8 @@ public class RebalancePlanEngine {
                                 ? l.taxImpact().exemptionApplied() : BigDecimal.ZERO;
                             boolean withinExitLoad = l.holdingDays() < com.portfolioos.core.valuation.ExitLoadCalculator.getRequiredExitLoadDays(l.fundId(), l.fundName());
                             String folio = lotFolioMap.get(l.lotId());
+                            boolean isArbitrage = "ARBITRAGE_BUFFER".equals(t.tier()) || (l.fundName() != null && l.fundName().toLowerCase().contains("arbitrage"));
+                            boolean isPositiveGainStcg = "SHORT_TERM".equals(l.taxTerm()) && l.realizedGain().compareTo(BigDecimal.ZERO) > 0 && !isArbitrage;
                             soldLotOrders.add(new com.portfolioos.core.valuation.RebalanceInvariantVerifier.LotOrder(
                                 l.lotId(),
                                 folio,
@@ -1060,7 +1094,8 @@ public class RebalancePlanEngine {
                                 l.saleProceeds(),
                                 estTax,
                                 ltcgUsed,
-                                withinExitLoad
+                                withinExitLoad,
+                                isPositiveGainStcg
                             ));
                         }
                     }
@@ -1133,7 +1168,7 @@ public class RebalancePlanEngine {
                 ? sellSide.taxSummary().exemptionHeadroomBefore() : (headroomBefore != null ? headroomBefore : BigDecimal.ZERO);
 
             boolean coreTrimmed = bucketSoldAmounts.getOrDefault(BucketEngine.Bucket.EQUITY_CORE, BigDecimal.ZERO).compareTo(BigDecimal.ZERO) > 0;
-            BigDecimal effectiveCorpus = postActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? postActiveCorpus : sellSideActiveCorpus;
+            BigDecimal effectiveCorpus = postActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? postActiveCorpus : (sellSideActiveCorpus.compareTo(BigDecimal.ZERO) > 0 ? sellSideActiveCorpus : liveCorpus);
 
             com.portfolioos.core.valuation.RebalanceInvariantVerifier.VerifiablePlan vPlan =
                 new com.portfolioos.core.valuation.RebalanceInvariantVerifier.VerifiablePlan(
@@ -1372,16 +1407,35 @@ public class RebalancePlanEngine {
         };
     }
 
+    private static void updateWorkingLots(List<Lot> workingLots, List<com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep> steps) {
+        if (steps == null || workingLots == null) return;
+        for (com.portfolioos.core.valuation.RebalanceWaterfallEngine.WaterfallStep s : steps) {
+            for (int i = 0; i < workingLots.size(); i++) {
+                Lot l = workingLots.get(i);
+                if (l.lotId().equals(s.lotId())) {
+                    BigDecimal newUnits = l.remainingUnits().subtract(s.unitsSold());
+                    if (newUnits.compareTo(BigDecimal.ZERO) <= 0) {
+                        workingLots.remove(i);
+                    } else {
+                        workingLots.set(i, l.withRemainingUnitsAndCost(
+                            newUnits, l.costPerUnit(),
+                            l.costPerUnit().multiply(newUnits).setScale(2, RoundingMode.HALF_UP)
+                        ));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     /**
      * Core Lumpsum Allocation Parity Helper.
      * Computes lump-sum deployment amounts across portfolio buckets given an available cash corpus
-     * and an existing RebalancePlanDto, implementing the identical 2-step priority contract as
-     * mobile's LocalTradeSimulator.allocateLumpsum:
-     * 1. Gold Floor Backstop: If trigger.type() is "GOLD_FLOOR_BACKSTOP", route up to 50% of the Gold
-     *    bucket deficit first (min(remainingCash, goldTargetAmount * 0.50)).
-     * 2. Drawdown Regime Exclusion & Proportional Allocation: If drawdownPct >= 10.0, exclude LIQUID_BUFFER
-     *    and ARBITRAGE from fresh capital injection, distributing remaining cash proportionally to
-     *    underweight bucket deficits (or target weights if none are underweight).
+     * and an existing RebalancePlanDto:
+     * - Normal regime (ddPct < 10.0): distribute proportionally to underweight deficits across all 4 buckets
+     *   (or target weights if none are underweight). Refills Gold and Arbitrage alongside equity.
+     * - Drawdown regime (ddPct >= 10.0): exclude both LIQUID_BUFFER and GOLD_SILVER; route 100% into
+     *   underweight EQUITY_CORE / EQUITY_SATELLITE.
      *
      * @param availableCash Cash amount available for lump-sum deployment
      * @param rebalancePlan Existing rebalance plan containing target buckets and trigger/drawdown context
@@ -1400,62 +1454,19 @@ public class RebalancePlanEngine {
         BigDecimal remainingCash = availableCash;
         Map<String, BigDecimal> allocations = new LinkedHashMap<>();
 
-        String triggerType = rebalancePlan.trigger() != null ? rebalancePlan.trigger().type() : null;
         double drawdownPct = 0.0;
         if (rebalancePlan.trigger() != null && rebalancePlan.trigger().drawdownContext() != null) {
             drawdownPct = rebalancePlan.trigger().drawdownContext().currentDrawdownPct();
         }
 
-        // 1. Gold Floor Backstop: When trigger is GOLD_FLOOR_BACKSTOP, route up to 50% of the Gold gap first
-        if ("GOLD_FLOOR_BACKSTOP".equalsIgnoreCase(triggerType)) {
-            RebalanceBucketAllocationDto goldBucket = null;
-            for (RebalanceBucketAllocationDto b : buckets) {
-                String nameUpper = b.bucket().toUpperCase();
-                if (nameUpper.contains("GOLD") || nameUpper.contains("COMMODITY") || nameUpper.contains("HEDGE")) {
-                    goldBucket = b;
-                    break;
-                }
-            }
-            if (goldBucket != null) {
-                double goldGapPct = Math.max(0.0, goldBucket.targetPct() - goldBucket.currentPct());
-                if (goldGapPct > 0.0) {
-                    BigDecimal totalCorpus = BigDecimal.ZERO;
-                    for (RebalanceBucketAllocationDto b : buckets) {
-                        if (b.fundBreakdown() != null) {
-                            for (FundAllocationDto f : b.fundBreakdown()) {
-                                if (f.preValuation() != null) {
-                                    totalCorpus = totalCorpus.add(f.preValuation());
-                                }
-                            }
-                        }
-                    }
-                    BigDecimal baseCorpus = totalCorpus.compareTo(BigDecimal.ZERO) > 0
-                        ? totalCorpus
-                        : ((buySide.totalToInvest() != null && buySide.totalToInvest().compareTo(BigDecimal.ZERO) > 0)
-                            ? buySide.totalToInvest()
-                            : availableCash);
-                    BigDecimal goldTargetAmount = baseCorpus.multiply(BigDecimal.valueOf(goldGapPct / 100.0));
-                    BigDecimal halfGap = goldTargetAmount.multiply(BigDecimal.valueOf(0.50));
-                    BigDecimal backstopFill = halfGap.compareTo(BigDecimal.ZERO) > 0
-                        ? remainingCash.min(halfGap)
-                        : remainingCash.min(availableCash.multiply(BigDecimal.valueOf(0.50)));
-                    allocations.put(goldBucket.bucket(), backstopFill.setScale(2, RoundingMode.HALF_UP));
-                    remainingCash = remainingCash.subtract(backstopFill);
-                }
-            }
-        }
-
-        if (remainingCash.compareTo(BigDecimal.ZERO) <= 0) {
-            return allocations;
-        }
-
-        // 2. Drawdown Regime-Shifted Target Awareness:
-        // During market crash (drawdown >= 10%), never route fresh lumpsum cash into LIQUID_BUFFER / ARBITRAGE!
+        // Drawdown Regime Exclusion:
+        // During market crash (drawdown >= 10%), exclude BOTH LIQUID_BUFFER and GOLD_SILVER (100% into Core / Satellite)
         List<RebalanceBucketAllocationDto> effectiveBuckets = new ArrayList<>();
         for (RebalanceBucketAllocationDto b : buckets) {
             if (drawdownPct >= 10.0) {
                 String nameUpper = b.bucket().toUpperCase();
-                if (nameUpper.contains("LIQUID") || nameUpper.contains("ARBITRAGE")) {
+                if (nameUpper.contains("LIQUID") || nameUpper.contains("ARBITRAGE")
+                    || nameUpper.contains("GOLD") || nameUpper.contains("COMMODITY") || nameUpper.contains("HEDGE")) {
                     continue;
                 }
             }

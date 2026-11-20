@@ -137,18 +137,18 @@ class RebalanceV24RegressionTest {
     }
 
     // =========================================================================
-    // V3: Dynamic Derivation of coreTrimmed from Config Schemes
+    // V3: Policy v3.0 Invariant 4 Drawdown Leakage & Core-Satellite Pool Integration
     // =========================================================================
     @Test
-    @DisplayName("V3: Verifier dynamically derives coreTrimmed if sold lot is in EQUITY_CORE schemes, rejecting Satellite buys")
+    @DisplayName("V3: Verifier asserts DRAWDOWN crisis deployment never leaks into GOLD_SILVER")
     void testV3DynamicCoreTrimmedDerivation() {
         VerifiablePlan plan = new VerifiablePlan(
-            TriggerType.DRIFT, false,
-            false, // plan claim: coreTrimmed = false!
+            TriggerType.DRAWDOWN, false,
+            false,
             new BigDecimal("1000000.00"),
-            List.of(new LotOrder("F1", "INF109KC12U0", LocalDate.now().minusDays(400), new BigDecimal("10000.00"), BigDecimal.ZERO, BigDecimal.ZERO, false)), // but INF109KC12U0 is LargeMid 250 (EQUITY_CORE)
+            List.of(new LotOrder("F1", "INF205K01QN0", LocalDate.now().minusDays(400), new BigDecimal("10000.00"), BigDecimal.ZERO, BigDecimal.ZERO, false)),
             Map.of(),
-            List.of(new BuyOrder(BucketType.EQUITY_SATELLITE, "INF109KC13X2", new BigDecimal("10000.00"))), // routes to satellite!
+            List.of(new BuyOrder(BucketType.GOLD_SILVER, "INF247L01BM8", new BigDecimal("10000.00"))), // crisis leaked to gold!
             Map.of(BucketType.LIQUID_BUFFER, new BigDecimal("100000.00")),
             BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("125000.00")
         );
@@ -157,7 +157,7 @@ class RebalanceV24RegressionTest {
             verifier.assertAllInvariants(plan, config)
         );
         assertTrue(ex.getMessage().contains("INVARIANT_4_VIOLATION"));
-        assertTrue(ex.getMessage().contains("EQUITY_CORE proceeds routed into EQUITY_SATELLITE"));
+        assertTrue(ex.getMessage().contains("Crisis DRAWDOWN deployment leaked into GOLD_SILVER"));
     }
 
     // =========================================================================
@@ -238,9 +238,9 @@ class RebalanceV24RegressionTest {
             targetWeights
         );
 
-        // CoreTrim must NOT leak into Satellite despite 100,000 deficit!
-        assertEquals(0, result.bucketBuysInr().get(BucketType.EQUITY_SATELLITE).compareTo(BigDecimal.ZERO),
-            "Satellite buys MUST be 0.00 when Core is trimmed");
+        // Policy v3.0: Core -> Satellite firewall dropped; combined sell proceeds pool proportionally
+        assertTrue(result.bucketBuysInr().get(BucketType.EQUITY_SATELLITE).compareTo(BigDecimal.ZERO) > 0,
+            "Policy v3.0: Satellite buys ARE allowed from combined pool when underweight");
 
         List<BuyOrder> buyOrders = result.bucketBuysInr().entrySet().stream()
             .filter(e -> e.getValue().compareTo(BigDecimal.ZERO) > 0)
@@ -277,19 +277,19 @@ class RebalanceV24RegressionTest {
     // E1: Scheduled Trigger Idempotency per (Year, Month)
     // =========================================================================
     @Test
-    @DisplayName("E1: Scheduled trigger fires once per (Year, Month) and is suppressed after recorded execution")
+    @DisplayName("E1: Scheduled trigger fires once per (Year, Month) in March and is suppressed after recorded execution")
     void testE1ScheduledTriggerIdempotency() {
-        LocalDate septDate = LocalDate.of(2026, 9, 15);
+        LocalDate marchDate = LocalDate.of(2027, 3, 15);
         BigDecimal nav = new BigDecimal("100.00");
 
         List<Lot> openLots = List.of(
-            new Lot("l1", "INF109KC12U0", "ICICI LargeMidcap 250", septDate.minusMonths(6), new BigDecimal("3000"), new BigDecimal("3000"), nav, new BigDecimal("300000.00"), false, null),
-            new Lot("l2", "INF879O01027", "Parag Parikh Flexi Cap", septDate.minusMonths(6), new BigDecimal("2000"), new BigDecimal("2000"), nav, new BigDecimal("200000.00"), false, null),
-            new Lot("l3", "INF109KC13X2", "ICICI Value 30", septDate.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null),
-            new Lot("l4", "INF754K01TN5", "Edelweiss Momentum 50", septDate.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null),
-            new Lot("l5", "INF204K01K15", "Nippon Small Cap", septDate.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null),
-            new Lot("l6", "INF247L01BM8", "Motilal Gold Silver", septDate.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null),
-            new Lot("l7", "INF205K01KR8", "Invesco Arbitrage", septDate.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null)
+            new Lot("l1", "INF109KC12U0", "ICICI LargeMidcap 250", marchDate.minusMonths(6), new BigDecimal("3000"), new BigDecimal("3000"), nav, new BigDecimal("300000.00"), false, null),
+            new Lot("l2", "INF879O01027", "Parag Parikh Flexi Cap", marchDate.minusMonths(6), new BigDecimal("2000"), new BigDecimal("2000"), nav, new BigDecimal("200000.00"), false, null),
+            new Lot("l3", "INF109KC13X2", "ICICI Value 30", marchDate.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null),
+            new Lot("l4", "INF754K01TN5", "Edelweiss Momentum 50", marchDate.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null),
+            new Lot("l5", "INF204K01K15", "Nippon Small Cap", marchDate.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null),
+            new Lot("l6", "INF247L01BM8", "Motilal Gold Silver", marchDate.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null),
+            new Lot("l7", "INF205K01KR8", "Invesco Arbitrage", marchDate.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null)
         );
         Map<String, BigDecimal> navMap = Map.of(
             "INF109KC12U0", nav,
@@ -301,27 +301,27 @@ class RebalanceV24RegressionTest {
             "INF205K01KR8", nav
         );
 
-        // First run in September 2026 -> Fires SCHEDULED
+        // First run in March 2027 -> Fires SCHEDULED_MAINTENANCE
         TriggerResolution res1 = evaluator.getCurrentStatus(
-            openLots, navMap, new BigDecimal("25000.00"), new BigDecimal("25000.00"), null, null, septDate
+            openLots, navMap, new BigDecimal("25000.00"), new BigDecimal("25000.00"), null, null, marchDate
         );
-        assertEquals("SCHEDULED", res1.triggerType());
+        assertEquals("SCHEDULED_MAINTENANCE", res1.triggerType());
 
-        // Record execution in repository for September 2026
-        repository.recordScheduledRunExecution(2026, 9, septDate.atStartOfDay());
+        // Record execution in repository for March 2027
+        repository.recordScheduledRunExecution(2027, 3, marchDate.atStartOfDay());
 
-        // Second run on September 16 -> Suppressed by idempotency (returns NONE)
+        // Second run on March 16 -> Suppressed by idempotency (returns NONE)
         TriggerResolution res2 = evaluator.getCurrentStatus(
-            openLots, navMap, new BigDecimal("25000.00"), new BigDecimal("25000.00"), null, null, septDate.plusDays(1)
+            openLots, navMap, new BigDecimal("25000.00"), new BigDecimal("25000.00"), null, null, marchDate.plusDays(1)
         );
         assertEquals("NONE", res2.triggerType(), "Scheduled trigger must not fire twice in the same (Year, Month)");
     }
 
     // =========================================================================
-    // E2: Blackout Ceiling Math: (48 + 23) / 24 = 2 Days
+    // E2: Policy v3.0 Scheduled Trigger Month Restriction (March Only)
     // =========================================================================
     @Test
-    @DisplayName("E2: NSE reconstitution blackout suppresses scheduled trigger within last 48h (Sep 29, Sep 30)")
+    @DisplayName("E2: Policy v3.0 suppresses scheduled trigger in non-March months")
     void testE2BlackoutCeilingMath() {
         BigDecimal nav = new BigDecimal("100.00");
         List<Lot> openLots = List.of(
@@ -343,37 +343,34 @@ class RebalanceV24RegressionTest {
             "INF205K01KR8", nav
         );
 
-        // September 30 -> 0 days left before Sep 30 -> inside 48h (2-day) blackout window!
-        LocalDate sept30 = LocalDate.of(2026, 9, 30);
-        TriggerResolution resBlackout = evaluator.getCurrentStatus(
-            openLots, navMap, new BigDecimal("25000.00"), new BigDecimal("25000.00"), null, null, sept30
-        );
-        assertEquals("NONE", resBlackout.triggerType(), "Scheduled trigger must be paused inside NSE blackout window");
-
-        // September 25 -> 5 days left -> outside blackout window -> fires SCHEDULED
+        // September 25 (non-March) -> Scheduled trigger returns NONE
         LocalDate sept25 = LocalDate.of(2026, 9, 25);
-        TriggerResolution resAllowed = evaluator.getCurrentStatus(
+        TriggerResolution resNonMarch = evaluator.getCurrentStatus(
             openLots, navMap, new BigDecimal("25000.00"), new BigDecimal("25000.00"), null, null, sept25
         );
-        assertEquals("SCHEDULED", resAllowed.triggerType());
+        assertEquals("NONE", resNonMarch.triggerType(), "Scheduled trigger must NOT fire in non-March months");
+
+        // March 25 -> Fires SCHEDULED_MAINTENANCE
+        LocalDate march25 = LocalDate.of(2027, 3, 25);
+        TriggerResolution resMarch = evaluator.getCurrentStatus(
+            openLots, navMap, new BigDecimal("25000.00"), new BigDecimal("25000.00"), null, null, march25
+        );
+        assertEquals("SCHEDULED_MAINTENANCE", resMarch.triggerType(), "Scheduled trigger MUST fire in March");
     }
 
     // =========================================================================
     // E3: Config Ascending Sort Invariant
     // =========================================================================
     @Test
-    @DisplayName("E3: Drawdown rungs and dampener tiers are strictly sorted ascending in BucketTargetsConfig constructor")
+    @DisplayName("E3: Drawdown rungs are strictly sorted ascending in BucketTargetsConfig constructor")
     void testE3ConfigAscendingSort() {
         for (int i = 0; i < config.drawdownRungs().size() - 1; i++) {
             BigDecimal curr = config.drawdownRungs().get(i).drawdownPct();
             BigDecimal next = config.drawdownRungs().get(i + 1).drawdownPct();
             assertTrue(curr.compareTo(next) < 0, "Drawdown rungs must be sorted ascending");
         }
-        for (int i = 0; i < config.dampenerTiers().size() - 1; i++) {
-            BigDecimal curr = config.dampenerTiers().get(i).maxRelativeExcessPct();
-            BigDecimal next = config.dampenerTiers().get(i + 1).maxRelativeExcessPct();
-            assertTrue(curr.compareTo(next) < 0, "Dampener tiers must be sorted ascending");
-        }
+        assertEquals(0, new BigDecimal("0.50").compareTo(config.globalInvariants().taxableTrimFraction()),
+            "Global invariants must provide taxableTrimFraction = 0.50 in Policy v3.0");
     }
 
     // =========================================================================
@@ -486,11 +483,11 @@ class RebalanceV24RegressionTest {
     }
 
     @Test
-    @DisplayName("Gold Floor Backstop: sub-₹1,000 dust pool routes to cash overflow and does not violate Invariant V1")
-    void testGoldFloorBackstopSubMinOrderRoutesToOverflow() {
+    @DisplayName("CASH_INFLOW_NEEDED: sub-minOrder dust pool in DRIFT routes to cash overflow without violating Invariant 1")
+    void testDriftSubMinOrderRoutesToOverflow() {
         RoutingResult result = RebalanceWaterfallEngine.routeProceedsV24(
             config,
-            TriggerType.GOLD_FLOOR_BACKSTOP,
+            TriggerType.DRIFT,
             BigDecimal.ZERO,
             new BigDecimal("800.00"), // ₹800 sub-minOrder dust!
             new BigDecimal("1000000.00"),
@@ -520,9 +517,9 @@ class RebalanceV24RegressionTest {
             .toList();
 
         VerifiablePlan plan = new VerifiablePlan(
-            TriggerType.GOLD_FLOOR_BACKSTOP, false, false,
+            TriggerType.DRIFT, false, false,
             new BigDecimal("1000000.00"),
-            List.of(),
+            List.of(new LotOrder("F1", "INF109KC12U0", LocalDate.now().minusDays(400), new BigDecimal("800.00"), BigDecimal.ZERO, BigDecimal.ZERO, false)),
             Map.of(),
             buyOrders, // empty buy orders
             Map.of(BucketType.LIQUID_BUFFER, new BigDecimal("100000.00")),

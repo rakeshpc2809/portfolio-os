@@ -77,18 +77,18 @@ public class BucketEngineTest {
         assertEquals(0, new BigDecimal("10.00").compareTo(findTarget(holdTargetsFull, BucketEngine.Bucket.LIQUID_BUFFER)));
         assertEquals(0, new BigDecimal("50.00").compareTo(findTarget(holdTargetsFull, BucketEngine.Bucket.EQUITY_CORE)));
 
-        // Regime 3: Correction Rung 1 (10% <= DD < 15%) -> Liquid 7.5%, Core 52.5%
+        // Regime 3: Correction Rung 1 (10% <= DD < 20%) -> Liquid 7.5%, Core 52.5%
         List<BucketEngine.BucketTarget> rung1Targets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, 12.0, new BigDecimal("10.0"));
         assertEquals(0, new BigDecimal("7.50").compareTo(findTarget(rung1Targets, BucketEngine.Bucket.LIQUID_BUFFER)));
         assertEquals(0, new BigDecimal("52.50").compareTo(findTarget(rung1Targets, BucketEngine.Bucket.EQUITY_CORE)));
 
-        // Regime 4: Bear Market Rung 2 (15% <= DD < 20%) -> Liquid 5.0%, Core 55.0%
-        List<BucketEngine.BucketTarget> rung2Targets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, 16.5, new BigDecimal("7.5"));
+        // Regime 4: Bear Market Rung 2 (20% <= DD < 30%) -> Liquid 5.0%, Core 55.0%
+        List<BucketEngine.BucketTarget> rung2Targets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, 22.0, new BigDecimal("7.5"));
         assertEquals(0, new BigDecimal("5.00").compareTo(findTarget(rung2Targets, BucketEngine.Bucket.LIQUID_BUFFER)));
         assertEquals(0, new BigDecimal("55.00").compareTo(findTarget(rung2Targets, BucketEngine.Bucket.EQUITY_CORE)));
 
-        // Regime 5: Capitulation Rung 3 (DD >= 20%) -> Liquid 0.0%, Core 60.0%
-        List<BucketEngine.BucketTarget> rung3Targets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, 22.0, new BigDecimal("5.0"));
+        // Regime 5: Capitulation Rung 3 (DD >= 30%) -> Liquid 0.0%, Core 60.0%
+        List<BucketEngine.BucketTarget> rung3Targets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, 32.0, new BigDecimal("5.0"));
         assertEquals(0, new BigDecimal("0.00").compareTo(findTarget(rung3Targets, BucketEngine.Bucket.LIQUID_BUFFER)));
         assertEquals(0, new BigDecimal("60.00").compareTo(findTarget(rung3Targets, BucketEngine.Bucket.EQUITY_CORE)));
 
@@ -118,17 +118,17 @@ public class BucketEngineTest {
             "INF205K01QU7", new BigDecimal("100")
         );
 
-        // 20% drawdown on Nifty 500
+        // 30% drawdown on Nifty 500 (Rung 3: 100% deploy)
         BigDecimal benchmarkHigh = new BigDecimal("10000.00");
-        BigDecimal benchmarkCurrent = new BigDecimal("8000.00");
+        BigDecimal benchmarkCurrent = new BigDecimal("7000.00");
 
         BucketEngine.RebalanceEngineResult result = BucketEngine.evaluateRebalance(
             List.of(coreLot, arbLot), List.of(), navMap, date, benchmarkCurrent, benchmarkHigh, TEST_TARGETS, "2026-27"
         );
 
         assertNotNull(result);
-        assertTrue(result.drawdownTriggerFired(), "Drawdown trigger must fire on 20% benchmark drop");
-        assertEquals(0, new BigDecimal("20.00").compareTo(result.drawdownStatus().drawdownPct()));
+        assertTrue(result.drawdownTriggerFired(), "Drawdown trigger must fire on 30% benchmark drop");
+        assertEquals(0, new BigDecimal("30.00").compareTo(result.drawdownStatus().drawdownPct()));
         assertEquals(0, new BigDecimal("100.0").compareTo(result.drawdownStatus().recommendedBufferDeployPct()));
 
         // Check recommendations: Must contain SELL for Arbitrage, BUY for Core, and ZERO secondary BUY for Arbitrage
@@ -207,10 +207,10 @@ public class BucketEngineTest {
             .anyMatch(r -> r.bucket() == BucketEngine.Bucket.LIQUID_BUFFER && "SELL".equals(r.action()));
         assertFalse(hasArbSellRefireT1, "Same-tier refire must be idempotent and deploy ₹0 when target buffer remaining is met");
 
-        // 3. Tier 2 (-15%): current = 8500
+        // 3. Tier 2 (-20%): current = 8000
         // Cumulative target buffer is 50% of ₹300,000 = ₹150,000 remaining.
         // Current balance is ₹225,000 -> incremental tranche deploy = ₹225,000 - ₹150,000 = ₹75,000!
-        BigDecimal benchmarkT2 = new BigDecimal("8500.00");
+        BigDecimal benchmarkT2 = new BigDecimal("8000.00");
         BucketEngine.RebalanceEngineResult r2 = BucketEngine.evaluateRebalance(
             List.of(coreLot, arbLotT1Refire), List.of(), navMap, date.plusDays(40), benchmarkT2, benchmarkHigh, TEST_TARGETS, "2026-27", repo
         );
@@ -231,10 +231,10 @@ public class BucketEngineTest {
             .anyMatch(r -> r.bucket() == BucketEngine.Bucket.LIQUID_BUFFER && "SELL".equals(r.action()));
         assertFalse(hasArbSellRefireT2, "Same-tier refire at Tier 2 must deploy ₹0 when target buffer remaining (₹150k) is met");
 
-        // 5. Tier 3 (-20%): current = 8000
+        // 5. Tier 3 (-30%): current = 7000
         // Cumulative target buffer is 0% remaining (100% deployed).
         // Current balance is ₹150,000 -> deploys remaining ₹150,000!
-        BigDecimal benchmarkT3 = new BigDecimal("8000.00");
+        BigDecimal benchmarkT3 = new BigDecimal("7000.00");
         BucketEngine.RebalanceEngineResult r3 = BucketEngine.evaluateRebalance(
             List.of(coreLot, arbLotT2Refire), List.of(), navMap, date.plusDays(80), benchmarkT3, benchmarkHigh, TEST_TARGETS, "2026-27", repo
         );

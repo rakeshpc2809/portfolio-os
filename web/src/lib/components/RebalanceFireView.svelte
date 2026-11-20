@@ -160,7 +160,7 @@
     <div class="banner-content">
       <div class="trigger-pill mono">
         <Sliders size={14} class="text-cyan" />
-        <span>PLAN TRIGGER: {rebalancePlan?.trigger?.reason_label || 'DRIFT RESTORATION (POLICY v2.3)'}</span>
+        <span>PLAN TRIGGER: {rebalancePlan?.trigger?.reason_label || 'DRIFT RESTORATION (POLICY v3.0)'}</span>
       </div>
       <h2 class="hero-title">Deterministic Capital Rebalance Lab</h2>
       <p class="hero-desc">
@@ -179,6 +179,25 @@
     </div>
   </div>
 
+  {#if rebalancePlan?.trigger?.trigger_type === 'CASH_INFLOW_NEEDED'}
+    <div class="cash-inflow-banner obsidian-card">
+      <div class="cash-inflow-content">
+        <div class="cash-inflow-header">
+          <AlertCircle size={18} class="text-amber" />
+          <strong class="text-amber font-semibold">Underweight Bucket(s) Detected — Fresh Bank Inflow Recommended</strong>
+        </div>
+        <p class="cash-inflow-desc text-muted">
+          {rebalancePlan?.trigger?.reason_label || 'Underweight bucket(s) detected. Fresh capital inflow recommended (0 sells required).'}
+          No asset sales required. Click below to deploy fresh bank savings directly into underweight targets without tax drag.
+        </p>
+      </div>
+      <button type="button" class="lumpsum-cta-btn highlight" onclick={onopenlumpsum}>
+        <Coins size={16} />
+        <span>Deploy Bank Savings</span>
+      </button>
+    </div>
+  {/if}
+
   <!-- SECTION 1: VISUAL WATERFALL & ROUTING PIPELINE -->
   <div class="visual-panel obsidian-card">
     <div class="panel-header">
@@ -188,7 +207,7 @@
         </div>
         <div>
           <h3 class="panel-title">Visual Capital Rebalancing Waterfall</h3>
-          <span class="panel-sub">Finance Act 2024 & Policy v2.3 execution pipeline: Step-by-step routing flow</span>
+          <span class="panel-sub">Finance Act 2024 & Policy v3.0 execution pipeline: Step-by-step routing flow</span>
         </div>
       </div>
       <div class="waterfall-total-badge mono">
@@ -236,11 +255,6 @@
               <div class="prov-item">
                 <span class="prov-name">Fresh Cash Lumpsum Inflow</span>
                 <strong class="prov-amount mono text-cyan">+{formatINR(rebalancePlan?.buy_side?.total_to_invest ?? 0, quietMode)}</strong>
-              </div>
-            {:else}
-              <div class="prov-item">
-                <span class="prov-name">Portfolio Cash Buffer / Rebalance Trim Pool</span>
-                <strong class="prov-amount mono text-emerald">+{formatINR(rebalancePlan?.buy_side?.total_to_invest ?? 0, quietMode)}</strong>
               </div>
             {/if}
           </div>
@@ -769,6 +783,40 @@
     background: var(--surface-card-hover);
     color: var(--text-main);
     border-color: var(--accent-cyan);
+  }
+
+  .lumpsum-cta-btn.highlight {
+    background: rgba(6, 182, 212, 0.1);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+  }
+
+  .cash-inflow-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    background: var(--surface-card);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: var(--radius-lg);
+    gap: 16px;
+  }
+  .cash-inflow-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cash-inflow-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+  }
+  .cash-inflow-desc {
+    font-size: 0.85rem;
+    margin: 0;
+    line-height: 1.4;
   }
 
   /* Panels */

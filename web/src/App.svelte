@@ -135,7 +135,7 @@
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('Failed to download ITR-2 zip:', err);
-      errorMessage = err?.message || 'Failed to download ITR-2 zip';
+      error = err?.message || 'Failed to download ITR-2 zip';
     }
   }
 

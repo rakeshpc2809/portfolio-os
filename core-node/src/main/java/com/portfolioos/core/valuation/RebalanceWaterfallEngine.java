@@ -92,7 +92,7 @@ public class RebalanceWaterfallEngine {
         LocalDate currentDate,
         String fiscalYear
     ) {
-        return buildTrimWaterfall(bucket, trimAmount, openLots, navMap, remainingExemption, urgent, currentDate, fiscalYear, false);
+        return buildTrimWaterfall(bucket, trimAmount, openLots, navMap, remainingExemption, urgent, currentDate, fiscalYear, false, true, false);
     }
 
     public static WaterfallResult buildTrimWaterfall(
@@ -105,6 +105,22 @@ public class RebalanceWaterfallEngine {
         LocalDate currentDate,
         String fiscalYear,
         boolean isStandaloneTaxHarvest
+    ) {
+        return buildTrimWaterfall(bucket, trimAmount, openLots, navMap, remainingExemption, urgent, currentDate, fiscalYear, isStandaloneTaxHarvest, true, false);
+    }
+
+    public static WaterfallResult buildTrimWaterfall(
+        BucketEngine.Bucket bucket,
+        BigDecimal trimAmount,
+        List<Lot> openLots,
+        Map<String, BigDecimal> navMap,
+        BigDecimal remainingExemption,
+        boolean urgent,
+        LocalDate currentDate,
+        String fiscalYear,
+        boolean isStandaloneTaxHarvest,
+        boolean allowTaxable,
+        boolean isDrawdown
     ) {
         TaxRulesConfig rules = TaxRulesLoader.loadRules(fiscalYear);
         LocalDate today = currentDate != null ? currentDate : LocalDate.now();
@@ -168,7 +184,10 @@ public class RebalanceWaterfallEngine {
         List<Lot> workingCoreLots = new ArrayList<>(coreLots);
 
         List<WaterfallTierStrategy> strategiesToRun = new ArrayList<>(REGULAR_STRATEGIES);
-        if (urgent || isLiquidBucket) {
+        if (!allowTaxable) {
+            strategiesToRun.removeIf(s -> s.tier() == WaterfallTier.LTCG_BEYOND_EXEMPTION);
+        }
+        if ((urgent || (isLiquidBucket && isDrawdown)) && allowTaxable) {
             strategiesToRun.add(URGENT_STCG_STRATEGY);
         }
 
@@ -226,7 +245,7 @@ public class RebalanceWaterfallEngine {
                     lotTarget = lotTarget.min(schemeCapRemaining);
                 }
 
-                LotProcessResult res = processLot(strategy.tier(), currentLot, navMap, lotTarget, unusedExemption, rules, today, urgent, isLiquidBucket);
+                LotProcessResult res = processLot(strategy.tier(), currentLot, navMap, lotTarget, unusedExemption, rules, today, urgent, isLiquidBucket, isDrawdown, allowTaxable, bucket);
                 if (res != null && res.proceeds().compareTo(BigDecimal.ZERO) > 0) {
                     steps.add(res.step());
                     satisfiedAmount = satisfiedAmount.add(res.proceeds());
@@ -514,7 +533,10 @@ public class RebalanceWaterfallEngine {
         TaxRulesConfig rules,
         LocalDate today,
         boolean urgent,
-        boolean isLiquidBucket
+        boolean isLiquidBucket,
+        boolean isDrawdown,
+        boolean allowTaxable,
+        BucketEngine.Bucket bucket
     ) {
         BigDecimal nav = NavResolver.requireValidNav(navMap, lot, "RebalanceWaterfallEngine.processLot");
         BigDecimal lotValue = lot.remainingUnits().multiply(nav);
@@ -523,7 +545,7 @@ public class RebalanceWaterfallEngine {
         long holdingDays = ChronoUnit.DAYS.between(lot.acquisitionDate(), today);
         int exitLoadDays = ExitLoadCalculator.getRequiredExitLoadDays(lot.assetId(), lot.assetName());
         if (!urgent && holdingDays < exitLoadDays) {
-            return null; // Never incur exit load (e.g. PPFAS < 730d, Arbitrage < 15d) on non-urgent drift/scheduled trims
+            return null; // Never incur exit load (e.g. PPFAS < 730d, Arbitrage < 15d) on non-urgent drift trims or Rung 1/2 drawdown
         }
 
         AssetCategory cat = TaxClassifier.detectCategory(lot.assetId(), lot.assetName());
@@ -531,9 +553,28 @@ public class RebalanceWaterfallEngine {
         boolean isLtcg = isLtcg(cat, isListed, lot.acquisitionDate(), today);
         boolean isLossLot = nav.subtract(lot.effectiveCostPerUnit(nav)).compareTo(BigDecimal.ZERO) < 0;
 
-        // F5: Short-term loss lots are always eligible in LOSS_HARVEST / LEGACY_FUND tiers even when !urgent
-        if (!isLtcg && !isLossLot && !urgent && !isLiquidBucket) {
-            return null;
+        if (isLiquidBucket && isDrawdown) {
+            // Allow STCG (Arbitrage short-term gain tax is ~0.7% of principal vs 10-30% market discount)
+        } else if (!isLiquidBucket) {
+            // Never sell positive-gain Equity STCG (20.8%), Gold FoF < 24m STCG (31.2% slab), or exit-load-locked lots in automated trims
+            if (!isLtcg && !isLossLot) {
+                return null;
+            }
+        } else {
+            if (!isLtcg && !isLossLot && !urgent) {
+                return null;
+            }
+        }
+
+        if (!allowTaxable) {
+            if (tier == WaterfallTier.LTCG_BEYOND_EXEMPTION || tier == WaterfallTier.STCG_URGENT_ONLY) {
+                return null;
+            }
+            if (bucket != BucketEngine.Bucket.LEGACY_HOLDINGS && !isLossLot) {
+                if (unusedExemption == null || unusedExemption.compareTo(BigDecimal.ZERO) <= 0 || cat != AssetCategory.EQUITY) {
+                    return null;
+                }
+            }
         }
 
         if (tier == WaterfallTier.LTCG_WITHIN_EXEMPTION && (unusedExemption == null || unusedExemption.compareTo(BigDecimal.ZERO) <= 0 || cat != AssetCategory.EQUITY)) {
@@ -547,8 +588,9 @@ public class RebalanceWaterfallEngine {
         BigDecimal costBasis = unitsSold.multiply(lot.effectiveCostPerUnit(nav)).setScale(2, RoundingMode.HALF_UP);
         BigDecimal gain = redemption.subtract(costBasis).setScale(2, RoundingMode.HALF_UP);
 
-        // F6: Cap LTCG_WITHIN_EXEMPTION strictly at unusedExemption; remainder of lot will be processed by LTCG_BEYOND_EXEMPTION
-        if (tier == WaterfallTier.LTCG_WITHIN_EXEMPTION && gain.compareTo(unusedExemption) > 0 && gain.compareTo(BigDecimal.ZERO) > 0) {
+        // Cap redemption when LTCG_WITHIN_EXEMPTION or when !allowTaxable (non-legacy gain lot) so gain <= unusedExemption
+        if ((tier == WaterfallTier.LTCG_WITHIN_EXEMPTION || (!allowTaxable && bucket != BucketEngine.Bucket.LEGACY_HOLDINGS && !isLossLot))
+            && gain.compareTo(unusedExemption) > 0 && gain.compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal exemptFraction = unusedExemption.divide(gain, 8, RoundingMode.HALF_UP);
             redemption = redemption.multiply(exemptFraction).setScale(2, RoundingMode.HALF_UP);
             unitsSold = nav.compareTo(BigDecimal.ZERO) > 0
@@ -981,63 +1023,42 @@ public class RebalanceWaterfallEngine {
         }
 
         BigDecimal cashOverflow = BigDecimal.ZERO;
+        BigDecimal totalPool = (coreTrimPoolInr != null ? coreTrimPoolInr : BigDecimal.ZERO)
+            .add(generalPoolInr != null ? generalPoolInr : BigDecimal.ZERO);
 
-        // 0. GOLD_FLOOR_BACKSTOP Routing (Buy-only, 100% into GOLD_SILVER)
-        if (triggerType == com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.GOLD_FLOOR_BACKSTOP) {
-            BigDecimal pool = generalPoolInr.add(coreTrimPoolInr);
-            if (pool.compareTo(minOrder) < 0) {
-                return new RoutingResult(buys, pool);
-            }
-            buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER, pool);
-            return new RoutingResult(buys, BigDecimal.ZERO);
-        }
-
-        // 1. DRAWDOWN Routing: Strictly into EQUITY_CORE first, then SATELLITE (0% to Gold)
-        // R2 Invariant: If Core was trimmed, Satellite buy allocation must strictly be zero
+        // 1. DRAWDOWN Routing:
+        // Rung 1: 100% of Arbitrage deployment into EQUITY_CORE
+        // Rung 2+: Route into underweight EQUITY_CORE and EQUITY_SATELLITE (0% to Gold and Liquid)
         if (triggerType == com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerType.DRAWDOWN) {
-            if (coreTrimPoolInr.compareTo(BigDecimal.ZERO) > 0) {
-                deficits.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE, BigDecimal.ZERO);
-            }
-            BigDecimal pool = generalPoolInr.add(coreTrimPoolInr);
-            pool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE, pool, minOrder);
-            if (coreTrimPoolInr.compareTo(BigDecimal.ZERO) == 0) {
+            deficits.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER, BigDecimal.ZERO);
+            deficits.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER, BigDecimal.ZERO);
+
+            BigDecimal liquidTarget = targetWeightsPct.getOrDefault(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER, BigDecimal.ZERO);
+            boolean isRung1 = liquidTarget.compareTo(new BigDecimal("5.0")) > 0;
+
+            BigDecimal pool = totalPool;
+            if (isRung1) {
+                buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE, pool);
+                return new RoutingResult(buys, BigDecimal.ZERO);
+            } else {
+                pool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE, pool, minOrder);
                 pool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE, pool, minOrder);
+                if (pool.compareTo(minOrder) >= 0) {
+                    buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE,
+                        buys.get(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE).add(pool));
+                    pool = BigDecimal.ZERO;
+                }
+                cashOverflow = cashOverflow.add(pool);
+                return new RoutingResult(buys, cashOverflow);
             }
-            // If drawdown deployment exceeds calculated deficits, all remaining crisis dry powder goes to EQUITY_CORE
-            if (pool.compareTo(minOrder) >= 0) {
-                buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE,
-                    buys.get(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE).add(pool));
-                pool = BigDecimal.ZERO;
-            }
-            cashOverflow = cashOverflow.add(pool);
-            return new RoutingResult(buys, cashOverflow);
         }
 
-        // 2. Core Trim Pool Routing
-        BigDecimal remCorePool = coreTrimPoolInr;
-        remCorePool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER, remCorePool, minOrder);
-        remCorePool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER, remCorePool, minOrder);
-        remCorePool = fillBucketV24(buys, deficits, com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE, remCorePool, minOrder);
+        // 2. DRIFT / SCHEDULED_MAINTENANCE: Single combined pool distributed proportionally across underweight buckets
+        BigDecimal remPool = totalPool;
+        BigDecimal totalDeficit = deficits.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal liquidUsedSoFar = buys.get(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER);
-        BigDecimal remainingLiquidCap = maxAdditionalLiquidHeadroom.subtract(liquidUsedSoFar).max(BigDecimal.ZERO);
-        if (remCorePool.compareTo(minOrder) >= 0 && remainingLiquidCap.compareTo(minOrder) >= 0) {
-            BigDecimal sinkAlloc = remCorePool.min(remainingLiquidCap);
-            buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER, liquidUsedSoFar.add(sinkAlloc));
-            remCorePool = remCorePool.subtract(sinkAlloc);
-        }
-        cashOverflow = cashOverflow.add(remCorePool);
-
-        if (coreTrimPoolInr.compareTo(BigDecimal.ZERO) > 0) {
-            deficits.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE, BigDecimal.ZERO);
-        }
-
-        // 3. General Pool Routing
-        BigDecimal remGeneral = generalPoolInr;
-        BigDecimal totalRemainingDeficit = deficits.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        if (remGeneral.compareTo(minOrder) >= 0 && totalRemainingDeficit.compareTo(BigDecimal.ZERO) > 0) {
-            if (remGeneral.compareTo(totalRemainingDeficit) >= 0) {
+        if (remPool.compareTo(minOrder) >= 0 && totalDeficit.compareTo(BigDecimal.ZERO) > 0) {
+            if (remPool.compareTo(totalDeficit) >= 0) {
                 for (com.portfolioos.core.config.BucketTargetsConfig.BucketType b : List.of(
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE,
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE,
@@ -1045,9 +1066,18 @@ public class RebalanceWaterfallEngine {
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER)) {
                     BigDecimal d = deficits.getOrDefault(b, BigDecimal.ZERO);
                     if (d.compareTo(minOrder) >= 0) {
-                        buys.put(b, buys.getOrDefault(b, BigDecimal.ZERO).add(d));
-                        remGeneral = remGeneral.subtract(d);
-                        deficits.put(b, BigDecimal.ZERO);
+                        if (b == com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER) {
+                            BigDecimal allowed = d.min(maxAdditionalLiquidHeadroom);
+                            if (allowed.compareTo(minOrder) >= 0) {
+                                buys.put(b, buys.getOrDefault(b, BigDecimal.ZERO).add(allowed));
+                                remPool = remPool.subtract(allowed);
+                                deficits.put(b, d.subtract(allowed));
+                            }
+                        } else {
+                            buys.put(b, buys.getOrDefault(b, BigDecimal.ZERO).add(d));
+                            remPool = remPool.subtract(d);
+                            deficits.put(b, BigDecimal.ZERO);
+                        }
                     }
                 }
             } else {
@@ -1058,15 +1088,18 @@ public class RebalanceWaterfallEngine {
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER,
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER)) {
                     BigDecimal d = deficits.getOrDefault(b, BigDecimal.ZERO);
-                    BigDecimal share = remGeneral.multiply(d)
-                        .divide(totalRemainingDeficit, 2, RoundingMode.DOWN);
+                    BigDecimal share = remPool.multiply(d)
+                        .divide(totalDeficit, 2, RoundingMode.DOWN);
+                    if (b == com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER) {
+                        share = share.min(maxAdditionalLiquidHeadroom);
+                    }
                     if (share.compareTo(minOrder) >= 0) {
                         buys.put(b, buys.getOrDefault(b, BigDecimal.ZERO).add(share));
                         deficits.put(b, d.subtract(share));
                         allocatedSum = allocatedSum.add(share);
                     }
                 }
-                BigDecimal remainder = remGeneral.subtract(allocatedSum);
+                BigDecimal remainder = remPool.subtract(allocatedSum);
                 for (com.portfolioos.core.config.BucketTargetsConfig.BucketType b : List.of(
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE,
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE,
@@ -1074,19 +1107,19 @@ public class RebalanceWaterfallEngine {
                         com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER)) {
                     remainder = fillBucketV24(buys, deficits, b, remainder, minOrder);
                 }
-                remGeneral = remainder;
+                remPool = remainder;
             }
         }
 
         BigDecimal finalLiquidHeadroom = maxAdditionalLiquidHeadroom
             .subtract(buys.getOrDefault(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER, BigDecimal.ZERO)).max(BigDecimal.ZERO);
-        if (remGeneral.compareTo(minOrder) >= 0 && finalLiquidHeadroom.compareTo(minOrder) >= 0) {
-            BigDecimal extraLiq = remGeneral.min(finalLiquidHeadroom);
+        if (remPool.compareTo(minOrder) >= 0 && finalLiquidHeadroom.compareTo(minOrder) >= 0) {
+            BigDecimal extraLiq = remPool.min(finalLiquidHeadroom);
             buys.put(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER,
                 buys.getOrDefault(com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER, BigDecimal.ZERO).add(extraLiq));
-            remGeneral = remGeneral.subtract(extraLiq);
+            remPool = remPool.subtract(extraLiq);
         }
-        cashOverflow = cashOverflow.add(remGeneral);
+        cashOverflow = cashOverflow.add(remPool);
 
         return new RoutingResult(buys, cashOverflow);
     }

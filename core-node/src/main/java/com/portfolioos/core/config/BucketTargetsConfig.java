@@ -12,7 +12,6 @@ public record BucketTargetsConfig(
     GlobalInvariants globalInvariants,
     TaxParameters taxParameters,
     List<DrawdownRung> drawdownRungs,
-    List<DampenerTier> dampenerTiers,
     Map<BucketType, BucketSpec> buckets,
     List<String> legacyIsinBlacklist
 ) {
@@ -29,8 +28,23 @@ public record BucketTargetsConfig(
         BigDecimal drawdownHoldZoneMaxPct,
         BigDecimal urgentDrawdownThresholdPct,
         List<Integer> scheduledMonths,
-        int nseReconstitutionBlackoutHours
-    ) {}
+        BigDecimal taxableTrimFraction
+    ) {
+        public GlobalInvariants(
+            int rebalanceCooldownDays,
+            BigDecimal minTradeAmountInr,
+            BigDecimal liquidHardCapPct,
+            String drawdownAnchorMode,
+            BigDecimal drawdownHoldZoneMinPct,
+            BigDecimal drawdownHoldZoneMaxPct,
+            BigDecimal urgentDrawdownThresholdPct,
+            List<Integer> scheduledMonths
+        ) {
+            this(rebalanceCooldownDays, minTradeAmountInr, liquidHardCapPct, drawdownAnchorMode,
+                drawdownHoldZoneMinPct, drawdownHoldZoneMaxPct, urgentDrawdownThresholdPct,
+                scheduledMonths, new BigDecimal("0.50"));
+        }
+    }
 
     public record TaxParameters(
         BigDecimal ltcgExemptionLimitInr,
@@ -58,8 +72,6 @@ public record BucketTargetsConfig(
         BigDecimal liquidDeployFraction
     ) {}
 
-    public record DampenerTier(BigDecimal maxRelativeExcessPct, BigDecimal multiplier) {}
-
     public record IntraBucketRoutingSpec(
         boolean remediateOnPassiveFlowOnly,
         String primaryIsin,
@@ -72,25 +84,17 @@ public record BucketTargetsConfig(
         BigDecimal bandLowerPct,
         BigDecimal bandUpperPct,
         IntraBucketRoutingSpec intraBucketRouting,
-        BackstopSpec backstop,
         List<SchemeSpec> schemes
     ) {
         public BucketSpec(
             BigDecimal targetPct,
             BigDecimal bandLowerPct,
             BigDecimal bandUpperPct,
-            BackstopSpec backstop,
             List<SchemeSpec> schemes
         ) {
-            this(targetPct, bandLowerPct, bandUpperPct, null, backstop, schemes);
+            this(targetPct, bandLowerPct, bandUpperPct, null, schemes);
         }
     }
-
-    public record BackstopSpec(
-        int minIdleMonths,
-        BigDecimal minUnderweightGapPct,
-        BigDecimal gapCloseFraction
-    ) {}
 
     public record SchemeSpec(
         String isin,
@@ -107,15 +111,9 @@ public record BucketTargetsConfig(
         Objects.requireNonNull(taxParameters, "taxParameters required");
         Objects.requireNonNull(buckets, "buckets required");
 
-        // Fix E3: Ensure all config lists are sorted ascending by threshold
         if (drawdownRungs != null) {
             drawdownRungs = drawdownRungs.stream()
                 .sorted(Comparator.comparing(DrawdownRung::drawdownPct))
-                .toList();
-        }
-        if (dampenerTiers != null) {
-            dampenerTiers = dampenerTiers.stream()
-                .sorted(Comparator.comparing(DampenerTier::maxRelativeExcessPct))
                 .toList();
         }
 
@@ -127,4 +125,3 @@ public record BucketTargetsConfig(
         }
     }
 }
-

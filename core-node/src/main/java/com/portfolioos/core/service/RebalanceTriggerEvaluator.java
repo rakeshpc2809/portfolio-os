@@ -27,13 +27,13 @@ public class RebalanceTriggerEvaluator {
     public enum TriggerType {
         DRAWDOWN,
         DRIFT,
-        SCHEDULED_MAINTENANCE, // Only executes Step 0 Legacy + Tax Harvest (no active trims)
-        GOLD_FLOOR_BACKSTOP,
+        CASH_INFLOW_NEEDED,    // Lower-band breach only; 0 sells, guides fresh bank cash
+        SCHEDULED_MAINTENANCE, // March only: Step 0 Legacy + Sec 112A ₹1.25L harvest
         NONE
     }
 
     public record TriggerResolution(
-        String triggerType,            // DRAWDOWN, DRIFT, SCHEDULED, GOLD_FLOOR_BACKSTOP, NONE
+        String triggerType,            // DRAWDOWN, DRIFT, SCHEDULED_MAINTENANCE, CASH_INFLOW_NEEDED, NONE
         String reasonCode,
         String reasonLabel,
         boolean hasSellSide,
@@ -106,7 +106,6 @@ public class RebalanceTriggerEvaluator {
         boolean benchmarkSupplied = benchmarkCurrent != null && benchmarkRollingHigh != null;
 
         if (benchmarkSupplied) {
-            // Validate non-positive benchmark levels
             if (benchmarkRollingHigh.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new IllegalStateException("CRITICAL BENCHMARK FAILURE: Missing or invalid 52-week peak for Nifty 500 TRI Benchmark");
             }
@@ -114,7 +113,6 @@ public class RebalanceTriggerEvaluator {
                 throw new IllegalStateException("CRITICAL BENCHMARK FAILURE: Missing or invalid live level for Nifty 500 TRI Benchmark");
             }
 
-            // E5: Persisted ATH Watermark integrity check & advancement (no-op on read-only repository view)
             if (repository != null) {
                 Optional<BigDecimal> storedWatermarkOpt = repository.getNiftyTriWatermark();
                 if (storedWatermarkOpt.isPresent()) {
@@ -123,13 +121,11 @@ public class RebalanceTriggerEvaluator {
                         throw new IllegalStateException("CRITICAL INTEGRITY FAILURE: Stored Nifty TRI watermark <= 0");
                     }
                     if (curr.compareTo(storedWatermark) > 0) {
-                        // A higher current level is a new peak: advance and persist the watermark
                         repository.setNiftyTriWatermark(curr);
                         storedWatermark = curr;
                     }
                     high = storedWatermark.max(benchmarkRollingHigh).max(curr);
                 } else {
-                    // Seed initial ATH watermark from historical rolling high or current level
                     BigDecimal initialWatermark = benchmarkRollingHigh.max(curr);
                     repository.setNiftyTriWatermark(initialWatermark);
                     high = initialWatermark;
@@ -139,7 +135,6 @@ public class RebalanceTriggerEvaluator {
             }
             ddPct = PortfolioConstants.requireValidDrawdownPct(curr, high, "Nifty 500 TRI Benchmark");
         } else {
-            // E4: Scoped feed degradation
             if (!allowScopedFeedDegradation) {
                 PortfolioConstants.requireValidDrawdownPct(benchmarkCurrent, benchmarkRollingHigh, "Nifty 500 TRI Benchmark");
             }
@@ -148,12 +143,34 @@ public class RebalanceTriggerEvaluator {
         }
 
         boolean benchmarkAvailable = benchmarkSupplied && benchmarkCurrent.compareTo(BigDecimal.ZERO) > 0 && benchmarkRollingHigh.compareTo(BigDecimal.ZERO) > 0;
-        String armedTier = (!benchmarkAvailable || ddPct < PortfolioConstants.DRAWDOWN_TIER_1_PCT) ? "NONE"
-            : (ddPct >= PortfolioConstants.DRAWDOWN_TIER_3_PCT ? "TIER_20"
-            : (ddPct >= PortfolioConstants.DRAWDOWN_TIER_2_PCT ? "TIER_15" : "TIER_10"));
 
-        String nextTier = ddPct < 10.0 ? "TIER_10" : (ddPct < 15.0 ? "TIER_15" : (ddPct < 20.0 ? "TIER_20" : "MAX_TIER_REACHED"));
-        double nextTierTargetPct = ddPct < 10.0 ? 10.0 : (ddPct < 15.0 ? 15.0 : (ddPct < 20.0 ? 20.0 : 20.0));
+        var v3Config = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
+        List<com.portfolioos.core.config.BucketTargetsConfig.DrawdownRung> rungs =
+            (v3Config != null && v3Config.drawdownRungs() != null)
+                ? v3Config.drawdownRungs()
+                : List.of();
+
+        String armedTier = "NONE";
+        int currentRung = 0;
+        String nextTier = "MAX_TIER_REACHED";
+        double nextTierTargetPct = 30.0;
+
+        if (benchmarkAvailable && ddPct >= 10.0) {
+            for (var rung : rungs) {
+                if (ddPct >= rung.drawdownPct().doubleValue()) {
+                    armedTier = rung.tier();
+                    currentRung = (int) rung.drawdownPct().doubleValue();
+                }
+            }
+        }
+
+        for (var rung : rungs) {
+            if (rung.drawdownPct().doubleValue() > ddPct) {
+                nextTier = rung.tier();
+                nextTierTargetPct = rung.drawdownPct().doubleValue();
+                break;
+            }
+        }
         double nextTierDistancePct = Math.max(0.0, Math.round((nextTierTargetPct - ddPct) * 10.0) / 10.0);
 
         DrawdownContextDto drawdownCtx = new DrawdownContextDto(
@@ -166,30 +183,22 @@ public class RebalanceTriggerEvaluator {
             nextTierDistancePct
         );
 
-        // 3. Query Cooldown & Gold Idle State from Repository (PURE READ)
+        // 3. Query Cooldown & Cycle-Latched Drawdown State from Repository
         Optional<LocalDateTime> lastSellOpt = repository != null ? repository.getLastSellSideFiringDate() : Optional.empty();
         long daysSinceLastSell = lastSellOpt.map(dt -> ChronoUnit.DAYS.between(dt.toLocalDate(), today)).orElse(9999L);
         boolean sellCooldownActive = daysSinceLastSell < PortfolioConstants.REBALANCE_COOLDOWN_DAYS;
 
-        // F8: Drawdown Rung Escalation vs Cooldown
-        int currentRung = "TIER_20".equals(armedTier) ? 20 : ("TIER_15".equals(armedTier) ? 15 : ("TIER_10".equals(armedTier) ? 10 : 0));
-        int maxFiredRungInCooldown = repository != null ? repository.getMaxFiredDrawdownTierWithinDays(today, (int) PortfolioConstants.REBALANCE_COOLDOWN_DAYS) : 0;
-        boolean drawdownEscalated = currentRung > maxFiredRungInCooldown;
+        int maxFiredRung = repository != null ? repository.getActiveDrawdownMaxFiredTier() : 0;
 
-        Optional<LocalDateTime> lastGoldBuyOpt = repository != null ? repository.getLastGoldBuyDate() : Optional.empty();
-        long monthsSinceLastGoldBuy = lastGoldBuyOpt.map(dt -> ChronoUnit.MONTHS.between(dt.toLocalDate(), today)).orElse(9999L);
-        boolean goldIdleActive = monthsSinceLastGoldBuy >= PortfolioConstants.GOLD_FLOOR_IDLE_MONTHS;
-
-        // 4. Canonical Bucket Drift Evaluation (matches Web App and BucketEngine)
+        // 4. Canonical Bucket Drift Evaluation (Upper & Lower Breaches Tracked Separately)
         List<String> driftedBuckets = new ArrayList<>();
+        List<String> upperBreachedBuckets = new ArrayList<>();
+        List<String> lowerBreachedBuckets = new ArrayList<>();
 
-        // F11: Config-driven targets and bands from activeVersion
         BucketConfigLoader.BucketTargetVersion ver = activeVersion != null ? activeVersion : BucketConfigLoader.getActiveVersion(today);
         double coreTargetPct = 50.0;
         double coreBandPct = 5.0;
         double targetLmRatio = 0.60;
-        double goldCurrentWeightPct = 0.0;
-        double goldTargetWeightPct = 10.0;
 
         if (ver != null && ver.targets() != null) {
             for (BucketConfigLoader.BucketTargetConfig tc : ver.targets()) {
@@ -203,8 +212,6 @@ public class RebalanceTriggerEvaluator {
                             }
                         }
                     }
-                } else if ("GOLD_SILVER".equalsIgnoreCase(tc.bucket()) || "HEDGE_COMMODITY".equalsIgnoreCase(tc.bucket()) || "COMMODITY".equalsIgnoreCase(tc.bucket())) {
-                    goldTargetWeightPct = tc.targetPct();
                 }
             }
         }
@@ -243,44 +250,62 @@ public class RebalanceTriggerEvaluator {
 
             BigDecimal coreTotalVal = largeMidVal.add(ppfcVal);
             boolean coreAggregateBreached = false;
-            BigDecimal effectiveCorpus = activeCorpus.compareTo(BigDecimal.ZERO) > 0 ? activeCorpus : liveCorpus;
-            if (coreTotalVal.compareTo(BigDecimal.ZERO) > 0 && effectiveCorpus.compareTo(BigDecimal.ZERO) > 0) {
-                double coreWeightPct = (coreTotalVal.doubleValue() / effectiveCorpus.doubleValue()) * 100.0;
+            BigDecimal effectiveActiveCorpus = activeCorpus.compareTo(BigDecimal.ZERO) > 0 ? activeCorpus : liveCorpus;
+            if (coreTotalVal.compareTo(BigDecimal.ZERO) > 0 && effectiveActiveCorpus.compareTo(BigDecimal.ZERO) > 0) {
+                double coreWeightPct = (coreTotalVal.doubleValue() / effectiveActiveCorpus.doubleValue()) * 100.0;
                 double coreUpper = coreTargetPct + (3 * coreBandPct);
                 double coreLower = Math.max(0.0, coreTargetPct - (3 * coreBandPct));
                 if (coreWeightPct > coreUpper || coreWeightPct < coreLower) {
                     driftedBuckets.add("CORE_AGGREGATE_BREACH");
+                    upperBreachedBuckets.add("CORE_AGGREGATE_BREACH");
                     coreAggregateBreached = true;
                 }
                 double largeMidRatio = largeMidVal.doubleValue() / coreTotalVal.doubleValue();
                 double lmRatioUpper = targetLmRatio + PortfolioConstants.CORE_INTERNAL_RATIO_BAND;
                 double lmRatioLower = targetLmRatio - PortfolioConstants.CORE_INTERNAL_RATIO_BAND;
                 if (largeMidRatio > lmRatioUpper || largeMidRatio < lmRatioLower) {
-                    // v2.4 demotion: Under v2.4, remediate_on_passive_flow_only is true:
-                    // intra-core ratio check skews buys/trims on passive flow only,
-                    // and NEVER fires a standalone taxable sell rebalance when EQUITY_CORE aggregate is inside [45%, 55%].
-                    boolean isV24OrLater = ver != null && ver.versionId() != null && (ver.versionId().startsWith("2.4") || ver.versionId().startsWith("v2.4"));
+                    boolean isV24OrLater = ver != null && ver.versionId() != null && (ver.versionId().startsWith("2.4") || ver.versionId().startsWith("v2.4") || ver.versionId().startsWith("3.0") || ver.versionId().startsWith("v3.0"));
                     if (!isV24OrLater) {
                         driftedBuckets.add("CORE_INTERNAL_CIRCUIT_BREAKER");
+                        upperBreachedBuckets.add("CORE_INTERNAL_CIRCUIT_BREAKER");
                     }
                 }
             }
 
             if (engineResult != null && engineResult.bucketStatuses() != null) {
                 for (BucketEngine.BucketStatus bs : engineResult.bucketStatuses()) {
-                    if (bs.bucket() == BucketEngine.Bucket.GOLD_SILVER || bs.bucket() == BucketEngine.Bucket.HEDGE_COMMODITY) {
-                        goldCurrentWeightPct = bs.currentPct().doubleValue();
-                        goldTargetWeightPct = bs.targetPct().doubleValue();
+                    if (bs.bucket() == BucketEngine.Bucket.LEGACY_HOLDINGS) {
+                        continue;
                     }
-                    if (bs.isDrifted() && bs.bucket() != BucketEngine.Bucket.LEGACY_HOLDINGS) {
-                        if (bs.bucket() == BucketEngine.Bucket.EQUITY_CORE) {
-                            if (!coreAggregateBreached && !driftedBuckets.contains("EQUITY_CORE")) {
-                                driftedBuckets.add("EQUITY_CORE");
-                            }
-                        } else {
-                            if (!driftedBuckets.contains(bs.bucket().name())) {
-                                driftedBuckets.add(bs.bucket().name());
-                            }
+                    boolean isLiquid = (bs.bucket() == BucketEngine.Bucket.LIQUID_BUFFER || bs.bucket() == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
+                    if (isLiquid && ddPct >= 5.0) {
+                        continue; // Hold zone or drawdown active: ignore liquid buffer drift
+                    }
+
+                    BigDecimal curPct = bs.currentPct();
+                    BigDecimal targetPct = bs.targetPct();
+                    BigDecimal drift = curPct.subtract(targetPct);
+
+                    com.portfolioos.core.config.BucketTargetsConfig.BucketType bType = switch (bs.bucket()) {
+                        case EQUITY_CORE -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE;
+                        case EQUITY_SATELLITE, SATELLITE_VALUE, SATELLITE_MOMENTUM, SATELLITE_SMALLCAP -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE;
+                        case GOLD_SILVER, HEDGE_COMMODITY -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER;
+                        case LIQUID_BUFFER, LIQUIDITY_ARBITRAGE -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER;
+                        case LEGACY_HOLDINGS -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.LEGACY_HOLDINGS;
+                    };
+                    var spec = (v3Config != null && v3Config.buckets() != null) ? v3Config.buckets().get(bType) : null;
+                    BigDecimal bandLower = spec != null ? spec.bandLowerPct() : new BigDecimal("5.00");
+                    BigDecimal bandUpper = spec != null ? spec.bandUpperPct() : new BigDecimal("5.00");
+
+                    if (drift.compareTo(bandUpper) > 0) {
+                        upperBreachedBuckets.add(bs.bucket().name());
+                        if (!driftedBuckets.contains(bs.bucket().name())) {
+                            driftedBuckets.add(bs.bucket().name());
+                        }
+                    } else if (drift.compareTo(bandLower.negate()) < 0) {
+                        lowerBreachedBuckets.add(bs.bucket().name());
+                        if (!driftedBuckets.contains(bs.bucket().name())) {
+                            driftedBuckets.add(bs.bucket().name());
                         }
                     }
                 }
@@ -288,107 +313,138 @@ public class RebalanceTriggerEvaluator {
         }
 
         // 5. Trigger Resolution Priority Order
-        String triggerType = "NONE";
-        String reasonCode = "NO_REBALANCE_REQUIRED";
-        String reasonLabel = "Portfolio is balanced and within thresholds";
-        boolean hasSellSide = false;
-        boolean hasGoldBuy = false;
-        boolean sellTriggerEvaluated = false;
-
-        // Blackout ceiling math: within 48h of March 31 / September 30
-        var v24 = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
-        if (v24 == null || v24.globalInvariants() == null) {
-            throw new IllegalStateException("CRITICAL CONFIGURATION ERROR: globalInvariants missing in configuration for blackout evaluation!");
-        }
-        int blackoutHours = v24.globalInvariants().nseReconstitutionBlackoutHours();
-        int blackoutDays = (blackoutHours + 23) / 24; // 2 days ceiling
-        int daysLeftInMonth = today.lengthOfMonth() - today.getDayOfMonth();
-        boolean insideBlackout = (today.getMonthValue() == 3 || today.getMonthValue() == 9) && (daysLeftInMonth < blackoutDays);
-
-        // Priority 1: DRAWDOWN (Crisis response preserved, never blocked by blackout)
-        if (!"NONE".equals(armedTier)) {
-            sellTriggerEvaluated = true;
-            if (sellCooldownActive && !drawdownEscalated) {
-                reasonCode = "DRAWDOWN_BLOCKED_BY_COOLDOWN";
-                reasonLabel = String.format("Drawdown tier %s crossed but sell rebalance is on 30-day cooldown (%d days since last sell)", armedTier, daysSinceLastSell);
+        // Priority 1: DRAWDOWN (Cycle-Latched, Config-Driven)
+        if (currentRung > 0) {
+            if (currentRung > maxFiredRung) {
+                return new TriggerResolution(
+                    "DRAWDOWN",
+                    "DRAWDOWN_TIER_" + currentRung,
+                    String.format("%d%% Portfolio Drawdown Tier Triggered", currentRung),
+                    true,
+                    false,
+                    sellCooldownActive,
+                    daysSinceLastSell,
+                    false,
+                    0L,
+                    driftedBuckets,
+                    drawdownCtx
+                );
             } else {
-                triggerType = "DRAWDOWN";
-                reasonCode = "DRAWDOWN_TIER_" + armedTier.replace("TIER_", "");
-                reasonLabel = String.format("%s%% Portfolio Drawdown Tier Triggered", armedTier.replace("TIER_", ""));
-                hasSellSide = true;
-                hasGoldBuy = true;
+                return new TriggerResolution(
+                    "NONE",
+                    "DRAWDOWN_RUNG_ALREADY_DEPLOYED",
+                    String.format("Drawdown tier %s already deployed in current cycle", armedTier),
+                    false,
+                    false,
+                    sellCooldownActive,
+                    daysSinceLastSell,
+                    false,
+                    0L,
+                    driftedBuckets,
+                    drawdownCtx
+                );
             }
         }
 
-        // Priority 2: DRIFT (if Drawdown was not evaluated)
-        if (!sellTriggerEvaluated && !driftedBuckets.isEmpty()) {
-            sellTriggerEvaluated = true;
+        // Priority 2: DRIFT (Upper-Band Breach Only, Self-Funded)
+        if (!upperBreachedBuckets.isEmpty()) {
             if (sellCooldownActive) {
-                reasonCode = "DRIFT_BLOCKED_BY_COOLDOWN";
-                reasonLabel = String.format("Bucket drift detected (%s) but sell rebalance is on 30-day cooldown (%d days since last sell)",
-                    String.join(", ", driftedBuckets), daysSinceLastSell);
-            } else if (insideBlackout) {
-                reasonCode = "DRIFT_BLOCKED_BY_BLACKOUT";
-                reasonLabel = String.format("Drift detected (%s) but sell rebalance is suppressed during 48h NSE semi-annual reconstitution blackout window",
-                    String.join(", ", driftedBuckets));
+                return new TriggerResolution(
+                    "NONE",
+                    "DRIFT_BLOCKED_BY_COOLDOWN",
+                    String.format("Bucket drift detected (%s) but sell rebalance is on 30-day cooldown (%d days since last sell)",
+                        String.join(", ", driftedBuckets), daysSinceLastSell),
+                    false,
+                    false,
+                    true,
+                    daysSinceLastSell,
+                    false,
+                    0L,
+                    driftedBuckets,
+                    drawdownCtx
+                );
             } else {
-                triggerType = "DRIFT";
-                reasonCode = "DRIFT_THRESHOLD_EXCEEDED";
-                reasonLabel = String.format("Bucket Allocation Drift Exceeded Threshold (%s)", String.join(", ", driftedBuckets));
-                hasSellSide = true;
-                hasGoldBuy = true;
+                return new TriggerResolution(
+                    "DRIFT",
+                    "DRIFT_THRESHOLD_EXCEEDED",
+                    String.format("Bucket Allocation Drift Exceeded Threshold (%s)", String.join(", ", driftedBuckets)),
+                    true,
+                    false,
+                    false,
+                    daysSinceLastSell,
+                    false,
+                    0L,
+                    driftedBuckets,
+                    drawdownCtx
+                );
             }
         }
 
-        // Priority 3: SCHEDULED (March/September window, if Drawdown/Drift not evaluated)
-        if (!sellTriggerEvaluated && (today.getMonthValue() == 3 || today.getMonthValue() == 9)) {
-            // E1: Idempotency check: has scheduled rebalance already run for this (Year, Month)?
+        // Priority 3: SCHEDULED_MAINTENANCE (March Only)
+        if (v3Config != null && v3Config.globalInvariants() != null &&
+            v3Config.globalInvariants().scheduledMonths() != null &&
+            v3Config.globalInvariants().scheduledMonths().contains(today.getMonthValue())) {
             boolean alreadyExecutedThisMonth = repository != null && repository.hasScheduledRunExecutedForMonth(today.getYear(), today.getMonthValue());
-
-            if (!insideBlackout && !alreadyExecutedThisMonth) {
-                sellTriggerEvaluated = true;
+            if (!alreadyExecutedThisMonth) {
                 if (sellCooldownActive) {
-                    reasonCode = "SCHEDULED_BLOCKED_BY_COOLDOWN";
-                    reasonLabel = String.format("Scheduled window active but sell rebalance is on 30-day cooldown (%d days since last sell)", daysSinceLastSell);
+                    return new TriggerResolution(
+                        "NONE",
+                        "SCHEDULED_BLOCKED_BY_COOLDOWN",
+                        String.format("Scheduled window active but sell rebalance is on 30-day cooldown (%d days since last sell)", daysSinceLastSell),
+                        false,
+                        false,
+                        true,
+                        daysSinceLastSell,
+                        false,
+                        0L,
+                        driftedBuckets,
+                        drawdownCtx
+                    );
                 } else {
-                    triggerType = "SCHEDULED";
-                    reasonCode = "SCHEDULED_RECONSTITUTION";
-                    reasonLabel = "March/September Scheduled Reconstitution Window";
-                    hasSellSide = true;
-                    hasGoldBuy = true;
+                    return new TriggerResolution(
+                        "SCHEDULED_MAINTENANCE",
+                        "SCHEDULED_RECONSTITUTION",
+                        "March Scheduled Maintenance Window",
+                        true,
+                        false,
+                        false,
+                        daysSinceLastSell,
+                        false,
+                        0L,
+                        driftedBuckets,
+                        drawdownCtx
+                    );
                 }
             }
         }
 
-        // Priority 4: GOLD_FLOOR_BACKSTOP (Buy-only, exempt from 30-day sell cooldown)
-        if ("NONE".equals(triggerType)) {
-            double goldUnderweightPts = goldTargetWeightPct - goldCurrentWeightPct;
-            if (goldIdleActive && goldUnderweightPts >= PortfolioConstants.GOLD_FLOOR_UNDERWEIGHT_PTS) {
-                triggerType = "GOLD_FLOOR_BACKSTOP";
-                hasSellSide = false;
-                hasGoldBuy = true;
-                if (!sellTriggerEvaluated) {
-                    reasonCode = "GOLD_FLOOR_BACKSTOP_TRIGGERED";
-                    reasonLabel = String.format("Gold/Silver Floor Backstop Triggered (Idle %d months, %.1f pts underweight)",
-                        monthsSinceLastGoldBuy > 9000 ? 6 : monthsSinceLastGoldBuy, goldUnderweightPts);
-                } else {
-                    // Preserve sell cooldown reasonCode (e.g. DRIFT_BLOCKED_BY_COOLDOWN) while noting the backstop
-                    reasonLabel = String.format("%s; Buy-only Gold/Silver Floor Backstop Triggered (Idle %d months, %.1f pts underweight)",
-                        reasonLabel, monthsSinceLastGoldBuy > 9000 ? 6 : monthsSinceLastGoldBuy, goldUnderweightPts);
-                }
-            }
+        // Priority 4: CASH_INFLOW_NEEDED (Replaces GOLD_FLOOR_BACKSTOP)
+        if (!lowerBreachedBuckets.isEmpty()) {
+            return new TriggerResolution(
+                "CASH_INFLOW_NEEDED",
+                "CASH_INFLOW_NEEDED",
+                "Underweight bucket(s): " + String.join(", ", lowerBreachedBuckets) + " — route next bank surplus here (0 sells)",
+                false,
+                false,
+                sellCooldownActive,
+                daysSinceLastSell,
+                false,
+                0L,
+                driftedBuckets,
+                drawdownCtx
+            );
         }
 
         return new TriggerResolution(
-            triggerType,
-            reasonCode,
-            reasonLabel,
-            hasSellSide,
-            hasGoldBuy,
+            "NONE",
+            "NO_REBALANCE_REQUIRED",
+            "Portfolio is balanced and within thresholds",
+            false,
+            false,
             sellCooldownActive,
             daysSinceLastSell,
-            goldIdleActive,
-            monthsSinceLastGoldBuy,
+            false,
+            0L,
             driftedBuckets,
             drawdownCtx
         );
@@ -427,8 +483,8 @@ public class RebalanceTriggerEvaluator {
             int drawdownTier = 0;
             if ("DRAWDOWN".equalsIgnoreCase(resolution.triggerType())) {
                 String armed = resolution.drawdownContext() != null ? resolution.drawdownContext().armedTier() : null;
-                if ("TIER_20".equals(armed)) drawdownTier = 20;
-                else if ("TIER_15".equals(armed)) drawdownTier = 15;
+                if ("TIER_30".equals(armed)) drawdownTier = 30;
+                else if ("TIER_20".equals(armed)) drawdownTier = 20;
                 else if ("TIER_10".equals(armed)) drawdownTier = 10;
             }
             String metadataJson = "{}";

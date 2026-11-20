@@ -93,25 +93,28 @@ class RebalanceWaterfallEngineTest {
     @Test
     void testStcgExecutionWhenUrgent() {
         LocalDate today = LocalDate.of(2026, 8, 1);
-        LocalDate acqRecent = LocalDate.of(2026, 7, 1); // 1 month old -> STCG
+        LocalDate acqRecent = LocalDate.of(2026, 7, 1); // 1 month old -> STCG, but > 15 days exit load
 
-        Lot recentLot = new Lot("L1", "NIFTY_LARGEMIDCAP_250", "Nifty LargeMidcap 250 Index Fund",
-            acqRecent, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, BigDecimal.ZERO);
+        Lot recentLot = new Lot("L1", "INF205K01KR8", "Invesco India Arbitrage Fund",
+            acqRecent, new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("10000"), false, null);
 
         Map<String, BigDecimal> navMap = Map.of(
-            "NIFTY_LARGEMIDCAP_250", new BigDecimal("150")
+            "INF205K01KR8", new BigDecimal("150")
         );
 
-        // Trim 5,000 INR, urgent = true
+        // Trim 5,000 INR, urgent = true, isDrawdown = true
         RebalanceWaterfallEngine.WaterfallResult result = RebalanceWaterfallEngine.buildTrimWaterfall(
-            BucketEngine.Bucket.EQUITY_CORE,
+            BucketEngine.Bucket.LIQUID_BUFFER,
             new BigDecimal("5000"),
             List.of(recentLot),
             navMap,
             new BigDecimal("125000"),
             true,
             today,
-            "2026-27"
+            "2026-27",
+            false,
+            true,
+            true
         );
 
         assertNotNull(result);

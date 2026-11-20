@@ -121,9 +121,23 @@ public class TriggerHistoryRepository {
                 "CREATE TABLE IF NOT EXISTS active_drawdown_baseline (" +
                 "  id INTEGER PRIMARY KEY CHECK (id = 1)," +
                 "  baseline_value TEXT NOT NULL," +
-                "  recorded_at TEXT NOT NULL" +
+                "  recorded_at TEXT NOT NULL," +
+                "  max_fired_tier INTEGER NOT NULL DEFAULT 0" +
                 ")"
             );
+            boolean hasMaxFiredTier = false;
+            try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(active_drawdown_baseline)")) {
+                while (rs.next()) {
+                    String colName = rs.getString("name");
+                    if ("max_fired_tier".equalsIgnoreCase(colName)) {
+                        hasMaxFiredTier = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasMaxFiredTier) {
+                stmt.execute("ALTER TABLE active_drawdown_baseline ADD COLUMN max_fired_tier INTEGER NOT NULL DEFAULT 0");
+            }
             stmt.execute(
                 "CREATE TABLE IF NOT EXISTS nifty_tri_watermark (" +
                 "  id INTEGER PRIMARY KEY CHECK (id = 1)," +
@@ -257,6 +271,51 @@ public class TriggerHistoryRepository {
             return 0;
         } catch (SQLException e) {
             throw new RuntimeException("Failed to get record count", e);
+        }
+    }
+
+    public int getActiveDrawdownMaxFiredTier() {
+        String sql = "SELECT max_fired_tier FROM active_drawdown_baseline WHERE id = 1";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+            return 0;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to query active drawdown max fired tier", e);
+        }
+    }
+
+    public void recordDrawdownCycleExecution(BigDecimal baselineIfUnset, int tier) {
+        if (readOnly) return;
+        String nowStr = LocalDateTime.now().format(ISO_FORMATTER);
+        String sqlSelect = "SELECT max_fired_tier FROM active_drawdown_baseline WHERE id = 1";
+        try (Connection conn = getConnection()) {
+            try (PreparedStatement selectStmt = conn.prepareStatement(sqlSelect);
+                 ResultSet rs = selectStmt.executeQuery()) {
+                if (rs.next()) {
+                    int existing = rs.getInt(1);
+                    int newTier = Math.max(existing, tier);
+                    String sqlUpdate = "UPDATE active_drawdown_baseline SET max_fired_tier = ?, recorded_at = ? WHERE id = 1";
+                    try (PreparedStatement updateStmt = conn.prepareStatement(sqlUpdate)) {
+                        updateStmt.setInt(1, newTier);
+                        updateStmt.setString(2, nowStr);
+                        updateStmt.executeUpdate();
+                    }
+                } else {
+                    String sqlInsert = "INSERT INTO active_drawdown_baseline (id, baseline_value, max_fired_tier, recorded_at) VALUES (1, ?, ?, ?)";
+                    try (PreparedStatement insertStmt = conn.prepareStatement(sqlInsert)) {
+                        insertStmt.setString(1, baselineIfUnset != null ? baselineIfUnset.toPlainString() : "0.00");
+                        insertStmt.setInt(2, tier);
+                        insertStmt.setString(3, nowStr);
+                        insertStmt.executeUpdate();
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to record drawdown cycle execution", e);
         }
     }
 

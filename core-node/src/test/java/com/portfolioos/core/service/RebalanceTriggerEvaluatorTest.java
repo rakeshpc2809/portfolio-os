@@ -100,46 +100,51 @@ class RebalanceTriggerEvaluatorTest {
     }
 
     @Test
-    @DisplayName("30-day sell cooldown blocks DRAWDOWN sell plan")
+    @DisplayName("Cycle-latched drawdown blocks refiring same or lower rung within active cycle")
     void testSellCooldownBlocksDrawdown() {
         LocalDate firstDate = LocalDate.of(2026, 8, 1);
-        repository.recordExecution("plan-1", "DRAWDOWN", "DRAWDOWN_TIER_20", firstDate.atStartOfDay(), true, true, "", 20);
+        repository.recordDrawdownCycleExecution(new BigDecimal("100000.00"), 20);
 
-        LocalDate testDate = LocalDate.of(2026, 8, 10); // 9 days later (< 30 days)
+        LocalDate testDate = LocalDate.of(2026, 8, 10); // 9 days later
         RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
             Collections.emptyList(), Collections.emptyMap(),
             new BigDecimal("20000.00"), new BigDecimal("25000.00"),
             null, null, testDate
         );
 
-        assertTrue(res.sellCooldownActive());
-        assertEquals(9, res.daysSinceLastSell());
         assertEquals("NONE", res.triggerType());
-        assertEquals("DRAWDOWN_BLOCKED_BY_COOLDOWN", res.reasonCode());
+        assertEquals("DRAWDOWN_RUNG_ALREADY_DEPLOYED", res.reasonCode());
     }
 
     @Test
-    @DisplayName("GOLD_FLOOR_BACKSTOP co-fires despite active 30-day sell cooldown")
+    @DisplayName("CASH_INFLOW_NEEDED fires on underweight bucket despite active 30-day sell cooldown")
     void testGoldFloorBackstopBypassesSellCooldown() {
-        LocalDate lastSellDate = LocalDate.of(2026, 8, 1);
-        repository.recordExecution("plan-1", "DRAWDOWN", "DRAWDOWN_TIER_20", lastSellDate.atStartOfDay(), true, false, "", 20);
+        LocalDate lastSellDate = LocalDate.of(2026, 11, 20);
+        repository.recordExecution("plan-1", "DRIFT", "DRIFT", lastSellDate.atStartOfDay(), true, false, "", 0);
 
-        LocalDate testDate = LocalDate.of(2026, 8, 10); // 9 days after sell (< 30 days)
-        // Gold idle for 7 months (> 6 months)
-        LocalDate lastGoldBuyDate = testDate.minusMonths(7);
-        repository.recordExecution("plan-gold-old", "DRIFT", "DRIFT", lastGoldBuyDate.atStartOfDay(), false, true, "", 0);
+        LocalDate testDate = LocalDate.of(2026, 11, 25); // 5 days after sell (< 30 days)
+        // Gold at 5% (underweight vs 10% target, band 2.5% -> lower threshold 7.5%)
+        Lot satLot = new Lot("lot-sat", "INF109KC13X2", "ICICI Value 30", testDate.minusDays(400), new BigDecimal("3000"), new BigDecimal("3000"), new BigDecimal("100.00"), new BigDecimal("300000.00"), false, null);
+        Lot coreLot = new Lot("lot-core", "INF109KC12U0", "ICICI LargeMidcap", testDate.minusDays(400), new BigDecimal("5500"), new BigDecimal("5500"), new BigDecimal("100.00"), new BigDecimal("550000.00"), false, null);
+        Lot goldLot = new Lot("lot-gold", "INF247L01BM8", "Motilal Gold FoF", testDate.minusDays(400), new BigDecimal("500"), new BigDecimal("500"), new BigDecimal("100.00"), new BigDecimal("50000.00"), false, null);
+        Lot arbLot = new Lot("lot-arb", "INF205K01KR8", "Invesco Arbitrage", testDate.minusDays(400), new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("100.00"), new BigDecimal("100000.00"), false, null);
+
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC13X2", new BigDecimal("100.00"),
+            "INF109KC12U0", new BigDecimal("100.00"),
+            "INF247L01BM8", new BigDecimal("100.00"),
+            "INF205K01KR8", new BigDecimal("100.00")
+        );
 
         RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
-            Collections.emptyList(), Collections.emptyMap(),
+            List.of(satLot, coreLot, goldLot, arbLot), navMap,
             new BigDecimal("25000.00"), new BigDecimal("25000.00"), // No drawdown
             null, null, testDate
         );
 
         assertTrue(res.sellCooldownActive(), "Sell cooldown should be active");
-        assertTrue(res.goldIdleActive(), "Gold idle should be active (7 months)");
-        assertEquals("GOLD_FLOOR_BACKSTOP", res.triggerType(), "Gold floor backstop must fire despite active sell cooldown");
+        assertEquals("CASH_INFLOW_NEEDED", res.triggerType(), "Cash inflow needed fires for underweight bucket without triggering sells");
         assertFalse(res.hasSellSide());
-        assertTrue(res.hasGoldBuy());
     }
 
     @Test
@@ -235,7 +240,7 @@ class RebalanceTriggerEvaluatorTest {
     }
 
     @Test
-    @DisplayName("F2 Test: GOLD_FLOOR_BACKSTOP fires when drift sell trigger is blocked by active 30-day sell cooldown")
+    @DisplayName("F2 Test: Drift sell trigger is blocked by active 30-day sell cooldown")
     void testGoldFloorBackstopFiresEvenWhenDriftBlockedByCooldown() {
         LocalDate today = LocalDate.of(2026, 8, 26);
         LocalDate lastSellDate = today.minusDays(10); // 10 days ago -> 30-day sell cooldown is ACTIVE!
@@ -243,10 +248,7 @@ class RebalanceTriggerEvaluatorTest {
         // Record prior sell to activate sell cooldown
         repository.recordExecution("plan-prior-sell", "DRIFT", "CORE_DRIFT_TRIM", lastSellDate.atStartOfDay(), true, false, "{}", 0);
 
-        // Portfolio setup with:
-        // 1. Satellite bucket severely drifted (35% target + 5% band -> actual 45% -> DRIFT trigger)
-        // 2. Gold/Silver bucket at 5% (Target = 10% under v2.3 rules -> 5 pts underweight >= 2 pt threshold)
-        // 3. No Gold purchases recorded (idle >= 6 months)
+        // Portfolio setup with Satellite bucket severely drifted (35% target + 5% band -> actual 45% -> DRIFT trigger)
         Lot satLot = new Lot("lot-sat", "INF109KC13X2", "ICICI Prudential Nifty200 Value 30 Index Fund",
             today.minusDays(400), new BigDecimal("4500"), new BigDecimal("4500"), new BigDecimal("100.00"), new BigDecimal("450000.00"), false, null);
         Lot coreLot = new Lot("lot-core", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
@@ -267,66 +269,62 @@ class RebalanceTriggerEvaluatorTest {
             List.of(satLot, coreLot, goldLot, arbLot), navMap, new BigDecimal("1000.00"), new BigDecimal("1000.00"), null, null, today
         );
 
-        assertEquals("GOLD_FLOOR_BACKSTOP", res.triggerType(),
-            "Buy-only Gold Floor Backstop must fire when sell drift is suppressed by cooldown (Invariant 4: backstop is exempt from sell cooldown)");
+        assertEquals("NONE", res.triggerType(),
+            "Drift sell must be suppressed when 30-day sell cooldown is active");
         assertEquals("DRIFT_BLOCKED_BY_COOLDOWN", res.reasonCode(),
             "Suppressed drift reasonCode must be retained so sell audit trail is not erased");
-        assertTrue(res.reasonLabel().contains("Buy-only Gold/Silver Floor Backstop Triggered"),
-            "Label must mention the backstop firing");
-        assertTrue(res.reasonLabel().contains("Bucket drift detected"),
-            "Label must mention the suppressed drift");
         assertFalse(res.hasSellSide());
-        assertTrue(res.hasGoldBuy());
     }
 
     @Test
-    @DisplayName("F8: Deeper drawdown rung escalation bypasses active 30-day sell cooldown")
+    @DisplayName("F8: Deeper drawdown rung escalation bypasses cycle latching and active 30-day sell cooldown")
     void testDrawdownEscalationBypassesSellCooldown() {
         LocalDate today = LocalDate.of(2026, 8, 26);
         LocalDate lastSellDate = today.minusDays(10); // 10 days ago (< 30 days)
 
         // Step 1: Record a prior 10% drawdown execution 10 days ago
-        repository.recordExecution("plan-dd-10", "DRAWDOWN", "DRAWDOWN_TIER_10", lastSellDate.atStartOfDay(), true, true, "{}", 10);
+        repository.recordDrawdownCycleExecution(new BigDecimal("100000.00"), 10);
+        repository.recordExecution("plan-dd-10", "DRAWDOWN", "DRAWDOWN_TIER_10", lastSellDate.atStartOfDay(), true, false, "{}", 10);
 
-        // Step 2: Market drops deeper to 15% drawdown (curr = 8500, high = 10000 -> 15.00% DD)
+        // Step 2: Market drops deeper to 20% drawdown (curr = 8000, high = 10000 -> 20.00% DD)
         RebalanceTriggerEvaluator.TriggerResolution resEscalated = evaluator.getCurrentStatus(
             Collections.emptyList(), Collections.emptyMap(),
-            new BigDecimal("8500.00"), new BigDecimal("10000.00"),
+            new BigDecimal("8000.00"), new BigDecimal("10000.00"),
             null, null, today
         );
 
-        // F8 Invariant: Rung 15 > Rung 10, so cooldown is bypassed and DRAWDOWN_TIER_15 fires!
-        assertEquals("DRAWDOWN", resEscalated.triggerType(), "Drawdown tier escalation (10% -> 15%) must bypass 30-day sell cooldown");
-        assertEquals("DRAWDOWN_TIER_15", resEscalated.reasonCode());
+        // F8 Invariant: Rung 20 > Rung 10, so cooldown is bypassed and DRAWDOWN_TIER_20 fires!
+        assertEquals("DRAWDOWN", resEscalated.triggerType(), "Drawdown tier escalation (10% -> 20%) must bypass 30-day sell cooldown");
+        assertEquals("DRAWDOWN_TIER_20", resEscalated.reasonCode());
         assertTrue(resEscalated.hasSellSide());
-        assertTrue(resEscalated.hasGoldBuy());
 
-        // Step 3: Record the 15% execution
-        repository.recordExecution("plan-dd-15", "DRAWDOWN", "DRAWDOWN_TIER_15", today.atStartOfDay(), true, true, "{}", 15);
+        // Step 3: Record the 20% execution
+        repository.recordDrawdownCycleExecution(new BigDecimal("100000.00"), 20);
+        repository.recordExecution("plan-dd-20", "DRAWDOWN", "DRAWDOWN_TIER_20", today.atStartOfDay(), true, false, "{}", 20);
 
-        // Step 4: 2 days later, market is still at 15% drawdown (same rung, not escalated)
+        // Step 4: 2 days later, market is still at 20% drawdown (same rung, not escalated)
         LocalDate twoDaysLater = today.plusDays(2);
         RebalanceTriggerEvaluator.TriggerResolution resBlocked = evaluator.getCurrentStatus(
-            Collections.emptyList(), Collections.emptyMap(),
-            new BigDecimal("8500.00"), new BigDecimal("10000.00"),
-            null, null, twoDaysLater
-        );
-
-        // Same rung (15 == 15, not deeper) is strictly blocked by 30-day cooldown
-        assertEquals("NONE", resBlocked.triggerType());
-        assertEquals("DRAWDOWN_BLOCKED_BY_COOLDOWN", resBlocked.reasonCode());
-        assertFalse(resBlocked.hasSellSide());
-
-        // Step 5: Market crashes deeper to 20% drawdown (curr = 8000, high = 10000 -> 20.00% DD)
-        RebalanceTriggerEvaluator.TriggerResolution resCapitulation = evaluator.getCurrentStatus(
             Collections.emptyList(), Collections.emptyMap(),
             new BigDecimal("8000.00"), new BigDecimal("10000.00"),
             null, null, twoDaysLater
         );
 
-        // Rung 20 > Rung 15, so cooldown is bypassed AGAIN for tier 20!
-        assertEquals("DRAWDOWN", resCapitulation.triggerType(), "Drawdown tier escalation (15% -> 20%) must bypass 30-day sell cooldown");
-        assertEquals("DRAWDOWN_TIER_20", resCapitulation.reasonCode());
+        // Same rung (20 == 20, not deeper) is cycle-latched
+        assertEquals("NONE", resBlocked.triggerType());
+        assertEquals("DRAWDOWN_RUNG_ALREADY_DEPLOYED", resBlocked.reasonCode());
+        assertFalse(resBlocked.hasSellSide());
+
+        // Step 5: Market crashes deeper to 30% drawdown (curr = 7000, high = 10000 -> 30.00% DD)
+        RebalanceTriggerEvaluator.TriggerResolution resCapitulation = evaluator.getCurrentStatus(
+            Collections.emptyList(), Collections.emptyMap(),
+            new BigDecimal("7000.00"), new BigDecimal("10000.00"),
+            null, null, twoDaysLater
+        );
+
+        // Rung 30 > Rung 20, so cooldown is bypassed AGAIN for tier 30!
+        assertEquals("DRAWDOWN", resCapitulation.triggerType(), "Drawdown tier escalation (20% -> 30%) must bypass 30-day sell cooldown");
+        assertEquals("DRAWDOWN_TIER_30", resCapitulation.reasonCode());
         assertTrue(resCapitulation.hasSellSide());
     }
 

@@ -181,13 +181,13 @@ public class BucketConfigLoader {
             String ddAnchorMode = String.valueOf(giMap.getOrDefault("drawdown_anchor_mode", "ATH_WATERMARK"));
             BigDecimal ddHoldMin = new BigDecimal(String.valueOf(giMap.getOrDefault("drawdown_hold_zone_min_pct", "5.00")));
             BigDecimal ddHoldMax = new BigDecimal(String.valueOf(giMap.getOrDefault("drawdown_hold_zone_max_pct", "10.00")));
-            BigDecimal urgentDdThresh = new BigDecimal(String.valueOf(giMap.getOrDefault("urgent_drawdown_threshold_pct", "15.00")));
-            List<?> rawSchedMonths = (List<?>) giMap.getOrDefault("scheduled_months", List.of(3, 9));
+            BigDecimal urgentDdThresh = new BigDecimal(String.valueOf(giMap.getOrDefault("urgent_drawdown_threshold_pct", "30.00")));
+            List<?> rawSchedMonths = (List<?>) giMap.getOrDefault("scheduled_months", List.of(3));
             List<Integer> schedMonths = rawSchedMonths.stream().map(m -> ((Number) m).intValue()).toList();
-            int nseBlackoutHours = ((Number) giMap.getOrDefault("nse_reconstitution_blackout_hours", 48)).intValue();
+            BigDecimal taxableTrimFraction = new BigDecimal(String.valueOf(giMap.getOrDefault("taxable_trim_fraction", "0.50")));
 
             var globalInvariants = new com.portfolioos.core.config.BucketTargetsConfig.GlobalInvariants(
-                cooldownDays, minTradeAmount, liquidHardCap, ddAnchorMode, ddHoldMin, ddHoldMax, urgentDdThresh, schedMonths, nseBlackoutHours
+                cooldownDays, minTradeAmount, liquidHardCap, ddAnchorMode, ddHoldMin, ddHoldMax, urgentDdThresh, schedMonths, taxableTrimFraction
             );
 
             // Tax Parameters
@@ -219,16 +219,6 @@ public class BucketConfigLoader {
                 ));
             }
 
-            // Dampener Tiers
-            List<Map<String, Object>> tiersRaw = (List<Map<String, Object>>) data.getOrDefault("dampener_tiers", List.of());
-            List<com.portfolioos.core.config.BucketTargetsConfig.DampenerTier> dampenerTiers = new ArrayList<>();
-            for (Map<String, Object> t : tiersRaw) {
-                dampenerTiers.add(new com.portfolioos.core.config.BucketTargetsConfig.DampenerTier(
-                    new BigDecimal(String.valueOf(t.get("max_relative_excess_pct"))),
-                    new BigDecimal(String.valueOf(t.get("multiplier")))
-                ));
-            }
-
             // Buckets
             Map<String, Object> bMap = (Map<String, Object>) data.get("buckets");
             if (bMap == null) {
@@ -255,16 +245,6 @@ public class BucketConfigLoader {
                     intraSpec = new com.portfolioos.core.config.BucketTargetsConfig.IntraBucketRoutingSpec(remediatePassive, primaryIsin, primaryRatio, ratioBand);
                 }
 
-                // Backstop
-                com.portfolioos.core.config.BucketTargetsConfig.BackstopSpec backstopSpec = null;
-                if (bsData.containsKey("backstop")) {
-                    Map<String, Object> bkData = (Map<String, Object>) bsData.get("backstop");
-                    int minIdle = ((Number) bkData.getOrDefault("min_idle_months", 6)).intValue();
-                    BigDecimal minUnderweight = new BigDecimal(String.valueOf(bkData.getOrDefault("min_underweight_gap_pct", "2.00")));
-                    BigDecimal gapClose = new BigDecimal(String.valueOf(bkData.getOrDefault("gap_close_fraction", "0.50")));
-                    backstopSpec = new com.portfolioos.core.config.BucketTargetsConfig.BackstopSpec(minIdle, minUnderweight, gapClose);
-                }
-
                 // Schemes
                 List<Map<String, Object>> schList = (List<Map<String, Object>>) bsData.getOrDefault("schemes", List.of());
                 List<com.portfolioos.core.config.BucketTargetsConfig.SchemeSpec> schemes = new ArrayList<>();
@@ -281,7 +261,7 @@ public class BucketConfigLoader {
                 }
 
                 buckets.put(bType, new com.portfolioos.core.config.BucketTargetsConfig.BucketSpec(
-                    targetPct, bandLower, bandUpper, intraSpec, backstopSpec, schemes
+                    targetPct, bandLower, bandUpper, intraSpec, schemes
                 ));
             }
 
@@ -290,7 +270,7 @@ public class BucketConfigLoader {
             List<String> legacyBlacklist = blRaw.stream().map(Object::toString).toList();
 
             cachedV24Config = new com.portfolioos.core.config.BucketTargetsConfig(
-                version, globalInvariants, taxParameters, drawdownRungs, dampenerTiers, buckets, legacyBlacklist
+                version, globalInvariants, taxParameters, drawdownRungs, buckets, legacyBlacklist
             );
             return cachedV24Config;
         } catch (Exception e) {
@@ -498,11 +478,30 @@ public class BucketConfigLoader {
         }
 
         List<BucketEngine.BucketTarget> result = new ArrayList<>();
+        com.portfolioos.core.config.BucketTargetsConfig v24Config = null;
+        try {
+            v24Config = loadV24Config();
+        } catch (Exception ignored) {}
+
         for (Map.Entry<BucketEngine.Bucket, BigDecimal> entry : targetMap.entrySet()) {
+            BucketEngine.Bucket b = entry.getKey();
+            com.portfolioos.core.config.BucketTargetsConfig.BucketType bType = switch (b) {
+                case EQUITY_CORE -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_CORE;
+                case EQUITY_SATELLITE, SATELLITE_VALUE, SATELLITE_MOMENTUM, SATELLITE_SMALLCAP -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.EQUITY_SATELLITE;
+                case GOLD_SILVER, HEDGE_COMMODITY -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.GOLD_SILVER;
+                case LIQUID_BUFFER, LIQUIDITY_ARBITRAGE -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER;
+                case LEGACY_HOLDINGS -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.LEGACY_HOLDINGS;
+            };
+            var spec = (v24Config != null && v24Config.buckets() != null) ? v24Config.buckets().get(bType) : null;
+            BigDecimal bandLower = spec != null ? spec.bandLowerPct() : bandMap.getOrDefault(b, new BigDecimal("5.00"));
+            BigDecimal bandUpper = spec != null ? spec.bandUpperPct() : bandMap.getOrDefault(b, new BigDecimal("5.00"));
+
             result.add(new BucketEngine.BucketTarget(
-                entry.getKey(),
+                b,
                 entry.getValue(),
-                bandMap.getOrDefault(entry.getKey(), new BigDecimal("5.00"))
+                bandMap.getOrDefault(b, new BigDecimal("5.00")),
+                bandLower,
+                bandUpper
             ));
         }
         if (result.isEmpty()) {

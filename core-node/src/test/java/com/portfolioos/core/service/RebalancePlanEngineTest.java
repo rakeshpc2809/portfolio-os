@@ -19,6 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.*;
 
@@ -729,9 +730,10 @@ class RebalancePlanEngineTest {
         assertNotNull(plan.buySide());
 
         BigDecimal unDampenedLinearExcess = new BigDecimal("135000.00");
+        BigDecimal expectedBuySide = unDampenedLinearExcess.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
 
-        assertEquals(0, unDampenedLinearExcess.compareTo(plan.buySide().totalToInvest()),
-            "Total buy-side invest pool must equal linear excess (135,000.00)");
+        assertEquals(0, expectedBuySide.compareTo(plan.buySide().totalToInvest()),
+            "Total buy-side invest pool must equal 50% taxable trim fraction of excess (67,500.00)");
 
         // Verify sell waterfall sold specifically from Gold bucket
         List<RebalanceLotImpactDto> soldLots = plan.sellSide().waterfall().stream()
@@ -744,17 +746,17 @@ class RebalancePlanEngineTest {
         BigDecimal totalGoldSold = soldLots.stream()
             .map(RebalanceLotImpactDto::saleProceeds)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
-        assertEquals(0, unDampenedLinearExcess.compareTo(totalGoldSold),
-            "Gold sale proceeds must match exactly 135,000.00");
+        assertEquals(0, expectedBuySide.compareTo(totalGoldSold),
+            "Gold sale proceeds must match 50% taxable trim (67,500.00)");
 
         // Verify post-rebalance percentage of Gold:
-        // postVal = 235,000 - 135,000 = 100,000.00
-        // postRebalancePct = (100,000 / 1,000,000) * 100 = 10.0%
+        // postVal = 235,000 - 67,500 = 167,500.00
+        // postRebalancePct = (167,500 / 1,000,000) * 100 = 16.8%
         RebalanceBucketAllocationDto goldAllocation = plan.buySide().buckets().stream()
             .filter(b -> BucketEngine.Bucket.GOLD_SILVER.name().equals(b.bucket()))
             .findFirst().orElseThrow();
-        assertEquals(10.0, goldAllocation.postRebalancePct(), 0.1,
-            "Gold postRebalancePct must be 10.0% reflecting 235k - 135k trim");
+        assertEquals(16.8, goldAllocation.postRebalancePct(), 0.1,
+            "Gold postRebalancePct must be 16.8% reflecting 235k - 67.5k trim");
     }
 
     @Test
@@ -817,9 +819,9 @@ class RebalancePlanEngineTest {
             "INF205K01QU7", nav
         );
 
-        // Benchmark (Nifty 500) has crashed by 20% (Rung 3)
-        BigDecimal currentBench = new BigDecimal("8000.00");
-        BigDecimal highBench = new BigDecimal("10000.00"); // 20.0% DD
+        // Benchmark (Nifty 500) has crashed by 30% (Rung 3)
+        BigDecimal currentBench = new BigDecimal("7000.00");
+        BigDecimal highBench = new BigDecimal("10000.00"); // 30.0% DD
 
         RebalancePlanDto plan = RebalancePlanEngine.buildPreviewPlan(
             openLots, Collections.emptyList(), navMap, today,
@@ -828,7 +830,7 @@ class RebalancePlanEngineTest {
 
         assertNotNull(plan);
         assertEquals("DRAWDOWN", plan.trigger().type());
-        assertEquals("DRAWDOWN_TIER_20", plan.trigger().reasonCode());
+        assertEquals("DRAWDOWN_TIER_30", plan.trigger().reasonCode());
 
         // Verify Sell Side: Exactly ₹100,000.00 from ARBITRAGE_BUFFER tier (undampened, 100% of buffer)
         assertNotNull(plan.sellSide());
@@ -1032,7 +1034,7 @@ class RebalancePlanEngineTest {
     @DisplayName("F4 Residual Test: Long-term loss lot must NOT apply negative exemption or inflate headroom")
     void testLongTermLossLotDoesNotInflateHeadroomOrApplyNegativeExemption() {
         BigDecimal nav = new BigDecimal("100.00");
-        LocalDate today = LocalDate.of(2026, 8, 26);
+        LocalDate today = LocalDate.of(2027, 3, 26); // March scheduled maintenance executes Step 0 Legacy
 
         // Legacy equity lot with loss:
         // Acquired 400 days ago (> 365d threshold for LTCG)
@@ -1354,11 +1356,11 @@ class RebalancePlanEngineTest {
     }
 
     @Test
-    @DisplayName("Cross-Tier Parity: allocateLumpsum respects Gold Floor Backstop and Crash Protection exclusions")
+    @DisplayName("Cross-Tier Parity: allocateLumpsum respects Cash Inflow Needed and Crash Protection exclusions")
     void testAllocateLumpsumGoldFloorBackstopAndCrashExclusionParity() {
-        // Scenario 24: allocateLumpsum Gold Floor Backstop 50% gap priority fill
+        // Scenario 24: allocateLumpsum normal regime proportional underweight fill
         RebalancePlanDto plan24 = new RebalancePlanDto(
-            new RebalancePlanDtos.RebalanceTriggerDto("GOLD_FLOOR_BACKSTOP"),
+            new RebalancePlanDtos.RebalanceTriggerDto("CASH_INFLOW_NEEDED"),
             new RebalancePlanDtos.BuySidePlanDto(
                 BigDecimal.valueOf(100000.0),
                 List.of(
@@ -1371,17 +1373,14 @@ class RebalancePlanEngineTest {
 
         Map<String, BigDecimal> alloc24 = RebalancePlanEngine.allocateLumpsum(BigDecimal.valueOf(100000.0), plan24);
         assertNotNull(alloc24);
-        BigDecimal goldAlloc = alloc24.getOrDefault("GOLD_SILVER", BigDecimal.ZERO);
-        assertTrue(goldAlloc.compareTo(BigDecimal.valueOf(2500.0)) >= 0,
-            "Gold must receive at least 50% gap priority fill (>= 2500)");
-        assertEquals(new BigDecimal("26875.00"), alloc24.get("GOLD_SILVER"));
-        assertEquals(new BigDecimal("48750.00"), alloc24.get("EQUITY_CORE"));
-        assertEquals(new BigDecimal("24375.00"), alloc24.get("LIQUID_BUFFER"));
+        assertEquals(new BigDecimal("25000.00"), alloc24.get("GOLD_SILVER"));
+        assertEquals(new BigDecimal("50000.00"), alloc24.get("EQUITY_CORE"));
+        assertEquals(new BigDecimal("25000.00"), alloc24.get("LIQUID_BUFFER"));
         BigDecimal sum24 = alloc24.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         assertEquals(0, BigDecimal.valueOf(100000.0).compareTo(sum24),
             "Total allocated cash must conserve 100,000");
 
-        // Scenario 25: allocateLumpsum Crash Protection (drawdownPct >= 10.0%) Liquid Buffer & Arbitrage exclusion
+        // Scenario 25: allocateLumpsum Crash Protection (drawdownPct >= 10.0%) Liquid Buffer & Gold exclusion
         RebalancePlanDto plan25 = new RebalancePlanDto(
             new RebalancePlanDtos.DrawdownContextDto(15.0),
             new RebalancePlanDtos.BuySidePlanDto(
@@ -1399,10 +1398,9 @@ class RebalancePlanEngineTest {
         assertNotNull(alloc25);
         assertNull(alloc25.get("LIQUID_BUFFER"), "Liquid buffer must be excluded during 15% drawdown");
         assertNull(alloc25.get("ARBITRAGE"), "Arbitrage must be excluded during 15% drawdown");
-        assertTrue(alloc25.get("EQUITY_CORE").compareTo(BigDecimal.ZERO) > 0, "Equity Core must receive allocation");
-        assertTrue(alloc25.get("GOLD_SILVER").compareTo(BigDecimal.ZERO) > 0, "Gold must receive allocation");
-        assertEquals(new BigDecimal("33333.33"), alloc25.get("GOLD_SILVER"));
-        assertEquals(new BigDecimal("66666.67"), alloc25.get("EQUITY_CORE"));
+        assertNull(alloc25.get("GOLD_SILVER"), "Gold must be excluded during 15% drawdown");
+        assertTrue(alloc25.get("EQUITY_CORE").compareTo(BigDecimal.ZERO) > 0, "Equity Core must receive 100% allocation");
+        assertEquals(new BigDecimal("100000.00"), alloc25.get("EQUITY_CORE"));
         BigDecimal sum25 = alloc25.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         assertEquals(0, BigDecimal.valueOf(100000.0).compareTo(sum25),
             "Total allocated cash must conserve 100,000");

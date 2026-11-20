@@ -46,8 +46,14 @@ public class BucketEngine {
     public record BucketTarget(
         Bucket bucket,
         BigDecimal targetPct,
-        BigDecimal bandPct
-    ) {}
+        BigDecimal bandPct,
+        BigDecimal bandLowerPct,
+        BigDecimal bandUpperPct
+    ) {
+        public BucketTarget(Bucket bucket, BigDecimal targetPct, BigDecimal bandPct) {
+            this(bucket, targetPct, bandPct, bandPct, bandPct);
+        }
+    }
 
     public record BucketFundConstituent(
         String isin,
@@ -234,11 +240,11 @@ public class BucketEngine {
         BigDecimal dynamicLiquidPct;
         BigDecimal dynamicCorePct;
 
-        if (drawdownPct >= 20.0) {
+        if (drawdownPct >= 30.0) {
             // Rung 3: Capitulation (deploy 100% of buffer)
             dynamicLiquidPct = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
             dynamicCorePct = baseCorePct.add(baseLiquidPct).setScale(2, RoundingMode.HALF_UP);
-        } else if (drawdownPct >= 15.0) {
+        } else if (drawdownPct >= 20.0) {
             // Rung 2: Bear Market (deploy 50% of buffer)
             dynamicLiquidPct = baseLiquidPct.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
             dynamicCorePct = baseCorePct.add(baseLiquidPct.multiply(new BigDecimal("0.50"))).setScale(2, RoundingMode.HALF_UP);
@@ -266,9 +272,9 @@ public class BucketEngine {
         List<BucketTarget> shifted = new ArrayList<>();
         for (BucketTarget t : baseTargets) {
             if (t.bucket() == liquidBase.bucket()) {
-                shifted.add(new BucketTarget(t.bucket(), dynamicLiquidPct, t.bandPct()));
+                shifted.add(new BucketTarget(t.bucket(), dynamicLiquidPct, t.bandPct(), t.bandLowerPct(), t.bandUpperPct()));
             } else if (t.bucket() == coreBase.bucket()) {
-                shifted.add(new BucketTarget(t.bucket(), dynamicCorePct, t.bandPct()));
+                shifted.add(new BucketTarget(t.bucket(), dynamicCorePct, t.bandPct(), t.bandLowerPct(), t.bandUpperPct()));
             } else {
                 shifted.add(t);
             }
@@ -393,10 +399,11 @@ public class BucketEngine {
 
             BucketTarget tgt = targetMap.get(bucket);
             BigDecimal targetPct = tgt != null ? tgt.targetPct() : BigDecimal.ZERO;
-            BigDecimal bandPct = tgt != null ? tgt.bandPct() : new BigDecimal("5.0");
+            BigDecimal bandLower = tgt != null && tgt.bandLowerPct() != null ? tgt.bandLowerPct() : (tgt != null && tgt.bandPct() != null ? tgt.bandPct() : new BigDecimal("5.0"));
+            BigDecimal bandUpper = tgt != null && tgt.bandUpperPct() != null ? tgt.bandUpperPct() : (tgt != null && tgt.bandPct() != null ? tgt.bandPct() : new BigDecimal("5.0"));
 
             BigDecimal drift = curPct.subtract(targetPct);
-            boolean isDrifted = (bucket == Bucket.LEGACY_HOLDINGS) ? false : (drift.abs().compareTo(bandPct) > 0);
+            boolean isDrifted = (bucket == Bucket.LEGACY_HOLDINGS) ? false : (drift.compareTo(bandUpper) > 0 || drift.compareTo(bandLower.negate()) < 0);
 
             if (isCalendarReviewDate && isDrifted) {
                 calendarTriggerFired = true;
@@ -675,9 +682,9 @@ public class BucketEngine {
         }
 
         BigDecimal deployPct = BigDecimal.ZERO;
-        if (drawdownPct.compareTo(new BigDecimal("20.0")) >= 0) {
+        if (drawdownPct.compareTo(new BigDecimal("30.0")) >= 0) {
             deployPct = new BigDecimal("100.0");
-        } else if (drawdownPct.compareTo(new BigDecimal("15.0")) >= 0) {
+        } else if (drawdownPct.compareTo(new BigDecimal("20.0")) >= 0) {
             deployPct = new BigDecimal("50.0");
         } else if (drawdownPct.compareTo(new BigDecimal("10.0")) >= 0) {
             deployPct = new BigDecimal("25.0");

@@ -29,7 +29,7 @@
     },
     {
       level: 2,
-      threshold: -15.0,
+      threshold: -20.0,
       deployFraction: 0.50,
       deployLabel: 'Cumulative 50% of Buffer',
       targetBucket: 'CORE & FACTOR SATELLITE',
@@ -37,7 +37,7 @@
     },
     {
       level: 3,
-      threshold: -20.0,
+      threshold: -30.0,
       deployFraction: 1.0,
       deployLabel: '100% (Full Liquid Reserve)',
       targetBucket: 'MAX CORE COMPOUNDING',
@@ -47,13 +47,13 @@
 
   const activeRung = $derived(() => {
     if (status === 'UNAVAILABLE') return 0;
-    if (normalizedDrawdown <= -20.0) return 3;
-    if (normalizedDrawdown <= -15.0) return 2;
+    if (normalizedDrawdown <= -30.0) return 3;
+    if (normalizedDrawdown <= -20.0) return 2;
     if (normalizedDrawdown <= -10.0) return 1;
     return 0; // Standing by in normal regime
   });
 
-  const clampedPos = $derived(Math.min(100, Math.max(0, (Math.abs(normalizedDrawdown) / 20.0) * 100)));
+  const clampedPos = $derived(Math.min(100, Math.max(0, (Math.abs(normalizedDrawdown) / 30.0) * 100)));
 </script>
 
 <div class="drawdown-card obsidian-card">
@@ -64,7 +64,7 @@
       </div>
       <div>
         <h3 class="header-title">Nifty 500 Drawdown Rungs & Tactical Inflow</h3>
-        <span class="header-sub">Pre-committed buy-the-dip rule engine (Finance Act 2024 / v2.3 Spec)</span>
+        <span class="header-sub">Pre-committed buy-the-dip rule engine (Finance Act 2024 / Policy v3.0 Spec)</span>
       </div>
     </div>
     <div class="market-status-pill mono">
@@ -85,15 +85,15 @@
       <div class="gauge-labels">
         <span class="gauge-end text-muted">ATH (0.0%)</span>
         <span class="gauge-marker text-muted">-10.0% (Rung 1)</span>
-        <span class="gauge-marker text-muted">-15.0% (Rung 2)</span>
-        <span class="gauge-end text-rose">-20.0% (Rung 3)</span>
+        <span class="gauge-marker text-muted">-20.0% (Rung 2)</span>
+        <span class="gauge-end text-rose">-30.0% (Rung 3)</span>
       </div>
 
       <div class="gauge-track">
         <div class="track-bg"></div>
-        <div class="zone zone-1" style="left: 0%; width: 50%;"></div>
-        <div class="zone zone-2" style="left: 50%; width: 25%;"></div>
-        <div class="zone zone-3" style="left: 75%; width: 25%;"></div>
+        <div class="zone zone-1" style="left: 0%; width: 33.33%;"></div>
+        <div class="zone zone-2" style="left: 33.33%; width: 33.33%;"></div>
+        <div class="zone zone-3" style="left: 66.66%; width: 33.34%;"></div>
 
         <!-- Current Drawdown Indicator Needle -->
         <div class="drawdown-needle" style="--needle-pct: {clampedPos}%;">

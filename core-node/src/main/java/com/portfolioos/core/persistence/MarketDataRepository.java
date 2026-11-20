@@ -3,6 +3,7 @@ package com.portfolioos.core.persistence;
 import com.zaxxer.hikari.HikariDataSource;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -317,6 +318,28 @@ public class MarketDataRepository {
             }
             if (maxIngested > 0.0) {
                 updateNiftyTriWatermarkIfHigher(BigDecimal.valueOf(maxIngested));
+            }
+
+            // Compute live drawdown from latest date's level vs watermark
+            TriggerHistoryRepository repo = getTriggerHistoryRepository();
+            if (repo != null) {
+                Optional<BigDecimal> watermarkOpt = repo.getNiftyTriWatermark();
+                if (watermarkOpt.isPresent() && watermarkOpt.get().compareTo(BigDecimal.ZERO) > 0) {
+                    String latestDate = dateToLevel.keySet().stream().max(String::compareTo).orElse(null);
+                    if (latestDate != null && dateToLevel.get(latestDate) != null) {
+                        BigDecimal latestLevel = BigDecimal.valueOf(dateToLevel.get(latestDate));
+                        BigDecimal watermark = watermarkOpt.get();
+                        if (latestLevel.compareTo(BigDecimal.ZERO) > 0) {
+                            BigDecimal dd = watermark.subtract(latestLevel)
+                                .multiply(BigDecimal.valueOf(100))
+                                .divide(watermark, 4, RoundingMode.HALF_UP);
+                            double ddPct = Math.max(0.0, dd.doubleValue());
+                            if (ddPct < 5.0) {
+                                repo.clearActiveDrawdownArbitrageBaseline();
+                            }
+                        }
+                    }
+                }
             }
         }
     }

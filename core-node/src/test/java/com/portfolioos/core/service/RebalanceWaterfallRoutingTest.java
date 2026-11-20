@@ -279,9 +279,8 @@ class RebalanceWaterfallRoutingTest {
         assertNotNull(res);
         assertTrue(res.sellCooldownActive(), "Sell cooldown must be active on Day 10 (10 days since Day 0 sell)");
         assertEquals("DRIFT_BLOCKED_BY_COOLDOWN", res.reasonCode(), "Small Cap ceiling breach suppression reason must be preserved");
-        assertEquals("GOLD_FLOOR_BACKSTOP", res.triggerType(), "Buy-only Gold backstop fires despite sell cooldown (Invariant 4)");
+        assertEquals("NONE", res.triggerType(), "Drift sell is suppressed during 30-day sell cooldown");
         assertFalse(res.hasSellSide(), "Sell side must be suppressed during 30-day cooldown");
-        assertTrue(res.hasGoldBuy(), "Gold buy side must be enabled for backstop");
     }
 
     @Test
