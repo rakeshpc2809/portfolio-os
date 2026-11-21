@@ -189,16 +189,15 @@ class RebalanceWaterfallRoutingTest {
 
         assertNotNull(res);
         assertEquals("DRIFT", res.triggerType());
-        assertTrue(res.driftedBuckets().contains("CORE_AGGREGATE_BREACH"), "CORE_AGGREGATE_BREACH must fire when Core aggregate is 70% (>65%)");
-        assertFalse(res.driftedBuckets().contains("CORE_INTERNAL_CIRCUIT_BREAKER"), "CORE_INTERNAL_CIRCUIT_BREAKER must NOT fire when internal ratio is 60:40");
+        assertTrue(res.driftedBuckets().contains("EQUITY_CORE"), "EQUITY_CORE must fire when Core aggregate is 70% (>55%)");
     }
 
     @Test
-    @DisplayName("Fixture 5b: Core internal circuit breaker ratio fires when LargeMid ratio is 80% (0.80 > 0.75) even if Core aggregate total is exactly 50%")
+    @DisplayName("Fixture 5b: Core internal imbalance (0.80 vs 0.60 target) does not fire automated sells under v3.0 passive remediation when aggregate is 50%")
     void testCoreCircuitBreakerFiresIndependently() {
         LocalDate today = LocalDate.of(2026, 8, 26);
         // Total Corpus = 1,000,000. Core = 500,000 (50% total, exactly on target)
-        // Core internal split: LargeMid = 400,000 (80%), PPFC = 100,000 (20%) -> Ratio 0.80 > 0.75 max ratio!
+        // Core internal split: LargeMid = 400,000 (80%), PPFC = 100,000 (20%) -> Ratio 0.80
         Lot lmLot = new Lot("lot-lm", "INF109KC12U0", "ICICI LargeMidcap 250", today.minusDays(400), new BigDecimal("4000"), new BigDecimal("4000"), new BigDecimal("100.00"), new BigDecimal("400000.00"), false, null);
         Lot ppfcLot = new Lot("lot-ppfc", "INF879O01027", "Parag Parikh Flexi Cap", today.minusDays(400), new BigDecimal("1000"), new BigDecimal("1000"), new BigDecimal("100.00"), new BigDecimal("100000.00"), false, null);
 
@@ -225,9 +224,8 @@ class RebalanceWaterfallRoutingTest {
         );
 
         assertNotNull(res);
-        assertEquals("DRIFT", res.triggerType());
-        assertTrue(res.driftedBuckets().contains("CORE_INTERNAL_CIRCUIT_BREAKER"), "CORE_INTERNAL_CIRCUIT_BREAKER must fire when LargeMid ratio is 0.80 (>0.75)");
-        assertFalse(res.driftedBuckets().contains("CORE_AGGREGATE_BREACH"), "CORE_AGGREGATE_BREACH must NOT fire when Core aggregate total is exactly 50%");
+        assertEquals("NONE", res.triggerType(), "Internal scheme ratio imbalance alone must NOT trigger automated sells under v3.0 passive remediation");
+        assertFalse(res.hasSellSide());
     }
 
     @Test

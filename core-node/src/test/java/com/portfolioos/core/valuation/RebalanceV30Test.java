@@ -99,11 +99,13 @@ class RebalanceV30Test {
         BigDecimal nav = new BigDecimal("100.00");
         Map<String, BigDecimal> navMap = Map.of(
             "INF109KC12U0", nav,
+            "INF109KC13X2", nav,
             "INF205K01QN0", nav
         );
 
         List<Lot> openLots = List.of(
-            new Lot("c1", "INF109KC12U0", "ICICI LargeMidcap 250", day0.minusMonths(14), new BigDecimal("8500"), new BigDecimal("8500"), nav, new BigDecimal("700000.00"), false, null),
+            new Lot("c1", "INF109KC12U0", "ICICI LargeMidcap 250", day0.minusMonths(14), new BigDecimal("5500"), new BigDecimal("5500"), nav, new BigDecimal("450000.00"), false, null),
+            new Lot("s1", "INF109KC13X2", "ICICI Value Discovery", day0.minusMonths(14), new BigDecimal("3000"), new BigDecimal("3000"), nav, new BigDecimal("250000.00"), false, null),
             new Lot("l1", "INF205K01QN0", "Invesco India Arbitrage Fund", day0.minusMonths(2), new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("140000.00"), false, null)
         );
 
@@ -238,5 +240,183 @@ class RebalanceV30Test {
 
         BigDecimal totalTrimmed = stepA.satisfiedAmount().add(stepB.satisfiedAmount());
         assertEquals(0, new BigDecimal("35000.00").compareTo(totalTrimmed), "Total trimmed must equal ₹35,000 (100% of zero-tax + 50% of taxable excess)");
+    }
+
+    @Test
+    @DisplayName("5. Core underweight triggers CASH_INFLOW_NEEDED with zero sells and directs bank cash to Core")
+    void testCoreUnderweightTriggersCashInflowNeededZeroSells() {
+        LocalDate today = LocalDate.of(2026, 11, 20);
+        BigDecimal nav = new BigDecimal("100.00");
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", nav,
+            "INF109KC13X2", nav,
+            "INF205K01QN0", nav,
+            "INF247L01BM8", nav
+        );
+
+        // Core target 50% [bandLower 5%, bandUpper 5%].
+        // Other buckets have wider bands so they do not breach upper bands.
+        List<BucketEngine.BucketTarget> customTargets = List.of(
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("50.0"), new BigDecimal("5.0"), new BigDecimal("5.0"), new BigDecimal("5.0")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_SATELLITE, new BigDecimal("30.0"), new BigDecimal("5.0"), new BigDecimal("5.0"), new BigDecimal("15.0")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.GOLD_SILVER, new BigDecimal("10.0"), new BigDecimal("5.0"), new BigDecimal("2.5"), new BigDecimal("15.0")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.LIQUID_BUFFER, new BigDecimal("10.0"), new BigDecimal("5.0"), new BigDecimal("2.5"), new BigDecimal("15.0"))
+        );
+
+        // Total = 1,000,000: Core 340k (34.0% < 45.0% lower band), Satellite 360k (36% <= 45%), Gold 150k (15% <= 25%), Liquid 150k (15% <= 25%)
+        List<Lot> openLots = List.of(
+            new Lot("c1", "INF109KC12U0", "ICICI LargeMidcap 250", today.minusMonths(14), new BigDecimal("3400"), new BigDecimal("3400"), nav, new BigDecimal("250000.00"), false, null),
+            new Lot("s1", "INF109KC13X2", "ICICI Value Discovery", today.minusMonths(14), new BigDecimal("3600"), new BigDecimal("3600"), nav, new BigDecimal("250000.00"), false, null),
+            new Lot("g1", "INF247L01BM8", "Motilal Oswal Gold and Silver ETFs FoF", today.minusMonths(14), new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("100000.00"), false, null),
+            new Lot("l1", "INF205K01QN0", "Invesco India Arbitrage Fund", today.minusMonths(2), new BigDecimal("1500"), new BigDecimal("1500"), nav, new BigDecimal("140000.00"), false, null)
+        );
+
+        BigDecimal benchmarkPeak = new BigDecimal("25000.00");
+        BigDecimal benchmarkCurrent = new BigDecimal("25000.00"); // 0% drawdown
+
+        TriggerResolution res = evaluator.getCurrentStatus(
+            openLots, navMap, benchmarkCurrent, benchmarkPeak, customTargets, null, today
+        );
+
+        assertEquals("CASH_INFLOW_NEEDED", res.triggerType(), "Core underweight must fire CASH_INFLOW_NEEDED");
+        assertFalse(res.hasSellSide(), "CASH_INFLOW_NEEDED must not trigger automated sells");
+        assertTrue(res.driftedBuckets().contains("EQUITY_CORE"), "Drifted buckets must identify EQUITY_CORE");
+        assertTrue(res.reasonLabel().contains("EQUITY_CORE"), "Reason label must identify EQUITY_CORE as deficit bucket");
+
+        RebalancePlanDto plan = RebalancePlanEngine.buildPlan(
+            openLots, List.of(), navMap, today, benchmarkCurrent, benchmarkPeak, customTargets, "2026-27", "CASH_INFLOW_NEEDED", null, evaluator
+        );
+
+        assertNotNull(plan);
+        assertEquals(0, BigDecimal.ZERO.compareTo(plan.sellSide().totalRequired()), "Sell side total required must be exactly 0");
+        assertEquals(0, BigDecimal.ZERO.compareTo(plan.buySide().totalToInvest()), "Buy side total to invest must be exactly 0 (no phantom buys)");
+    }
+
+    @Test
+    @DisplayName("6. Drawdown rung values driven from config without touching Java code")
+    void testDrawdownRungValuesDrivenFromConfig() {
+        LocalDate today = LocalDate.of(2026, 11, 20);
+        BigDecimal nav = new BigDecimal("100.00");
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF205K01QN0", nav,
+            "INF109KC12U0", nav
+        );
+
+        // Custom config with bespoke rung: 15% drawdown -> 6% liquid, 54% core, 40% liquid deployment fraction
+        BucketTargetsConfig.DrawdownRung customRung = new BucketTargetsConfig.DrawdownRung(
+            "TIER_15", new BigDecimal("15.00"), new BigDecimal("6.00"), new BigDecimal("54.00"), new BigDecimal("0.40")
+        );
+        BucketTargetsConfig customConfig = new BucketTargetsConfig(
+            "custom-3.0",
+            new BucketTargetsConfig.GlobalInvariants(30, new BigDecimal("1000.00"), new BigDecimal("15.00"), "ATH_WATERMARK", new BigDecimal("5.00"), new BigDecimal("10.00"), new BigDecimal("30.00"), List.of(3), new BigDecimal("0.50")),
+            config.taxParameters(),
+            List.of(customRung),
+            config.buckets(),
+            List.of()
+        );
+
+        List<BucketEngine.BucketTarget> baseTargets = List.of(
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.EQUITY_CORE, new BigDecimal("50.00"), new BigDecimal("5.00")),
+            new BucketEngine.BucketTarget(BucketEngine.Bucket.LIQUID_BUFFER, new BigDecimal("10.00"), new BigDecimal("2.50"))
+        );
+
+        // 16% drawdown matches TIER_15 custom rung
+        List<BucketEngine.BucketTarget> shifted = BucketEngine.calculateRegimeShiftedTargets(
+            baseTargets, 16.0, new BigDecimal("10.00"), customConfig
+        );
+
+        BucketEngine.BucketTarget shiftedCore = shifted.stream().filter(t -> t.bucket() == BucketEngine.Bucket.EQUITY_CORE).findFirst().orElseThrow();
+        BucketEngine.BucketTarget shiftedLiquid = shifted.stream().filter(t -> t.bucket() == BucketEngine.Bucket.LIQUID_BUFFER).findFirst().orElseThrow();
+
+        assertEquals(0, new BigDecimal("54.00").compareTo(shiftedCore.targetPct()), "Core target must be driven to 54.00% from custom config rung");
+        assertEquals(0, new BigDecimal("6.00").compareTo(shiftedLiquid.targetPct()), "Liquid target must be driven to 6.00% from custom config rung");
+
+        // Deployment plan must deploy 40% of buffer
+        Lot arbLot = new Lot("arb1", "INF205K01QN0", "Invesco India Arbitrage Fund", today.minusMonths(2), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("95000.00"), false, null);
+        Map<String, List<Lot>> liquidAssets = Map.of("INF205K01QN0", List.of(arbLot));
+        Map<BucketEngine.Bucket, Map<String, List<Lot>>> bucketAssetLots = Map.of(
+            BucketEngine.Bucket.LIQUID_BUFFER, liquidAssets,
+            BucketEngine.Bucket.EQUITY_CORE, Map.of("INF109KC12U0", List.of())
+        );
+
+        List<BucketEngine.RebalanceRecommendation> recs = BucketEngine.calculateDrawdownDeploymentPlan(
+            new BigDecimal("16.00"), new BigDecimal("100000.00"), liquidAssets, bucketAssetLots, today, null, customConfig
+        );
+
+        assertFalse(recs.isEmpty());
+        BucketEngine.RebalanceRecommendation sellRec = recs.stream().filter(r -> "SELL".equals(r.action())).findFirst().orElseThrow();
+        assertEquals(0, new BigDecimal("40000.00").compareTo(sellRec.amount()), "Custom rung liquid deploy fraction (0.40 * 100,000) must equal 40,000");
+    }
+
+    @Test
+    @DisplayName("7. March scheduled harvest still fires when drawdown rung is already deployed")
+    void testMarchScheduledHarvestStillFiresWhenDrawdownRungAlreadyDeployed() {
+        LocalDate marchDate = LocalDate.of(2027, 3, 15);
+        BigDecimal nav = new BigDecimal("100.00");
+        Map<String, BigDecimal> navMap = Map.of(
+            "INF109KC12U0", nav,
+            "INF205K01QN0", nav,
+            "INF247L01BM8", nav
+        );
+
+        List<Lot> openLots = List.of(
+            new Lot("c1", "INF109KC12U0", "ICICI LargeMidcap 250", marchDate.minusMonths(14), new BigDecimal("5000"), new BigDecimal("5000"), nav, new BigDecimal("400000.00"), false, null),
+            new Lot("l1", "INF205K01QN0", "Invesco India Arbitrage Fund", marchDate.minusMonths(2), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("95000.00"), false, null),
+            new Lot("g1", "INF247L01BM8", "Motilal Oswal Gold and Silver ETFs FoF", marchDate.minusMonths(14), new BigDecimal("2000"), new BigDecimal("2000"), nav, new BigDecimal("150000.00"), false, null)
+        );
+
+        BigDecimal peak = new BigDecimal("30000.00");
+        BigDecimal currentTri = new BigDecimal("26400.00"); // -12.0% drawdown (crosses -10% Rung 1)
+
+        // Simulate that Rung 1 (Tier 10) was already deployed earlier in the cycle
+        repository.recordDrawdownCycleExecution(new BigDecimal("100000.00"), 10);
+        assertEquals(10, repository.getActiveDrawdownMaxFiredTier());
+
+        TriggerResolution res = evaluator.getCurrentStatus(
+            openLots, navMap, currentTri, peak, null, null, marchDate
+        );
+
+        assertEquals("SCHEDULED_MAINTENANCE", res.triggerType(), "March scheduled maintenance must fire even when drawdown rung is already deployed");
+        assertEquals("SCHEDULED_RECONSTITUTION", res.reasonCode());
+        assertTrue(res.hasSellSide(), "Scheduled maintenance must allow sell side");
+    }
+
+    @Test
+    @DisplayName("8. Missing taxable_trim_fraction or required bucket spec fails loud with IllegalStateException")
+    void testMissingTaxableTrimFractionFailsLoud() {
+        Map<String, Object> mapWithoutTaxable = new java.util.HashMap<>();
+        mapWithoutTaxable.put("version", "3.0.0");
+        mapWithoutTaxable.put("global_invariants", Map.of(
+            "rebalance_cooldown_days", 30,
+            "min_trade_amount_inr", 1000.00
+            // taxable_trim_fraction omitted!
+        ));
+        mapWithoutTaxable.put("tax_parameters", Map.of());
+        mapWithoutTaxable.put("drawdown_rungs", List.of());
+        mapWithoutTaxable.put("buckets", Map.of());
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> {
+            BucketConfigLoader.loadV24ConfigFromMap(mapWithoutTaxable);
+        });
+        assertTrue(ex.getMessage().contains("taxable_trim_fraction"), "Exception message must state missing taxable_trim_fraction");
+
+        // Now test missing required bucket spec
+        Map<String, Object> mapWithTaxable = new java.util.HashMap<>(mapWithoutTaxable);
+        Map<String, Object> giWithTaxable = new java.util.HashMap<>();
+        giWithTaxable.put("rebalance_cooldown_days", 30);
+        giWithTaxable.put("min_trade_amount_inr", 1000.00);
+        giWithTaxable.put("taxable_trim_fraction", 0.50);
+        mapWithTaxable.put("global_invariants", giWithTaxable);
+        mapWithTaxable.put("tax_parameters", Map.of("ltcg_exemption_limit_inr", 125000));
+        mapWithTaxable.put("drawdown_rungs", List.of());
+        mapWithTaxable.put("buckets", Map.of(
+            "EQUITY_CORE", Map.of("target_pct", 50.0, "band_lower_pct", 5.0, "band_upper_pct", 5.0)
+            // EQUITY_SATELLITE, GOLD_SILVER, LIQUID_BUFFER omitted!
+        ));
+
+        IllegalStateException ex2 = assertThrows(IllegalStateException.class, () -> {
+            BucketConfigLoader.loadV24ConfigFromMap(mapWithTaxable);
+        });
+        assertTrue(ex2.getMessage().contains("Missing required bucket configuration"), "Exception must state missing required bucket configuration");
     }
 }

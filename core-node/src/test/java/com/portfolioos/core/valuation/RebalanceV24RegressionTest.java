@@ -396,7 +396,7 @@ class RebalanceV24RegressionTest {
 
         assertNotNull(res);
         assertEquals("DRIFT", res.triggerType(), "DRIFT must still evaluate and fire even when benchmark is null under scoped feed degradation");
-        assertTrue(res.driftedBuckets().contains("CORE_AGGREGATE_BREACH"));
+        assertTrue(res.driftedBuckets().contains("EQUITY_CORE"));
     }
 
     // =========================================================================

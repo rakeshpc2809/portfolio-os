@@ -170,16 +170,15 @@ public class ProductionConfigBootSmokeTest extends BaseIntegrationTest {
         );
 
         assertNotNull(res);
-        assertEquals("DRIFT", res.triggerType(), "Core aggregate drift (70.0% > 65.0%) must fire DRIFT trigger");
+        assertEquals("DRIFT", res.triggerType(), "Core aggregate drift (70.0% > 55.0%) must fire DRIFT trigger");
         assertEquals("DRIFT_THRESHOLD_EXCEEDED", res.reasonCode());
-        assertTrue(res.reasonLabel().contains("CORE_AGGREGATE_BREACH"), "Reason label must identify CORE_AGGREGATE_BREACH");
-        assertFalse(res.reasonLabel().contains("CORE_INTERNAL_CIRCUIT_BREAKER"), "Circuit breaker must NOT fire when internal ratio is 60:40");
+        assertTrue(res.driftedBuckets().contains("EQUITY_CORE"), "Drifted buckets must identify EQUITY_CORE");
         assertTrue(res.hasSellSide());
         repository.close();
     }
 
     @Test
-    @DisplayName("Integration Test: Core internal circuit breaker ratio breach (0.80 > 0.75) fires DRIFT independently when aggregate is exactly 50%")
+    @DisplayName("Integration Test: Core internal imbalance (0.80 vs 0.60 target) does not fire automated sells under v3.0 passive remediation when aggregate is 50%")
     void testCoreInternalCircuitBreakerIntegration() {
         com.portfolioos.core.persistence.TriggerHistoryRepository repository = new com.portfolioos.core.persistence.TriggerHistoryRepository(":memory:");
         com.portfolioos.core.service.RebalanceTriggerEvaluator evaluator = new com.portfolioos.core.service.RebalanceTriggerEvaluator(repository);
@@ -188,39 +187,44 @@ public class ProductionConfigBootSmokeTest extends BaseIntegrationTest {
         BigDecimal nav = new BigDecimal("100.00");
 
         // Total corpus: 1,000,000
-        // Core target is 50.0%, drift bands [35%, 65%], internal circuit breaker largemid_max_ratio = 0.75
         // Within Core: 500,000 total Core (50% aggregate, exactly on target)
-        // LargeMidcap = 400,000 (80% of Core > 75% circuit breaker)
-        // PPFC = 100,000 (20% of Core < 45% circuit breaker)
-        // Other buckets: 500,000 in Gold
+        // LargeMidcap = 400,000 (80% of Core)
+        // PPFC = 100,000 (20% of Core)
+        // Other buckets: 500,000 in Gold (50%) -> wait, Gold at 50% would drift upper. Put in target weights:
+        // Core: 500k (50%), Satellite: 300k (30%), Gold: 100k (10%), Liquid: 100k (10%)
         com.portfolioos.core.model.Lot largeMidLot = new com.portfolioos.core.model.Lot(
             "lot-lm", "INF109KC12U0", "ICICI Prudential Nifty LargeMidcap 250 Index Fund",
             today.minusMonths(6), new BigDecimal("4000"), new BigDecimal("4000"), nav, new BigDecimal("400000.00"), false, null);
         com.portfolioos.core.model.Lot ppfcLot = new com.portfolioos.core.model.Lot(
             "lot-ppfc", "INF879O01027", "Parag Parikh Flexi Cap Fund",
             today.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+        com.portfolioos.core.model.Lot satLot = new com.portfolioos.core.model.Lot(
+            "lot-sat", "INF109KC13X2", "ICICI Value Discovery",
+            today.minusMonths(6), new BigDecimal("3000"), new BigDecimal("3000"), nav, new BigDecimal("300000.00"), false, null);
         com.portfolioos.core.model.Lot goldLot = new com.portfolioos.core.model.Lot(
             "lot-gold", "INF247L01BM8", "Motilal Oswal Gold and Silver Passive Fund of Funds",
-            today.minusMonths(6), new BigDecimal("5000"), new BigDecimal("5000"), nav, new BigDecimal("500000.00"), false, null);
+            today.minusMonths(6), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
+        com.portfolioos.core.model.Lot liqLot = new com.portfolioos.core.model.Lot(
+            "lot-liq", "INF205K01QN0", "Invesco India Arbitrage Fund",
+            today.minusMonths(2), new BigDecimal("1000"), new BigDecimal("1000"), nav, new BigDecimal("100000.00"), false, null);
 
         Map<String, BigDecimal> navMap = Map.of(
             "INF109KC12U0", nav,
             "INF879O01027", nav,
-            "INF247L01BM8", nav
+            "INF109KC13X2", nav,
+            "INF247L01BM8", nav,
+            "INF205K01QN0", nav
         );
 
         com.portfolioos.core.service.RebalanceTriggerEvaluator.TriggerResolution res = evaluator.getCurrentStatus(
-            List.of(largeMidLot, ppfcLot, goldLot), navMap,
+            List.of(largeMidLot, ppfcLot, satLot, goldLot, liqLot), navMap,
             new BigDecimal("25000.00"), new BigDecimal("25000.00"), // 0% drawdown
             null, null, today
         );
 
         assertNotNull(res);
-        assertEquals("DRIFT", res.triggerType(), "Core internal circuit breaker breach (0.80 > 0.75) must fire DRIFT trigger");
-        assertEquals("DRIFT_THRESHOLD_EXCEEDED", res.reasonCode());
-        assertTrue(res.reasonLabel().contains("CORE_INTERNAL_CIRCUIT_BREAKER"), "Reason label must identify CORE_INTERNAL_CIRCUIT_BREAKER breach");
-        assertFalse(res.reasonLabel().contains("CORE_AGGREGATE_BREACH"), "CORE_AGGREGATE_BREACH must NOT fire when Core aggregate is 50%");
-        assertTrue(res.hasSellSide());
+        assertEquals("NONE", res.triggerType(), "Internal scheme ratio imbalance alone must NOT trigger automated sells under v3.0 passive remediation");
+        assertFalse(res.hasSellSide());
         repository.close();
     }
 

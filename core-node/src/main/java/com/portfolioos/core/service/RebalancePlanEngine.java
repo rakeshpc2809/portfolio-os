@@ -110,10 +110,23 @@ public class RebalancePlanEngine {
             int drawdownTier = 0;
             if ("DRAWDOWN".equalsIgnoreCase(triggerType) && plan.trigger() != null && plan.trigger().drawdownContext() != null) {
                 String armed = plan.trigger().drawdownContext().armedTier();
-                if ("TIER_30".equals(armed)) drawdownTier = 30;
-                else if ("TIER_20".equals(armed)) drawdownTier = 20;
-                else if ("TIER_15".equals(armed)) drawdownTier = 15;
-                else if ("TIER_10".equals(armed)) drawdownTier = 10;
+                com.portfolioos.core.config.BucketTargetsConfig btConfig = null;
+                try {
+                    btConfig = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
+                } catch (Exception ignored) {}
+                if (btConfig != null && btConfig.drawdownRungs() != null) {
+                    for (var rung : btConfig.drawdownRungs()) {
+                        if (rung.tier().equalsIgnoreCase(armed)) {
+                            drawdownTier = rung.drawdownPct().intValue();
+                            break;
+                        }
+                    }
+                }
+                if (drawdownTier == 0 && armed != null && armed.startsWith("TIER_")) {
+                    try {
+                        drawdownTier = Integer.parseInt(armed.substring(5));
+                    } catch (Exception ignored) {}
+                }
             }
             String detailsJson = "";
             try {
@@ -412,7 +425,7 @@ public class RebalancePlanEngine {
             ? liquidCurVal.multiply(new BigDecimal("100")).divide(sellSideActiveCorpus, 2, RoundingMode.HALF_UP)
             : BigDecimal.ZERO;
 
-        List<BucketEngine.BucketTarget> activeTargets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, ddPct, currentLiquidPct);
+        List<BucketEngine.BucketTarget> activeTargets = BucketEngine.calculateRegimeShiftedTargets(baseTargets, ddPct, currentLiquidPct, v24Config);
 
         // Exemption status before trade
         ExemptionTracker.ExemptionStatus exBefore = ExemptionTracker.calculateExemptionStatus(matchedLots != null ? matchedLots : List.of(), fiscalYear);

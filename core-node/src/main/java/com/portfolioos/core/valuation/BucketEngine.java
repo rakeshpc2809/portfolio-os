@@ -215,6 +215,19 @@ public class BucketEngine {
         double drawdownPct,
         BigDecimal currentLiquidPct
     ) {
+        com.portfolioos.core.config.BucketTargetsConfig config = null;
+        try {
+            config = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
+        } catch (Exception ignored) {}
+        return calculateRegimeShiftedTargets(baseTargets, drawdownPct, currentLiquidPct, config);
+    }
+
+    public static List<BucketTarget> calculateRegimeShiftedTargets(
+        List<BucketTarget> baseTargets,
+        double drawdownPct,
+        BigDecimal currentLiquidPct,
+        com.portfolioos.core.config.BucketTargetsConfig config
+    ) {
         if (baseTargets == null || baseTargets.isEmpty()) {
             return baseTargets;
         }
@@ -237,36 +250,44 @@ public class BucketEngine {
         BigDecimal baseLiquidPct = liquidBase.targetPct();
         BigDecimal baseCorePct = coreBase.targetPct();
 
-        BigDecimal dynamicLiquidPct;
-        BigDecimal dynamicCorePct;
+        BigDecimal dynamicLiquidPct = null;
+        BigDecimal dynamicCorePct = null;
 
-        if (drawdownPct >= 30.0) {
-            // Rung 3: Capitulation (deploy 100% of buffer)
-            dynamicLiquidPct = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-            dynamicCorePct = baseCorePct.add(baseLiquidPct).setScale(2, RoundingMode.HALF_UP);
-        } else if (drawdownPct >= 20.0) {
-            // Rung 2: Bear Market (deploy 50% of buffer)
-            dynamicLiquidPct = baseLiquidPct.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
-            dynamicCorePct = baseCorePct.add(baseLiquidPct.multiply(new BigDecimal("0.50"))).setScale(2, RoundingMode.HALF_UP);
-        } else if (drawdownPct >= 10.0) {
-            // Rung 1: Correction (deploy 25% of buffer)
-            dynamicLiquidPct = baseLiquidPct.multiply(new BigDecimal("0.75")).setScale(2, RoundingMode.HALF_UP);
-            dynamicCorePct = baseCorePct.add(baseLiquidPct.multiply(new BigDecimal("0.25"))).setScale(2, RoundingMode.HALF_UP);
-        } else if (drawdownPct >= 5.0) {
-            // Hold Zone (Hysteresis between -5% and -10%): freeze liquid buffer at current % if below base target
-            BigDecimal curLiquid = currentLiquidPct != null ? currentLiquidPct.max(BigDecimal.ZERO) : baseLiquidPct;
-            if (curLiquid.compareTo(baseLiquidPct) < 0) {
-                dynamicLiquidPct = curLiquid.setScale(2, RoundingMode.HALF_UP);
-                BigDecimal delta = baseLiquidPct.subtract(dynamicLiquidPct);
-                dynamicCorePct = baseCorePct.add(delta).setScale(2, RoundingMode.HALF_UP);
+        List<com.portfolioos.core.config.BucketTargetsConfig.DrawdownRung> rungs = (config != null && config.drawdownRungs() != null)
+            ? config.drawdownRungs()
+            : List.of();
+
+        List<com.portfolioos.core.config.BucketTargetsConfig.DrawdownRung> sortedDesc = new ArrayList<>(rungs);
+        sortedDesc.sort((a, b) -> b.drawdownPct().compareTo(a.drawdownPct()));
+
+        for (var rung : sortedDesc) {
+            if (drawdownPct >= rung.drawdownPct().doubleValue()) {
+                dynamicLiquidPct = rung.liquidTargetPct();
+                dynamicCorePct = rung.coreTargetPct();
+                break;
+            }
+        }
+
+        if (dynamicLiquidPct == null) {
+            double holdMin = (config != null && config.globalInvariants() != null && config.globalInvariants().drawdownHoldZoneMinPct() != null)
+                ? config.globalInvariants().drawdownHoldZoneMinPct().doubleValue()
+                : 5.0;
+            if (drawdownPct >= holdMin) {
+                // Hold Zone (Hysteresis between -5% and -10%): freeze liquid buffer at current % if below base target
+                BigDecimal curLiquid = currentLiquidPct != null ? currentLiquidPct.max(BigDecimal.ZERO) : baseLiquidPct;
+                if (curLiquid.compareTo(baseLiquidPct) < 0) {
+                    dynamicLiquidPct = curLiquid.setScale(2, RoundingMode.HALF_UP);
+                    BigDecimal delta = baseLiquidPct.subtract(dynamicLiquidPct);
+                    dynamicCorePct = baseCorePct.add(delta).setScale(2, RoundingMode.HALF_UP);
+                } else {
+                    dynamicLiquidPct = baseLiquidPct;
+                    dynamicCorePct = baseCorePct;
+                }
             } else {
+                // Normal / Recovery (above -5% drawdown): Ladder reset, standard base targets
                 dynamicLiquidPct = baseLiquidPct;
                 dynamicCorePct = baseCorePct;
             }
-        } else {
-            // Normal / Recovery (above -5% drawdown): Ladder reset, standard base targets
-            dynamicLiquidPct = baseLiquidPct;
-            dynamicCorePct = baseCorePct;
         }
 
         List<BucketTarget> shifted = new ArrayList<>();
@@ -668,6 +689,22 @@ public class BucketEngine {
         LocalDate currentDate,
         TriggerHistoryRepository triggerHistoryRepository
     ) {
+        com.portfolioos.core.config.BucketTargetsConfig config = null;
+        try {
+            config = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
+        } catch (Exception ignored) {}
+        return calculateDrawdownDeploymentPlan(drawdownPct, arbExitLoadFreeVal, liquidAssets, bucketAssetLots, currentDate, triggerHistoryRepository, config);
+    }
+
+    public static List<RebalanceRecommendation> calculateDrawdownDeploymentPlan(
+        BigDecimal drawdownPct,
+        BigDecimal arbExitLoadFreeVal,
+        Map<String, List<Lot>> liquidAssets,
+        Map<Bucket, Map<String, List<Lot>>> bucketAssetLots,
+        LocalDate currentDate,
+        TriggerHistoryRepository triggerHistoryRepository,
+        com.portfolioos.core.config.BucketTargetsConfig config
+    ) {
         List<RebalanceRecommendation> recommendations = new ArrayList<>();
         if (drawdownPct == null) {
             return recommendations;
@@ -682,12 +719,18 @@ public class BucketEngine {
         }
 
         BigDecimal deployPct = BigDecimal.ZERO;
-        if (drawdownPct.compareTo(new BigDecimal("30.0")) >= 0) {
-            deployPct = new BigDecimal("100.0");
-        } else if (drawdownPct.compareTo(new BigDecimal("20.0")) >= 0) {
-            deployPct = new BigDecimal("50.0");
-        } else if (drawdownPct.compareTo(new BigDecimal("10.0")) >= 0) {
-            deployPct = new BigDecimal("25.0");
+        List<com.portfolioos.core.config.BucketTargetsConfig.DrawdownRung> rungs = (config != null && config.drawdownRungs() != null)
+            ? config.drawdownRungs()
+            : List.of();
+
+        List<com.portfolioos.core.config.BucketTargetsConfig.DrawdownRung> sortedDesc = new ArrayList<>(rungs);
+        sortedDesc.sort((a, b) -> b.drawdownPct().compareTo(a.drawdownPct()));
+
+        for (var rung : sortedDesc) {
+            if (drawdownPct.compareTo(rung.drawdownPct()) >= 0) {
+                deployPct = rung.liquidDeployFraction().multiply(new BigDecimal("100.0")).setScale(2, RoundingMode.HALF_UP);
+                break;
+            }
         }
 
         if (deployPct.compareTo(BigDecimal.ZERO) <= 0) {

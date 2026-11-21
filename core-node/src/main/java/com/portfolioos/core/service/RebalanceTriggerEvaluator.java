@@ -153,25 +153,28 @@ public class RebalanceTriggerEvaluator {
         String armedTier = "NONE";
         int currentRung = 0;
         String nextTier = "MAX_TIER_REACHED";
-        double nextTierTargetPct = 30.0;
+        double nextTierTargetPct = 0.0;
+        boolean nextTierFound = false;
 
-        if (benchmarkAvailable && ddPct >= 10.0) {
+        if (benchmarkAvailable) {
             for (var rung : rungs) {
                 if (ddPct >= rung.drawdownPct().doubleValue()) {
                     armedTier = rung.tier();
-                    currentRung = (int) rung.drawdownPct().doubleValue();
+                    currentRung = rung.drawdownPct().intValue();
+                }
+            }
+            for (var rung : rungs) {
+                if (rung.drawdownPct().doubleValue() > ddPct) {
+                    nextTier = rung.tier();
+                    nextTierTargetPct = rung.drawdownPct().doubleValue();
+                    nextTierFound = true;
+                    break;
                 }
             }
         }
-
-        for (var rung : rungs) {
-            if (rung.drawdownPct().doubleValue() > ddPct) {
-                nextTier = rung.tier();
-                nextTierTargetPct = rung.drawdownPct().doubleValue();
-                break;
-            }
-        }
-        double nextTierDistancePct = Math.max(0.0, Math.round((nextTierTargetPct - ddPct) * 10.0) / 10.0);
+        double nextTierDistancePct = nextTierFound
+            ? Math.max(0.0, Math.round((nextTierTargetPct - ddPct) * 10.0) / 10.0)
+            : 0.0;
 
         DrawdownContextDto drawdownCtx = new DrawdownContextDto(
             ddPct,
@@ -195,27 +198,6 @@ public class RebalanceTriggerEvaluator {
         List<String> upperBreachedBuckets = new ArrayList<>();
         List<String> lowerBreachedBuckets = new ArrayList<>();
 
-        BucketConfigLoader.BucketTargetVersion ver = activeVersion != null ? activeVersion : BucketConfigLoader.getActiveVersion(today);
-        double coreTargetPct = 50.0;
-        double coreBandPct = 5.0;
-        double targetLmRatio = 0.60;
-
-        if (ver != null && ver.targets() != null) {
-            for (BucketConfigLoader.BucketTargetConfig tc : ver.targets()) {
-                if ("EQUITY_CORE".equalsIgnoreCase(tc.bucket()) || "CORE".equalsIgnoreCase(tc.bucket())) {
-                    coreTargetPct = tc.targetPct();
-                    coreBandPct = tc.bandPct();
-                    if (tc.preferredFunds() != null) {
-                        for (BucketConfigLoader.PreferredFundConfig pfc : tc.preferredFunds()) {
-                            if ("INF109KC12U0".equalsIgnoreCase(pfc.fundId()) || (pfc.fundName() != null && pfc.fundName().toUpperCase().contains("LARGEMIDCAP"))) {
-                                targetLmRatio = pfc.allocationWeight();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         if (liveCorpus.compareTo(BigDecimal.ZERO) > 0) {
             List<BucketEngine.BucketTarget> engineTargets = (customTargets != null && !customTargets.isEmpty())
                 ? customTargets
@@ -232,55 +214,13 @@ public class RebalanceTriggerEvaluator {
                 currentFy
             );
 
-            // Compute core aggregate values
-            BigDecimal largeMidVal = BigDecimal.ZERO;
-            BigDecimal ppfcVal = BigDecimal.ZERO;
-            if (openLots != null) {
-                for (Lot lot : openLots) {
-                    BigDecimal nav = com.portfolioos.core.valuation.NavResolver.requireValidNav(navMap, lot, "RebalanceTriggerEvaluator");
-                    BigDecimal lotVal = lot.remainingUnits().multiply(nav);
-
-                    if ("INF109KC12U0".equalsIgnoreCase(lot.assetId()) || (lot.assetName() != null && lot.assetName().toUpperCase().contains("LARGEMIDCAP"))) {
-                        largeMidVal = largeMidVal.add(lotVal);
-                    } else if ("INF879O01027".equalsIgnoreCase(lot.assetId()) || (lot.assetName() != null && lot.assetName().toUpperCase().contains("PARAG PARIKH"))) {
-                        ppfcVal = ppfcVal.add(lotVal);
-                    }
-                }
-            }
-
-            BigDecimal coreTotalVal = largeMidVal.add(ppfcVal);
-            boolean coreAggregateBreached = false;
-            BigDecimal effectiveActiveCorpus = activeCorpus.compareTo(BigDecimal.ZERO) > 0 ? activeCorpus : liveCorpus;
-            if (coreTotalVal.compareTo(BigDecimal.ZERO) > 0 && effectiveActiveCorpus.compareTo(BigDecimal.ZERO) > 0) {
-                double coreWeightPct = (coreTotalVal.doubleValue() / effectiveActiveCorpus.doubleValue()) * 100.0;
-                double coreUpper = coreTargetPct + (3 * coreBandPct);
-                double coreLower = Math.max(0.0, coreTargetPct - (3 * coreBandPct));
-                if (coreWeightPct > coreUpper || coreWeightPct < coreLower) {
-                    driftedBuckets.add("CORE_AGGREGATE_BREACH");
-                    upperBreachedBuckets.add("CORE_AGGREGATE_BREACH");
-                    coreAggregateBreached = true;
-                }
-                double largeMidRatio = largeMidVal.doubleValue() / coreTotalVal.doubleValue();
-                double lmRatioUpper = targetLmRatio + PortfolioConstants.CORE_INTERNAL_RATIO_BAND;
-                double lmRatioLower = targetLmRatio - PortfolioConstants.CORE_INTERNAL_RATIO_BAND;
-                if (largeMidRatio > lmRatioUpper || largeMidRatio < lmRatioLower) {
-                    boolean isV24OrLater = ver != null && ver.versionId() != null && (ver.versionId().startsWith("2.4") || ver.versionId().startsWith("v2.4") || ver.versionId().startsWith("3.0") || ver.versionId().startsWith("v3.0"));
-                    if (!isV24OrLater) {
-                        driftedBuckets.add("CORE_INTERNAL_CIRCUIT_BREAKER");
-                        upperBreachedBuckets.add("CORE_INTERNAL_CIRCUIT_BREAKER");
-                    }
-                }
-            }
-
             if (engineResult != null && engineResult.bucketStatuses() != null) {
                 for (BucketEngine.BucketStatus bs : engineResult.bucketStatuses()) {
                     if (bs.bucket() == BucketEngine.Bucket.LEGACY_HOLDINGS) {
                         continue;
                     }
                     boolean isLiquid = (bs.bucket() == BucketEngine.Bucket.LIQUID_BUFFER || bs.bucket() == BucketEngine.Bucket.LIQUIDITY_ARBITRAGE);
-                    if (isLiquid && ddPct >= 5.0) {
-                        continue; // Hold zone or drawdown active: ignore liquid buffer drift
-                    }
+                    boolean isGold = (bs.bucket() == BucketEngine.Bucket.GOLD_SILVER || bs.bucket() == BucketEngine.Bucket.HEDGE_COMMODITY);
 
                     BigDecimal curPct = bs.currentPct();
                     BigDecimal targetPct = bs.targetPct();
@@ -293,19 +233,43 @@ public class RebalanceTriggerEvaluator {
                         case LIQUID_BUFFER, LIQUIDITY_ARBITRAGE -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.LIQUID_BUFFER;
                         case LEGACY_HOLDINGS -> com.portfolioos.core.config.BucketTargetsConfig.BucketType.LEGACY_HOLDINGS;
                     };
-                    var spec = (v3Config != null && v3Config.buckets() != null) ? v3Config.buckets().get(bType) : null;
-                    BigDecimal bandLower = spec != null ? spec.bandLowerPct() : new BigDecimal("5.00");
-                    BigDecimal bandUpper = spec != null ? spec.bandUpperPct() : new BigDecimal("5.00");
+                    BigDecimal bandLower = null;
+                    BigDecimal bandUpper = null;
+                    if (engineTargets != null) {
+                        for (var et : engineTargets) {
+                            if (et.bucket() == bs.bucket()) {
+                                bandLower = et.bandLowerPct();
+                                bandUpper = et.bandUpperPct();
+                                break;
+                            }
+                        }
+                    }
+                    if (bandLower == null || bandUpper == null) {
+                        var spec = (v3Config != null && v3Config.buckets() != null) ? v3Config.buckets().get(bType) : null;
+                        if (spec == null) {
+                            throw new IllegalStateException("CRITICAL CONFIG ERROR: Missing bucket specification for " + bType + " in bucket_targets.yaml");
+                        }
+                        if (bandLower == null) bandLower = spec.bandLowerPct();
+                        if (bandUpper == null) bandUpper = spec.bandUpperPct();
+                    }
 
                     if (drift.compareTo(bandUpper) > 0) {
-                        upperBreachedBuckets.add(bs.bucket().name());
-                        if (!driftedBuckets.contains(bs.bucket().name())) {
-                            driftedBuckets.add(bs.bucket().name());
+                        // Allow upper-band breach for liquid buffer if ddPct < 10.0
+                        if (!isLiquid || ddPct < 10.0) {
+                            upperBreachedBuckets.add(bs.bucket().name());
+                            if (!driftedBuckets.contains(bs.bucket().name())) {
+                                driftedBuckets.add(bs.bucket().name());
+                            }
                         }
                     } else if (drift.compareTo(bandLower.negate()) < 0) {
-                        lowerBreachedBuckets.add(bs.bucket().name());
-                        if (!driftedBuckets.contains(bs.bucket().name())) {
-                            driftedBuckets.add(bs.bucket().name());
+                        // Suppress LIQUID_BUFFER lower-band breach in hold zone (ddPct >= 5.0) and during drawdown (ddPct >= 10.0)
+                        // Also exclude GOLD_SILVER and LIQUID_BUFFER from CASH_INFLOW_NEEDED when ddPct >= 10.0
+                        boolean suppressLower = (isLiquid && ddPct >= 5.0) || ((isLiquid || isGold) && ddPct >= 10.0);
+                        if (!suppressLower) {
+                            lowerBreachedBuckets.add(bs.bucket().name());
+                            if (!driftedBuckets.contains(bs.bucket().name())) {
+                                driftedBuckets.add(bs.bucket().name());
+                            }
                         }
                     }
                 }
@@ -313,6 +277,7 @@ public class RebalanceTriggerEvaluator {
         }
 
         // 5. Trigger Resolution Priority Order
+        boolean skipDriftSells = false;
         // Priority 1: DRAWDOWN (Cycle-Latched, Config-Driven)
         if (currentRung > 0) {
             if (currentRung > maxFiredRung) {
@@ -330,24 +295,12 @@ public class RebalanceTriggerEvaluator {
                     drawdownCtx
                 );
             } else {
-                return new TriggerResolution(
-                    "NONE",
-                    "DRAWDOWN_RUNG_ALREADY_DEPLOYED",
-                    String.format("Drawdown tier %s already deployed in current cycle", armedTier),
-                    false,
-                    false,
-                    sellCooldownActive,
-                    daysSinceLastSell,
-                    false,
-                    0L,
-                    driftedBuckets,
-                    drawdownCtx
-                );
+                skipDriftSells = true;
             }
         }
 
         // Priority 2: DRIFT (Upper-Band Breach Only, Self-Funded)
-        if (!upperBreachedBuckets.isEmpty()) {
+        if (!skipDriftSells && !upperBreachedBuckets.isEmpty()) {
             if (sellCooldownActive) {
                 return new TriggerResolution(
                     "NONE",
@@ -435,6 +388,22 @@ public class RebalanceTriggerEvaluator {
             );
         }
 
+        if (skipDriftSells) {
+            return new TriggerResolution(
+                "NONE",
+                "DRAWDOWN_RUNG_ALREADY_DEPLOYED",
+                String.format("Drawdown tier %s already deployed in current cycle", armedTier),
+                false,
+                false,
+                sellCooldownActive,
+                daysSinceLastSell,
+                false,
+                0L,
+                driftedBuckets,
+                drawdownCtx
+            );
+        }
+
         return new TriggerResolution(
             "NONE",
             "NO_REBALANCE_REQUIRED",
@@ -481,11 +450,21 @@ public class RebalanceTriggerEvaluator {
             }
             LocalDate today = currentDate != null ? currentDate : LocalDate.now();
             int drawdownTier = 0;
-            if ("DRAWDOWN".equalsIgnoreCase(resolution.triggerType())) {
-                String armed = resolution.drawdownContext() != null ? resolution.drawdownContext().armedTier() : null;
-                if ("TIER_30".equals(armed)) drawdownTier = 30;
-                else if ("TIER_20".equals(armed)) drawdownTier = 20;
-                else if ("TIER_10".equals(armed)) drawdownTier = 10;
+            if ("DRAWDOWN".equalsIgnoreCase(resolution.triggerType()) && resolution.drawdownContext() != null) {
+                String armed = resolution.drawdownContext().armedTier();
+                var v3Conf = com.portfolioos.core.rules.BucketConfigLoader.loadV24Config();
+                List<com.portfolioos.core.config.BucketTargetsConfig.DrawdownRung> rungs = (v3Conf != null && v3Conf.drawdownRungs() != null) ? v3Conf.drawdownRungs() : List.of();
+                for (var r : rungs) {
+                    if (r.tier().equalsIgnoreCase(armed)) {
+                        drawdownTier = r.drawdownPct().intValue();
+                        break;
+                    }
+                }
+                if (drawdownTier == 0 && armed != null && armed.startsWith("TIER_")) {
+                    try {
+                        drawdownTier = Integer.parseInt(armed.substring(5));
+                    } catch (Exception ignored) {}
+                }
             }
             String metadataJson = "{}";
             try {
