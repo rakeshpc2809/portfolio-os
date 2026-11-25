@@ -91,7 +91,7 @@
         lineWidth: 2,
         priceFormat: {
           type: 'custom',
-          formatter: (price: number) => formatCompactINR(price)
+          formatter: (price: number) => formatCompactINR(price, effectiveQuiet)
         }
       };
 
@@ -101,7 +101,7 @@
         lineStyle: LineStyle.Dotted,
         priceFormat: {
           type: 'custom',
-          formatter: (price: number) => formatCompactINR(price)
+          formatter: (price: number) => formatCompactINR(price, effectiveQuiet)
         }
       };
 

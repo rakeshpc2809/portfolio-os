@@ -9,9 +9,6 @@
   import RebalanceFireView from './lib/components/RebalanceFireView.svelte';
   import LumpsumModal from './lib/components/LumpsumModal.svelte';
   import CommandPalette from './lib/components/CommandPalette.svelte';
-  import AllocationDonutChart from './lib/components/AllocationDonutChart.svelte';
-  import DrawdownRungsChart from './lib/components/DrawdownRungsChart.svelte';
-
   import { 
     LayoutDashboard, 
     Receipt, 
@@ -22,16 +19,11 @@
     Eye, 
     EyeOff, 
     Search, 
-    Command, 
-    PieChart, 
     Coins, 
-    Database,
     ShieldCheck, 
     AlertTriangle,
     Wallet,
-    TrendingUp,
-    Sparkles,
-    CheckCircle2,
+    ChevronDown,
     X,
     KeyRound
   } from '@lucide/svelte';
@@ -71,6 +63,58 @@
   const absGain = $derived(snapshot?.portfolio_summary?.unrealized_gain ?? 0);
   const xirrStr = $derived(snapshot?.portfolio_summary?.formatted_xirr || snapshot?.portfolio_summary?.xirr_percentage || "—");
   const isNegativeReturn = $derived((absGain < 0) || (gainPct !== undefined && gainPct !== null && gainPct < 0) || xirrStr.includes('-'));
+
+  let showTimeline = $state(false);
+
+  const liquidReadyValue = $derived.by(() => {
+    const liquidHoldings = (snapshot?.holdings || []).filter((h) =>
+      (h.bucket || '').toUpperCase().includes('LIQUID') || (h.bucket || '').toUpperCase().includes('ARBITRAGE')
+    );
+    const freeFromHoldings = liquidHoldings.reduce((sum, h) => sum + (Number(h.exit_load_free_value ?? h.current_value) || 0), 0);
+    const totalLiquid = liquidHoldings.reduce((sum, h) => sum + (Number(h.current_value) || 0), 0);
+    const unalloc = Number(snapshot?.portfolio_summary?.unallocated_cash ?? 0);
+    const ready = freeFromHoldings + unalloc;
+    const locked = Math.max(0, totalLiquid - freeFromHoldings);
+    const freePct = totalLiquid > 0 ? Math.round((freeFromHoldings / totalLiquid) * 100) : 100;
+    return { ready, locked, freePct };
+  });
+
+  const verdict = $derived.by(() => {
+    const trig = snapshot?.rebalance_plan?.trigger;
+    const tType = (trig?.trigger_type || 'NONE').toUpperCase();
+    const ddPct = Number(trig?.drawdown_context?.current_drawdown_pct ?? 0);
+    const activeTier = Number(trig?.drawdown_context?.active_tier ?? 0);
+    if (tType === 'DRAWDOWN' || activeTier > 0) {
+      return {
+        tone: 'danger',
+        headline: `DRAWDOWN RUNG ${activeTier || 1} ARMED — DEPLOYMENT READY`,
+        sub: trig?.reason_label || 'Drawdown deployment threshold reached',
+        ddPct
+      };
+    }
+    if (tType === 'CASH_INFLOW_NEEDED') {
+      return {
+        tone: 'warn',
+        headline: 'FRESH CASH NEEDED TO RESTORE BANDS',
+        sub: trig?.reason_label || 'Underweight bucket below corridor',
+        ddPct
+      };
+    }
+    if (tType === 'DRIFT' || tType === 'SCHEDULED') {
+      return {
+        tone: 'action',
+        headline: 'REBALANCE READY — REVIEW EXECUTION PLAN',
+        sub: trig?.reason_label || 'Policy rebalance triggered',
+        ddPct
+      };
+    }
+    return {
+      tone: 'ok',
+      headline: 'ALL BUCKETS IN BAND — NO ACTION REQUIRED',
+      sub: trig?.reason_label || 'Portfolio within policy corridors',
+      ddPct
+    };
+  });
 
   async function loadSnapshot() {
     loading = true;
@@ -233,14 +277,7 @@
 
 <svelte:window onkeydown={handleGlobalKeyDown} />
 
-<div class="obsidian-app">
-  <!-- Fluid Floating Ambient Mesh Backdrop -->
-  <div class="ambient-mesh">
-    <div class="aurora-orb orb-1"></div>
-    <div class="aurora-orb orb-2"></div>
-    <div class="aurora-orb orb-3"></div>
-  </div>
-
+<div class="obsidian-app" data-quiet={quietMode ? 'true' : 'false'}>
   <!-- Top App Bar / Header -->
   <header class="app-header">
     <div class="brand-group">
@@ -329,8 +366,8 @@
         type="button" 
         class="action-btn sync-btn highlight-cyan" 
         onclick={triggerSync}
-        disabled={syncing}
-        title="Sync Latest AMFI NAVs"
+        disabled={syncing || Boolean(snapshot?.is_offline_cache)}
+        title={snapshot?.is_offline_cache ? 'Sync disabled while offline' : 'Sync Latest AMFI NAVs'}
       >
         <RefreshCw size={15} class={syncing ? 'spin' : ''} />
         <span class="btn-text">{syncing ? 'Syncing...' : 'Sync NAVs'}</span>
@@ -340,58 +377,90 @@
 
   <!-- Main Content Layout -->
   <main class="main-body">
-    <!-- Executive HUD Cards Grid -->
-    <section class="hud-grid" aria-label="Executive Portfolio Metrics">
-      <!-- Card 1: Net Worth -->
+    {#if snapshot?.is_offline_cache}
+      <div class="offline-banner" role="status">
+        <AlertTriangle size={15} />
+        <span>
+          <strong>OFFLINE CACHE · Read-Only</strong>
+          {#if snapshot.sync_info?.last_sync_timestamp}
+            (Synced {new Date(snapshot.sync_info.last_sync_timestamp).toLocaleString()})
+          {/if}
+          — Confirm Execution and Sync NAVs are disabled until Core Node reconnects.
+        </span>
+      </div>
+    {/if}
+
+    <!-- Decision Verdict Strip -->
+    {#if snapshot}
+      <section class="verdict-strip verdict-{verdict.tone}" aria-label="Portfolio Decision Verdict">
+        <div class="verdict-left">
+          <div class="verdict-headline-row">
+            <span class="verdict-dot"></span>
+            <strong class="verdict-headline">{verdict.headline}</strong>
+            {#if snapshot.is_offline_cache}
+              <span class="offline-chip">OFFLINE CACHE</span>
+            {/if}
+          </div>
+          <div class="verdict-meta tnum">
+            <span>Policy {snapshot.policy_meta?.version || 'v3.0'}</span>
+            <span>·</span>
+            <span>{snapshot.sync_info?.ledger_hmac_verified ? 'HMAC Verified' : 'HMAC Unverified'}</span>
+            <span>·</span>
+            <span>Nifty 500: {verdict.ddPct > 0 ? `-${verdict.ddPct.toFixed(1)}%` : `${verdict.ddPct.toFixed(1)}%`}</span>
+          </div>
+        </div>
+        <div class="verdict-actions">
+          {#if verdict.tone !== 'ok'}
+            <button type="button" class="verdict-cta" onclick={() => activeTab = 'rebalance'}>
+              Review Plan
+            </button>
+          {/if}
+          <button type="button" class="verdict-secondary" onclick={() => showLumpsumModal = true}>
+            Deploy Cash
+          </button>
+        </div>
+      </section>
+    {/if}
+
+    <!-- 3-KPI Ribbon -->
+    <section class="hud-grid hud-grid-3" aria-label="Executive Portfolio Metrics">
+      <!-- Card 1: Portfolio Corpus -->
       <HudMetricCard
-        label="Total Portfolio Net Worth"
-        formattedValue={formatINR(snapshot?.portfolio_summary?.net_worth, quietMode)}
+        label="Portfolio Corpus"
+        formattedValue={formatCompactINR(snapshot?.portfolio_summary?.net_worth, quietMode)}
         subLabel="Cost Basis"
-        subValue={formatINR(snapshot?.portfolio_summary?.total_invested, quietMode)}
-        badgeText={gainPct !== undefined && gainPct !== null ? formatPercent(gainPct) : undefined}
-        badgeType={(gainPct ?? 0) < 0 ? "negative" : "positive"}
+        subValue={formatCompactINR(snapshot?.portfolio_summary?.total_invested, quietMode)}
+        badgeText={`${xirrStr} XIRR`}
+        badgeType={isNegativeReturn ? "negative" : "positive"}
         icon={Wallet}
         quietMode={quietMode}
         accentColor="cyan"
       />
 
-      <!-- Card 2: Unallocated Cash -->
+      <!-- Card 2: Liquid Ready (Arbitrage) -->
       <HudMetricCard
-        label="Liquid Cash Reservoir"
-        formattedValue={formatINR(snapshot?.portfolio_summary?.unallocated_cash, quietMode)}
-        subLabel="Allocation Readiness"
-        subValue={(snapshot?.portfolio_summary?.unallocated_cash ?? 0) > 0 ? "BUY SIDE READY" : "FULLY DEPLOYED"}
-        badgeText={(snapshot?.portfolio_summary?.unallocated_cash ?? 0) > 0 ? "DEPLOYABLE" : "OPTIMAL"}
-        badgeType={(snapshot?.portfolio_summary?.unallocated_cash ?? 0) > 0 ? "neutral" : "positive"}
+        label="Liquid Ready (Arbitrage)"
+        formattedValue={formatCompactINR(liquidReadyValue.ready, quietMode)}
+        subLabel="Exit-Load Free"
+        subValue={`${liquidReadyValue.freePct}% free · ${formatCompactINR(liquidReadyValue.locked, quietMode)} locked`}
+        badgeText={liquidReadyValue.ready > 0 ? "DEPLOYABLE" : "EMPTY"}
+        badgeType={liquidReadyValue.ready > 0 ? "positive" : "neutral"}
         icon={Coins}
         quietMode={quietMode}
         accentColor="emerald"
       />
 
-      <!-- Card 3: Sec 112A Exemption Headroom -->
+      <!-- Card 3: Sec 112A Headroom -->
       <HudMetricCard
-        label="Sec 112A Tax-Free Headroom"
+        label="Sec 112A Headroom"
         formattedValue={formatINR(snapshot?.portfolio_summary?.ltcg_exemption_remaining, quietMode)}
-        subLabel="Limit: ₹1.25L / FY"
+        subLabel="FY Limit: ₹1.25 L"
         subValue={`Used: ${formatINR(snapshot?.portfolio_summary?.ltcg_exemption_used, quietMode)}`}
-        badgeText={(snapshot?.portfolio_summary?.ltcg_exemption_remaining ?? 0) > 0 ? "TAX HARVEST READY" : "EXHAUSTED"}
+        badgeText={(snapshot?.portfolio_summary?.ltcg_exemption_remaining ?? 0) > 0 ? "EXEMPT READY" : "EXHAUSTED"}
         badgeType={(snapshot?.portfolio_summary?.ltcg_exemption_remaining ?? 0) > 0 ? "positive" : "neutral"}
         icon={ShieldCheck}
         quietMode={quietMode}
         accentColor="amber"
-      />
-
-      <!-- Card 4: Portfolio Return & XIRR -->
-      <HudMetricCard
-        label="Annualized XIRR Performance"
-        formattedValue={xirrStr}
-        subLabel="Absolute Return"
-        subValue={formatINR(absGain, quietMode)}
-        badgeText={gainPct !== undefined && gainPct !== null ? formatPercent(gainPct) : undefined}
-        badgeType={isNegativeReturn ? "negative" : "positive"}
-        icon={TrendingUp}
-        quietMode={quietMode}
-        accentColor={isNegativeReturn ? "rose" : "cyan"}
       />
     </section>
 
@@ -475,46 +544,46 @@
         </div>
       {:else if activeTab === 'overview'}
         <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" class="tab-panel">
-          <!-- Timeline Area Chart -->
-          <TimelineChart
-            dates={snapshot?.networth_trend?.dates}
-            netWorths={snapshot?.networth_trend?.net_worth}
-            investeds={snapshot?.networth_trend?.invested}
-            quietMode={quietMode}
-          />
-
-          <!-- Dual Dashboard Charts Grid -->
-          <div class="dashboard-charts-grid">
-            <!-- Asset Allocation Dual-Ring Donut Chart -->
-            <AllocationDonutChart
-              buckets={snapshot?.rebalance_plan?.buckets}
-              totalNetWorth={snapshot?.portfolio_summary?.net_worth}
-              quietMode={quietMode}
-            />
-
-            <!-- Nifty 500 Drawdown & Tactical Rungs Chart -->
-            <DrawdownRungsChart
-              drawdownPct={-Math.abs(Number(snapshot?.rebalance_plan?.trigger?.drawdown_context?.current_drawdown_pct ?? 0))}
-              liquidBufferValue={Number(snapshot?.rebalance_plan?.buckets?.find(b => b.bucket.includes('LIQUID') || b.bucket.includes('ARBITRAGE'))?.current_value ?? 0)}
-              quietMode={quietMode}
-              status={snapshot?.sync_info?.drawdown_status ?? snapshot?.rebalance_plan?.trigger?.drawdown_context?.status ?? 'AVAILABLE'}
-            />
-          </div>
-
-          <!-- Asset Allocation Bucket Table (Target Allocation & Drift Status) -->
+          <!-- Strategic Bucket Drift Matrix -->
           <BucketTable
             buckets={snapshot?.rebalance_plan?.buckets}
+            holdings={snapshot?.holdings}
+            policyMeta={snapshot?.policy_meta}
             quietMode={quietMode}
-            onInspectFund={(isin) => {
+            onInspectFund={(_isin) => {
               activeTab = 'taxlots';
             }}
           />
+
+          <!-- Collapsible Net Worth Timeline (Secondary) -->
+          <div class="timeline-accordion">
+            <button
+              type="button"
+              class="timeline-toggle"
+              aria-expanded={showTimeline}
+              onclick={() => showTimeline = !showTimeline}
+            >
+              <span>Net Worth & Invested Timeline</span>
+              <ChevronDown size={15} class="timeline-chev {showTimeline ? 'open' : ''}" />
+            </button>
+            {#if showTimeline}
+              <div class="timeline-body">
+                <TimelineChart
+                  dates={snapshot?.networth_trend?.dates}
+                  netWorths={snapshot?.networth_trend?.net_worth}
+                  investeds={snapshot?.networth_trend?.invested}
+                  quietMode={quietMode}
+                />
+              </div>
+            {/if}
+          </div>
         </div>
       {:else if activeTab === 'taxlots'}
         <div id="panel-taxlots" role="tabpanel" aria-labelledby="tab-taxlots" class="tab-panel">
           <TaxLotsTable
             holdings={snapshot?.holdings}
             quietMode={quietMode}
+            isOffline={Boolean(snapshot?.is_offline_cache)}
             ltcgRemaining={snapshot?.portfolio_summary?.ltcg_exemption_remaining}
           />
         </div>
@@ -523,14 +592,47 @@
           <RebalanceFireView
             rebalancePlan={snapshot?.rebalance_plan}
             holdings={snapshot?.holdings}
+            policyMeta={snapshot?.policy_meta}
             netWorth={snapshot?.portfolio_summary?.net_worth}
             quietMode={quietMode}
-            onopenlumpsum={() => showLumpsumModal = true}
+            isOffline={Boolean(snapshot?.is_offline_cache)}
+            onreloadsnapshot={loadSnapshot}
           />
         </div>
       {/if}
     </div>
   </main>
+
+  <!-- Mobile PWA Bottom Tab Bar (<768px) -->
+  <nav class="mobile-bottom-nav" aria-label="Mobile Navigation">
+    <button
+      type="button"
+      class="mobile-nav-btn"
+      class:active={activeTab === 'overview'}
+      onclick={() => activeTab = 'overview'}
+    >
+      <LayoutDashboard size={18} />
+      <span>Overview</span>
+    </button>
+    <button
+      type="button"
+      class="mobile-nav-btn"
+      class:active={activeTab === 'rebalance'}
+      onclick={() => activeTab = 'rebalance'}
+    >
+      <Sliders size={18} />
+      <span>Rebalance</span>
+    </button>
+    <button
+      type="button"
+      class="mobile-nav-btn"
+      class:active={activeTab === 'taxlots'}
+      onclick={() => activeTab = 'taxlots'}
+    >
+      <Receipt size={18} />
+      <span>Tax & Lots</span>
+    </button>
+  </nav>
 
   <!-- Modals & Global Dialogs -->
   <CommandPalette
@@ -554,11 +656,6 @@
     netWorth={snapshot?.portfolio_summary?.net_worth}
     quietMode={quietMode}
     onclose={() => showLumpsumModal = false}
-    onapply={(plan) => {
-      if (snapshot) {
-        snapshot = { ...snapshot, rebalance_plan: plan };
-      }
-    }}
   />
 
   <!-- CAS Password & Statement Upload Modal -->
@@ -814,6 +911,175 @@
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 1.25rem;
+  }
+
+  .hud-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .offline-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    background: var(--state-warn-soft);
+    border: 1px solid color-mix(in oklch, var(--state-warn) 40%, transparent);
+    color: var(--state-warn);
+    font-size: 0.8rem;
+  }
+
+  /* Decision Verdict Strip */
+  .verdict-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 13px 18px;
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hair);
+    flex-wrap: wrap;
+  }
+
+  .verdict-strip.verdict-ok {
+    border-left: 3px solid var(--state-ok);
+  }
+
+  .verdict-strip.verdict-warn {
+    border-left: 3px solid var(--state-warn);
+  }
+
+  .verdict-strip.verdict-action {
+    border-left: 3px solid var(--state-action);
+  }
+
+  .verdict-strip.verdict-danger {
+    border-left: 3px solid var(--state-danger);
+  }
+
+  .verdict-left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .verdict-headline-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .verdict-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--state-ok);
+  }
+
+  .verdict-warn .verdict-dot { background: var(--state-warn); }
+  .verdict-action .verdict-dot { background: var(--state-action); }
+  .verdict-danger .verdict-dot { background: var(--state-danger); }
+
+  .verdict-headline {
+    font-size: 0.88rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--ink-primary);
+  }
+
+  .offline-chip {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    background: var(--state-warn-soft);
+    color: var(--state-warn);
+  }
+
+  .verdict-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: var(--ink-muted);
+    flex-wrap: wrap;
+  }
+
+  .verdict-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .verdict-cta,
+  .verdict-secondary {
+    min-height: 36px;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .verdict-cta {
+    background: var(--state-action-soft);
+    color: var(--state-action);
+    border: 1px solid color-mix(in oklch, var(--state-action) 40%, transparent);
+  }
+
+  .verdict-secondary {
+    background: var(--bg-elevated);
+    color: var(--ink-primary);
+    border: 1px solid var(--border-hair);
+  }
+
+  /* Collapsible Timeline */
+  .timeline-accordion {
+    margin-top: 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hair);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .timeline-toggle {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--ink-secondary);
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.84rem;
+    font-weight: 500;
+    cursor: pointer;
+    min-height: 44px;
+  }
+
+  .timeline-toggle:hover {
+    color: var(--ink-primary);
+    background: var(--bg-elevated);
+  }
+
+  :global(.timeline-chev) {
+    transition: transform 150ms var(--ease-snappy);
+  }
+
+  :global(.timeline-chev.open) {
+    transform: rotate(180deg);
+  }
+
+  .timeline-body {
+    border-top: 1px solid var(--border-hair);
+    padding: 12px;
+  }
+
+  /* Mobile Bottom Nav */
+  .mobile-bottom-nav {
+    display: none;
   }
 
   /* Navigation Tabs */
@@ -1144,10 +1410,52 @@
     }
   }
 
-  @media (max-width: 640px) {
-    .hud-grid {
+  @media (max-width: 768px) {
+    .tabs-nav {
+      display: none;
+    }
+    .main-body {
+      padding: 1rem 1rem 5.5rem 1rem;
+      gap: 1.1rem;
+    }
+    .hud-grid,
+    .hud-grid-3 {
       grid-template-columns: 1fr;
     }
+    .mobile-bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: var(--z-sticky-nav);
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-hair);
+      padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    }
+    .mobile-nav-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      min-height: 44px;
+      background: transparent;
+      border: none;
+      color: var(--ink-muted);
+      font-size: 0.7rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+    }
+    .mobile-nav-btn.active {
+      color: var(--state-action);
+      background: var(--state-action-soft);
+    }
+  }
+
+  @media (max-width: 640px) {
     .app-header {
       flex-direction: column;
       align-items: flex-start;

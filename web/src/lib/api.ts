@@ -11,6 +11,38 @@ export interface DailyBriefDto {
   metrics?: Record<string, any>;
 }
 
+export interface DrawdownRungMetaDto {
+  tier: string;
+  drawdown_pct: number;
+  liquid_target_pct: number;
+  core_target_pct: number;
+  liquid_deploy_fraction: number;
+}
+
+export interface IntraBucketRoutingMetaDto {
+  remediate_on_passive_flow_only: boolean;
+  primary_isin: string;
+  primary_target_ratio: number;
+  ratio_band: number;
+}
+
+export interface BucketPolicyMetaDto {
+  target_pct: number;
+  band_lower_pct: number;
+  band_upper_pct: number;
+  intra_bucket_routing?: IntraBucketRoutingMetaDto | null;
+}
+
+export interface PolicyMetaDto {
+  version: string;
+  liquid_hard_cap_pct: number;
+  drawdown_hold_zone_min_pct: number;
+  drawdown_hold_zone_max_pct: number;
+  urgent_drawdown_threshold_pct: number;
+  drawdown_rungs: DrawdownRungMetaDto[];
+  buckets: Record<string, BucketPolicyMetaDto>;
+}
+
 export interface SnapshotDto {
   generated_at?: string;
   data_freshness_status?: string;
@@ -21,6 +53,8 @@ export interface SnapshotDto {
   sync_info?: SyncInfoDto;
   quiet_mode?: boolean;
   daily_brief?: DailyBriefDto;
+  policy_meta?: PolicyMetaDto;
+  is_offline_cache?: boolean;
 }
 
 export interface PortfolioSummaryDto {
@@ -49,6 +83,10 @@ export interface HoldingDto {
   unrealized_gain: number;
   unrealized_gain_pct: number;
   allocation_pct: number;
+  exit_load_free_value?: number;
+  exit_load_free_units?: number;
+  locked_units?: number;
+  expense_ratio?: number;
   lots?: LotDto[];
 }
 
@@ -61,6 +99,7 @@ export interface LotDto {
   current_value: number;
   realized_or_unrealized_gain: number;
   tax_term: 'LONG_TERM' | 'SHORT_TERM';
+  tax_classification?: string;
   is_grandfathered?: boolean;
   fmv_2018?: number;
   holding_period_days?: number;
@@ -82,6 +121,7 @@ export interface FundAllocationOrderDto {
 export interface RebalanceOrderDto {
   fund_id: string;
   fund_name: string;
+  lot_count?: number;
   total_proceeds: number;
   total_units?: number;
   total_realized_gain?: number;
@@ -91,8 +131,18 @@ export interface RebalanceOrderDto {
   summary_label?: string;
 }
 
+export interface TaxSummaryDto {
+  total_tax_estimate?: number;
+  total_ltcg_exempt?: number;
+  total_stcg_taxable?: number;
+  exemption_headroom_before?: number;
+  exemption_headroom_after?: number;
+  statutory_exemption_cap?: number;
+}
+
 export interface RebalancePlanDto {
   plan_id?: string;
+  plan_digest?: string;
   generated_at?: string;
   trigger?: {
     trigger_type: string;
@@ -101,6 +151,9 @@ export interface RebalancePlanDto {
     drawdown_context?: {
       current_drawdown_pct?: number;
       active_tier?: number;
+      armed_tier?: number;
+      rolling_high_value?: number | string;
+      current_value?: number | string;
       deployment_rungs_pct?: number;
       arbitrage_total_value?: number | string;
       arbitrage_exit_load_free_value?: number | string;
@@ -117,15 +170,18 @@ export interface RebalancePlanDto {
   };
   orders?: RebalanceOrderDto[];
   buckets?: BucketAllocationDto[];
+  lumpsum_allocations?: BucketAllocationDto[];
   buy_side?: {
     total_to_invest: number;
     is_manual_lumpsum: boolean;
+    cash_overflow_inr?: number;
     buckets: BucketAllocationDto[];
   };
   sell_side?: {
     total_required: number;
     waterfall_tiers: any[];
     orders?: RebalanceOrderDto[];
+    tax_summary?: TaxSummaryDto;
   };
 }
 
@@ -282,11 +338,39 @@ export async function fetchJson<T>(endpoint: string, options: RequestInit = {}):
   return resp.json() as Promise<T>;
 }
 
+const OFFLINE_CACHE_KEY = 'PORTFOLIO_OS_CACHED_SNAPSHOT';
+
 /**
  * Loads and normalizes complete portfolio data across Core Node endpoints.
  */
 export async function loadDashboardData(): Promise<SnapshotDto> {
-  const snapshotRes = await fetchJson<any>('/sync/snapshot');
+  let snapshotRes: any = null;
+  let isOfflineCache = false;
+  try {
+    snapshotRes = await fetchJson<any>('/sync/snapshot');
+    if (snapshotRes && typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(snapshotRes));
+      } catch {
+        // Ignore storage quota errors
+      }
+    }
+  } catch (err) {
+    if (typeof localStorage !== 'undefined') {
+      const cached = localStorage.getItem(OFFLINE_CACHE_KEY);
+      if (cached) {
+        try {
+          snapshotRes = JSON.parse(cached);
+          isOfflineCache = true;
+        } catch {
+          // Ignore malformed cache
+        }
+      }
+    }
+    if (!snapshotRes) {
+      throw err;
+    }
+  }
   if (!snapshotRes) {
     throw new Error('Could not connect to Portfolio OS backend. Please check if portfolio-os-core is running.');
   }
@@ -338,6 +422,7 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
         current_value: val,
         realized_or_unrealized_gain: gain,
         tax_term: (l.is_ltcg || l.is_long_term || l.tax_classification?.includes('LTCG')) ? 'LONG_TERM' : 'SHORT_TERM',
+        tax_classification: l.tax_classification || '',
         is_grandfathered: Boolean(l.grandfathered_nav),
         fmv_2018: l.grandfathered_nav ? Number(l.grandfathered_nav) : undefined,
         holding_period_days: Number(l.holding_days ?? l.holding_period_days ?? 0),
@@ -360,6 +445,10 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
       unrealized_gain: uGain,
       unrealized_gain_pct: uGainPct,
       allocation_pct: Number(h.allocation_pct || (currentNetWorth > 0 ? (cVal / currentNetWorth) * 100 : 0)),
+      exit_load_free_value: h.exit_load_free_value !== undefined ? Number(h.exit_load_free_value) : cVal,
+      exit_load_free_units: h.exit_load_free_units !== undefined ? Number(h.exit_load_free_units) : Number(h.total_units || 0),
+      locked_units: Number(h.locked_units || 0),
+      expense_ratio: h.expense_ratio !== undefined ? Number(h.expense_ratio) : undefined,
       lots: lots
     };
   });
@@ -442,8 +531,11 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
   const rawPlan = snapshotRes?.rebalance_plan || {};
   const rawTaxSummary = rawPlan?.sell_side?.tax_summary || rawPlan?.sellSide?.taxSummary || {};
   const rawTrigger = rawPlan?.trigger || {};
+  const rawSellOrders = rawPlan.orders || rawPlan?.sell_side?.orders || rawPlan?.sellSide?.orders || [];
   const rebalancePlan: RebalancePlanDto = {
     ...rawPlan,
+    plan_id: rawPlan.plan_id || rawPlan.planId,
+    plan_digest: rawPlan.plan_digest || rawPlan.planDigest,
     trigger: {
       ...rawTrigger,
       trigger_type: rawTrigger.trigger_type || rawTrigger.type || 'SCHEDULED',
@@ -457,12 +549,25 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
       stcg_taxable_gain: Number(rawTaxSummary.total_stcg_taxable ?? rawTaxSummary.totalStcgTaxable ?? 0),
       projected_tax: Number(rawTaxSummary.total_tax_estimate ?? rawTaxSummary.totalTaxEstimate ?? 0),
     },
-    orders: rawPlan.orders || rawPlan?.sell_side?.orders || rawPlan?.sellSide?.orders || [],
+    orders: rawSellOrders,
     buckets: normalizedBuckets,
     lumpsum_allocations: rawPlan.lumpsum_allocations || rawPlan?.buy_side?.buckets || rawPlan?.buySide?.buckets || [],
     buy_side: rawPlan?.buy_side ? {
       ...rawPlan.buy_side,
+      cash_overflow_inr: Number(rawPlan.buy_side.cash_overflow_inr ?? rawPlan.buy_side.cashOverflowInr ?? 0),
       buckets: normalizedBuyBuckets
+    } : undefined,
+    sell_side: rawPlan?.sell_side ? {
+      ...rawPlan.sell_side,
+      orders: rawSellOrders,
+      tax_summary: {
+        total_tax_estimate: Number(rawTaxSummary.total_tax_estimate ?? rawTaxSummary.totalTaxEstimate ?? 0),
+        total_ltcg_exempt: Number(rawTaxSummary.total_ltcg_exempt ?? rawTaxSummary.totalLtcgExempt ?? 0),
+        total_stcg_taxable: Number(rawTaxSummary.total_stcg_taxable ?? rawTaxSummary.totalStcgTaxable ?? 0),
+        exemption_headroom_before: Number(rawTaxSummary.exemption_headroom_before ?? rawTaxSummary.exemptionHeadroomBefore ?? 0),
+        exemption_headroom_after: Number(rawTaxSummary.exemption_headroom_after ?? rawTaxSummary.exemptionHeadroomAfter ?? 0),
+        statutory_exemption_cap: Number(rawTaxSummary.statutory_exemption_cap ?? rawTaxSummary.statutoryExemptionCap ?? 125000)
+      }
     } : undefined
   };
 
@@ -501,8 +606,38 @@ export async function loadDashboardData(): Promise<SnapshotDto> {
       ledger_hmac_verified: Boolean(syncInfo.ledger_hmac_verified)
     },
     quiet_mode: Boolean(syncInfo.quiet_mode),
-    daily_brief: snapshotRes?.daily_brief || undefined
+    daily_brief: snapshotRes?.daily_brief || undefined,
+    policy_meta: snapshotRes?.policy_meta || undefined,
+    is_offline_cache: isOfflineCache
   };
+}
+
+export async function confirmRebalanceExecution(
+  planId: string,
+  digest: string,
+  trigger?: string
+): Promise<{ status: 'OK'; plan: RebalancePlanDto } | { status: 'CONFLICT' }> {
+  const token = getAuthToken();
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  if (token) headers.set('X-Api-Auth-Token', token);
+
+  const resp = await fetch('/api/v1/sync/rebalance/confirm-execution', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ planId, digest, trigger })
+  });
+
+  if (resp.status === 409) {
+    return { status: 'CONFLICT' };
+  }
+  if (resp.status === 401) {
+    throw new Error('Unauthorized: Invalid or missing API_AUTH_TOKEN.');
+  }
+  if (!resp.ok) {
+    throw new Error(`Confirm execution failed (${resp.status} ${resp.statusText})`);
+  }
+  const plan = (await resp.json()) as RebalancePlanDto;
+  return { status: 'OK', plan };
 }
 
 export interface FactorBenchmarkMetric {

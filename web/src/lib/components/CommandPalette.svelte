@@ -5,16 +5,13 @@
     LayoutDashboard, 
     Receipt, 
     Sliders, 
-    PieChart, 
     Coins, 
     Eye, 
     EyeOff, 
     RefreshCw, 
-    Download, 
     FileSpreadsheet,
     CornerDownLeft,
-    Command,
-    Database
+    Command
   } from '@lucide/svelte';
 
   interface Props {

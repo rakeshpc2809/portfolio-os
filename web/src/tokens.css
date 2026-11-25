@@ -1,21 +1,68 @@
 :root {
   color-scheme: dark;
+
+  /* 1. Surface Elevation Ladder (Crisp Obsidian-Slate, zero glow) */
+  --bg-canvas:       oklch(13.5% 0.010 260);  /* #0B0D13 app canvas */
+  --bg-surface:      oklch(17.5% 0.011 260);  /* Primary cards */
+  --bg-elevated:     oklch(21.5% 0.012 260);  /* Nested rows, hover, popovers */
+  --bg-modal:        oklch(19.5% 0.012 260);  /* Drawers / bottom sheets */
+  --border-hair:     oklch(28.0% 0.012 260);  /* 1px structural hairline */
+  --border-strong:   oklch(38.0% 0.015 260);  /* Focus / active card edge */
+
+  /* 2. Typography & Contrast (WCAG AAA on --bg-surface) */
+  --ink-primary:     oklch(95.0% 0.005 260);
+  --ink-secondary:   oklch(78.0% 0.010 260);
+  --ink-muted:       oklch(62.0% 0.012 260);
+  --font-ui:         "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:       "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+
+  /* 3. Bucket Identity Tokens (Colorblind-safe Okabe-Ito inspired) */
+  --bucket-core:      oklch(78% 0.11 225);   /* Cyan Frost — Core Anchor */
+  --bucket-satellite: oklch(72% 0.14 295);   /* Iris Violet — Factor Satellite */
+  --bucket-gold:      oklch(80% 0.14 82);    /* Warm Gold — Real Asset Hedge */
+  --bucket-liquid:    oklch(76% 0.13 162);   /* Mint Teal — Arbitrage Dry Powder */
+  --bucket-legacy:    oklch(68% 0.16 20);    /* Muted Rose — Wind-Down / Blacklist */
+
+  /* 4. Semantic Action & Tax States */
+  --state-ok:         oklch(76% 0.14 155);   /* In-band / Tax-Exempt / LTCG */
+  --state-ok-soft:    oklch(24% 0.04 155);
+  --state-action:     oklch(78% 0.12 225);   /* Buy / Deploy / Fresh Cash */
+  --state-action-soft:oklch(24% 0.04 225);
+  --state-warn:       oklch(80% 0.14 80);    /* Underweight / Cash Needed / STCG */
+  --state-warn-soft:  oklch(26% 0.05 80);
+  --state-danger:     oklch(70% 0.17 22);    /* Overweight Trim / Drawdown / Taxable Drag */
+  --state-danger-soft:oklch(25% 0.05 22);
+
+  /* 5. Geometry & Motion */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --ease-snappy: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Legacy / Compatibility Aliases (preserved for existing views until Phase C/D) */
   --text-xs: 0.75rem; --text-sm: 0.875rem; --text-md: 1rem; --text-lg: 1.2rem; --text-xl: 1.44rem; --text-2xl: 1.728rem; --text-3xl: 2.074rem;
   --text-display-s: 1.44rem; --text-display: 1.728rem; --text-section: 1.2rem; --text-title: 1rem; --text-lead: 1rem;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-out: var(--ease-snappy); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
-  --color-error: oklch(72% 0.15 27); --color-success: oklch(76% 0.13 150);
+  --color-error: var(--state-danger); --color-success: var(--state-ok);
   --container: 1440px; --gutter: 64px; --gap-columns: 32px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
   --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
-  --color-paper: oklch(17% 0.008 250); --color-paper-2: oklch(21% 0.009 250); --color-paper-3: oklch(13.5% 0.007 250);
-  --color-ink: oklch(95% 0.005 250); --color-ink-2: oklch(83% 0.008 250); --color-muted: oklch(71% 0.01 250);
-  --color-rule: oklch(31% 0.01 250); --color-rule-2: oklch(42% 0.012 250);
-  --color-accent: oklch(82% 0.15 80); --color-accent-ink: oklch(18% 0.04 75); --color-accent-soft: oklch(29% 0.05 80); --color-focus: oklch(82% 0.15 80);
-  --color-cool: oklch(77% 0.12 245); --color-cool-soft: oklch(29% 0.05 245);
-  --color-ok: oklch(76% 0.15 150); --color-ok-soft: oklch(24.5% 0.03 150); --color-bad: oklch(70% 0.17 25); --color-bad-soft: oklch(24.5% 0.035 25);
-  --font-display: "Host Grotesk", ui-sans-serif, system-ui, sans-serif; --font-body: var(--font-display);
-  --font-outlier: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
-  --radius-card: 10px; --radius-pill: 6px; --rule-hair: 1px;
+  --color-paper: var(--bg-canvas); --color-paper-2: var(--bg-surface); --color-paper-3: oklch(11.5% 0.009 260);
+  --color-ink: var(--ink-primary); --color-ink-2: var(--ink-secondary); --color-muted: var(--ink-muted);
+  --color-rule: var(--border-hair); --color-rule-2: var(--border-strong);
+  --color-accent: var(--state-warn); --color-accent-ink: oklch(18% 0.04 75); --color-accent-soft: var(--state-warn-soft); --color-focus: var(--state-action);
+  --color-cool: var(--bucket-core); --color-cool-soft: var(--state-action-soft);
+  --color-ok: var(--state-ok); --color-ok-soft: var(--state-ok-soft); --color-bad: var(--state-danger); --color-bad-soft: var(--state-danger-soft);
+  --font-display: var(--font-ui); --font-body: var(--font-ui);
+  --font-outlier: var(--font-mono);
+  --radius-card: var(--radius-md); --radius-pill: var(--radius-sm); --rule-hair: 1px;
   --shadow-card: none;
   --tracking-display: -0.03em; --display-weight: 500;
+}
+
+/* Global Quiet Mode Guard (prevents component-by-component leaks) */
+[data-quiet="true"] [data-sensitive="currency"] {
+  filter: blur(7px);
+  user-select: none;
+  pointer-events: none;
 }

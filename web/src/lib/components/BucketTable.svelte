@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import type { BucketAllocationDto } from '../api';
-  import { fetchFactorBenchmarks, type FactorBenchmarkMetric } from '../api';
-  import { formatINR } from '../formatters';
-  import { Scale, ChevronRight, ShieldCheck } from '@lucide/svelte';
+  import type { BucketAllocationDto, HoldingDto, PolicyMetaDto } from '../api';
+  import { formatCompactINR, formatINR } from '../formatters';
+  import { ChevronRight, ShieldAlert, CheckCircle2, ArrowRight } from '@lucide/svelte';
 
   interface Props {
     buckets?: BucketAllocationDto[];
+    holdings?: HoldingDto[];
+    policyMeta?: PolicyMetaDto;
     isQuiet?: boolean;
     quietMode?: boolean;
     onInspectFund?: (isin: string) => void;
@@ -14,14 +14,15 @@
 
   let {
     buckets = [],
+    holdings = [],
+    policyMeta = undefined,
     isQuiet = false,
     quietMode = false,
-    onInspectFund = (isin: string) => {}
+    onInspectFund = (_isin: string) => {}
   }: Props = $props();
 
   const effectiveQuiet = $derived(isQuiet || quietMode);
 
-  // Reactive map of expanded buckets for reliable Svelte 5 reactivity
   let expandedBuckets = $state<Record<string, boolean>>({
     EQUITY_CORE: true,
     EQUITY_SATELLITE: false,
@@ -30,44 +31,25 @@
     LEGACY_HOLDINGS: false
   });
 
-  let expandedFundIsin = $state<string | null>(null);
-  let factorMetrics = $state<Record<string, FactorBenchmarkMetric>>({});
-
-  onMount(async () => {
-    try {
-      const res = await fetchFactorBenchmarks();
-      if (res && res.factors) {
-        const map: Record<string, FactorBenchmarkMetric> = {};
-        for (const f of res.factors) {
-          const item: FactorBenchmarkMetric = {
-            isin: f.isin || '',
-            fundName: f.fundName || (f as any).fund_name || '',
-            benchmarkId: f.benchmarkId || (f as any).benchmark_id || 'NIFTY_500_TRI',
-            benchmarkName: f.benchmarkName || (f as any).benchmark_name || 'Standard Factor Benchmark',
-            beta: Number(f.beta ?? 1.0),
-            trackingErrorPct: Number(f.trackingErrorPct ?? (f as any).tracking_error_pct ?? 0),
-            alphaPct: Number(f.alphaPct ?? (f as any).alpha_pct ?? 0),
-            informationRatio: Number(f.informationRatio ?? (f as any).information_ratio ?? 0),
-            outperformancePct: Number(f.outperformancePct ?? (f as any).outperformance_pct ?? 0),
-            sampleStatus: String(f.sampleStatus || (f as any).sample_status || 'PROVISIONAL'),
-            sampleDays: Number(f.sampleDays ?? (f as any).sample_days ?? 0),
-          };
-          map[f.isin] = item;
-        }
-        factorMetrics = map;
-      }
-    } catch (e) {
-      console.warn('Could not load factor benchmarks', e);
+  const holdingsByIsin = $derived.by(() => {
+    const map: Record<string, HoldingDto> = {};
+    for (const h of holdings || []) {
+      if (h.isin) map[h.isin] = h;
     }
+    return map;
   });
 
-  function toggleInspectFund(isin: string) {
-    if (expandedFundIsin === isin) {
-      expandedFundIsin = null;
-    } else {
-      expandedFundIsin = isin;
-    }
-  }
+  const strategicBuckets = $derived(
+    (buckets || []).filter((b) => b.bucket !== 'LEGACY_HOLDINGS')
+  );
+
+  const legacyBuckets = $derived(
+    (buckets || []).filter((b) => b.bucket === 'LEGACY_HOLDINGS')
+  );
+
+  const activeCorpus = $derived(
+    strategicBuckets.reduce((sum, b) => sum + (Number(b.current_value) || 0), 0)
+  );
 
   function toggleBucket(bucketName: string) {
     expandedBuckets = {
@@ -78,29 +60,15 @@
 
   function getBucketColor(bucket: string): string {
     switch (bucket) {
-      case 'EQUITY_CORE': return 'var(--accent-cyan)';
-      case 'EQUITY_SATELLITE': return 'var(--accent-violet)';
+      case 'EQUITY_CORE': return 'var(--bucket-core)';
+      case 'EQUITY_SATELLITE': return 'var(--bucket-satellite)';
       case 'GOLD_SOVEREIGN':
       case 'GOLD_TACTICAL':
-      case 'GOLD_SILVER': return 'var(--accent-amber)';
+      case 'GOLD_SILVER': return 'var(--bucket-gold)';
       case 'ARBITRAGE_LIQUID':
-      case 'LIQUID_BUFFER': return 'var(--accent-emerald)';
-      case 'LEGACY_HOLDINGS': return 'var(--accent-rose)';
-      default: return 'var(--accent-cyan)';
-    }
-  }
-
-  function getBucketGradient(bucket: string): string {
-    switch (bucket) {
-      case 'EQUITY_CORE': return 'linear-gradient(90deg, #06B6D4, #3B82F6)';
-      case 'EQUITY_SATELLITE': return 'linear-gradient(90deg, #A855F7, #EC4899)';
-      case 'GOLD_SOVEREIGN':
-      case 'GOLD_TACTICAL':
-      case 'GOLD_SILVER': return 'linear-gradient(90deg, #F59E0B, #FBBF24)';
-      case 'ARBITRAGE_LIQUID':
-      case 'LIQUID_BUFFER': return 'linear-gradient(90deg, #10B981, #06B6D4)';
-      case 'LEGACY_HOLDINGS': return 'linear-gradient(90deg, #F43F5E, #FB7185)';
-      default: return 'linear-gradient(90deg, #06B6D4, #3B82F6)';
+      case 'LIQUID_BUFFER': return 'var(--bucket-liquid)';
+      case 'LEGACY_HOLDINGS': return 'var(--bucket-legacy)';
+      default: return 'var(--bucket-core)';
     }
   }
 
@@ -108,547 +76,693 @@
     return raw.replace(/_/g, ' ');
   }
 
-  function getPreferredFundName(bucket: string): string {
-    switch (bucket) {
-      case 'EQUITY_CORE': return 'Parag Parikh Flexi Cap / UTI Nifty 50 Index';
-      case 'EQUITY_SATELLITE': return 'ICICI Prudential Smallcap / Bandhan Large Cap';
-      case 'GOLD_SILVER': return 'Motilal Oswal Gold and Silver Passive FoF';
-      case 'LIQUID_BUFFER':
-      case 'ARBITRAGE_LIQUID': return 'Invesco India Arbitrage / Parag Parikh Liquid';
-      case 'LEGACY_HOLDINGS': return 'Motilal Oswal Midcap (Phase-out Target)';
-      default: return 'Policy Canonical Fund';
+  function getBand(bucketName: string, targetPct: number) {
+    const meta = policyMeta?.buckets?.[bucketName];
+    const lower = meta?.band_lower_pct ?? 5.0;
+    const upper = meta?.band_upper_pct ?? 5.0;
+    const min = Math.max(0, targetPct - lower);
+    const max = Math.min(100, targetPct + upper);
+    return { lower, upper, min, max, routing: meta?.intra_bucket_routing ?? null };
+  }
+
+  function getScaleMax(bucketName: string, targetPct: number, currentPct: number, upperBandMax: number): number {
+    const baseMax = bucketName === 'EQUITY_CORE' ? 70 : bucketName === 'EQUITY_SATELLITE' ? 50 : 25;
+    return Math.max(baseMax, Math.ceil(Math.max(targetPct, currentPct, upperBandMax) / 5) * 5 + 5);
+  }
+
+  function getBucketState(b: BucketAllocationDto, min: number, max: number) {
+    const cur = b.current_pct || 0;
+    const tgt = b.target_pct || 0;
+    if (b.is_drifted || cur < min) {
+      return cur < tgt
+        ? { label: 'UNDERWEIGHT', tone: 'warn' }
+        : { label: 'OVERWEIGHT', tone: 'danger' };
     }
+    if (cur > max) {
+      return { label: 'OVERWEIGHT', tone: 'danger' };
+    }
+    if (cur - min <= 1.0 && tgt > 0) {
+      return { label: 'NEAR FLOOR', tone: 'warn' };
+    }
+    return { label: 'IN BAND', tone: 'ok' };
+  }
+
+  function getRoutingStatus(bucketName: string, funds: any[]) {
+    const routing = policyMeta?.buckets?.[bucketName]?.intra_bucket_routing;
+    if (!routing || !funds || funds.length === 0) return null;
+    const totalVal = funds.reduce((s, f) => s + (Number(f.current_value ?? f.value) || 0), 0);
+    if (totalVal <= 0) return null;
+    const primary = funds.find((f) => (f.isin || f.asset_id) === routing.primary_isin);
+    const primaryShare = primary ? ((Number(primary.current_value ?? primary.value) || 0) / totalVal) * 100 : 0;
+    const diff = primaryShare - routing.primary_target_ratio;
+    const inBand = Math.abs(diff) <= routing.ratio_band;
+    return {
+      primaryIsin: routing.primary_isin,
+      primaryShare,
+      targetRatio: routing.primary_target_ratio,
+      ratioBand: routing.ratio_band,
+      inBand,
+      passiveOnly: routing.remediate_on_passive_flow_only
+    };
   }
 </script>
 
-<div class="bucket-card obsidian-card">
-  <div class="bucket-header">
-    <div class="title-wrap">
-      <Scale size={16} class="header-icon" />
-      <h3 class="header-title">Target Allocation & Drift Status</h3>
+<section class="drift-matrix" aria-label="Strategic Bucket Drift Matrix">
+  <div class="matrix-header">
+    <div class="matrix-title-group">
+      <h2 class="matrix-title">Strategic Buckets</h2>
+      <span class="matrix-meta tnum">
+        Active Corpus:
+        <strong data-sensitive="currency">{formatCompactINR(activeCorpus, effectiveQuiet)}</strong>
+      </span>
     </div>
-    <span class="version-tag">Policy v2.3</span>
+    <div class="matrix-badges">
+      <span class="policy-pill mono">Policy {policyMeta?.version || 'v3.0'}</span>
+    </div>
   </div>
 
-  <div class="table-wrap">
-    <table class="obsidian-table">
-      <thead>
-        <tr>
-          <th style="text-align: left;">Portfolio Bucket</th>
-          <th style="text-align: right;">Target</th>
-          <th style="text-align: right;">Actual</th>
-          <th style="width: 28%;">Allocation Progress</th>
-          <th style="text-align: right;">Valuation</th>
-          <th style="text-align: center;">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each buckets as b}
-          {@const isExpanded = Boolean(expandedBuckets[b.bucket])}
-          {@const color = getBucketColor(b.bucket)}
-          {@const gradient = getBucketGradient(b.bucket)}
-          {@const drift = (b.current_pct || 0) - (b.target_pct || 0)}
-          {@const isDrift = Math.abs(drift) > 5.0 && b.bucket !== 'LEGACY_HOLDINGS'}
-          {@const hasFunds = b.funds && b.funds.length > 0}
+  <div class="bucket-list">
+    {#each strategicBuckets as b}
+      {@const isExpanded = Boolean(expandedBuckets[b.bucket])}
+      {@const color = getBucketColor(b.bucket)}
+      {@const targetPct = b.target_pct || 0}
+      {@const currentPct = b.current_pct || 0}
+      {@const drift = currentPct - targetPct}
+      {@const band = getBand(b.bucket, targetPct)}
+      {@const scaleMax = getScaleMax(b.bucket, targetPct, currentPct, band.max)}
+      {@const state = getBucketState(b, band.min, band.max)}
+      {@const gapInr = ((targetPct - currentPct) / 100) * activeCorpus}
+      {@const hasFunds = b.funds && b.funds.length > 0}
+      {@const routingStatus = getRoutingStatus(b.bucket, b.funds || [])}
+      {@const hardCap = b.bucket === 'LIQUID_BUFFER' ? (policyMeta?.liquid_hard_cap_pct ?? 15) : null}
 
-          <!-- Bucket Summary Row -->
-          <tr
-            class="bucket-row"
-            id="bucket-row-{b.bucket}"
-            data-bucket={b.bucket}
-            class:expanded={isExpanded}
-            tabindex="0"
-            role="button"
-            aria-expanded={isExpanded}
-            onclick={() => toggleBucket(b.bucket)}
-            onkeydown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                toggleBucket(b.bucket);
-              }
-            }}
-          >
-            <td>
-              <div class="bucket-name-cell">
-                <ChevronRight size={14} class="chevron {isExpanded ? 'open' : ''}" />
-                <span class="bucket-label">{formatBucketName(b.bucket)}</span>
-                <span class="fund-count-pill" style="color: {color}; border-color: {color}33;">
-                  {hasFunds ? `${b.funds!.length} ${b.funds!.length === 1 ? 'Fund' : 'Funds'}` : '0 Funds'}
+      <div
+        class="bucket-card"
+        id="bucket-row-{b.bucket}"
+        data-bucket={b.bucket}
+        class:expanded={isExpanded}
+      >
+        <button
+          type="button"
+          class="bucket-row-btn"
+          aria-expanded={isExpanded}
+          onclick={() => toggleBucket(b.bucket)}
+        >
+          <div class="row-top">
+            <div class="row-identity">
+              <ChevronRight size={15} class="chevron {isExpanded ? 'open' : ''}" />
+              <span class="bucket-swatch" style="background: {color};"></span>
+              <span class="bucket-name">{formatBucketName(b.bucket)}</span>
+              {#if routingStatus}
+                <span class="routing-chip" class:skewed={!routingStatus.inBand}>
+                  {routingStatus.inBand
+                    ? `${routingStatus.targetRatio.toFixed(0)}/${(100 - routingStatus.targetRatio).toFixed(0)} Healthy`
+                    : `Skew next buy → Primary`}
                 </span>
-              </div>
-            </td>
-            <td class="tnum" style="text-align: right; color: var(--text-muted); font-weight: 500;">
-              {b.bucket === 'LEGACY_HOLDINGS' ? '0.0%' : (b.target_pct || 0).toFixed(1) + '%'}
-            </td>
-            <td class="tnum" style="text-align: right; font-weight: 600; font-size: 0.95rem; color: {color};">
-              {(b.current_pct || 0).toFixed(1)}%
-            </td>
-            <td>
-              <div class="alloc-track">
-                <div
-                  class="alloc-bar"
-                  style="transform: scaleX({Math.min(1, Math.max(0, (b.current_pct || 0) * 1.5 / 100))}); background: {gradient};"
-                ></div>
-              </div>
-            </td>
-            <td class="tnum" style="text-align: right; font-weight: 600; font-size: 0.92rem;">
-              {#if effectiveQuiet}
-                <span style="color: var(--text-muted);">₹ •••,•••</span>
-              {:else}
-                <span>{formatINR(Number(b.current_value) || 0)}</span>
               {/if}
-            </td>
-            <td style="text-align: center;">
-              {#if b.bucket === 'LEGACY_HOLDINGS'}
-                <span class="badge badge-phaseout">Phase-out</span>
-              {:else if isDrift}
-                <span class="badge badge-drift" class:negative={drift < 0}>Drift ({drift > 0 ? '+' : ''}{drift.toFixed(1)}%)</span>
-              {:else}
-                <span class="badge badge-balanced">Balanced</span>
-              {/if}
-            </td>
-          </tr>
+            </div>
 
-          <!-- Collapsible Fund Holdings Sub-rows -->
-          {#if isExpanded && hasFunds}
+            <div class="row-numbers tnum">
+              <span class="pct-pair">
+                <strong style="color: {color};">{currentPct.toFixed(1)}%</strong>
+                <span class="pct-sep">/</span>
+                <span class="pct-target">{targetPct.toFixed(1)}%</span>
+              </span>
+              <span
+                class="drift-delta"
+                class:pos={drift > 0.05}
+                class:neg={drift < -0.05}
+              >
+                {drift >= 0 ? '+' : ''}{drift.toFixed(1)}%
+              </span>
+              <span class="bucket-val" data-sensitive="currency">
+                {formatCompactINR(Number(b.current_value) || 0, effectiveQuiet)}
+              </span>
+              <span class="state-pill state-{state.tone}">{state.label}</span>
+            </div>
+          </div>
+
+          <!-- Inline SVG Tolerance-Band Bullet Bar -->
+          <div class="bullet-wrap">
+            <svg
+              class="bullet-svg"
+              viewBox="0 0 400 16"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <!-- Full Track -->
+              <rect x="0" y="5" width="400" height="6" rx="3" fill="var(--bg-elevated)" />
+              <!-- Shaded Tolerance Corridor -->
+              <rect
+                x={(band.min / scaleMax) * 400}
+                y="2"
+                width={Math.max(2, ((band.max - band.min) / scaleMax) * 400)}
+                height="12"
+                rx="2"
+                fill={color}
+                fill-opacity="0.18"
+              />
+              <!-- Actual Allocation Bar -->
+              <rect
+                x="0"
+                y="5"
+                width={Math.min(400, Math.max(2, (currentPct / scaleMax) * 400))}
+                height="6"
+                rx="3"
+                fill={state.tone === 'ok' ? color : state.tone === 'warn' ? 'var(--state-warn)' : 'var(--state-danger)'}
+              />
+              <!-- Target Tick -->
+              <line
+                x1={(targetPct / scaleMax) * 400}
+                y1="1"
+                x2={(targetPct / scaleMax) * 400}
+                y2="15"
+                stroke="var(--ink-primary)"
+                stroke-width="1.5"
+              />
+              <!-- Liquid Hard Cap Tick -->
+              {#if hardCap !== null}
+                <line
+                  x1={(hardCap / scaleMax) * 400}
+                  y1="1"
+                  x2={(hardCap / scaleMax) * 400}
+                  y2="15"
+                  stroke="var(--state-danger)"
+                  stroke-width="1.2"
+                  stroke-dasharray="2,2"
+                />
+              {/if}
+            </svg>
+
+            <div class="bullet-caption tnum">
+              <span>Corridor: {band.min.toFixed(1)}%–{band.max.toFixed(1)}%</span>
+              {#if hardCap !== null}
+                <span>Hard Cap: {hardCap.toFixed(0)}%</span>
+              {/if}
+              <span class="gap-text">
+                {#if Math.abs(gapInr) >= 1000}
+                  Gap: <span data-sensitive="currency">{gapInr > 0 ? '+' : ''}{formatCompactINR(gapInr, effectiveQuiet)}</span>
+                {:else}
+                  On target
+                {/if}
+              </span>
+            </div>
+          </div>
+        </button>
+
+        {#if isExpanded && hasFunds}
+          <div class="fund-list">
             {#each b.funds! as fund}
               {@const isin = fund.isin || fund.asset_id}
-              {@const factor = factorMetrics[isin]}
-              <tr class="fund-subrow">
-                <td colspan="6">
-                  <div
-                    class="fund-item"
-                    id="fund-item-{isin}"
-                    data-isin={isin}
-                    role="button"
-                    tabindex="0"
-                    onclick={() => onInspectFund(isin)}
-                    onkeydown={(e) => {
-                      if (e.key === 'Enter') onInspectFund(isin);
-                    }}
-                    title="Click to view tax lots and FIFO acquisition details"
-                  >
-                    <div class="fund-info">
-                      <div class="fund-name-row">
-                        <span class="fund-bullet" style="color: {color};">●</span>
-                        <span class="fund-name">{fund.fund_name || fund.asset_name || fund.name || isin}</span>
-                      </div>
-                      <div class="fund-subinfo-row">
-                        <span class="fund-isin mono">{isin}</span>
-                        {#if factor}
-                          <span class="fund-bench-badge" title="Designated Benchmark: {factor.benchmarkName} ({factor.benchmarkId})">
-                            {factor.benchmarkName.replace(/TRI/g, '').trim()}
-                          </span>
-                        {/if}
-                      </div>
-                    </div>
-                    <div class="fund-metrics tnum">
-                      <div class="metric-item">
-                        <span class="m-label">NAV:</span>
-                        <span class="m-val">₹{fund.current_nav || fund.nav || '--'}</span>
-                      </div>
-                      <div class="metric-item">
-                        <span class="m-label">Value:</span>
-                        <span class="m-val">
-                          {#if effectiveQuiet}
-                            ₹ •••,•••
-                          {:else}
-                            {formatINR(Number(fund.current_value || fund.value) || 0)}
-                          {/if}
-                        </span>
-                      </div>
-                      {#if fund.unrealized_gain !== undefined && !effectiveQuiet}
-                        <div class="metric-item">
-                          <span class="m-label">Gain:</span>
-                          <span class="m-val" style="color: {Number(fund.unrealized_gain) >= 0 ? 'var(--accent-emerald-bright)' : 'var(--accent-rose)'};">
-                            {Number(fund.unrealized_gain) >= 0 ? '+' : ''}{formatINR(Number(fund.unrealized_gain))} ({Number(fund.gain_pct || 0).toFixed(1)}%)
-                          </span>
-                        </div>
-                      {/if}
-                      {#if factor}
-                        <div class="metric-item factor-quick-pill" title="Outperformance vs Benchmark: {(factor.outperformancePct ?? factor.alphaPct ?? 0).toFixed(1)}% | Beta: {(factor.beta ?? 1.0).toFixed(2)} | IR: {(factor.informationRatio ?? 0).toFixed(2)}">
-                          <span class="m-label">Alpha:</span>
-                          <span class="m-val bold" style="color: {(factor.outperformancePct ?? factor.alphaPct ?? 0) >= 0 ? 'var(--accent-emerald-bright)' : 'var(--accent-rose)'};">
-                            {(factor.outperformancePct ?? factor.alphaPct ?? 0) >= 0 ? '+' : ''}{(factor.outperformancePct ?? factor.alphaPct ?? 0).toFixed(1)}%
-                          </span>
-                          <span class="m-label" style="margin-left: 6px;">β:</span>
-                          <span class="m-val" style="color: var(--accent-cyan);">{(factor.beta ?? 1.0).toFixed(2)}</span>
-                        </div>
-                      {/if}
-                      <button
-                        type="button"
-                        class="view-lots-btn-inline"
-                        onclick={(e) => {
-                          e.stopPropagation();
-                          onInspectFund(isin);
-                        }}
-                        title="View Tax Lots & FIFO acquisition history"
-                      >
-                        Lots
-                      </button>
-                    </div>
+              {@const h = holdingsByIsin[isin]}
+              {@const fVal = Number(fund.current_value ?? fund.value ?? 0)}
+              {@const bucketShare = Number(fund.allocation_pct_in_bucket ?? (Number(b.current_value) > 0 ? (fVal / Number(b.current_value)) * 100 : 0))}
+              {@const targetWeight = fund.target_weight_in_bucket}
+              {@const exitFreeVal = h?.exit_load_free_value ?? fVal}
+              {@const lockedUnits = h?.locked_units ?? 0}
+              {@const gainPct = Number(fund.gain_pct ?? h?.unrealized_gain_pct ?? 0)}
+
+              <button
+                type="button"
+                class="fund-row"
+                id="fund-item-{isin}"
+                data-isin={isin}
+                onclick={() => onInspectFund(isin)}
+                title="Inspect FIFO tax lots"
+              >
+                <div class="fund-left">
+                  <div class="fund-name-line">
+                    <span class="fund-name">{fund.fund_name || fund.asset_name || fund.name || isin}</span>
+                    <span class="fund-isin mono">{isin}</span>
                   </div>
-                </td>
-              </tr>
-            {/each}
-          {:else if isExpanded}
-            <!-- Empty Bucket Informative State -->
-            <tr class="fund-subrow">
-              <td colspan="6">
-                <div class="empty-bucket-state">
-                  <div class="empty-bucket-left">
-                    <ShieldCheck size={18} class="empty-icon" style="color: {color};" />
-                    <div class="empty-text">
-                      <span class="empty-title">No Active Holdings in {formatBucketName(b.bucket)}</span>
-                      <span class="empty-desc">
-                        Target allocation: <strong style="color: {color};">{b.target_pct || 0}%</strong>.
-                        Preferred policy fund: <span class="fund-highlight">{getPreferredFundName(b.bucket)}</span>.
-                        Any fresh lumpsum deployment or waterfall trim will route capital here automatically.
+                  <div class="fund-sub-line tnum">
+                    <span>{bucketShare.toFixed(1)}% of bucket{#if targetWeight} (Target {Number(targetWeight).toFixed(0)}%){/if}</span>
+                    <span class="dot-sep">·</span>
+                    {#if lockedUnits > 0.001}
+                      <span class="exit-warn">
+                        Exit-load free: <span data-sensitive="currency">{formatCompactINR(exitFreeVal, effectiveQuiet)}</span>
                       </span>
-                    </div>
-                  </div>
-                  <div class="empty-badge" style="border-color: {color}44; color: {color};">
-                    Awaiting deployment
+                    {:else}
+                      <span class="exit-ok">0d exit load</span>
+                    {/if}
                   </div>
                 </div>
-              </td>
-            </tr>
-          {/if}
-        {/each}
-      </tbody>
-    </table>
+
+                <div class="fund-right tnum">
+                  <span class="fund-val" data-sensitive="currency">{formatINR(fVal, effectiveQuiet)}</span>
+                  <span class="fund-gain" class:pos={gainPct >= 0} class:neg={gainPct < 0}>
+                    {gainPct >= 0 ? '+' : ''}{gainPct.toFixed(1)}%
+                  </span>
+                  <ArrowRight size={13} class="inspect-arrow" />
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/each}
   </div>
-</div>
+
+  <!-- Separated Legacy Wind-Down Footer -->
+  {#if legacyBuckets.length > 0}
+    {#each legacyBuckets as leg}
+      {@const legExpanded = Boolean(expandedBuckets[leg.bucket])}
+      {@const legFunds = leg.funds || []}
+      <div class="legacy-footer" id="bucket-row-{leg.bucket}" data-bucket={leg.bucket}>
+        <button
+          type="button"
+          class="legacy-btn"
+          aria-expanded={legExpanded}
+          onclick={() => toggleBucket(leg.bucket)}
+        >
+          <div class="row-identity">
+            <ChevronRight size={14} class="chevron {legExpanded ? 'open' : ''}" />
+            <span class="bucket-swatch" style="background: var(--bucket-legacy);"></span>
+            <span class="legacy-title">LEGACY WIND-DOWN</span>
+            <span class="legacy-sub">Excluded from active 100% targets</span>
+          </div>
+          <div class="row-numbers tnum">
+            <span class="bucket-val" data-sensitive="currency">
+              {formatINR(Number(leg.current_value) || 0, effectiveQuiet)}
+            </span>
+            <span class="state-pill state-danger">{legFunds.length} {legFunds.length === 1 ? 'fund' : 'funds'}</span>
+          </div>
+        </button>
+
+        {#if legExpanded && legFunds.length > 0}
+          <div class="fund-list">
+            {#each legFunds as fund}
+              {@const isin = fund.isin || fund.asset_id}
+              <button
+                type="button"
+                class="fund-row"
+                onclick={() => onInspectFund(isin)}
+              >
+                <div class="fund-left">
+                  <div class="fund-name-line">
+                    <span class="fund-name">{fund.fund_name || fund.asset_name || isin}</span>
+                    <span class="fund-isin mono">{isin}</span>
+                  </div>
+                  <div class="fund-sub-line">Scheduled for tax-optimal exit</div>
+                </div>
+                <div class="fund-right tnum">
+                  <span class="fund-val" data-sensitive="currency">
+                    {formatINR(Number(fund.current_value ?? fund.value) || 0, effectiveQuiet)}
+                  </span>
+                  <ArrowRight size={13} class="inspect-arrow" />
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/each}
+  {/if}
+</section>
 
 <style>
-  .bucket-card {
-    padding: 18px 20px;
-    margin-top: 16px;
-    background: var(--surface-card);
-    border: 1px solid var(--border-hairline);
+  .drift-matrix {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hair);
     border-radius: var(--radius-md);
-  }
-
-  .bucket-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 14px;
-  }
-
-  .title-wrap {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  :global(.header-icon) {
-    color: var(--accent-cyan);
-  }
-
-  .header-title {
-    font-family: var(--font-brand);
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--text-main);
-    letter-spacing: -0.01em;
-  }
-
-  .version-tag {
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    font-weight: 500;
-    padding: 2px 8px;
-    border-radius: var(--radius-xs);
-    background: var(--surface-void);
-    color: var(--text-muted);
-    border: 1px solid var(--border-hairline);
-  }
-
-  .table-wrap {
-    overflow-x: auto;
-  }
-
-  .obsidian-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-  }
-
-  .obsidian-table th {
-    font-family: var(--font-sans);
-    font-size: 0.75rem;
-    font-weight: 500;
-    text-transform: none;
-    letter-spacing: normal;
-    color: var(--text-muted);
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border-hairline);
-  }
-
-  .obsidian-table td {
-    padding: 12px;
-    border-bottom: 1px solid var(--border-hairline);
-  }
-
-  .bucket-row {
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-    user-select: none;
-  }
-  .bucket-row:hover {
-    background: var(--surface-card-hover);
-  }
-  .bucket-row:focus-visible {
-    outline: 2px solid var(--accent-cyan);
-    outline-offset: -2px;
-  }
-
-  .bucket-name-cell {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  :global(.chevron) {
-    color: var(--text-muted);
-    transition: transform 0.2s ease;
-    display: inline-block;
-  }
-  :global(.chevron.open) {
-    transform: rotate(90deg);
-  }
-
-  .bucket-label {
-    font-weight: 500;
-    color: var(--text-main);
-    font-family: var(--font-sans);
-  }
-
-  .fund-count-pill {
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    font-weight: 500;
-    padding: 1px 7px;
-    border-radius: var(--radius-xs);
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
-  }
-
-  .alloc-track {
-    width: 100%;
-    height: 5px;
-    background: var(--surface-void);
-    border-radius: var(--radius-xs);
-    overflow: hidden;
-  }
-
-  .alloc-bar {
-    height: 100%;
-    width: 100%;
-    transform-origin: left;
-    border-radius: var(--radius-xs);
-    transition: transform 0.3s ease;
-  }
-
-  .badge {
-    font-family: var(--font-sans);
-    font-size: 0.72rem;
-    font-weight: 500;
-    padding: 2px 7px;
-    border-radius: var(--radius-xs);
-    display: inline-block;
-  }
-  .badge-balanced {
-    background: var(--color-ok-soft);
-    color: var(--color-ok);
-    border: 1px solid var(--border-hairline);
-  }
-  .badge-drift {
-    background: var(--color-accent-soft);
-    color: var(--color-accent);
-    border: 1px solid var(--border-hairline);
-  }
-  .badge-drift.negative {
-    background: var(--color-bad-soft);
-    color: var(--color-bad);
-    border: 1px solid var(--border-hairline);
-  }
-  .badge-phaseout {
-    background: var(--color-bad-soft);
-    color: var(--color-bad);
-    border: 1px solid var(--border-hairline);
-  }
-
-  /* Subrows */
-  .fund-subrow td {
-    padding: 4px 12px 10px 32px;
-    background: var(--surface-void);
-    border-bottom: 1px solid var(--border-hairline);
-  }
-
-  .fund-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--surface-card);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-sm);
-    padding: 10px 14px;
-    margin-bottom: 6px;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-  }
-  .fund-item:hover {
-    background: var(--surface-card-hover);
-    border-color: var(--border-subtle);
-  }
-
-  .fund-info {
+    padding: 18px 20px;
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 14px;
   }
 
-  .fund-name {
-    font-weight: 500;
-    color: var(--text-main);
-    font-size: 0.85rem;
-  }
-
-  .fund-isin {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    color: var(--text-muted);
-  }
-
-  .fund-metrics {
+  .matrix-header {
     display: flex;
     align-items: center;
-    gap: 16px;
+    justify-content: space-between;
+    gap: 12px;
     flex-wrap: wrap;
   }
 
-  .metric-item {
-    font-size: 0.78rem;
-  }
-  .m-label {
-    color: var(--text-muted);
-    margin-right: 4px;
-  }
-  .m-val {
-    color: var(--text-main);
-    font-weight: 500;
-  }
-
-  .fund-name-row {
+  .matrix-title-group {
     display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .fund-bullet {
-    font-size: 0.65rem;
-    margin-right: 4px;
-  }
-  .fund-subinfo-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 2px;
-  }
-  .fund-bench-badge {
-    font-size: 0.68rem;
-    color: var(--accent-cyan);
-    background: var(--accent-cyan-bg);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    padding: 1px 6px;
-    font-weight: 500;
-  }
-  .view-lots-btn-inline {
-    font-size: 0.72rem;
-    font-weight: 500;
-    color: var(--accent-cyan);
-    background: var(--accent-cyan-bg);
-    border: 1px solid var(--border-hairline);
-    padding: 3px 8px;
-    border-radius: var(--radius-xs);
-    cursor: pointer;
-    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-    margin-left: 4px;
-  }
-  .view-lots-btn-inline:hover {
-    background: var(--surface-card-hover);
-    border-color: var(--accent-cyan);
-    color: var(--text-main);
-  }
-  .factor-quick-pill {
-    padding: 2px 8px;
-    border-radius: var(--radius-xs);
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
-  }
-
-  /* Empty bucket state (not a nested card) */
-  .empty-bucket-state {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--surface-void);
-    border: 1px dashed var(--border-hairline);
-    border-radius: var(--radius-sm);
-    padding: 14px 18px;
-    margin: 4px 0 8px 0;
-  }
-  .empty-bucket-left {
-    display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 12px;
+    flex-wrap: wrap;
   }
-  :global(.empty-icon) {
-    opacity: 0.9;
+
+  .matrix-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink-primary);
   }
-  .empty-text {
+
+  .matrix-meta {
+    font-size: 0.8rem;
+    color: var(--ink-muted);
+  }
+
+  .matrix-meta strong {
+    color: var(--ink-secondary);
+    font-weight: 600;
+  }
+
+  .policy-pill {
+    font-size: 0.72rem;
+    color: var(--ink-muted);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-hair);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+  }
+
+  .bucket-list {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 10px;
   }
-  .empty-title {
-    font-weight: 500;
-    color: var(--text-main);
-    font-size: 0.85rem;
+
+  .bucket-card {
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-hair);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    transition: border-color 140ms var(--ease-snappy);
   }
-  .empty-desc {
+
+  .bucket-card:hover {
+    border-color: var(--border-strong);
+  }
+
+  .bucket-row-btn {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: inherit;
+    padding: 14px 16px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 44px;
+  }
+
+  .row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .row-identity {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  :global(.chevron) {
+    color: var(--ink-muted);
+    transition: transform 150ms var(--ease-snappy);
+    flex-shrink: 0;
+  }
+
+  :global(.chevron.open) {
+    transform: rotate(90deg);
+    color: var(--ink-primary);
+  }
+
+  .bucket-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .bucket-name {
+    font-size: 0.86rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--ink-primary);
+  }
+
+  .routing-chip {
+    font-size: 0.7rem;
+    padding: 2px 7px;
+    border-radius: var(--radius-sm);
+    background: var(--state-ok-soft);
+    color: var(--state-ok);
+    border: 1px solid color-mix(in oklch, var(--state-ok) 30%, transparent);
+  }
+
+  .routing-chip.skewed {
+    background: var(--state-warn-soft);
+    color: var(--state-warn);
+    border-color: color-mix(in oklch, var(--state-warn) 35%, transparent);
+  }
+
+  .row-numbers {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-left: auto;
+  }
+
+  .pct-pair {
+    font-size: 0.88rem;
+  }
+
+  .pct-sep,
+  .pct-target {
+    color: var(--ink-muted);
+    font-size: 0.8rem;
+  }
+
+  .drift-delta {
     font-size: 0.78rem;
-    color: var(--text-muted);
-    line-height: 1.4;
+    color: var(--ink-muted);
+    min-width: 48px;
+    text-align: right;
   }
-  .fund-highlight {
-    color: var(--accent-cyan);
-    font-family: var(--font-mono);
+
+  .drift-delta.pos { color: var(--state-ok); }
+  .drift-delta.neg { color: var(--state-warn); }
+
+  .bucket-val {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--ink-primary);
+    min-width: 74px;
+    text-align: right;
   }
-  .empty-badge {
-    font-family: var(--font-sans);
+
+  .state-pill {
     font-size: 0.68rem;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.04em;
     padding: 3px 8px;
-    border-radius: var(--radius-xs);
-    background: var(--surface-card);
-    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-sm);
     white-space: nowrap;
   }
 
-  @media (max-width: 768px) {
-    .empty-bucket-state {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 10px;
-    }
+  .state-ok {
+    background: var(--state-ok-soft);
+    color: var(--state-ok);
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .alloc-bar, :global(.chevron), .fund-item, .view-lots-btn-inline {
-      transition: none !important;
+  .state-warn {
+    background: var(--state-warn-soft);
+    color: var(--state-warn);
+  }
+
+  .state-danger {
+    background: var(--state-danger-soft);
+    color: var(--state-danger);
+  }
+
+  .bullet-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-left: 22px;
+  }
+
+  .bullet-svg {
+    width: 100%;
+    height: 14px;
+    display: block;
+  }
+
+  .bullet-caption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--ink-muted);
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .gap-text {
+    margin-left: auto;
+    color: var(--ink-secondary);
+  }
+
+  .fund-list {
+    border-top: 1px solid var(--border-hair);
+    background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .fund-row {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border-hair);
+    color: inherit;
+    padding: 11px 16px 11px 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    min-height: 44px;
+    transition: background 120ms var(--ease-snappy);
+  }
+
+  .fund-row:last-child {
+    border-bottom: none;
+  }
+
+  .fund-row:hover {
+    background: var(--bg-elevated);
+  }
+
+  .fund-left {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .fund-name-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .fund-name {
+    font-size: 0.84rem;
+    font-weight: 500;
+    color: var(--ink-primary);
+  }
+
+  .fund-isin {
+    font-size: 0.7rem;
+    color: var(--ink-muted);
+  }
+
+  .fund-sub-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.74rem;
+    color: var(--ink-muted);
+    flex-wrap: wrap;
+  }
+
+  .dot-sep {
+    opacity: 0.5;
+  }
+
+  .exit-ok {
+    color: var(--state-ok);
+  }
+
+  .exit-warn {
+    color: var(--state-warn);
+  }
+
+  .fund-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .fund-val {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--ink-primary);
+  }
+
+  .fund-gain {
+    font-size: 0.76rem;
+    min-width: 50px;
+    text-align: right;
+  }
+
+  .fund-gain.pos { color: var(--state-ok); }
+  .fund-gain.neg { color: var(--state-danger); }
+
+  :global(.inspect-arrow) {
+    color: var(--ink-muted);
+  }
+
+  .legacy-footer {
+    border-top: 1px dashed var(--border-strong);
+    padding-top: 12px;
+    margin-top: 2px;
+  }
+
+  .legacy-btn {
+    width: 100%;
+    background: var(--bg-canvas);
+    border: 1px solid color-mix(in oklch, var(--bucket-legacy) 30%, var(--border-hair));
+    border-radius: var(--radius-md);
+    padding: 11px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    color: inherit;
+    min-height: 44px;
+  }
+
+  .legacy-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--bucket-legacy);
+    letter-spacing: 0.03em;
+  }
+
+  .legacy-sub {
+    font-size: 0.74rem;
+    color: var(--ink-muted);
+  }
+
+  @media (max-width: 640px) {
+    .drift-matrix {
+      padding: 14px;
+    }
+
+    .row-numbers {
+      width: 100%;
+      justify-content: space-between;
+      padding-left: 22px;
+    }
+
+    .fund-row {
+      padding-left: 16px;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .fund-right {
+      width: 100%;
+      justify-content: space-between;
     }
   }
 </style>

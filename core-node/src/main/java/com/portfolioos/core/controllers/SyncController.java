@@ -383,10 +383,53 @@ public class SyncController {
             .toList();
 
         DailyBriefDto dailyBrief = loadDailyBriefCache(BigDecimal.valueOf(syncInfo.currentValue()));
+        PolicyMetaDto policyMeta = buildPolicyMeta(com.portfolioos.core.rules.BucketConfigLoader.loadV24Config());
 
         return ResponseEntity.ok(new UnidirectionalSyncSnapshot(
-            syncInfo, holdings, taxLots, filteredSignals, netWorthHistory, rebalancePlan, bucketAllocation, dailyBrief
+            syncInfo, holdings, taxLots, filteredSignals, netWorthHistory, rebalancePlan, bucketAllocation, dailyBrief, policyMeta
         ));
+    }
+
+    private PolicyMetaDto buildPolicyMeta(com.portfolioos.core.config.BucketTargetsConfig cfg) {
+        if (cfg == null) return null;
+        var g = cfg.globalInvariants();
+        List<DrawdownRungMetaDto> rungs = cfg.drawdownRungs() == null ? List.of() : cfg.drawdownRungs().stream()
+            .map(r -> new DrawdownRungMetaDto(
+                r.tier(),
+                r.drawdownPct().doubleValue(),
+                r.liquidTargetPct().doubleValue(),
+                r.coreTargetPct().doubleValue(),
+                r.liquidDeployFraction().doubleValue()
+            ))
+            .toList();
+        Map<String, BucketPolicyMetaDto> bucketMap = new LinkedHashMap<>();
+        cfg.buckets().forEach((type, spec) -> {
+            IntraBucketRoutingMetaDto routing = null;
+            if (spec.intraBucketRouting() != null) {
+                var r = spec.intraBucketRouting();
+                routing = new IntraBucketRoutingMetaDto(
+                    r.remediateOnPassiveFlowOnly(),
+                    r.primaryIsin(),
+                    r.primaryTargetRatio().doubleValue(),
+                    r.ratioBand().doubleValue()
+                );
+            }
+            bucketMap.put(type.name(), new BucketPolicyMetaDto(
+                spec.targetPct().doubleValue(),
+                spec.bandLowerPct().doubleValue(),
+                spec.bandUpperPct().doubleValue(),
+                routing
+            ));
+        });
+        return new PolicyMetaDto(
+            cfg.version(),
+            g.liquidHardCapPct().doubleValue(),
+            g.drawdownHoldZoneMinPct().doubleValue(),
+            g.drawdownHoldZoneMaxPct().doubleValue(),
+            g.urgentDrawdownThresholdPct().doubleValue(),
+            rungs,
+            bucketMap
+        );
     }
 
     private DailyBriefDto loadDailyBriefCache(BigDecimal currentNetWorth) {

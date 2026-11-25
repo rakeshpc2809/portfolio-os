@@ -1,100 +1,121 @@
 <script lang="ts">
   import { getAuthToken, type HoldingDto, type LotDto } from '../api';
-  import { formatINR, formatPercent } from '../formatters';
-  import { 
-    Filter, 
-    Calendar, 
-    ArrowUpRight, 
-    ArrowDownRight, 
-    ShieldCheck, 
-    Clock, 
-    Layers, 
+  import { formatCompactINR, formatINR, formatPercent } from '../formatters';
+  import {
+    Filter,
+    Calendar,
+    ArrowUpRight,
+    ArrowDownRight,
+    ShieldCheck,
+    Clock,
+    Layers,
     Sparkles,
     ChevronDown,
     ChevronRight,
-    Search
+    Search,
+    CalendarClock
   } from '@lucide/svelte';
 
   interface Props {
     holdings?: HoldingDto[];
     quietMode?: boolean;
+    isOffline?: boolean;
     ltcgRemaining?: number;
   }
 
-  let { holdings = [], quietMode = false, ltcgRemaining = 0 }: Props = $props();
+  let { holdings = [], quietMode = false, isOffline = false, ltcgRemaining = 0 }: Props = $props();
 
-  type FilterType = 'ALL' | 'LTCG' | 'STCG' | 'HARVEST';
+  type FilterType = 'ALL' | 'LTCG' | 'STCG' | 'MATURING' | 'HARVEST';
   let activeFilter = $state<FilterType>('ALL');
   let searchQuery = $state('');
   let expandedSchemes = $state<Record<string, boolean>>({});
   let selectedLot = $state<{ holding: HoldingDto; lot: LotDto } | null>(null);
 
   async function downloadHarvestCalendar() {
+    if (isOffline) return;
     try {
       const token = getAuthToken();
       const headers: Record<string, string> = {};
       if (token) {
-        headers['X-Api-Auth-Token'] = token;
+        headers["X-Api-Auth-Token"] = token;
       }
-      const response = await fetch('/api/v1/tax/harvest-calendar.ics', { headers });
+      const response = await fetch("/api/v1/tax/harvest-calendar.ics", {
+        headers,
+      });
       if (!response.ok) {
         throw new Error(`Failed to download calendar: HTTP ${response.status}`);
       }
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = 'portfolio_harvest_calendar.ics';
+      a.download = "portfolio_harvest_calendar.ics";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      console.error('Failed to download calendar .ics:', err);
-      alert(err?.message || 'Failed to download calendar');
+      console.error("Failed to download calendar .ics:", err);
+      alert(err?.message || "Failed to download calendar");
     }
   }
 
-  function getTaxBadge(holding?: HoldingDto, lot?: LotDto): { label: string; isLtcg: boolean } {
-    if (!lot) return { label: '—', isLtcg: false };
-    const isLtcg = lot.tax_term === 'LONG_TERM';
-    const bucket = (holding?.bucket || '').toUpperCase();
-    const isDebt = bucket.includes('DEBT') || bucket.includes('LIQUID');
-    const isGoldOrIntl = bucket.includes('GOLD') || bucket.includes('SILVER') || bucket.includes('COMMODITY') || bucket.includes('INTL') || bucket.includes('INTERNATIONAL');
+  function resolveRegime(holding?: HoldingDto, lot?: LotDto): string {
+    const cls = (lot?.tax_classification || '').toUpperCase();
+    if (cls.includes('50AA') || cls.includes('DEBT')) return 'SEC_50AA_DEBT';
+    if (cls.includes('SGB')) return 'SGB';
+    if (cls.includes('GOLD') || cls.includes('SILVER') || cls.includes('INTERNATIONAL') || cls.includes('112_NON')) return 'GOLD_SILVER';
+    if (cls.includes('112A') || cls.includes('EQUITY')) return 'SEC_112A_EQUITY';
 
-    if (isDebt) {
-      return { label: 'STCG (Slab / 50AA)', isLtcg: false };
+    const bucket = (holding?.bucket || '').toUpperCase();
+    if (bucket.includes('DEBT') || bucket.includes('LIQUID') || bucket.includes('ARBITRAGE')) return 'SEC_50AA_DEBT';
+    if (bucket.includes('GOLD') || bucket.includes('SILVER') || bucket.includes('INTL')) return 'GOLD_SILVER';
+    return 'SEC_112A_EQUITY';
+  }
+
+  function getTaxBadge(holding?: HoldingDto, lot?: LotDto): { label: string; isLtcg: boolean; is50AA: boolean } {
+    if (!lot) return { label: '—', isLtcg: false, is50AA: false };
+    const isLtcg = lot.tax_term === 'LONG_TERM';
+    const regime = resolveRegime(holding, lot);
+
+    if (regime === 'SEC_50AA_DEBT') {
+      return { label: 'Sec 50AA · Slab (Always ST)', isLtcg: false, is50AA: true };
     }
-    if (isGoldOrIntl) {
-      return { label: isLtcg ? 'LTCG (13.0%)' : 'STCG (Slab Rate)', isLtcg };
+    if (regime === 'SGB') {
+      return { label: isLtcg ? 'LTCG · 13.0% (Matures 0%)' : 'STCG · Slab', isLtcg, is50AA: false };
     }
-    // Equity default (12.5% * 1.04 = 13.0%, 20% * 1.04 = 20.8%)
-    return { label: isLtcg ? 'LTCG (13.0%)' : 'STCG (20.8%)', isLtcg };
+    if (regime === 'GOLD_SILVER') {
+      return { label: isLtcg ? 'LTCG · 13.0% (Sec 112)' : 'STCG · Slab (24m cliff)', isLtcg, is50AA: false };
+    }
+    return { label: isLtcg ? 'LTCG · 13.0% (>₹1.25L)' : 'STCG · 20.8%', isLtcg, is50AA: false };
   }
 
   function getTaxRegimeDescription(holding?: HoldingDto, lot?: LotDto): string {
     if (!lot) return '—';
     const isLtcg = lot.tax_term === 'LONG_TERM';
-    const bucket = (holding?.bucket || '').toUpperCase();
-    const isDebt = bucket.includes('DEBT') || bucket.includes('LIQUID');
-    const isGoldOrIntl = bucket.includes('GOLD') || bucket.includes('SILVER') || bucket.includes('COMMODITY') || bucket.includes('INTL') || bucket.includes('INTERNATIONAL');
+    const regime = resolveRegime(holding, lot);
 
-    if (isDebt) {
-      return 'Sec 50AA Specified Debt (Always Slab Rate)';
+    if (regime === 'SEC_50AA_DEBT') {
+      return 'Sec 50AA · Slab (Always Short-Term, no LTCG maturation)';
     }
-    if (isGoldOrIntl) {
-      return isLtcg 
-        ? 'LTCG (>24m, 12.5% + 4% Cess = 13.0%, No Exemption)' 
-        : 'STCG (≤24m, Slab Rate)';
+    if (regime === 'SGB') {
+      return isLtcg
+        ? 'SGB LTCG · 13.0% on secondary exit (0% if held to RBI maturity)'
+        : 'SGB STCG · Slab Rate';
     }
-    return isLtcg 
-      ? 'Sec 112A LTCG (>12m, 12.5% + 4% Cess over ₹1.25L)' 
-      : 'Sec 111A STCG (≤12m, 20% + 4% Cess Flat = 20.8%)';
+    if (regime === 'GOLD_SILVER') {
+      return isLtcg
+        ? 'Sec 112 LTCG · 13.0% (>24m holding, no ₹1.25L exemption)'
+        : 'STCG · Slab Rate (24m cliff)';
+    }
+    return isLtcg
+      ? 'Sec 112A LTCG · 13.0% (>12m, exempt up to ₹1.25L/FY)'
+      : 'Sec 111A STCG · 20.8% Flat (≤12m)';
   }
 
-  // Flattened lots with parent holding reference
   interface EnrichedLot extends LotDto {
     holding: HoldingDto;
+    regime: string;
   }
 
   const allLots = $derived.by<EnrichedLot[]>(() => {
@@ -102,36 +123,47 @@
     for (const h of holdings) {
       if (h.lots && h.lots.length > 0) {
         for (const lot of h.lots) {
-          list.push({ ...lot, holding: h });
+          list.push({ ...lot, holding: h, regime: resolveRegime(h, lot) });
         }
       }
     }
     return list;
   });
 
+  function isMaturingSoon(l: EnrichedLot): boolean {
+    return (
+      l.tax_term === 'SHORT_TERM' &&
+      l.regime !== 'SEC_50AA_DEBT' &&
+      (l.days_to_ltcg ?? 0) > 0 &&
+      (l.days_to_ltcg ?? 0) <= 30
+    );
+  }
+
   const filteredLots = $derived.by<EnrichedLot[]>(() => {
     let list = allLots;
     const q = searchQuery.toLowerCase().trim();
     if (q) {
       list = list.filter(
-        (l: EnrichedLot) => l.holding.asset_name.toLowerCase().includes(q) ||
-             l.holding.isin.toLowerCase().includes(q) ||
-             (l.lot_id && l.lot_id.toLowerCase().includes(q))
+        (l) =>
+          l.holding.asset_name.toLowerCase().includes(q) ||
+          l.holding.isin.toLowerCase().includes(q) ||
+          (l.lot_id && l.lot_id.toLowerCase().includes(q))
       );
     }
 
     if (activeFilter === 'LTCG') {
-      list = list.filter((l: EnrichedLot) => l.tax_term === 'LONG_TERM');
+      list = list.filter((l) => l.tax_term === 'LONG_TERM');
     } else if (activeFilter === 'STCG') {
-      list = list.filter((l: EnrichedLot) => l.tax_term === 'SHORT_TERM');
+      list = list.filter((l) => l.tax_term === 'SHORT_TERM');
+    } else if (activeFilter === 'MATURING') {
+      list = list.filter(isMaturingSoon);
     } else if (activeFilter === 'HARVEST') {
-      list = list.filter((l: EnrichedLot) => (l.realized_or_unrealized_gain || 0) < 0);
+      list = list.filter((l) => l.is_harvest_candidate || (l.realized_or_unrealized_gain || 0) < 0);
     }
 
     return list;
   });
 
-  // Grouped by holding
   interface GroupedHolding {
     holding: HoldingDto;
     lots: EnrichedLot[];
@@ -139,6 +171,8 @@
     totalValue: number;
     totalGain: number;
     gainPct: number;
+    ltcgPct: number;
+    stcgPct: number;
   }
 
   const groupedSchemes = $derived.by<GroupedHolding[]>(() => {
@@ -154,49 +188,59 @@
           totalValue: 0,
           totalGain: 0,
           gainPct: 0,
+          ltcgPct: 0,
+          stcgPct: 0
         });
       }
       const g = map.get(isin)!;
       g.lots.push(lot);
-      g.totalCost += (lot.cost_basis || 0);
-      g.totalValue += (lot.current_value || 0);
-      g.totalGain += (lot.realized_or_unrealized_gain || 0);
+      g.totalCost += lot.cost_basis || 0;
+      g.totalValue += lot.current_value || 0;
+      g.totalGain += lot.realized_or_unrealized_gain || 0;
     }
 
     for (const g of map.values()) {
       g.gainPct = g.totalCost > 0 ? (g.totalGain / g.totalCost) * 100 : 0;
+      const totalUnits = g.lots.reduce((s, l) => s + (l.units || 0), 0);
+      const ltcgUnits = g.lots
+        .filter((l) => l.tax_term === 'LONG_TERM')
+        .reduce((s, l) => s + (l.units || 0), 0);
+      g.ltcgPct = totalUnits > 0 ? (ltcgUnits / totalUnits) * 100 : 0;
+      g.stcgPct = Math.max(0, 100 - g.ltcgPct);
     }
 
     return Array.from(map.values()).sort((a, b) => b.totalValue - a.totalValue);
   });
 
-  // Summary tallies
   const metrics = $derived.by(() => {
     let ltcgCount = 0;
     let ltcgGain = 0;
     let stcgCount = 0;
     let stcgGain = 0;
+    let maturingCount = 0;
     let harvestCount = 0;
     let harvestLoss = 0;
 
     for (const l of allLots) {
       const g = l.realized_or_unrealized_gain || 0;
-      if (l.tax_term === 'LONG_TERM') {
+      if (l.tax_term === "LONG_TERM") {
         ltcgCount++;
         ltcgGain += g;
       } else {
         stcgCount++;
         stcgGain += g;
       }
-      if (g < 0) {
+      if (isMaturingSoon(l)) {
+        maturingCount++;
+      }
+      if (l.is_harvest_candidate || g < 0) {
         harvestCount++;
         harvestLoss += Math.abs(g);
       }
     }
 
-    return { ltcgCount, ltcgGain, stcgCount, stcgGain, harvestCount, harvestLoss };
+    return { ltcgCount, ltcgGain, stcgCount, stcgGain, maturingCount, harvestCount, harvestLoss };
   });
-
 
   function toggleScheme(isin: string) {
     expandedSchemes[isin] = !expandedSchemes[isin];
@@ -219,9 +263,9 @@
   <!-- Controls Bar: Filter Chips & Search -->
   <div class="controls-bar">
     <div class="filter-chips">
-      <button 
-        type="button" 
-        class="chip" 
+      <button
+        type="button"
+        class="chip"
         class:active={activeFilter === 'ALL'}
         onclick={() => setFilter('ALL')}
       >
@@ -229,47 +273,74 @@
         <span>All Lots ({allLots.length})</span>
       </button>
 
-      <button 
-        type="button" 
-        class="chip ltcg-chip" 
+      <button
+        type="button"
+        class="chip ltcg-chip"
         class:active={activeFilter === 'LTCG'}
         onclick={() => setFilter('LTCG')}
       >
         <ShieldCheck size={14} />
         <span>LTCG Mature ({metrics.ltcgCount})</span>
-        <span class="chip-badge" class:positive={metrics.ltcgGain >= 0} class:negative={metrics.ltcgGain < 0}>{formatINR(metrics.ltcgGain, quietMode)}</span>
+        <span
+          class="chip-badge tnum"
+          class:positive={metrics.ltcgGain >= 0}
+          class:negative={metrics.ltcgGain < 0}
+          data-sensitive="currency"
+        >
+          {formatINR(metrics.ltcgGain, quietMode)}
+        </span>
       </button>
 
-      <button 
-        type="button" 
-        class="chip stcg-chip" 
+      <button
+        type="button"
+        class="chip stcg-chip"
         class:active={activeFilter === 'STCG'}
         onclick={() => setFilter('STCG')}
       >
         <Clock size={14} />
         <span>STCG Locked ({metrics.stcgCount})</span>
-        <span class="chip-badge" class:positive={metrics.stcgGain > 0} class:neutral={metrics.stcgGain === 0} class:negative={metrics.stcgGain < 0}>{formatINR(metrics.stcgGain, quietMode)}</span>
+        <span
+          class="chip-badge tnum"
+          class:positive={metrics.stcgGain > 0}
+          class:neutral={metrics.stcgGain === 0}
+          class:negative={metrics.stcgGain < 0}
+          data-sensitive="currency"
+        >
+          {formatINR(metrics.stcgGain, quietMode)}
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="chip maturing-chip"
+        class:active={activeFilter === 'MATURING'}
+        onclick={() => setFilter('MATURING')}
+      >
+        <CalendarClock size={14} />
+        <span>Maturing ≤30d ({metrics.maturingCount})</span>
       </button>
 
       {#if metrics.harvestCount > 0}
-        <button 
-          type="button" 
-          class="chip harvest-chip" 
+        <button
+          type="button"
+          class="chip harvest-chip"
           class:active={activeFilter === 'HARVEST'}
           onclick={() => setFilter('HARVEST')}
         >
           <Sparkles size={14} />
           <span>Loss Harvest ({metrics.harvestCount})</span>
-          <span class="chip-badge negative">-{formatINR(metrics.harvestLoss, quietMode)}</span>
+          <span class="chip-badge negative tnum" data-sensitive="currency">
+            {formatINR(-metrics.harvestLoss, quietMode)}
+          </span>
         </button>
       {/if}
     </div>
 
     <div class="search-box">
       <Search size={14} class="search-icon" />
-      <input 
-        type="text" 
-        placeholder="Filter schemes or ISIN..." 
+      <input
+        type="text"
+        placeholder="Filter schemes or ISIN..."
         bind:value={searchQuery}
         class="search-input"
       />
@@ -284,16 +355,21 @@
       </div>
       <div class="banner-text">
         <span class="strong">Sec 112A Tax-Harvest Opportunity:</span>
-        <span>You have <strong>{formatINR(ltcgRemaining, quietMode)}</strong> of tax-free LTCG headroom remaining this financial year (exempt up to ₹1.25 Lakh).</span>
+        <span>
+          You have
+          <strong class="tnum" data-sensitive="currency">{formatINR(ltcgRemaining, quietMode)}</strong>
+          of tax-free LTCG headroom remaining this financial year (exempt up to ₹1.25 Lakh).
+        </span>
       </div>
-      <button 
+      <button
         type="button"
         onclick={downloadHarvestCalendar}
+        disabled={isOffline}
         class="calendar-feed-btn"
-        title="Download iCalendar file with lot maturation alarms"
+        title={isOffline ? 'Disabled while viewing offline cache' : 'Download iCalendar file with lot maturation alarms'}
       >
         <Calendar size={13} />
-        <span>Add Maturation Reminders (.ics)</span>
+        <span>{isOffline ? 'Offline (.ics disabled)' : 'Add Maturation Reminders (.ics)'}</span>
       </button>
     </div>
   {/if}
@@ -303,26 +379,32 @@
     <div class="empty-state">
       <Filter size={32} class="empty-icon" />
       <p class="empty-title">No matching tax lots found</p>
-      <p class="empty-desc">Try clearing your search query or selecting 'ALL' to view all open holdings.</p>
+      <p class="empty-desc">Try clearing your search query or selecting 'All Lots' to view all open holdings.</p>
     </div>
   {:else}
     <div class="schemes-list">
       {#each groupedSchemes as group (group.holding.isin)}
-
         {@const isExpanded = expandedSchemes[group.holding.isin] ?? false}
+        {@const lockedUnits = Number(group.holding.locked_units ?? 0)}
+        {@const exitFreeVal = Number(group.holding.exit_load_free_value ?? group.totalValue)}
         <div class="scheme-group-card" class:expanded={isExpanded}>
           <!-- Header Bar -->
-          <div 
-            class="scheme-header" 
+          <div
+            class="scheme-header"
             role="button"
             tabindex="0"
             onclick={() => toggleScheme(group.holding.isin)}
-            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleScheme(group.holding.isin); } }}
+            onkeydown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleScheme(group.holding.isin);
+              }
+            }}
           >
             <div class="scheme-left">
-              <button 
-                type="button" 
-                class="expand-btn" 
+              <button
+                type="button"
+                class="expand-btn"
                 aria-label={isExpanded ? 'Collapse scheme' : 'Expand scheme'}
               >
                 {#if isExpanded}
@@ -334,35 +416,65 @@
               <div class="scheme-info">
                 <div class="name-row">
                   <span class="scheme-name">{group.holding.asset_name}</span>
-                  <span class="isin-pill">{group.holding.isin}</span>
+                  <span class="isin-pill mono">{group.holding.isin}</span>
                   <span class="bucket-pill">{group.holding.bucket}</span>
+                  {#if group.holding.expense_ratio !== undefined}
+                    <span class="ter-pill tnum">TER {group.holding.expense_ratio.toFixed(2)}%</span>
+                  {/if}
                 </div>
-                <div class="sub-row">
-                  <span class="lot-count">{group.lots.length} {group.lots.length === 1 ? 'lot' : 'lots'} matched</span>
-                  <span class="bullet">•</span>
-                  <span>NAV: {formatINR(group.holding.current_nav, false)} ({group.holding.nav_date})</span>
+                <div class="sub-row tnum">
+                  <span>{group.lots.length} {group.lots.length === 1 ? 'lot' : 'lots'}</span>
+                  <span class="bullet">·</span>
+                  <span>NAV: {formatINR(group.holding.current_nav, false)}</span>
+                  <span class="bullet">·</span>
+                  {#if lockedUnits > 0.001}
+                    <span class="exit-warn">
+                      ⚠ {lockedUnits.toFixed(1)} units locked (Free:
+                      <span data-sensitive="currency">{formatCompactINR(exitFreeVal, quietMode)}</span>)
+                    </span>
+                  {:else}
+                    <span class="exit-ok">
+                      Exit-load free: <span data-sensitive="currency">{formatCompactINR(exitFreeVal, quietMode)}</span>
+                    </span>
+                  {/if}
                 </div>
               </div>
             </div>
 
-            <div class="scheme-right">
+            <!-- 120x6 LTCG/STCG Composition Bar -->
+            <div class="composition-wrap" title="LTCG {group.ltcgPct.toFixed(0)}% / STCG {group.stcgPct.toFixed(0)}% by units">
+              <div class="comp-labels tnum">
+                <span class="comp-ltcg">LTCG {group.ltcgPct.toFixed(0)}%</span>
+                <span class="comp-stcg">STCG {group.stcgPct.toFixed(0)}%</span>
+              </div>
+              <div class="comp-bar">
+                <div class="comp-fill-ltcg" style="width: {group.ltcgPct}%;"></div>
+                <div class="comp-fill-stcg" style="width: {group.stcgPct}%;"></div>
+              </div>
+            </div>
+
+            <div class="scheme-right tnum">
               <div class="metric-pair">
                 <span class="metric-label">Invested</span>
-                <span class="metric-val mono">{formatINR(group.totalCost, quietMode)}</span>
+                <span class="metric-val mono" data-sensitive="currency">{formatINR(group.totalCost, quietMode)}</span>
               </div>
               <div class="metric-pair">
                 <span class="metric-label">Current Value</span>
-                <span class="metric-val mono bold">{formatINR(group.totalValue, quietMode)}</span>
+                <span class="metric-val mono bold" data-sensitive="currency">{formatINR(group.totalValue, quietMode)}</span>
               </div>
               <div class="metric-pair gain-pair">
                 <span class="metric-label">Total Gain</span>
-                <div class="gain-badge" class:positive={group.totalGain >= 0} class:negative={group.totalGain < 0}>
+                <div
+                  class="gain-badge"
+                  class:positive={group.totalGain >= 0}
+                  class:negative={group.totalGain < 0}
+                >
                   {#if group.totalGain >= 0}
                     <ArrowUpRight size={14} />
                   {:else}
                     <ArrowDownRight size={14} />
                   {/if}
-                  <span class="mono bold">{formatINR(group.totalGain, quietMode)}</span>
+                  <span class="mono bold" data-sensitive="currency">{formatINR(group.totalGain, quietMode)}</span>
                   <span class="pct mono">({formatPercent(group.gainPct)})</span>
                 </div>
               </div>
@@ -377,53 +489,68 @@
                   <tr>
                     <th>Lot ID</th>
                     <th>Acquisition Date</th>
-                    <th>Units</th>
-                    <th>Cost NAV</th>
-                    <th>Cost Basis</th>
-                    <th>Current Value</th>
-                    <th>Unrealized Gain</th>
-                    <th>Holding Period</th>
-                    <th>Tax Term</th>
-                    <th>Action</th>
+                    <th class="right-align">Units</th>
+                    <th class="right-align">Cost NAV</th>
+                    <th class="right-align">Cost Basis</th>
+                    <th class="right-align">Current Value</th>
+                    <th class="right-align">Unrealized Gain</th>
+                    <th>Holding</th>
+                    <th>Tax Regime</th>
+                    <th class="right-align">Est. Drag</th>
+                    <th class="center-align">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {#each group.lots as lot (lot.lot_id)}
-                    {@const isLtcg = lot.tax_term === 'LONG_TERM'}
                     {@const gain = lot.realized_or_unrealized_gain || 0}
-                    {@const gainPct = (lot.cost_basis && lot.cost_basis > 0) ? (gain / lot.cost_basis) * 100 : 0}
+                    {@const gainPct = lot.cost_basis && lot.cost_basis > 0 ? (gain / lot.cost_basis) * 100 : 0}
                     {@const taxInfo = getTaxBadge(group.holding, lot)}
-                    <tr>
+                    {@const showMaturation = !taxInfo.is50AA && !taxInfo.isLtcg && (lot.days_to_ltcg ?? 0) > 0}
+                    <tr class:harvest-row={Boolean(lot.is_harvest_candidate)}>
                       <td class="mono lot-id">{lot.lot_id.slice(-8)}</td>
-                      <td>
-                        <span class="mono">{lot.acquisition_date}</span>
-                      </td>
+                      <td class="mono">{lot.acquisition_date}</td>
                       <td class="mono right-align">{lot.units.toFixed(3)}</td>
                       <td class="mono right-align">{formatINR(lot.cost_nav, false)}</td>
-                      <td class="mono right-align">{formatINR(lot.cost_basis, quietMode)}</td>
-                      <td class="mono right-align bold">{formatINR(lot.current_value, quietMode)}</td>
+                      <td class="mono right-align" data-sensitive="currency">{formatINR(lot.cost_basis, quietMode)}</td>
+                      <td class="mono right-align bold" data-sensitive="currency">{formatINR(lot.current_value, quietMode)}</td>
                       <td class="right-align">
-                        <span class="gain-val mono" class:positive={gain >= 0} class:negative={gain < 0}>
-                          {gain >= 0 ? '+' : ''}{formatINR(gain, quietMode)}
+                        <span class="gain-val mono" class:positive={gain >= 0} class:negative={gain < 0} data-sensitive="currency">
+                          {!quietMode && gain > 0 ? '+' : ''}{formatINR(gain, quietMode)}
                           <span class="sub-pct">({formatPercent(gainPct)})</span>
                         </span>
                       </td>
                       <td>
-                        <span class="holding-days mono">{lot.holding_period_days ?? '—'} days</span>
+                        <div class="holding-cell tnum">
+                          <span>{lot.holding_period_days ?? '—'}d</span>
+                          {#if showMaturation}
+                            <span class="maturing-chip-inline">in {lot.days_to_ltcg}d</span>
+                          {/if}
+                        </div>
                       </td>
                       <td>
-                        <span class="tax-badge" class:ltcg={taxInfo.isLtcg} class:stcg={!taxInfo.isLtcg}>
-                          {taxInfo.label}
-                        </span>
-                        {#if lot.is_grandfathered}
-                          <span class="grandfather-badge" title="FMV 2018 grandfathered rule applied">FMV '18</span>
-                        {/if}
+                        <div class="regime-cell">
+                          <span class="tax-badge" class:ltcg={taxInfo.isLtcg} class:stcg={!taxInfo.isLtcg}>
+                            {taxInfo.label}
+                          </span>
+                          {#if lot.is_harvest_candidate}
+                            <span class="harvest-badge">Loss Harvest</span>
+                          {/if}
+                          {#if lot.is_grandfathered}
+                            <span class="grandfather-badge" title="FMV 2018 grandfathered rule applied">FMV '18</span>
+                          {/if}
+                        </div>
+                      </td>
+                      <td class="mono right-align drag-cell" data-sensitive="currency">
+                        {lot.estimated_tax_drag && lot.estimated_tax_drag > 0 ? formatINR(lot.estimated_tax_drag, quietMode) : '₹ 0'}
                       </td>
                       <td class="center-align">
-                        <button 
-                          type="button" 
-                          class="inspect-btn" 
-                          onclick={(e) => { e.stopPropagation(); openLotModal(group.holding, lot); }}
+                        <button
+                          type="button"
+                          class="inspect-btn"
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            openLotModal(group.holding, lot);
+                          }}
                           title="View detailed tax lot breakdown"
                         >
                           Inspect
@@ -440,39 +567,56 @@
     </div>
   {/if}
 
-  <!-- Lot Inspector Dialog -->
+  <!-- Lot Inspector Dialog (Bottom Sheet on <768px) -->
   {#if selectedLot}
-    <div 
-      class="modal-backdrop" 
+    <div
+      class="modal-backdrop"
       role="presentation"
       onclick={closeLotModal}
+      onkeydown={(e) => { if (e.key === 'Escape') closeLotModal(); }}
     >
-      <div 
-        class="modal-card" 
+      <div
+        class="modal-card"
         role="dialog"
         aria-modal="true"
         aria-labelledby="lot-modal-title"
         tabindex="-1"
         onclick={(e) => e.stopPropagation()}
-        onkeydown={(e) => { if (e.key === 'Escape') closeLotModal(); }}
+        onkeydown={(e) => {
+          if (e.key === "Escape") closeLotModal();
+        }}
       >
         <div class="modal-header">
           <div>
             <h3 id="lot-modal-title" class="modal-title">{selectedLot.holding.asset_name}</h3>
-            <p class="modal-sub">Lot ID: <code class="mono">{selectedLot.lot.lot_id}</code> • ISIN: <code class="mono">{selectedLot.holding.isin}</code></p>
+            <p class="modal-sub">
+              Lot ID: <code class="mono">{selectedLot.lot.lot_id}</code> · ISIN: <code class="mono">{selectedLot.holding.isin}</code>
+            </p>
           </div>
-          <button type="button" class="close-btn" onclick={closeLotModal} aria-label="Close dialog">✕</button>
+          <button
+            type="button"
+            class="close-btn"
+            onclick={closeLotModal}
+            aria-label="Close dialog">✕</button
+          >
         </div>
 
         <div class="modal-body">
           <div class="inspector-grid">
             <div class="ins-cell">
               <span class="ins-label">Acquisition Date</span>
-              <span class="ins-val mono">{selectedLot.lot.acquisition_date}</span>
+              <span class="ins-val mono"
+                >{selectedLot.lot.acquisition_date}</span
+              >
             </div>
             <div class="ins-cell">
               <span class="ins-label">Holding Period</span>
-              <span class="ins-val mono">{selectedLot.lot.holding_period_days ?? '—'} days</span>
+              <span class="ins-val mono">
+                {selectedLot.lot.holding_period_days ?? '—'} days
+                {#if resolveRegime(selectedLot.holding, selectedLot.lot) !== 'SEC_50AA_DEBT' && selectedLot.lot.tax_term === 'SHORT_TERM' && (selectedLot.lot.days_to_ltcg ?? 0) > 0}
+                  (LTCG in {selectedLot.lot.days_to_ltcg}d)
+                {/if}
+              </span>
             </div>
             <div class="ins-cell">
               <span class="ins-label">Tax Regime</span>
@@ -483,44 +627,65 @@
             <div class="ins-cell">
               <span class="ins-label">Grandfathering</span>
               <span class="ins-val">
-                {selectedLot.lot.is_grandfathered ? `Applicable (FMV 31-Jan-2018: ₹${selectedLot.lot.fmv_2018})` : 'Not Applicable (Post-2018)'}
+                {selectedLot.lot.is_grandfathered
+                  ? `Applicable (FMV 31-Jan-2018: ₹${selectedLot.lot.fmv_2018})`
+                  : "Not Applicable (Post-2018)"}
               </span>
             </div>
           </div>
 
-          <div class="inspector-financials">
+          <div class="inspector-financials tnum">
             <div class="fin-row">
               <span class="fin-label">Units Allocated</span>
-              <span class="fin-val mono">{selectedLot.lot.units.toFixed(4)}</span>
+              <span class="fin-val mono"
+                >{selectedLot.lot.units.toFixed(4)}</span
+              >
             </div>
             <div class="fin-row">
               <span class="fin-label">Acquisition Cost NAV</span>
-              <span class="fin-val mono">{formatINR(selectedLot.lot.cost_nav, false)}</span>
+              <span class="fin-val mono"
+                >{formatINR(selectedLot.lot.cost_nav, false)}</span
+              >
             </div>
             <div class="fin-row">
-              <span class="fin-label">Current Amfi NAV</span>
-              <span class="fin-val mono">{formatINR(selectedLot.holding.current_nav, false)}</span>
+              <span class="fin-label">Current AMFI NAV</span>
+              <span class="fin-val mono"
+                >{formatINR(selectedLot.holding.current_nav, false)}</span
+              >
             </div>
             <div class="fin-row divider"></div>
             <div class="fin-row">
               <span class="fin-label">Total Cost Basis</span>
-              <span class="fin-val mono">{formatINR(selectedLot.lot.cost_basis, quietMode)}</span>
+              <span class="fin-val mono" data-sensitive="currency">{formatINR(selectedLot.lot.cost_basis, quietMode)}</span>
             </div>
             <div class="fin-row">
               <span class="fin-label">Current Market Value</span>
-              <span class="fin-val mono bold">{formatINR(selectedLot.lot.current_value, quietMode)}</span>
+              <span class="fin-val mono bold" data-sensitive="currency">{formatINR(selectedLot.lot.current_value, quietMode)}</span>
             </div>
             <div class="fin-row highlight">
               <span class="fin-label">Unrealized Gain / (Loss)</span>
-              <span class="fin-val mono bold" class:positive={(selectedLot.lot.realized_or_unrealized_gain || 0) >= 0} class:negative={(selectedLot.lot.realized_or_unrealized_gain || 0) < 0}>
+              <span
+                class="fin-val mono bold"
+                class:positive={(selectedLot.lot.realized_or_unrealized_gain || 0) >= 0}
+                class:negative={(selectedLot.lot.realized_or_unrealized_gain || 0) < 0}
+                data-sensitive="currency"
+              >
                 {formatINR(selectedLot.lot.realized_or_unrealized_gain || 0, quietMode)}
+              </span>
+            </div>
+            <div class="fin-row">
+              <span class="fin-label">Estimated Tax Drag</span>
+              <span class="fin-val mono" data-sensitive="currency">
+                {formatINR(selectedLot.lot.estimated_tax_drag || 0, quietMode)}
               </span>
             </div>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="primary-btn" onclick={closeLotModal}>Dismiss</button>
+          <button type="button" class="primary-btn" onclick={closeLotModal}
+            >Dismiss</button
+          >
         </div>
       </div>
     </div>
@@ -531,7 +696,7 @@
   .tax-lots-container {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 14px;
   }
 
   .controls-bar {
@@ -539,464 +704,392 @@
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 1rem;
-    padding: 0.75rem 1rem;
-    background: var(--surface-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hair);
+    border-radius: var(--radius-md);
   }
 
   .filter-chips {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
     flex-wrap: wrap;
   }
 
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.75rem;
-    background: var(--surface-card-hover);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-full);
-    color: var(--text-secondary);
-    font-size: 0.8rem;
+    gap: 6px;
+    padding: 6px 11px;
+    min-height: 36px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-hair);
+    border-radius: var(--radius-sm);
+    color: var(--ink-secondary);
+    font-size: 0.78rem;
     font-weight: 500;
     cursor: pointer;
-    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-  }
-
-  .chip:hover {
-    color: var(--text-primary);
-    border-color: var(--border-medium);
   }
 
   .chip.active {
-    background: var(--surface-card);
-    color: var(--text-primary);
-    border-color: var(--accent-cyan);
+    background: var(--state-action-soft);
+    border-color: var(--state-action);
+    color: var(--state-action);
   }
 
   .chip-badge {
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-xs);
     font-size: 0.72rem;
-    font-family: var(--font-mono);
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--bg-canvas);
   }
 
-  .chip-badge.positive {
-    background: var(--color-ok-soft);
-    color: var(--color-ok);
-  }
-
-  .chip-badge.neutral {
-    background: var(--surface-void);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-hairline);
-  }
-
-  .chip-badge.negative {
-    background: var(--color-bad-soft);
-    color: var(--color-bad);
-    border: 1px solid var(--border-hairline);
-  }
+  .chip-badge.positive { color: var(--state-ok); }
+  .chip-badge.negative { color: var(--state-danger); }
+  .chip-badge.neutral { color: var(--ink-muted); }
 
   .search-box {
+    position: relative;
     display: flex;
     align-items: center;
-    position: relative;
-    min-width: 240px;
   }
 
   :global(.search-icon) {
     position: absolute;
-    left: 0.75rem;
-    color: var(--text-muted);
+    left: 10px;
+    color: var(--ink-muted);
     pointer-events: none;
   }
 
   .search-input {
-    width: 100%;
-    padding: 0.45rem 0.75rem 0.45rem 2.2rem;
-    background: var(--surface-void);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-size: 0.82rem;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-hair);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px 7px 30px;
+    color: var(--ink-primary);
+    font-size: 0.8rem;
+    min-width: 210px;
     outline: none;
-    transition: border-color var(--transition-fast);
   }
 
   .search-input:focus {
-    border-color: var(--accent-cyan);
+    border-color: var(--state-action);
   }
 
   .exemption-banner {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--state-ok-soft);
+    border: 1px solid color-mix(in oklch, var(--state-ok) 35%, transparent);
     border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-size: 0.85rem;
+    flex-wrap: wrap;
   }
 
-  .banner-icon {
-    color: var(--accent-emerald);
+  .banner-icon { color: var(--state-ok); }
+
+  .banner-text {
+    flex: 1;
     display: flex;
-    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--ink-primary);
+    flex-wrap: wrap;
   }
 
-  .banner-text .strong {
-    color: var(--accent-emerald);
-    font-weight: 600;
-    margin-right: 0.4rem;
-  }
+  .banner-text .strong { color: var(--state-ok); font-weight: 600; }
 
   .calendar-feed-btn {
-    margin-left: auto;
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    background: var(--color-ok-soft);
-    border: 1px solid var(--border-hairline);
-    color: var(--color-ok);
-    font-size: 0.75rem;
+    gap: 6px;
+    padding: 7px 12px;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--ink-primary);
+    font-size: 0.76rem;
     font-weight: 500;
-    padding: 0.35rem 0.65rem;
-    border-radius: var(--radius-xs);
-    text-decoration: none;
-    white-space: nowrap;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    cursor: pointer;
+    min-height: 36px;
   }
 
-  .calendar-feed-btn:hover {
-    background: var(--surface-card-hover);
-    color: var(--text-main);
-    border-color: var(--accent-emerald);
+  .calendar-feed-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
-
-  /* Empty State */
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 3rem 1rem;
-    background: var(--surface-card);
-    border: 1px dashed var(--border-subtle);
-    border-radius: var(--radius-lg);
-    text-align: center;
-  }
-
-  :global(.empty-icon) {
-    color: var(--text-muted);
-    margin-bottom: 0.75rem;
-  }
-
-  .empty-title {
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 0.25rem;
-  }
-
-  .empty-desc {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-  }
-
-  /* Schemes List */
   .schemes-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 10px;
   }
 
   .scheme-group-card {
-    background: var(--surface-card);
-    border: 1px solid var(--border-hairline);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hair);
     border-radius: var(--radius-md);
     overflow: hidden;
-    transition: border-color 0.15s ease;
-  }
-
-  .scheme-group-card:hover {
-    border-color: var(--border-subtle);
-  }
-
-  .scheme-group-card.expanded {
-    border-color: var(--border-highlight);
   }
 
   .scheme-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.25rem;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 13px 16px;
     cursor: pointer;
-    user-select: none;
-    transition: background-color 0.15s ease;
+    flex-wrap: wrap;
   }
 
   .scheme-header:hover {
-    background: var(--surface-card-hover);
+    background: var(--bg-elevated);
   }
 
   .scheme-left {
     display: flex;
     align-items: center;
-    gap: 0.85rem;
-    max-width: 60%;
+    gap: 10px;
+    flex: 1;
+    min-width: 240px;
   }
 
   .expand-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    color: var(--text-secondary);
-    cursor: pointer;
-    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    color: var(--ink-muted);
+    display: grid;
+    place-items: center;
   }
 
   .scheme-info {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 4px;
   }
 
   .name-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 7px;
     flex-wrap: wrap;
   }
 
   .scheme-name {
-    font-weight: 500;
-    font-size: 0.95rem;
-    color: var(--text-main);
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--ink-primary);
   }
 
-  .isin-pill, .bucket-pill {
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-xs);
-    font-size: 0.7rem;
-    font-family: var(--font-mono);
-  }
-
-  .isin-pill {
-    background: var(--surface-void);
-    color: var(--text-muted);
-    border: 1px solid var(--border-hairline);
-  }
-
-  .bucket-pill {
-    background: var(--accent-cyan-bg);
-    color: var(--accent-cyan);
-    border: 1px solid var(--border-hairline);
+  .isin-pill,
+  .bucket-pill,
+  .ter-pill {
+    font-size: 0.68rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-hair);
+    color: var(--ink-muted);
   }
 
   .sub-row {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    font-size: 0.75rem;
-    color: var(--text-muted);
+    gap: 6px;
+    font-size: 0.74rem;
+    color: var(--ink-muted);
+    flex-wrap: wrap;
   }
 
-  .bullet {
-    opacity: 0.5;
+  .exit-ok { color: var(--state-ok); }
+  .exit-warn { color: var(--state-warn); }
+
+  .composition-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 120px;
   }
+
+  .comp-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.66rem;
+  }
+
+  .comp-ltcg { color: var(--state-ok); }
+  .comp-stcg { color: var(--state-warn); }
+
+  .comp-bar {
+    width: 120px;
+    height: 6px;
+    background: var(--bg-elevated);
+    border-radius: 999px;
+    overflow: hidden;
+    display: flex;
+  }
+
+  .comp-fill-ltcg { background: var(--state-ok); height: 100%; }
+  .comp-fill-stcg { background: var(--state-warn); height: 100%; }
 
   .scheme-right {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
+    gap: 18px;
+    flex-wrap: wrap;
   }
 
   .metric-pair {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
+    gap: 2px;
   }
 
   .metric-label {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    font-weight: 500;
+    font-size: 0.68rem;
+    color: var(--ink-muted);
   }
 
   .metric-val {
-    font-size: 0.88rem;
-    color: var(--text-secondary);
+    font-size: 0.84rem;
+    color: var(--ink-primary);
   }
+
+  .bold { font-weight: 600; }
 
   .gain-badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: var(--radius-xs);
-    font-size: 0.85rem;
+    gap: 4px;
+    font-size: 0.82rem;
   }
 
-  .gain-badge.positive {
-    background: var(--color-ok-soft);
-    color: var(--color-ok);
-  }
+  .gain-badge.positive,
+  .positive { color: var(--state-ok); }
+  .gain-badge.negative,
+  .negative { color: var(--state-danger); }
 
-  .gain-badge.negative {
-    background: var(--color-bad-soft);
-    color: var(--color-bad);
-    border: 1px solid var(--border-hairline);
-  }
-
-  .gain-badge .pct {
-    font-size: 0.75rem;
-    opacity: 0.85;
-  }
-
-  /* Lots Table */
   .lots-table-wrapper {
+    border-top: 1px solid var(--border-hair);
     overflow-x: auto;
-    border-top: 1px solid var(--border-hairline);
-    background: var(--surface-void);
+    background: var(--bg-canvas);
   }
 
   .lots-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
   }
 
   .lots-table th {
-    padding: 0.6rem 0.85rem;
     text-align: left;
-    font-size: 0.75rem;
-    font-weight: 500;
-    font-family: var(--font-sans);
-    color: var(--text-muted);
-    background: var(--surface-void);
-    border-bottom: 1px solid var(--border-hairline);
+    padding: 9px 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--ink-muted);
+    border-bottom: 1px solid var(--border-hair);
+    white-space: nowrap;
   }
 
   .lots-table td {
-    padding: 0.65rem 0.85rem;
-    border-bottom: 1px solid var(--border-hairline);
-    color: var(--text-secondary);
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border-hair);
+    color: var(--ink-secondary);
+    white-space: nowrap;
   }
 
-  .lots-table tr:hover td {
-    background: var(--surface-card-hover);
+  .lots-table tr.harvest-row td:first-child {
+    border-left: 2px solid var(--state-ok);
   }
 
-  .lot-id {
-    color: var(--accent-cyan);
+  .right-align { text-align: right !important; }
+  .center-align { text-align: center !important; }
+
+  .holding-cell,
+  .regime-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
-  .right-align {
-    text-align: right;
-  }
-
-  .center-align {
-    text-align: center;
-  }
-
-  .gain-val.positive {
-    color: var(--accent-emerald);
-  }
-
-  .gain-val.negative {
-    color: var(--accent-rose-bright) !important;
-    font-weight: 600;
-  }
-
-  .sub-pct {
-    font-size: 0.7rem;
-    opacity: 0.75;
-    margin-left: 0.2rem;
-  }
-
-  .holding-days {
-    color: var(--text-muted);
+  .maturing-chip-inline {
+    font-size: 0.68rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--state-warn-soft);
+    color: var(--state-warn);
   }
 
   .tax-badge {
-    display: inline-block;
-    padding: 0.15rem 0.45rem;
-    border-radius: var(--radius-xs);
     font-size: 0.7rem;
-    font-weight: 500;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
   }
 
-  .tax-badge.ltcg {
-    background: var(--color-ok-soft);
-    color: var(--color-ok);
-    border: 1px solid var(--border-hairline);
-  }
+  .tax-badge.ltcg { background: var(--state-ok-soft); color: var(--state-ok); }
+  .tax-badge.stcg { background: var(--state-warn-soft); color: var(--state-warn); }
 
-  .tax-badge.stcg {
-    background: var(--color-accent-soft);
-    color: var(--color-accent);
-    border: 1px solid var(--border-hairline);
+  .harvest-badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--state-ok-soft);
+    color: var(--state-ok);
   }
 
   .grandfather-badge {
-    margin-left: 0.3rem;
-    padding: 0.1rem 0.3rem;
-    border-radius: var(--radius-xs);
-    font-size: 0.65rem;
-    background: var(--accent-violet-bg);
-    color: var(--accent-violet-bright);
-    border: 1px solid var(--border-hairline);
+    font-size: 0.68rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--ink-muted);
   }
 
   .inspect-btn {
-    padding: 0.25rem 0.55rem;
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
-    color: var(--text-secondary);
+    padding: 4px 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-hair);
+    border-radius: var(--radius-sm);
+    color: var(--ink-primary);
     font-size: 0.72rem;
     cursor: pointer;
-    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+    min-height: 28px;
   }
 
-  .inspect-btn:hover {
-    color: var(--accent-cyan);
-    border-color: var(--accent-cyan);
-    background: var(--surface-card);
+  .empty-state {
+    padding: 40px 20px;
+    text-align: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hair);
+    border-radius: var(--radius-md);
+    color: var(--ink-muted);
   }
 
-  /* Modal Dialog */
+  /* Lot Inspector Modal */
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: color-mix(in oklab, var(--color-paper-3) 85%, transparent);
-    backdrop-filter: blur(8px);
+    z-index: var(--z-modal);
+    background: rgba(0, 0, 0, 0.72);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
-    padding: 1rem;
+    padding: 16px;
   }
 
   .modal-card {
-    background: var(--surface-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
     width: 100%;
-    max-width: 540px;
+    max-width: 560px;
+    background: var(--bg-modal);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
     overflow: hidden;
   }
 
@@ -1004,165 +1097,95 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid var(--border-hairline);
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border-hair);
   }
 
-  .modal-title {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-main);
-    margin: 0 0 0.25rem 0;
-  }
-
-  .modal-sub {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
+  .modal-title { font-size: 0.96rem; font-weight: 600; color: var(--ink-primary); }
+  .modal-sub { font-size: 0.74rem; color: var(--ink-muted); margin-top: 4px; }
 
   .close-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.1rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-hair);
+    color: var(--ink-secondary);
+    border-radius: var(--radius-sm);
+    width: 32px;
+    height: 32px;
     cursor: pointer;
-    padding: 0.25rem;
-  }
-
-  .close-btn:hover {
-    color: var(--text-main);
   }
 
   .modal-body {
-    padding: 1.25rem 1.5rem;
+    padding: 16px 18px;
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 14px;
   }
 
   .inspector-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
+    gap: 10px;
   }
 
   .ins-cell {
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-hair);
+    border-radius: var(--radius-sm);
+    padding: 9px 11px;
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.65rem 0.85rem;
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
+    gap: 3px;
   }
 
-  .ins-label {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .ins-val {
-    font-size: 0.85rem;
-    color: var(--text-main);
-  }
-
-  .ins-val.status {
-    color: var(--accent-cyan);
-    font-size: 0.78rem;
-  }
+  .ins-label { font-size: 0.68rem; color: var(--ink-muted); }
+  .ins-val { font-size: 0.78rem; color: var(--ink-primary); }
 
   .inspector-financials {
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-hair);
+    border-radius: var(--radius-sm);
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.85rem 1rem;
-    background: var(--surface-void);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-xs);
+    gap: 7px;
+    font-size: 0.8rem;
   }
 
-  .fin-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.82rem;
-  }
-
-  .fin-row.divider {
-    height: 1px;
-    background: var(--border-hairline);
-    margin: 0.3rem 0;
-  }
-
-  .fin-row.highlight {
-    padding-top: 0.25rem;
-    font-size: 0.95rem;
-  }
-
-  .fin-label {
-    color: var(--text-secondary);
-  }
-
-  .fin-val {
-    color: var(--text-main);
-  }
-
-  .fin-val.positive {
-    color: var(--accent-emerald);
-  }
-
-  .fin-val.negative {
-    color: var(--accent-rose-bright) !important;
-    font-weight: 600;
-  }
+  .fin-row { display: flex; justify-content: space-between; }
+  .fin-label { color: var(--ink-muted); }
+  .fin-val { color: var(--ink-primary); }
+  .fin-row.divider { border-top: 1px solid var(--border-hair); margin: 3px 0; }
 
   .modal-footer {
+    padding: 12px 18px;
+    border-top: 1px solid var(--border-hair);
     display: flex;
     justify-content: flex-end;
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--border-hairline);
-    background: var(--surface-void);
   }
 
   .primary-btn {
-    padding: 0.5rem 1.25rem;
-    background: var(--accent-cyan);
-    color: var(--surface-void);
-    border: none;
-    border-radius: var(--radius-xs);
-    font-weight: 500;
-    font-size: 0.85rem;
+    padding: 7px 16px;
+    background: var(--state-action-soft);
+    border: 1px solid color-mix(in oklch, var(--state-action) 40%, transparent);
+    border-radius: var(--radius-sm);
+    color: var(--state-action);
+    font-weight: 600;
     cursor: pointer;
-    transition: opacity 0.15s ease;
-  }
-
-  .primary-btn:hover {
-    opacity: 0.9;
   }
 
   @media (max-width: 768px) {
-    .scheme-header {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 0.75rem;
+    .modal-backdrop {
+      align-items: flex-end;
+      padding: 0;
     }
-    .scheme-left {
-      max-width: 100%;
-    }
-    .scheme-right {
-      width: 100%;
-      justify-content: space-between;
-      gap: 0.75rem;
+    .modal-card {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      max-height: 88vh;
+      overflow-y: auto;
     }
     .inspector-grid {
       grid-template-columns: 1fr;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .chip, .calendar-feed-btn, .scheme-group-card, .inspect-btn, .primary-btn {
-      transition: none !important;
     }
   }
 </style>

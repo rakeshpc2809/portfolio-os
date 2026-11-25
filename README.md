@@ -1,100 +1,52 @@
-# Portfolio OS (v3.0 HLD Architecture)
+# Portfolio OS (v4.0)
 
-Portfolio OS merges the core tax ledger of `my-fintracker` and the quantitative analytics engine of `portfolio-tracker-v2` under a decoupled, high-performance polyglot architecture.
+Portfolio OS is a local-first personal investment management, statutory Indian tax-lot FIFO engine, and automated portfolio rebalancing system under a single-process, single-store architecture.
 
 ---
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 ```
                         ┌───────────────────────────────┐
-                        │      Vue 3 Web Cockpit        │
-                        │    (Desktop & Responsive)     │
+                        │  Svelte 5 Responsive PWA      │
+                        │  (Desktop Cockpit & Mobile)   │
                         └──────────────┬────────────────┘
                                        │ REST / JSON (HTTP 8080)
                                        ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│                          Core Node (Java 26 / Spring Boot)                    │
+│                          Core Node (Java 21 / Spring Boot)                    │
 │                                                                               │
-│  - FIFO Matching Engine             - Rule Engine (YAML Hot-Reload)           │
-│  - HMAC-SHA256 Cryptographic Ledger  - Statutory Offset Engine (Sec 112A/50AA)│
-│  - Rebalancing & Decumulation       - Maturation Ladder & Schedule FA Export  │
+│  - FIFO Matching Engine             - Policy v3.0 YAML Rules (Hot-Reload)     │
+│  - HMAC-SHA256 Cryptographic Ledger - Statutory Tax Engine (112A / 112 / 50AA)│
+│  - Water-Filling Rebalancer         - Drawdown Rungs & ITR-2 Schedule CG ZIP  │
 └──────────────────────┬────────────────────────────────┬───────────────────────┘
                        │                                │
-      SQLite Event Store│                                │ Arrow Flight RPC (gRPC 8001)
-     (Cryptographic Log)│                                │ Fast Zero-Copy Data Passing
-                        ▼                                ▼
-              ┌──────────────────┐            ┌──────────────────────────────────┐
-              │ DuckDB Projector │            │     Quant Sidecar (Python)       │
-              │(Analytical Query)│            │  - Polars + PyArrow Flight       │
-              └──────────────────┘            │  - Hurst Exponent Vectorization  │
-                                              │  - HMM Market Regimes & OU Math  │
-                                              │  - CAS PDF / Broker CSV Parsers  │
-                                              └──────────────────────────────────┘
+       SQLite Event Store (HMAC-SHA256)        On-Demand Python CLI (ProcessBuilder)
+       data/tax_ledger.db                      quant-sidecar/parse_cas.py
 ```
 
 ---
 
-## ⚡ Key Features
+## Key Features
 
-1. **Cryptographic Event Sourcing Ledger**: SQLite storage protected by HMAC-SHA256 hash-chaining to ensure append-only tamper evidence.
-2. **DuckDB Analytical Projection**: Automated projection of ledger events into local DuckDB for analytical queries.
-3. **Apache Arrow Flight RPC**: Inter-process communication between Java Core and Python Quant Sidecar passing vector memory with zero serialization overhead.
-4. **Dynamic YAML Tax Rules**: Dynamic rule loading for Indian Income Tax Act changes (Section 112A equity exemption, Section 50AA specified debt, Section 55(2)(ac) grandfathering).
-5. **Decumulation & Rebalancing Advisors**:
-   - FIRE Decumulation Runway & SWR Planner
-   - Flat Bucket Allocation Rebalancer & Drawdown Trigger Rungs
-   - Tax-Loss Harvesting Opportunity Scanner
-   - Disciplined Portfolio Consolidation Plan
+1. **Cryptographic Event Sourcing Ledger**: SQLite storage (`data/tax_ledger.db`) protected by HMAC-SHA256 hash-chaining to ensure append-only tamper evidence.
+2. **Dynamic Policy v3.0 Rules**: YAML-driven target allocations, asymmetric tolerance corridors, drawdown deployment rungs, and Indian Income Tax Act rules (Section 112A equity exemption, Section 112 non-equity, Section 50AA specified debt, Section 55(2)(ac) grandfathering).
+3. **Decision-First Web & Mobile PWA**:
+   - **Overview**: Verdict Strip, Bucket Drift Matrix with tolerance-band bullet bars, and collapsible Net Worth Timeline.
+   - **Rebalancer**: Config-driven Nifty 500 Drawdown Ladder, 3-column Capital Flow Ledger with 2-step `Confirm Execution` (`plan_digest`), inline Fresh Bank Cash Router, and deterministic FIRE trajectory.
+   - **Tax & Lots**: Regime-aware FIFO lot inspector, LTCG/STCG composition bars, `Maturing ≤30d` filter, `.ics` maturation calendar, and ITR-2 Schedule CG ZIP export.
 
 ---
 
-## 🚀 Quickstart & Deployment
-
-### Prerequisites
-- Docker & Docker Compose or Podman & Podman Compose
-- JDK 21+ / OpenJDK 26 (for local development outside containers)
-- Python 3.12+ (for sidecar local development outside containers)
-
-### Running with Docker Compose / Podman Compose
+## Quickstart
 
 ```bash
-# Build and start services
-podman compose up --build -d
+# Build & verify all suites (Core Node, Quant CLI, Web)
+just check
 
-# View logs
-podman compose logs -f
+# Package executable JAR and restart systemd user service
+just package-core
+systemctl --user restart portfolio-os-core.service
 ```
 
-The Web Cockpit and REST API will be accessible at:
-`http://localhost:8080/`
-
----
-
-## 📡 API Sitemap
-
-### Core Ledger & Sync
-- `GET /api/v1/sync/snapshot` — Unidirectional snapshot containing holdings, tax lots, and radar signals
-- `POST /api/v1/sync/pair` — Device pairing endpoint
-
-### Statement Ingestion
-- `POST /api/v1/statements/upload` — Multipart upload for CAMS/KFintech CAS PDFs or Broker CSVs
-
-### Reports & Tax Optimization
-- `GET /api/v1/portfolio/summary` — Net worth, total unrealized gain, active scheme count, XIRR
-- `GET /api/v1/portfolio/holdings` — Grouped open holdings with FIFO lot details
-- `GET /api/v1/portfolio/allocation` — Asset allocation distribution
-- `GET /api/v1/portfolio/category-allocation` — Risk exposure allocation by tax category
-- `GET /api/v1/tax/exemption-status` — Section 112A LTCG exemption headroom meter
-- `GET /api/v1/tax/reports/itr2` — Schedule CG summary
-- `GET /api/v1/tax/harvest-opportunities` — Tax-loss harvesting recommendations
-- `GET /api/v1/tax/maturation-ladder` — LTCG maturation timeline
-- `GET /api/v1/tax/realized-log` — Fiscal year realized gain/loss audit log
-- `GET /api/v1/tax/export/itr2/zip` — ZIP bundle download containing Schedule 112A, Schedule STCG, and Schedule FA CSVs
-
-### Valuation & Advisors
-- `GET /api/v1/portfolio/buckets/rebalance` — Bucket drift and market drawdown triggers
-- `GET /api/v1/portfolio/rebalance-preview` — Target redemption tax drag estimator
-- `GET /api/v1/portfolio/consolidation-preview` — Phased asset exit and core fund redeployment plan
-- `GET /api/v1/portfolio/goals` — Liquid buffer goal tag allocations
-- `GET /api/v1/portfolio/fire` — FIRE decumulation runway calculations
+The Web Cockpit PWA and REST API are served at `http://127.0.0.1:8080/`.

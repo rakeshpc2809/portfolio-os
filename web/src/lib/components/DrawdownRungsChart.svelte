@@ -1,414 +1,382 @@
 <script lang="ts">
-  import { Shield, TrendingDown, Zap, ArrowDownCircle, AlertCircle, CheckCircle2 } from '@lucide/svelte';
-  import { formatINR, formatCompactINR } from '../formatters';
+  import { TrendingDown, AlertCircle } from '@lucide/svelte';
+  import type { HoldingDto, PolicyMetaDto } from '../api';
+  import { formatCompactINR } from '../formatters';
 
   interface Props {
     drawdownPct?: number;
-    liquidBufferValue?: number;
+    drawdownContext?: {
+      current_drawdown_pct?: number;
+      active_tier?: number;
+      armed_tier?: number;
+      rolling_high_value?: number | string;
+      current_value?: number | string;
+      arbitrage_exit_load_free_value?: number | string;
+      status?: string;
+    };
+    policyMeta?: PolicyMetaDto;
+    holdings?: HoldingDto[];
     quietMode?: boolean;
     status?: string;
   }
 
   let {
     drawdownPct = 0,
-    liquidBufferValue = 0,
+    drawdownContext = undefined,
+    policyMeta = undefined,
+    holdings = [],
     quietMode = false,
     status = 'AVAILABLE'
   }: Props = $props();
 
-  const normalizedDrawdown = $derived(drawdownPct > 0 ? -drawdownPct : drawdownPct);
+  const effectiveStatus = $derived(drawdownContext?.status ?? status ?? 'AVAILABLE');
+  const rawDd = $derived(Number(drawdownContext?.current_drawdown_pct ?? drawdownPct ?? 0));
+  const absDrawdown = $derived(Math.abs(rawDd));
 
-  const rungs = [
-    {
-      level: 1,
-      threshold: -10.0,
-      deployFraction: 0.25,
-      deployLabel: '25% of Liquid Buffer',
-      targetBucket: 'EQUITY_CORE',
-      desc: 'Deploy 25% of exit-load-free Invesco Arbitrage reserves into underweight Core Equity (ICICI LargeMidcap 250 & Parag Parikh Flexi Cap).'
-    },
-    {
-      level: 2,
-      threshold: -20.0,
-      deployFraction: 0.50,
-      deployLabel: 'Cumulative 50% of Buffer',
-      targetBucket: 'CORE & FACTOR SATELLITE',
-      desc: 'Deploy 50% cumulative tranche into Core & Satellite dips (ICICI Value 30, Edelweiss Momentum 50, Nippon Small Cap).'
-    },
-    {
-      level: 3,
-      threshold: -30.0,
-      deployFraction: 1.0,
-      deployLabel: '100% (Full Liquid Reserve)',
-      targetBucket: 'MAX CORE COMPOUNDING',
-      desc: 'Market capitulation trigger — fully deploy remaining arbitrage buffer into long-term Core index compounding.'
-    }
-  ];
-
-  const activeRung = $derived(() => {
-    if (status === 'UNAVAILABLE') return 0;
-    if (normalizedDrawdown <= -30.0) return 3;
-    if (normalizedDrawdown <= -20.0) return 2;
-    if (normalizedDrawdown <= -10.0) return 1;
-    return 0; // Standing by in normal regime
+  const configuredRungs = $derived.by(() => {
+    const list = policyMeta?.drawdown_rungs ?? [];
+    return [...list].sort((a, b) => a.drawdown_pct - b.drawdown_pct);
   });
 
-  const clampedPos = $derived(Math.min(100, Math.max(0, (Math.abs(normalizedDrawdown) / 30.0) * 100)));
+  const maxRungPct = $derived.by(() => {
+    if (configuredRungs.length === 0) return 30;
+    return Math.max(...configuredRungs.map((r) => Math.abs(r.drawdown_pct)));
+  });
+
+  const holdMin = $derived(Math.abs(policyMeta?.drawdown_hold_zone_min_pct ?? 5));
+  const holdMax = $derived(Math.abs(policyMeta?.drawdown_hold_zone_max_pct ?? 10));
+
+  const armedTier = $derived.by(() => {
+    const ctxTier = drawdownContext?.armed_tier ?? drawdownContext?.active_tier;
+    if (ctxTier !== undefined && ctxTier !== null && ctxTier > 0) return ctxTier;
+    let tier = 0;
+    configuredRungs.forEach((r, idx) => {
+      if (absDrawdown >= Math.abs(r.drawdown_pct)) tier = idx + 1;
+    });
+    return tier;
+  });
+
+  const isUnavailable = $derived(effectiveStatus === 'UNAVAILABLE' || configuredRungs.length === 0);
+
+  const clampedPinPct = $derived(
+    maxRungPct > 0 ? Math.min(100, Math.max(0, (absDrawdown / maxRungPct) * 100)) : 0
+  );
+
+  const readyArbitrageDryPowder = $derived.by(() => {
+    const liquidHoldings = (holdings || []).filter((h) => {
+      const b = (h.bucket || '').toUpperCase();
+      return b.includes('LIQUID') || b.includes('ARBITRAGE');
+    });
+    if (liquidHoldings.length > 0) {
+      return liquidHoldings.reduce(
+        (sum, h) => sum + (Number(h.exit_load_free_value ?? h.current_value) || 0),
+        0
+      );
+    }
+    return Number(drawdownContext?.arbitrage_exit_load_free_value ?? 0);
+  });
+
+  function formatBenchLevel(val: number | string | undefined): string {
+    if (val === undefined || val === null || val === '') return '—';
+    const num = Number(val);
+    return isNaN(num) ? String(val) : num.toFixed(2);
+  }
 </script>
 
-<div class="drawdown-card obsidian-card">
-  <div class="drawdown-header">
-    <div class="header-left">
-      <div class="icon-wrap">
-        <TrendingDown size={16} class="text-cyan" />
-      </div>
-      <div>
-        <h3 class="header-title">Nifty 500 Drawdown Rungs & Tactical Inflow</h3>
-        <span class="header-sub">Pre-committed buy-the-dip rule engine (Finance Act 2024 / Policy v3.0 Spec)</span>
-      </div>
+<section class="dd-card" aria-label="Nifty 500 Drawdown Ladder">
+  <div class="dd-header">
+    <div class="dd-title-group">
+      <TrendingDown size={15} class="dd-icon" />
+      <h3 class="dd-title">Nifty 500 Drawdown Ladder</h3>
+      <span class="dd-sub tnum">
+        {#if isUnavailable}
+          Benchmark feed unavailable
+        {:else if armedTier > 0}
+          Rung {armedTier} Armed (-{absDrawdown.toFixed(1)}%)
+        {:else}
+          Standby (-{absDrawdown.toFixed(1)}%)
+        {/if}
+      </span>
     </div>
-    <div class="market-status-pill mono">
-      <span class="status-dot {status === 'UNAVAILABLE' ? 'warning' : (activeRung() > 0 ? 'active' : 'standby')}"></span>
-      <span>{status === 'UNAVAILABLE' ? 'BENCHMARK MONITORING UNAVAILABLE' : (activeRung() > 0 ? `RUNG ${activeRung()} ACTIVE` : 'REGIME: STANDBY (<10% DRAWDOWN)')}</span>
-    </div>
+
+    <span class="dd-status-pill" class:unavailable={isUnavailable} class:armed={!isUnavailable && armedTier > 0}>
+      {isUnavailable ? 'SUSPENDED' : armedTier > 0 ? `TIER ${armedTier} ARMED` : 'STANDBY'}
+    </span>
   </div>
 
-  <div class="drawdown-body">
-    {#if status === 'UNAVAILABLE'}
-      <div class="drawdown-unavailable-banner">
-        <AlertCircle size={16} class="text-amber" />
-        <span>Notice: Nifty 500 TRI benchmark feed is unseeded or unavailable. Drawdown-induced rebalancing is temporarily suspended while portfolio sync remains operational.</span>
-      </div>
-    {/if}
-    <!-- Visual Gauge Bar -->
-    <div class="gauge-container">
-      <div class="gauge-labels">
-        <span class="gauge-end text-muted">ATH (0.0%)</span>
-        <span class="gauge-marker text-muted">-10.0% (Rung 1)</span>
-        <span class="gauge-marker text-muted">-20.0% (Rung 2)</span>
-        <span class="gauge-end text-rose">-30.0% (Rung 3)</span>
-      </div>
+  {#if isUnavailable}
+    <div class="dd-suspended">
+      <AlertCircle size={15} />
+      <span>
+        Nifty 500 TRI benchmark feed is unseeded or unavailable. Drawdown-triggered deployment is suspended; band &amp; scheduled rules remain active.
+      </span>
+    </div>
+  {:else}
+    <!-- Single-Row Horizontal Ruler -->
+    <div class="ruler-wrap">
+      <div class="ruler-track">
+        <!-- Shaded Hold Zone -->
+        <div
+          class="hold-zone"
+          style="left: {(holdMin / maxRungPct) * 100}%; width: {Math.max(0, ((holdMax - holdMin) / maxRungPct) * 100)}%;"
+          title="Hold Zone ({holdMin}% to {holdMax}%)"
+        ></div>
 
-      <div class="gauge-track">
-        <div class="track-bg"></div>
-        <div class="zone zone-1" style="left: 0%; width: 33.33%;"></div>
-        <div class="zone zone-2" style="left: 33.33%; width: 33.33%;"></div>
-        <div class="zone zone-3" style="left: 66.66%; width: 33.34%;"></div>
-
-        <!-- Current Drawdown Indicator Needle -->
-        <div class="drawdown-needle" style="--needle-pct: {clampedPos}%;">
-          <div class="needle-flag mono">
-            {normalizedDrawdown.toFixed(1)}%
+        <!-- Configured Rung Ticks -->
+        {#each configuredRungs as rung}
+          {@const pos = (Math.abs(rung.drawdown_pct) / maxRungPct) * 100}
+          {@const isHit = absDrawdown >= Math.abs(rung.drawdown_pct)}
+          <div class="rung-tick" class:hit={isHit} style="left: {pos}%;">
+            <span class="tick-line"></span>
+            <span class="tick-label tnum">
+              -{Math.abs(rung.drawdown_pct).toFixed(0)}% · {Math.round(rung.liquid_deploy_fraction * 100)}%
+            </span>
           </div>
-          <div class="needle-line"></div>
+        {/each}
+
+        <!-- Live Drawdown Pin -->
+        <div class="dd-pin" style="left: {clampedPinPct}%;">
+          <span class="pin-head"></span>
+          <span class="pin-badge tnum">-{absDrawdown.toFixed(1)}%</span>
         </div>
+      </div>
+
+      <div class="ruler-ends tnum">
+        <span>0% ATH</span>
+        <span>Hold Zone (-{holdMin}% to -{holdMax}%)</span>
+        <span>-{maxRungPct.toFixed(0)}% Max</span>
       </div>
     </div>
 
-    <!-- Tactical Deployment Rung Cards -->
-    <div class="rungs-grid">
-      {#each rungs as r}
-        {@const isTriggered = activeRung() >= r.level}
-        {@const deployAmt = liquidBufferValue * r.deployFraction}
-        <div class="rung-item" class:triggered={isTriggered} class:next-rung={activeRung() === r.level - 1}>
-          <div class="rung-top">
-            <div class="rung-badge mono">
-              Rung {r.level} ({r.threshold}%)
-            </div>
-            {#if isTriggered}
-              <span class="status-tag triggered">Deploy active</span>
-            {:else if activeRung() === r.level - 1}
-              <span class="status-tag next">Next trigger</span>
-            {:else}
-              <span class="status-tag standing">Standby</span>
-            {/if}
-          </div>
-
-          <div class="rung-main">
-            <span class="deploy-action bold">{r.deployLabel}</span>
-            <span class="deploy-target text-cyan mono font-medium">➔ {r.targetBucket}</span>
-          </div>
-
-          <div class="deploy-amount mono bold">
-            {#if quietMode}
-              ₹ •••,•••
-            {:else}
-              {deployAmt > 0 ? formatINR(deployAmt) : 'Buffer Standing By'}
-            {/if}
-          </div>
-
-          <p class="rung-desc">{r.desc}</p>
-        </div>
-      {/each}
+    <!-- Footer Telemetry -->
+    <div class="dd-footer tnum">
+      <div class="meta-cell">
+        <span class="meta-label">ATH Watermark</span>
+        <span class="meta-val">{formatBenchLevel(drawdownContext?.rolling_high_value)}</span>
+      </div>
+      <div class="meta-cell">
+        <span class="meta-label">Current Level</span>
+        <span class="meta-val">{formatBenchLevel(drawdownContext?.current_value)}</span>
+      </div>
+      <div class="meta-cell">
+        <span class="meta-label">Armed Tier</span>
+        <span class="meta-val">{armedTier > 0 ? `Rung ${armedTier}` : 'None (0)'}</span>
+      </div>
+      <div class="meta-cell">
+        <span class="meta-label">Ready Arbitrage Dry Powder</span>
+        <span class="meta-val highlight" data-sensitive="currency">
+          {formatCompactINR(readyArbitrageDryPowder, quietMode)}
+        </span>
+      </div>
     </div>
-  </div>
-</div>
+  {/if}
+</section>
 
 <style>
-  .drawdown-card {
-    padding: 18px 20px;
-    margin-top: 16px;
-    background: var(--surface-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-  }
-
-  .drawdown-header {
+  .dd-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-hair);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-direction: column;
+    gap: 14px;
   }
 
-  .header-left {
+  .dd-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .dd-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  :global(.dd-icon) {
+    color: var(--state-action);
+  }
+
+  .dd-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--ink-primary);
+  }
+
+  .dd-sub {
+    font-size: 0.78rem;
+    color: var(--ink-muted);
+  }
+
+  .dd-status-pill {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+    color: var(--ink-secondary);
+    border: 1px solid var(--border-hair);
+  }
+
+  .dd-status-pill.armed {
+    background: var(--state-danger-soft);
+    color: var(--state-danger);
+    border-color: color-mix(in oklch, var(--state-danger) 35%, transparent);
+  }
+
+  .dd-status-pill.unavailable {
+    background: var(--state-warn-soft);
+    color: var(--state-warn);
+    border-color: color-mix(in oklch, var(--state-warn) 35%, transparent);
+  }
+
+  .dd-suspended {
     display: flex;
     align-items: center;
     gap: 10px;
+    padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--state-warn-soft);
+    color: var(--state-warn);
+    font-size: 0.8rem;
+    line-height: 1.45;
   }
 
-  .icon-wrap {
+  .ruler-wrap {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    background: var(--color-cool-soft);
-    border: 1px solid var(--color-cool);
-    border-radius: var(--radius-pill);
-  }
-
-  .header-title {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--color-ink);
-    margin: 0;
-  }
-
-  .header-sub {
-    font-size: 0.72rem;
-    color: var(--color-muted);
-  }
-
-  .market-status-pill {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 3px 8px;
-    border-radius: var(--radius-pill);
-    background: var(--color-paper-3);
-    border: 1px solid var(--color-rule);
-    color: var(--color-muted);
-  }
-
-  .status-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-  }
-  .status-dot.standby {
-    background: var(--color-ok);
-  }
-  .status-dot.active {
-    background: var(--color-accent);
-  }
-  .status-dot.warning {
-    background: var(--color-bad);
-  }
-
-  .drawdown-unavailable-banner {
-    display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 8px;
-    padding: 10px 14px;
-    background: var(--color-accent-soft);
-    border: 1px solid var(--color-accent);
-    border-radius: var(--radius-card);
-    color: var(--color-accent);
-    font-size: 0.78rem;
-    font-weight: 500;
-    line-height: 1.4;
+    padding-top: 18px;
+    padding-bottom: 18px;
   }
 
-  .drawdown-body {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-
-  /* Gauge */
-  .gauge-container {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .gauge-labels {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.75rem;
-    font-family: var(--font-outlier);
-  }
-
-  .gauge-track {
+  .ruler-track {
     position: relative;
-    height: 12px;
-    border-radius: var(--radius-pill);
-    background: var(--color-paper-3);
-    border: 1px solid var(--color-rule);
-    overflow: visible;
+    height: 8px;
+    background: var(--bg-elevated);
+    border-radius: 999px;
+    border: 1px solid var(--border-hair);
   }
 
-  .zone {
+  .hold-zone {
     position: absolute;
     top: 0;
     bottom: 0;
-  }
-  .zone-1 {
-    background: var(--color-ok-soft);
-    border-top-left-radius: var(--radius-pill);
-    border-bottom-left-radius: var(--radius-pill);
-  }
-  .zone-2 {
-    background: var(--color-accent-soft);
-  }
-  .zone-3 {
-    background: var(--color-bad-soft);
-    border-top-right-radius: var(--radius-pill);
-    border-bottom-right-radius: var(--radius-pill);
+    background: color-mix(in oklch, var(--state-warn) 25%, transparent);
+    border-radius: 999px;
   }
 
-  .drawdown-needle {
+  .rung-tick {
     position: absolute;
-    top: -24px;
-    left: var(--needle-pct, 0%);
+    top: -4px;
     transform: translateX(-50%);
     display: flex;
     flex-direction: column;
     align-items: center;
-    z-index: 5;
+    pointer-events: none;
   }
 
-  .needle-flag {
-    font-size: 0.75rem;
-    font-weight: 700;
-    font-family: var(--font-outlier);
-    background: var(--color-accent);
-    color: var(--color-accent-ink);
-    padding: 1px 6px;
-    border-radius: var(--radius-pill);
+  .tick-line {
+    width: 1.5px;
+    height: 16px;
+    background: var(--border-strong);
   }
 
-  .needle-line {
-    width: 2px;
-    height: 28px;
-    background: var(--color-accent);
+  .rung-tick.hit .tick-line {
+    background: var(--state-danger);
   }
 
-  /* Rungs Grid */
-  .rungs-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+  .tick-label {
+    margin-top: 4px;
+    font-size: 0.68rem;
+    color: var(--ink-muted);
+    white-space: nowrap;
   }
 
-  .rung-item {
-    background: var(--color-paper-3);
-    border: 1px solid var(--color-rule);
-    border-radius: var(--radius-card);
-    padding: 12px 14px;
+  .rung-tick.hit .tick-label {
+    color: var(--state-danger);
+    font-weight: 600;
+  }
+
+  .dd-pin {
+    position: absolute;
+    top: -5px;
+    transform: translateX(-50%);
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    transition: border-color 0.15s ease, background 0.15s ease;
-  }
-  .rung-item.next-rung {
-    border-color: var(--color-cool);
-    background: var(--color-cool-soft);
-  }
-  .rung-item.triggered {
-    border-color: var(--color-accent);
-    background: var(--color-accent-soft);
+    align-items: center;
+    z-index: 2;
   }
 
-  .rung-top {
+  .pin-head {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--state-action);
+    border: 2px solid var(--bg-canvas);
+  }
+
+  .pin-badge {
+    position: absolute;
+    top: -22px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--ink-primary);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+  }
+
+  .ruler-ends {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    font-size: 0.7rem;
+    color: var(--ink-muted);
+    margin-top: 8px;
+    gap: 8px;
+    flex-wrap: wrap;
   }
 
-  .rung-badge {
-    font-size: 0.75rem;
-    font-weight: 600;
-    font-family: var(--font-outlier);
-    color: var(--color-ink);
+  .dd-footer {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-hair);
   }
 
-  .status-tag {
-    font-family: var(--font-outlier);
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 1px 6px;
-    border-radius: var(--radius-pill);
-  }
-  .status-tag.standing {
-    background: var(--color-paper);
-    color: var(--color-muted);
-    border: 1px solid var(--color-rule);
-  }
-  .status-tag.next {
-    background: var(--color-cool-soft);
-    color: var(--color-cool);
-    border: 1px solid var(--color-cool);
-  }
-  .status-tag.triggered {
-    background: var(--color-accent-soft);
-    color: var(--color-accent);
-    border: 1px solid var(--color-accent);
-  }
-
-  .rung-main {
+  .meta-cell {
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
 
-  .deploy-action {
-    font-size: 0.85rem;
+  .meta-label {
+    font-size: 0.7rem;
+    color: var(--ink-muted);
+  }
+
+  .meta-val {
+    font-size: 0.84rem;
     font-weight: 600;
-    color: var(--color-ink);
+    color: var(--ink-primary);
   }
 
-  .deploy-target {
-    font-size: 0.75rem;
-    color: var(--color-cool);
+  .meta-val.highlight {
+    color: var(--bucket-liquid);
   }
 
-  .deploy-amount {
-    font-size: 1.05rem;
-    color: var(--color-ok);
-    margin-top: 2px;
-  }
-
-  .rung-desc {
-    font-size: 0.75rem;
-    color: var(--color-muted);
-    line-height: 1.35;
-    margin: 4px 0 0 0;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .rung-item {
-      transition: none !important;
-    }
-  }
-
-  @media (max-width: 860px) {
-    .rungs-grid {
-      grid-template-columns: 1fr;
+  @media (max-width: 768px) {
+    .dd-footer {
+      grid-template-columns: repeat(2, 1fr);
     }
   }
 </style>

@@ -219,6 +219,42 @@ public class SyncDtos {
     ) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record DrawdownRungMetaDto(
+        String tier,
+        double drawdownPct,
+        double liquidTargetPct,
+        double coreTargetPct,
+        double liquidDeployFraction
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record IntraBucketRoutingMetaDto(
+        boolean remediateOnPassiveFlowOnly,
+        String primaryIsin,
+        double primaryTargetRatio,
+        double ratioBand
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record BucketPolicyMetaDto(
+        double targetPct,
+        double bandLowerPct,
+        double bandUpperPct,
+        IntraBucketRoutingMetaDto intraBucketRouting
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record PolicyMetaDto(
+        String version,
+        double liquidHardCapPct,
+        double drawdownHoldZoneMinPct,
+        double drawdownHoldZoneMaxPct,
+        double urgentDrawdownThresholdPct,
+        List<DrawdownRungMetaDto> drawdownRungs,
+        java.util.Map<String, BucketPolicyMetaDto> buckets
+    ) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record UnidirectionalSyncSnapshot(
         SyncInfoDto syncInfo,
         List<FlatHoldingDto> holdings,
@@ -227,8 +263,22 @@ public class SyncDtos {
         List<NetWorthPointDto> netWorthHistory,
         RebalancePlanDtos.RebalancePlanDto rebalancePlan,
         List<ReportDtos.BucketStatusDto> bucketAllocation,
-        DailyBriefDto dailyBrief
+        DailyBriefDto dailyBrief,
+        PolicyMetaDto policyMeta
     ) {
+        public UnidirectionalSyncSnapshot(
+            SyncInfoDto syncInfo,
+            List<FlatHoldingDto> holdings,
+            List<FlatTaxLotDto> taxLots,
+            List<RadarSignalDto> radarSignals,
+            List<NetWorthPointDto> netWorthHistory,
+            RebalancePlanDtos.RebalancePlanDto rebalancePlan,
+            List<ReportDtos.BucketStatusDto> bucketAllocation,
+            DailyBriefDto dailyBrief
+        ) {
+            this(syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, bucketAllocation, dailyBrief, null);
+        }
+
         public UnidirectionalSyncSnapshot(
             SyncInfoDto syncInfo,
             List<FlatHoldingDto> holdings,
@@ -238,7 +288,7 @@ public class SyncDtos {
             RebalancePlanDtos.RebalancePlanDto rebalancePlan,
             List<ReportDtos.BucketStatusDto> bucketAllocation
         ) {
-            this(syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, bucketAllocation, null);
+            this(syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, bucketAllocation, null, null);
         }
 
         public UnidirectionalSyncSnapshot(
@@ -249,7 +299,7 @@ public class SyncDtos {
             List<NetWorthPointDto> netWorthHistory,
             RebalancePlanDtos.RebalancePlanDto rebalancePlan
         ) {
-            this(syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, java.util.Collections.emptyList(), null);
+            this(syncInfo, holdings, taxLots, radarSignals, netWorthHistory, rebalancePlan, java.util.Collections.emptyList(), null, null);
         }
     }
 }
