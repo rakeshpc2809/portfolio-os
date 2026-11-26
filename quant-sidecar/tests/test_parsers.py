@@ -90,7 +90,6 @@ class TestCasPdfParser(unittest.TestCase):
 
     def test_cas_parser_fallback_numeric_extraction_right_to_left(self):
         from decimal import Decimal
-        from pathlib import Path
 
         from parsers.cas_parser import TOKEN_REGEX
 

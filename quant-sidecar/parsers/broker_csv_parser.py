@@ -14,7 +14,7 @@ class BrokerCsvParser:
     def parse(self) -> list[TaxEventSchema]:
         events: list[TaxEventSchema] = []
         try:
-            with open(self.csv_path, mode="r", encoding="utf-8-sig") as f:
+            with open(self.csv_path, encoding="utf-8-sig") as f:
                 reader = csv.DictReader(f)
                 if not reader.fieldnames:
                     return events
